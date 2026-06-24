@@ -1,0 +1,81 @@
+/* Dark 2026 — VS Code default dark theme (2026-dark.json) */
+:root {
+  --color-foreground: #bfbfbf;
+  --color-description: #8c8c8c;
+  --color-border: #2a2b2c;
+  --color-surface: #191a1b;
+  --color-editor: #121314;
+  --color-editor-foreground: #bbbebf;
+  --color-titlebar-foreground: #8c8c8c;
+  --color-menubar-selection-foreground: #bfbfbf;
+  --color-menubar-selection-background: #242526;
+  --color-menubar-selection-border: #2a2b2c;
+  --color-list-hover: #1e1f20;
+  --color-menu-background: #202122;
+  --color-menu-foreground: #bfbfbf;
+  /* VS Code defaultMenuStyles: menu hover uses list.hoverBackground, not menu.selectionBackground */
+  --color-menu-selection-background: #1e1f20;
+  --color-menu-selection-foreground: #bfbfbf;
+  --color-menu-selection-border: #3994bc;
+  --color-menu-separator: #2a2b2c;
+  --color-menu-border: #2a2b2c;
+  --shadow-lg: 0 0 12px rgba(0, 0, 0, 0.14);
+  --corner-radius-large: 8px;
+  --corner-radius-medium: 6px;
+}
+
+/* VS Code workbench font stacks (style.css) */
+html.platform-mac {
+  --font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-family-monospace: "SF Mono", Monaco, Menlo, Courier, monospace;
+}
+
+html.platform-mac:lang(ko) {
+  --font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Nanum Gothic", "AppleGothic", sans-serif;
+}
+
+html.platform-windows {
+  --font-family: "Segoe WPC", "Segoe UI", sans-serif;
+  --font-family-monospace: Consolas, "Courier New", monospace;
+}
+
+html.platform-windows:lang(ko) {
+  --font-family: "Segoe WPC", "Segoe UI", "Malgun Gothic", "Dotom", sans-serif;
+}
+
+html.platform-linux {
+  --font-family: system-ui, "Ubuntu", "Droid Sans", sans-serif;
+  --font-family-monospace: "Ubuntu Mono", "Liberation Mono", "DejaVu Sans Mono",
+    "Courier New", monospace;
+}
+
+html.platform-linux:lang(ko) {
+  --font-family: system-ui, "Ubuntu", "Droid Sans", "Source Han Sans K",
+    "Source Han Sans JR", "Source Han Sans", "UnDotum", "FBaekmuk Gulim",
+    sans-serif;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--color-foreground);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
