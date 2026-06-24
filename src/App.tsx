@@ -1,13 +1,7 @@
-import Editor from "@monaco-editor/react";
+import AppShell from "./components/layout/AppShell";
 
 function App() {
-  return (
-    <Editor
-      height="100vh"
-      defaultLanguage="sql"
-      theme="vs-dark"
-    />
-  );
+  return <AppShell />;
 }
 
 export default App;

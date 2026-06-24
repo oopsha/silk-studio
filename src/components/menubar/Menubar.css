@@ -1,0 +1,60 @@
+.menubar {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 100%;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.menubar__button {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-titlebar-foreground);
+  font: inherit;
+  font-size: 12px;
+  line-height: 22px;
+  white-space: nowrap;
+  cursor: default;
+  outline: none;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.menubar__button-title {
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  line-height: 22px;
+}
+
+.menubar__button:hover .menubar__button-title,
+.menubar__button--open .menubar__button-title {
+  color: var(--color-menubar-selection-foreground);
+  background-color: var(--color-menubar-selection-background);
+  border-color: var(--color-menubar-selection-border);
+}
+
+.menubar__button:hover .menubar__button-title {
+  outline: 1px dashed var(--color-menubar-selection-border);
+  outline-offset: -1px;
+}
+
+.menubar__button--open .menubar__button-title,
+.menubar__button:focus-visible .menubar__button-title {
+  outline: 1px solid var(--color-menubar-selection-border);
+  outline-offset: -1px;
+}
+
+.menubar__menu-host {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}

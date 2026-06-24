@@ -1,0 +1,61 @@
+.title-bar {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  box-sizing: border-box;
+  height: var(--title-bar-height, 32px);
+  color: var(--color-titlebar-foreground);
+  background-color: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  user-select: none;
+}
+
+.title-bar__drag-region {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 0;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.title-bar--wco .title-bar__drag-region {
+  right: var(--title-bar-controls-width, 138px);
+}
+
+.title-bar__drag-region--hidden {
+  display: none;
+}
+
+.title-bar__left,
+.title-bar__center,
+.title-bar__right {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.title-bar__left {
+  flex-shrink: 0;
+  height: 100%;
+  line-height: 22px;
+}
+
+.title-bar__center {
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.title-bar__right {
+  flex-shrink: 0;
+  width: var(--title-bar-controls-width, 138px);
+}

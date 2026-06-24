@@ -1,10 +1,13 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.tsx'
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { applyWorkbenchFonts } from "./platform/fonts";
+import "./global.css";
+import "./workbench/workbench.contribution";
+import App from "./App";
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
+applyWorkbenchFonts();
+ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+  <React.StrictMode>
     <App />
-  </StrictMode>,
-)
+  </React.StrictMode>,
+);
