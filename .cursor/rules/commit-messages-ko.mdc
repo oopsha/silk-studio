@@ -1,0 +1,27 @@
+---
+description: silk-editor 저장소 커밋 메시지는 한국어로 작성
+alwaysApply: true
+---
+
+# 커밋 메시지 (한국어)
+
+이 프로젝트(`silk-editor`)에서 git 커밋을 만들거나 수정할 때 **커밋 메시지는 한국어**로 작성한다.
+
+## 형식
+
+- 첫 줄: `type(scope): 한 줄 요약` (50자 내외)
+- 본문(선택): 변경 이유·맥락을 완전한 문장으로 1~3줄
+- type 예: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `test`
+
+## 예시
+
+```
+feat(tab-bar): VS Code 스타일 탭바 및 More Actions 메뉴 추가
+
+탭 전환·닫기·프리뷰 탭과 More Actions 하위 메뉴를 VS Code와 동일하게 맞춤.
+```
+
+## 금지
+
+- 영어-only 커밋 메시지 (type/scope 토큰 제외)
+- `Co-authored-by` 등 불필요한 trailer 자동 추가
