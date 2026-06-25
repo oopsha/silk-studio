@@ -1,0 +1,24 @@
+.codicon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  font: normal normal normal 16px/1 codicon;
+  line-height: 1;
+  color: inherit;
+  text-align: center;
+  text-decoration: none;
+  text-rendering: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+
+.codicon--svg::before {
+  content: none !important;
+}
+
+.codicon--svg svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}

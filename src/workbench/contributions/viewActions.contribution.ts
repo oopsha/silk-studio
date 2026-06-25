@@ -3,8 +3,10 @@ import { MenuRegistry } from "../../platform/actions/menuRegistry";
 import { CommandsRegistry } from "../../platform/commands/commandRegistry";
 import { KeybindingsRegistry } from "../../platform/keybinding/keybindingRegistry";
 
+import { ViewService } from "../../services/view/viewService";
+
 CommandsRegistry.registerCommand("silk.view.explorer", () => {
-  console.log("[command] silk.view.explorer");
+  ViewService.openView("explorer");
 });
 
 CommandsRegistry.registerCommand("silk.view.terminal", () => {

@@ -2,7 +2,7 @@
   position: absolute;
   top: 100%;
   left: 0;
-  z-index: 2000;
+  z-index: 2600;
   min-width: 160px;
   padding: 4px 0;
   overflow: hidden;
@@ -11,6 +11,8 @@
   border: 1px solid var(--color-menu-border);
   border-radius: var(--corner-radius-large);
   box-shadow: var(--shadow-lg);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .menu-dropdown__item {

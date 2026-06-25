@@ -16,7 +16,8 @@
         "title": "silk-editor",
         "width": 800,
         "height": 600,
-        "decorations": false
+        "decorations": false,
+        "backgroundColor": "#191a1b"
       }
     ],
     "security": {

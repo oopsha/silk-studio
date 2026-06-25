@@ -1,0 +1,87 @@
+.views-visibility-menu {
+  position: fixed;
+  z-index: 5000;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 20px 4px 0;
+  font-family: var(--font-family);
+  font-size: 13px;
+  line-height: 1.4;
+  background-color: var(--color-menu-background);
+  color: var(--color-menu-foreground);
+  border: 1px solid var(--color-menu-border);
+  border-radius: var(--corner-radius-large);
+  box-shadow: var(--shadow-lg);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.views-visibility-menu__item {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: calc(100% - 8px);
+  height: 24px;
+  margin: 0 4px;
+  padding: 0;
+  border: none;
+  border-radius: var(--corner-radius-medium);
+  background: transparent;
+  color: var(--color-menu-foreground);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  outline: none;
+}
+
+.views-visibility-menu__item:not(.views-visibility-menu__item--disabled):hover,
+.views-visibility-menu__item:not(.views-visibility-menu__item--disabled):focus-visible {
+  background-color: var(--color-menu-selection-background);
+  color: var(--color-menu-selection-foreground);
+  outline: 1px solid var(--color-menu-selection-border);
+  outline-offset: -1px;
+}
+
+.views-visibility-menu__item--disabled {
+  cursor: default;
+}
+
+.views-visibility-menu__item--disabled .views-visibility-menu__label {
+  color: var(--color-description);
+}
+
+.views-visibility-menu__check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 24px;
+  margin-left: 4px;
+  margin-right: 4px;
+}
+
+.views-visibility-menu__check .codicon {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+  transform: translateY(1px);
+}
+
+.views-visibility-menu__label {
+  flex: 0 1 auto;
+  padding: 0 8px 0 0;
+  line-height: 24px;
+}
+
+.views-visibility-menu__separator {
+  height: 0;
+  margin: 5px 4px;
+  border: none;
+  border-bottom: 1px solid var(--color-menu-separator);
+}

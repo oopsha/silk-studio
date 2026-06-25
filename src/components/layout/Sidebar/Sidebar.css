@@ -1,6 +1,26 @@
 .sidebar {
-  width: 260px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: var(--sidebar-width, 260px);
+  min-width: 170px;
+  height: 100%;
   color: var(--color-foreground);
   background-color: var(--color-surface);
   border-right: 1px solid var(--color-border);
+  overflow: visible;
+}
+
+.sidebar__content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: visible;
+}
+
+.sidebar-view-placeholder {
+  padding: 12px 20px;
+  color: var(--color-description);
+  font-size: 13px;
 }

@@ -1,0 +1,97 @@
+.tab-bar-menu {
+  position: fixed;
+  z-index: 5000;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: 220px;
+  max-width: min(420px, 90vw);
+  margin: 0;
+  padding: 4px 20px 4px 0;
+  font-family: var(--font-family);
+  font-size: 13px;
+  line-height: 1.4;
+  background-color: var(--color-menu-background);
+  color: var(--color-menu-foreground);
+  border: 1px solid var(--color-menu-border);
+  border-radius: var(--corner-radius-large);
+  box-shadow: var(--shadow-lg);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.tab-bar-menu__item {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: calc(100% - 8px);
+  min-height: 24px;
+  margin: 0 4px;
+  padding: 0;
+  border: none;
+  border-radius: var(--corner-radius-medium);
+  background: transparent;
+  color: var(--color-menu-foreground);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  outline: none;
+}
+
+.tab-bar-menu__item:hover,
+.tab-bar-menu__item:focus-visible {
+  background-color: var(--color-menu-selection-background);
+  color: var(--color-menu-selection-foreground);
+  outline: 1px solid var(--color-menu-selection-border);
+  outline-offset: -1px;
+}
+
+.tab-bar-menu__check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 24px;
+  margin-left: 4px;
+  margin-right: 4px;
+}
+
+.tab-bar-menu__check .codicon {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+  transform: translateY(1px);
+}
+
+.tab-bar-menu__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 8px 0 0;
+  line-height: 24px;
+}
+
+.tab-bar-menu__keybinding {
+  flex-shrink: 0;
+  margin-left: 24px;
+  padding-right: 0;
+  color: var(--color-description);
+  font-size: 12px;
+}
+
+.tab-bar-menu__item:hover .tab-bar-menu__keybinding,
+.tab-bar-menu__item:focus-visible .tab-bar-menu__keybinding {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.tab-bar-menu__separator {
+  height: 0;
+  margin: 5px 4px;
+  border: none;
+  border-bottom: 1px solid var(--color-menu-separator);
+}

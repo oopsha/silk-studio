@@ -1,8 +1,14 @@
 import { useEffect, useState, type MouseEvent } from "react";
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import Menubar from "../../menubar";
 import WindowAppIcon from "./WindowAppIcon";
+import CommandCenter from "./CommandCenter";
+import LayoutControls from "./LayoutControls";
+import {
+  OpenEditorsQuickPickProvider,
+  OpenEditorsQuickPick,
+} from "./OpenEditorsQuickPick";
 import "./TitleBar.css";
 import "./WindowAppIcon.css";
 
@@ -17,14 +23,29 @@ function useWco(): boolean {
   const [enabled, setEnabled] = useState(detectWco);
 
   useEffect(() => {
-    if (detectWco()) {
-      setEnabled(true);
-      return;
+    if (!isTauri()) return;
+
+    let disposed = false;
+
+    async function ensureWco() {
+      if (document.getElementById("tbo-controls")) {
+        if (!disposed) setEnabled(true);
+        return;
+      }
+
+      try {
+        await invoke("ensure_title_bar_overlay");
+        if (!disposed) setEnabled(true);
+      } catch (error) {
+        console.warn("[titlebar] failed to initialize window controls", error);
+      }
     }
 
+    void ensureWco();
+
     const observer = new MutationObserver(() => {
-      if (detectWco()) {
-        setEnabled(true);
+      if (!document.getElementById("tbo-controls")) {
+        void ensureWco();
       }
     });
 
@@ -32,9 +53,12 @@ function useWco(): boolean {
       attributes: true,
       attributeFilter: ["data-wco"],
     });
-    observer.observe(document.body, { childList: true, subtree: false });
+    observer.observe(document.body, { childList: true });
 
-    return () => observer.disconnect();
+    return () => {
+      disposed = true;
+      observer.disconnect();
+    };
   }, []);
 
   return enabled;
@@ -69,35 +93,54 @@ function TitleBar() {
     return () => observer.disconnect();
   }, [wco]);
 
+  useEffect(() => {
+    if (!isTauri()) return;
+    void getCurrentWindow().setBackgroundColor("#191a1b");
+  }, []);
+
   async function handleDragRegionMouseDown(event: MouseEvent<HTMLDivElement>) {
     if (!isTauri() || event.button !== 0) return;
-    event.preventDefault();
-
-    const window = getCurrentWindow();
 
     if (event.detail === 2) {
-      await window.toggleMaximize();
-      return;
+      event.preventDefault();
+      await getCurrentWindow().toggleMaximize();
     }
-
-    await window.startDragging();
   }
 
   return (
-    <header className={`title-bar${wco ? " title-bar--wco" : ""}`}>
+    <header
+      className={`title-bar title-bar--has-center${wco ? " title-bar--wco" : ""}`}
+    >
       <div
         className={`title-bar__drag-region${menuOpen ? " title-bar__drag-region--hidden" : ""}`}
+        data-tauri-drag-region
         onMouseDown={handleDragRegionMouseDown}
       />
 
       <div className="title-bar__left">
         <WindowAppIcon />
-        <Menubar onMenuOpenChange={setMenuOpen} />
+        <Menubar
+          onMenuOpenChange={setMenuOpen}
+          onDragRegionMouseDown={handleDragRegionMouseDown}
+        />
       </div>
 
-      <div className="title-bar__center">silk-editor</div>
+      <div className="title-bar__center">
+        <OpenEditorsQuickPickProvider>
+          <CommandCenter />
+          <OpenEditorsQuickPick />
+        </OpenEditorsQuickPickProvider>
+      </div>
 
-      {wco ? <div className="title-bar__right" aria-hidden /> : null}
+      <div className="title-bar__right">
+        <div
+          className="title-bar__gap"
+          data-tauri-drag-region
+          onMouseDown={handleDragRegionMouseDown}
+        />
+        <LayoutControls />
+        {wco ? <div className="title-bar__wco-spacer" aria-hidden /> : null}
+      </div>
     </header>
   );
 }

@@ -1,10 +1,13 @@
 .status-bar {
-  height: 22px;
+  flex-shrink: 0;
+  width: 100%;
+  height: var(--status-bar-height);
   color: var(--color-description);
   background-color: var(--color-surface);
   border-top: 1px solid var(--color-border);
   font: inherit;
   font-size: 12px;
-  line-height: 22px;
+  line-height: var(--status-bar-height);
   padding: 0 8px;
+  box-sizing: border-box;
 }

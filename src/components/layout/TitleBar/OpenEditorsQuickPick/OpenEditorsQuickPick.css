@@ -1,0 +1,135 @@
+/* VS Code quick-input-widget — aligned to 2026-dark.json + quickInput.css */
+
+.quick-input-widget {
+  position: fixed;
+  z-index: 6000;
+  box-sizing: border-box;
+  overflow: hidden;
+  font-family: var(--font-family);
+  font-size: 13px;
+  line-height: 22px;
+  color: var(--color-quick-input-foreground);
+  background-color: var(--color-quick-input-background);
+  border: 1px solid var(--color-quick-input-border);
+  border-radius: var(--corner-radius-large);
+  box-shadow: var(--shadow-xl);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.quick-input-header {
+  display: flex;
+  padding: 6px 6px 4px;
+}
+
+.quick-input-filter {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.quick-input-box {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid var(--color-input-border);
+  border-radius: var(--corner-radius-medium);
+  background-color: var(--color-input-background);
+  color: var(--color-input-foreground);
+  font: inherit;
+  font-size: 13px;
+  line-height: 26px;
+  outline: none;
+}
+
+.quick-input-box:focus {
+  border-color: var(--color-focus-border);
+  outline: 1px solid var(--color-focus-border);
+  outline-offset: -1px;
+}
+
+.quick-input-list {
+  max-height: calc(20 * 22px + 7px);
+  padding-bottom: 7px;
+  overflow-y: auto;
+}
+
+.quick-input-list__empty {
+  padding: 6px 12px;
+  color: var(--color-description);
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.quick-input-list-row {
+  margin: 0 6px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.quick-input-list-row--focused {
+  background-color: var(--color-quick-input-list-focus-background);
+  color: var(--color-quick-input-list-focus-foreground);
+}
+
+.quick-input-list-row:not(.quick-input-list-row--focused):hover {
+  background-color: var(--color-quick-input-list-hover-background);
+}
+
+.quick-input-list-entry {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 22px;
+  padding: 0 6px;
+  overflow: hidden;
+}
+
+.quick-input-list-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 22px;
+  margin-right: 6px;
+}
+
+.quick-input-list-icon .codicon {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+}
+
+.quick-input-list-row--focused .quick-input-list-icon .codicon {
+  color: var(--color-quick-input-list-focus-icon-foreground);
+}
+
+.quick-input-list-label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.quick-input-list-label--preview {
+  font-style: italic;
+}
+
+.quick-input-list-dirty {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin-left: 8px;
+  margin-right: 2px;
+  border-radius: 50%;
+  background-color: currentColor;
+  opacity: 0.9;
+}
+
+.quick-input-list-row--focused .quick-input-list-dirty {
+  background-color: var(--color-quick-input-list-focus-foreground);
+}

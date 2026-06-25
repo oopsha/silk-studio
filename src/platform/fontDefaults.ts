@@ -21,6 +21,14 @@ const EDITOR_FONT_FAMILY: Record<WorkbenchPlatform, string> = {
     "'Droid Sans Mono', 'Ubuntu Mono', 'Liberation Mono', 'DejaVu Sans Mono', 'Courier New', monospace",
 };
 
+/** CJK glyphs are linked via OS in native VS Code; WebView/Monaco needs explicit fallbacks. */
+const EDITOR_FONT_FAMILY_KO: Record<WorkbenchPlatform, string> = {
+  windows: "Consolas, 'Malgun Gothic', 'Courier New', monospace",
+  mac: "Menlo, Monaco, 'Apple SD Gothic Neo', 'Nanum Gothic', 'Courier New', monospace",
+  linux:
+    "'Droid Sans Mono', 'Ubuntu Mono', 'Source Han Sans K', 'Source Han Sans', 'UnDotum', 'Courier New', monospace",
+};
+
 const EDITOR_FONT_SIZE: Record<WorkbenchPlatform, number> = {
   windows: 14,
   mac: 12,
@@ -46,7 +54,9 @@ export function getUiFontFamily(platform = resolvePlatform()): string {
 }
 
 export function getEditorFontFamily(platform = resolvePlatform()): string {
-  return EDITOR_FONT_FAMILY[platform];
+  return useKoreanUiFont()
+    ? EDITOR_FONT_FAMILY_KO[platform]
+    : EDITOR_FONT_FAMILY[platform];
 }
 
 export function getEditorFontSize(platform = resolvePlatform()): number {
