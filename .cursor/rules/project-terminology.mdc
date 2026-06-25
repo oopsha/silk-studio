@@ -1,0 +1,43 @@
+---
+description: silk-editor 용어 정의 및 VS Code 소스 참조 경로
+alwaysApply: true
+---
+
+# 프로젝트 용어
+
+대화·이슈·커밋·구현 요청에서 아래 용어를 **고정**으로 해석한다.
+
+| 용어 | 의미 |
+|------|------|
+| **코드** | **Visual Studio Code (VS Code)** — UI/UX·동작의 **참조 대상** |
+| **에디터** | **Silk Editor** — 이 저장소(`silk-editor`)에서 **개발 중인 앱** |
+
+## 예시
+
+- 「코드처럼」「코드와 같게」「VS Code 스타일」→ VS Code 동작·레이아웃·스타일을 맞춘다.
+- 「에디터에 추가」「에디터 탭바」→ Silk Editor 코드베이스에 구현한다.
+- 「Monaco」→ 텍스트 편집 컴포넌트. **Split Editor** 등 창/탭 레이아웃은 VS Code **워크벤치** 기능이며 Monaco 단독 기능이 아니다.
+
+# VS Code 소스 참조
+
+「코드를 참고해」「코드 소스 기준으로」 등 **코드(VS Code) 참조** 요청 시, 로컬 VS Code 소스를 **1차 기준**으로 삼는다.
+
+```
+D:\Temp\vscode-main
+```
+
+## 참고 우선순위
+
+1. 사용자가 준 **스크린샷·설명**
+2. **`D:\Temp\vscode-main`** 소스 (테마 JSON, `quickInput.css`, `editor/`, `titlebar/` 등)
+3. Silk Editor 기존 패턴 (`global.css` 토큰, `ViewsVisibilityMenu`, 서비스/커맨드 구조)
+4. 일반적인 VS Code UX 관례 (기억·추측만으로 픽셀·명령 ID 단정 금지)
+
+## 참고 시 자주 쓰는 경로 (vscode-main)
+
+- `src/vs/workbench/browser/parts/editor/` — 탭·에디터 그룹
+- `src/vs/platform/quickinput/browser/` — Quick Pick
+- `src/vs/workbench/browser/parts/titlebar/` — 타이틀바·커맨드 센터
+- `extensions/theme-defaults/themes/2026-dark.json` — 다크 테마 토큰
+
+경로가 없거나 버전 차이가 있으면, 사용자에게 확인하거나 스크린샷과 함께 가장 가까운 구현을 선택한다.
