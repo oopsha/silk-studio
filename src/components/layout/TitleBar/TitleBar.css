@@ -2,12 +2,15 @@
   position: relative;
   display: flex;
   align-items: stretch;
+  justify-content: flex-start;
   box-sizing: border-box;
   height: var(--title-bar-height, 32px);
   color: var(--color-titlebar-foreground);
   background-color: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
   user-select: none;
+  overflow: visible;
+  z-index: 2000;
 }
 
 .title-bar__drag-region {
@@ -17,6 +20,7 @@
   left: 0;
   right: 0;
   z-index: 0;
+  pointer-events: none;
   -webkit-app-region: drag;
   app-region: drag;
 }
@@ -36,26 +40,66 @@
   z-index: 1;
   display: flex;
   align-items: center;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
-
-.title-bar__left {
-  flex-shrink: 0;
   height: 100%;
   line-height: 22px;
 }
 
-.title-bar__center {
-  justify-content: center;
-  flex: 1;
+.title-bar__left {
+  flex-shrink: 0;
+  z-index: 2500;
+  overflow: visible;
+}
+
+.title-bar__gap {
+  flex: 1 1 auto;
+  align-self: stretch;
   min-width: 0;
-  font: inherit;
-  font-size: 12px;
+  height: 100%;
+  pointer-events: auto;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.title-bar--has-center .title-bar__left {
+  order: 0;
+  width: 20%;
+  min-width: 0;
+  flex-grow: 2;
+  flex-shrink: 1;
+  justify-content: flex-start;
+}
+
+.title-bar--has-center .title-bar__center {
+  order: 1;
+  flex: 0 1 auto;
+  width: auto;
+  max-width: fit-content;
+  min-width: 0;
+  margin: 0 10px;
+  justify-content: center;
   pointer-events: none;
 }
 
+.title-bar--has-center .title-bar__right {
+  order: 2;
+  width: 20%;
+  min-width: min-content;
+  flex-grow: 2;
+  flex-shrink: 1;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.title-bar--has-center .title-bar__right > * {
+  pointer-events: auto;
+}
+
 .title-bar__right {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.title-bar__wco-spacer {
   flex-shrink: 0;
   width: var(--title-bar-controls-width, 138px);
 }

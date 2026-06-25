@@ -1,10 +1,55 @@
+.menubar-slot {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  margin-left: 4px;
+  overflow: visible;
+  pointer-events: auto;
+}
+
 .menubar {
+  position: relative;
   display: flex;
   align-items: center;
   box-sizing: border-box;
+  width: 100%;
   height: 100%;
-  flex-shrink: 0;
-  margin-left: 4px;
+  min-width: 0;
+  overflow: visible;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.menubar__visible {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  box-sizing: border-box;
+  height: 100%;
+  min-width: 0;
+  overflow: visible;
+}
+
+.menubar__drag-tail {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 0;
+  height: 100%;
+  pointer-events: auto;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.menubar__measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .menubar__button {
@@ -34,6 +79,25 @@
   line-height: 22px;
 }
 
+.menubar__overflow-button .menubar__button-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0 8px;
+}
+
+.menubar__overflow-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menubar__overflow-icon .codicon {
+  font-size: 16px;
+}
+
 .menubar__button:hover .menubar__button-title,
 .menubar__button--open .menubar__button-title {
   color: var(--color-menubar-selection-foreground);
@@ -57,4 +121,6 @@
   display: flex;
   align-items: center;
   height: 100%;
+  flex-shrink: 0;
+  overflow: visible;
 }

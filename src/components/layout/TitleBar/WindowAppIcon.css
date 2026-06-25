@@ -5,6 +5,8 @@
   flex-shrink: 0;
   width: 35px;
   height: 100%;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .window-app-icon__image {

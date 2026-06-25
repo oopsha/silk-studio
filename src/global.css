@@ -3,6 +3,8 @@
   --color-foreground: #bfbfbf;
   --color-description: #8c8c8c;
   --color-border: #2a2b2c;
+  --color-workbench-separator: var(--color-border);
+  --color-sash-hover-border: #3994bc;
   --color-surface: #191a1b;
   --color-editor: #121314;
   --color-editor-foreground: #bbbebf;
@@ -11,17 +13,56 @@
   --color-menubar-selection-background: #242526;
   --color-menubar-selection-border: #2a2b2c;
   --color-list-hover: #1e1f20;
+  --color-toolbar-hover-background: #323233;
+  --color-toolbar-active-background: #3c3c3d;
   --color-menu-background: #202122;
   --color-menu-foreground: #bfbfbf;
-  /* VS Code defaultMenuStyles: menu hover uses list.hoverBackground, not menu.selectionBackground */
-  --color-menu-selection-background: #1e1f20;
+  /* VS Code 2026-dark menu.selectionBackground (#3994BC26) */
+  --color-menu-selection-background: rgba(57, 148, 188, 0.15);
   --color-menu-selection-foreground: #bfbfbf;
   --color-menu-selection-border: #3994bc;
   --color-menu-separator: #2a2b2c;
   --color-menu-border: #2a2b2c;
+  --color-command-center-foreground: var(--color-titlebar-foreground);
+  /* theme.ts: Color.white.transparent(0.05) on title bar */
+  --color-command-center-background: rgba(255, 255, 255, 0.05);
+  /* theme.ts: transparent(titleBar.activeForeground, 0.2) */
+  --color-command-center-border: rgba(140, 140, 140, 0.2);
+  --color-input-background: #191a1b;
+  --color-input-foreground: #bfbfbf;
+  --color-input-border: #333536;
+  --color-focus-border: rgba(57, 148, 188, 0.7);
+  --color-quick-input-background: #202122;
+  --color-quick-input-foreground: #bfbfbf;
+  --color-quick-input-border: #333536;
+  --color-quick-input-list-focus-background: #297aa0;
+  --color-quick-input-list-focus-foreground: #ffffff;
+  --color-quick-input-list-focus-icon-foreground: #ffffff;
+  --color-quick-input-list-hover-background: #1e1f20;
   --shadow-lg: 0 0 12px rgba(0, 0, 0, 0.14);
+  --shadow-xl: 0 0 16px rgba(0, 0, 0, 0.24);
   --corner-radius-large: 8px;
   --corner-radius-medium: 6px;
+  --activity-bar-width: 48px;
+  --activity-bar-action-height: 48px;
+  --activity-bar-icon-size: 26px;
+  --status-bar-height: 22px;
+  --tab-bar-height: 35px;
+  --color-tab-active-background: #121314;
+  --color-tab-inactive-background: #191a1b;
+  --color-tab-hover-background: #1e1f20;
+  --color-tab-active-foreground: #bfbfbf;
+  --color-tab-inactive-foreground: #8c8c8c;
+  --color-tab-active-border-top: #3994bc;
+  --color-tab-border: #2a2b2c;
+  --color-activitybar-foreground: #bfbfbf;
+  --color-activitybar-inactive-foreground: #8c8c8c;
+  --color-activitybar-active-border: #ffffff;
+  --color-sidebar-section-header-foreground: var(--color-foreground);
+  --color-sidebar-action-foreground: #8c8c8c;
+  --color-sidebar-title-foreground: #bfbfbf;
+  --color-sidebar-title-background: #191a1b;
+  --sidebar-width: 260px;
 }
 
 /* VS Code workbench font stacks (style.css) */
@@ -33,6 +74,8 @@ html.platform-mac {
 html.platform-mac:lang(ko) {
   --font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
     "Nanum Gothic", "AppleGothic", sans-serif;
+  --font-family-monospace: Menlo, Monaco, "Apple SD Gothic Neo", "Nanum Gothic",
+    "Courier New", monospace;
 }
 
 html.platform-windows {
@@ -42,6 +85,7 @@ html.platform-windows {
 
 html.platform-windows:lang(ko) {
   --font-family: "Segoe WPC", "Segoe UI", "Malgun Gothic", "Dotom", sans-serif;
+  --font-family-monospace: Consolas, "Malgun Gothic", "Courier New", monospace;
 }
 
 html.platform-linux {
@@ -54,6 +98,8 @@ html.platform-linux:lang(ko) {
   --font-family: system-ui, "Ubuntu", "Droid Sans", "Source Han Sans K",
     "Source Han Sans JR", "Source Han Sans", "UnDotum", "FBaekmuk Gulim",
     sans-serif;
+  --font-family-monospace: "Droid Sans Mono", "Ubuntu Mono", "Source Han Sans K",
+    "Source Han Sans", "UnDotum", "Courier New", monospace;
 }
 
 html,
@@ -62,6 +108,7 @@ body,
   margin: 0;
   height: 100%;
   overflow: hidden;
+  background-color: var(--color-surface);
 }
 
 body {
@@ -78,4 +125,10 @@ input,
 select,
 textarea {
   font-family: inherit;
+}
+
+html.pane-sash-resizing,
+html.pane-sash-resizing * {
+  cursor: ns-resize !important;
+  user-select: none !important;
 }

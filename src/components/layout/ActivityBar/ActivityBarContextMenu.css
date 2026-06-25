@@ -1,0 +1,127 @@
+.activity-bar-context-menu {
+  position: fixed;
+  z-index: 2600;
+  min-width: 220px;
+  padding: 4px 0;
+  overflow: visible;
+  background-color: var(--color-menu-background);
+  color: var(--color-menu-foreground);
+  border: 1px solid var(--color-menu-border);
+  border-radius: var(--corner-radius-large);
+  box-shadow: var(--shadow-lg);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.activity-bar-context-menu__item {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: calc(100% - 8px);
+  height: 24px;
+  margin: 0 4px;
+  padding: 0;
+  border: none;
+  border-radius: var(--corner-radius-medium);
+  background: transparent;
+  color: var(--color-menu-foreground);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  outline: none;
+}
+
+.activity-bar-context-menu__item--disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.activity-bar-context-menu__item--focused,
+.activity-bar-context-menu__item:hover,
+.activity-bar-context-menu__item:focus-visible {
+  background-color: var(--color-menu-selection-background);
+  color: var(--color-menu-selection-foreground);
+  outline: 1px solid var(--color-menu-selection-border);
+  outline-offset: -1px;
+}
+
+.activity-bar-context-menu__item--disabled:hover,
+.activity-bar-context-menu__item--disabled:focus-visible {
+  background: transparent;
+  color: var(--color-menu-foreground);
+  outline: none;
+}
+
+.activity-bar-context-menu__label {
+  flex: 1 1 auto;
+  padding: 0 2em 0 1.5em;
+  max-height: 100%;
+}
+
+.activity-bar-context-menu__keybinding {
+  flex: 0 0 auto;
+  padding: 0 1em 0 0;
+  text-align: right;
+  color: inherit;
+  font-size: inherit;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.activity-bar-context-menu__item--focused .activity-bar-context-menu__keybinding,
+.activity-bar-context-menu__item:hover .activity-bar-context-menu__keybinding,
+.activity-bar-context-menu__item:focus-visible .activity-bar-context-menu__keybinding {
+  opacity: unset;
+}
+
+.activity-bar-context-menu__submenu-indicator {
+  display: flex;
+  align-items: center;
+  padding-right: 0.75em;
+  opacity: 0.7;
+}
+
+.activity-bar-context-menu__submenu-indicator .codicon {
+  width: 12px;
+  height: 12px;
+  font-size: 12px;
+}
+
+.activity-bar-context-menu__separator {
+  height: 0;
+  margin: 5px 4px;
+  border: none;
+  border-bottom: 1px solid var(--color-menu-separator);
+}
+
+.activity-bar-context-menu__submenu-host {
+  position: relative;
+}
+
+.activity-bar-context-menu__submenu {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  min-width: 200px;
+  padding: 4px 0;
+  background-color: var(--color-menu-background);
+  color: var(--color-menu-foreground);
+  border: 1px solid var(--color-menu-border);
+  border-radius: var(--corner-radius-large);
+  box-shadow: var(--shadow-lg);
+}
+
+.activity-bar-context-menu--measure {
+  visibility: hidden;
+  pointer-events: none;
+  top: 0;
+  left: 0;
+}
+
+.activity-bar-context-menu__submenu--flip-up {
+  top: auto;
+  bottom: 0;
+}

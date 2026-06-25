@@ -13,6 +13,8 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-start-dragging",
     "dialog:default",
-    "window-controls:default"
+    "fs:default",
+    "window-controls:default",
+    "allow-ensure-title-bar-overlay"
   ]
 }

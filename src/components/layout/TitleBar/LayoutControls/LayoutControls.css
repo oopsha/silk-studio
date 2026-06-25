@@ -1,0 +1,31 @@
+.layout-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding-right: 4px;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  pointer-events: auto;
+}
+
+.layout-controls__action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 3px;
+  border: none;
+  border-radius: var(--corner-radius-medium);
+  color: var(--color-titlebar-foreground);
+  background: transparent;
+  cursor: pointer;
+}
+
+.layout-controls__action .codicon {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+}

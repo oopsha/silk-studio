@@ -1,6 +1,84 @@
 .activity-bar {
-  width: 48px;
-  color: var(--color-foreground);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: var(--activity-bar-width);
+  height: 100%;
+  overflow: hidden;
+  color: var(--color-activitybar-inactive-foreground);
   background-color: var(--color-surface);
   border-right: 1px solid var(--color-border);
+}
+
+.activity-bar__content {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+}
+
+.activity-bar__composite-bar {
+  flex: 0 0 auto;
+}
+
+.activity-bar__global-actions {
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+
+.activity-bar__item {
+  display: block;
+  position: relative;
+}
+
+.activity-bar__action {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--activity-bar-action-height);
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  outline: none;
+  overflow: hidden;
+}
+
+.activity-bar__item--checked .activity-bar__action::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: 0;
+  height: 100%;
+  border-left: 2px solid var(--color-activitybar-active-border);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.activity-bar__action .codicon[class*="codicon-"] {
+  position: relative;
+  z-index: 1;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: var(--activity-bar-icon-size);
+  height: var(--activity-bar-icon-size);
+  font: normal normal normal var(--activity-bar-icon-size) / 1 codicon !important;
+}
+
+.activity-bar__item--checked .activity-bar__action,
+.activity-bar__action:hover,
+.activity-bar__action:focus-visible,
+.activity-bar__action--open {
+  color: var(--color-activitybar-foreground);
+}
+
+.activity-bar__action--open {
+  background-color: var(--color-toolbar-active-background);
 }

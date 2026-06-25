@@ -15,12 +15,18 @@ export interface ICommandActionTitle {
 export interface ICommandAction {
   id: string;
   title: string | ICommandActionTitle;
+  icon?: string;
+  toggled?: {
+    icon?: string;
+    condition?: string;
+  };
 }
 
 export interface IMenuItem {
   command: ICommandAction;
   group?: string;
   order?: number;
+  when?: string;
 }
 
 export interface ISubmenuItem {
@@ -28,6 +34,7 @@ export interface ISubmenuItem {
   submenu: MenuId;
   group?: string;
   order?: number;
+  when?: string;
 }
 
 export function isMenuItem(item: IMenuItem | ISubmenuItem): item is IMenuItem {

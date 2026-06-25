@@ -1,0 +1,26 @@
+.pane-sash--horizontal {
+  position: relative;
+  z-index: 3;
+  flex-shrink: 0;
+  height: 4px;
+  margin: -2px 0;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.pane-sash--horizontal::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  transform: translateY(-50%);
+  background-color: transparent;
+  transition: background-color 60ms ease;
+}
+
+.pane-sash--horizontal:hover::after,
+.pane-sash--horizontal.pane-sash--active::after {
+  background-color: var(--color-sash-hover-border);
+}

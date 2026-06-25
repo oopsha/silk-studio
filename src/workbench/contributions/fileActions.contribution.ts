@@ -3,23 +3,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MenuId } from "../../platform/actions/menuId";
 import { MenuRegistry } from "../../platform/actions/menuRegistry";
 import { CommandsRegistry } from "../../platform/commands/commandRegistry";
-import { KeybindingsRegistry } from "../../platform/keybinding/keybindingRegistry";
-
-CommandsRegistry.registerCommand("silk.file.newTextFile", () => {
-  console.log("[command] silk.file.newTextFile");
-});
-
-CommandsRegistry.registerCommand("silk.file.openFile", () => {
-  console.log("[command] silk.file.openFile");
-});
-
-CommandsRegistry.registerCommand("silk.file.save", () => {
-  console.log("[command] silk.file.save");
-});
-
-CommandsRegistry.registerCommand("silk.file.saveAs", () => {
-  console.log("[command] silk.file.saveAs");
-});
 
 CommandsRegistry.registerCommand("silk.file.exit", async () => {
   if (isTauri()) {
@@ -71,8 +54,3 @@ MenuRegistry.appendMenuItem(MenuId.MenubarFileMenu, {
   group: "9_exit",
   order: 10,
 });
-
-KeybindingsRegistry.registerKeybinding("silk.file.newTextFile", "Ctrl+N");
-KeybindingsRegistry.registerKeybinding("silk.file.openFile", "Ctrl+O");
-KeybindingsRegistry.registerKeybinding("silk.file.save", "Ctrl+S");
-KeybindingsRegistry.registerKeybinding("silk.file.saveAs", "Ctrl+Shift+S");
