@@ -10,7 +10,7 @@ type LayoutChangeListener = () => void;
 
 class LayoutServiceImpl {
   private sidebarVisible = true;
-  private panelVisible = true;
+  private panelVisible = false;
   private auxiliaryBarVisible = false;
   private readonly listeners = new Set<LayoutChangeListener>();
 
