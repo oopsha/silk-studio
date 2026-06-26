@@ -1,12 +1,13 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Editor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
-import type { editor } from "monaco-editor";
+import type { IDisposable, editor } from "monaco-editor";
 import {
   getEditorFontFamily,
   getEditorFontSize,
 } from "../../../platform/fontDefaults";
 import { EditorService } from "../../../services/editor/editorService";
+import { EditorStatusService } from "../../../services/editor/editorStatusService";
 import { useActiveEditor } from "../../../services/editor/useActiveEditor";
 import {
   DARK_2026_MONACO_THEME,
@@ -21,9 +22,38 @@ function handleEditorWillMount(monaco: Monaco) {
 function EditorArea() {
   const activeTab = useActiveEditor();
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const cursorListenerRef = useRef<IDisposable | null>(null);
 
   const handleMount = useCallback((instance: editor.IStandaloneCodeEditor) => {
     editorRef.current = instance;
+    cursorListenerRef.current?.dispose();
+
+    const position = instance.getPosition();
+    EditorStatusService.setCursorPosition(
+      position?.lineNumber ?? 1,
+      position?.column ?? 1,
+    );
+
+    cursorListenerRef.current = instance.onDidChangeCursorPosition((event) => {
+      EditorStatusService.setCursorPosition(
+        event.position.lineNumber,
+        event.position.column,
+      );
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!activeTab) {
+      EditorStatusService.resetCursorPosition();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    return () => {
+      cursorListenerRef.current?.dispose();
+      cursorListenerRef.current = null;
+      EditorStatusService.resetCursorPosition();
+    };
   }, []);
 
   const handleChange = useCallback(

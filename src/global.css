@@ -58,6 +58,14 @@
   --color-activitybar-foreground: #bfbfbf;
   --color-activitybar-inactive-foreground: #8c8c8c;
   --color-activitybar-active-border: #ffffff;
+  --color-status-bar-background: #191a1b;
+  --color-status-bar-foreground: #a0a0a0;
+  --color-status-bar-border: #2a2b2c;
+  --color-status-bar-focus-border: rgba(57, 148, 188, 0.7);
+  --color-status-bar-item-hover-background: #323233;
+  --color-status-bar-item-active-background: #4b4c4d;
+  --color-status-bar-item-prominent-background: #3994bc;
+  --color-status-bar-item-prominent-foreground: #ffffff;
   --color-sidebar-section-header-foreground: var(--color-foreground);
   --color-sidebar-action-foreground: #8c8c8c;
   --color-sidebar-title-foreground: #bfbfbf;

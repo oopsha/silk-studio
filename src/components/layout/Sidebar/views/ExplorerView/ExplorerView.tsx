@@ -166,8 +166,8 @@ function ExplorerView() {
   const suppressAccordionActionHover =
     viewsMenuOpen || outlineMenuOpen || timelineMenuOpen;
   const [expanded, setExpanded] = useState<Record<ExplorerSectionId, boolean>>({
-    openEditors: false,
-    workspace: false,
+    openEditors: true,
+    workspace: true,
     outline: false,
     timeline: false,
   });
