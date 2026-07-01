@@ -1,5 +1,60 @@
 .panel {
-  height: 120px;
+  display: flex;
+  flex-direction: column;
+  height: 180px;
   color: var(--color-foreground);
   background-color: var(--color-surface);
+  min-height: 0;
+}
+
+.panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 12px;
+}
+
+.panel__title {
+  color: var(--color-foreground);
+}
+
+.panel__status {
+  color: var(--color-description);
+}
+
+.panel__status--running {
+  color: #d7ba7d;
+}
+
+.panel__status--success {
+  color: #89d185;
+}
+
+.panel__status--error {
+  color: #f48771;
+}
+
+.panel__content {
+  flex: 1;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-family-monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.panel__content::selection {
+  background-color: #276782dd;
+}
+
+.panel__content::-moz-selection {
+  background-color: #276782dd;
 }

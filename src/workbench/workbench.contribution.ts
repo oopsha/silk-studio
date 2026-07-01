@@ -10,3 +10,4 @@ import "./contributions/layoutActions.contribution";
 import "./contributions/terminalActions.contribution";
 import "./contributions/helpActions.contribution";
 import "./contributions/activityBar.contribution";
+import "./contributions/queryActions.contribution";

@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-query-execute"
+description = "Allows executing SQL queries through jdbc-agent."
+commands.allow = ["query_execute"]

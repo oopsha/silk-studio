@@ -15,6 +15,7 @@
     "dialog:default",
     "fs:default",
     "window-controls:default",
-    "allow-ensure-title-bar-overlay"
+    "allow-ensure-title-bar-overlay",
+    "allow-query-execute"
   ]
 }
