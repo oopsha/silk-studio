@@ -56,6 +56,13 @@ class LayoutServiceImpl {
     this.fireDidChange();
   }
 
+  showPanel(): void {
+    if (this.panelVisible) return;
+    this.panelVisible = true;
+    this.updateContextKeys();
+    this.fireDidChange();
+  }
+
   toggleAuxiliaryBar(): void {
     this.auxiliaryBarVisible = !this.auxiliaryBarVisible;
     this.updateContextKeys();

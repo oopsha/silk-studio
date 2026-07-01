@@ -6,6 +6,7 @@ import {
   getEditorFontFamily,
   getEditorFontSize,
 } from "../../../platform/fontDefaults";
+import { CommandService } from "../../../platform/commands/commandService";
 import { EditorService } from "../../../services/editor/editorService";
 import { EditorStatusService } from "../../../services/editor/editorStatusService";
 import { useActiveEditor } from "../../../services/editor/useActiveEditor";
@@ -24,7 +25,8 @@ function EditorArea() {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const cursorListenerRef = useRef<IDisposable | null>(null);
 
-  const handleMount = useCallback((instance: editor.IStandaloneCodeEditor) => {
+  const handleMount = useCallback(
+    (instance: editor.IStandaloneCodeEditor, monaco: Monaco) => {
     editorRef.current = instance;
     cursorListenerRef.current?.dispose();
 
@@ -40,7 +42,14 @@ function EditorArea() {
         event.position.column,
       );
     });
-  }, []);
+
+      instance.addCommand(
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+        () => void CommandService.executeCommand("silk.query.execute"),
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!activeTab) {
