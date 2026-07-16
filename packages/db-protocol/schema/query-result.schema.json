@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://silk-studio.local/schema/query-result.schema.json",
+  "title": "QueryResultPayload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "columns",
+    "rows",
+    "rowCount",
+    "updateCount",
+    "message"
+  ],
+  "properties": {
+    "kind": {
+      "enum": ["resultSet", "update"]
+    },
+    "columns": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "rowCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "updateCount": {
+      "type": ["integer", "null"]
+    },
+    "message": {
+      "type": "string"
+    }
+  }
+}

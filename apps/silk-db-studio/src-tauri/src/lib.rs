@@ -53,7 +53,10 @@ struct JdbcAgentClient {
 impl JdbcAgentClient {
     fn new() -> Self {
         Self {
-            project_root: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".."),
+            project_root: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("..")
+                .join(".."),
             process: None,
         }
     }
@@ -79,6 +82,7 @@ impl JdbcAgentClient {
         if self.process.is_none() {
             let agent_jar = self
                 .project_root
+                .join("packages")
                 .join("jdbc-agent")
                 .join("build")
                 .join("libs")
@@ -87,7 +91,7 @@ impl JdbcAgentClient {
             if !agent_jar.exists() {
                 return Err(format!(
                     "jdbc-agent is not built.\nBuild it first:\ncd {}\nWindows: .\\gradlew.bat build\nmacOS/Linux: ./gradlew build\nThen retry query execution.",
-                    self.project_root.join("jdbc-agent").display()
+                    self.project_root.join("packages").join("jdbc-agent").display()
                 ));
             }
 
