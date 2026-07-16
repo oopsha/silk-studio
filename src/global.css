@@ -71,6 +71,11 @@
   --color-sidebar-title-foreground: #bfbfbf;
   --color-sidebar-title-background: #191a1b;
   --sidebar-width: 260px;
+  /* 2026-dark.json scrollbar* */
+  --color-scrollbar-shadow: #191b1d4d;
+  --color-scrollbar-slider: #a8a9aa85;
+  --color-scrollbar-slider-hover: #a8a9aa90;
+  --color-scrollbar-slider-active: #a8a9aa9c;
 }
 
 /* VS Code workbench font stacks (style.css) */
@@ -139,4 +144,38 @@ html.pane-sash-resizing,
 html.pane-sash-resizing * {
   cursor: ns-resize !important;
   user-select: none !important;
+}
+
+/* VS Code–style scrollbars (native / AG Grid / panel) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scrollbar-slider) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-scrollbar-slider);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 5px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-scrollbar-slider-hover);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background-color: var(--color-scrollbar-slider-active);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }

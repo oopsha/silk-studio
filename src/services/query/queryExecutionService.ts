@@ -1,10 +1,15 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import {
+  isQueryResultPayload,
+  type QueryResultPayload,
+} from "./queryResult";
 
 export type QueryExecutionStatus = "idle" | "running" | "success" | "error";
 
 export type QueryExecutionState = {
   status: QueryExecutionStatus;
   output: string;
+  result: QueryResultPayload | null;
   lastSql: string;
 };
 
@@ -13,6 +18,7 @@ type QueryExecutionListener = () => void;
 const INITIAL_STATE: QueryExecutionState = {
   status: "idle",
   output: "Run a SQL statement to see results.",
+  result: null,
   lastSql: "",
 };
 
@@ -30,6 +36,7 @@ class QueryExecutionServiceImpl {
       this.setState({
         status: "error",
         output: "Query is empty. Write SQL in the editor and run again.",
+        result: null,
         lastSql: sql,
       });
       return;
@@ -38,20 +45,30 @@ class QueryExecutionServiceImpl {
     this.setState({
       status: "running",
       output: "Executing query...",
+      result: null,
       lastSql: statement,
     });
 
     try {
-      let output = "";
-      if (isTauri()) {
-        output = await invoke<string>("query_execute", { sql: statement });
-      } else {
-        output = `Desktop-only JDBC execution.\n\nSQL:\n${statement}`;
+      if (!isTauri()) {
+        this.setState({
+          status: "success",
+          output: `Desktop-only JDBC execution.\n\nSQL:\n${statement}`,
+          result: null,
+          lastSql: statement,
+        });
+        return;
+      }
+
+      const payload = await invoke<unknown>("query_execute", { sql: statement });
+      if (!isQueryResultPayload(payload)) {
+        throw new Error("Invalid query result payload from desktop bridge.");
       }
 
       this.setState({
         status: "success",
-        output,
+        output: payload.message,
+        result: payload,
         lastSql: statement,
       });
     } catch (error) {
@@ -64,6 +81,7 @@ class QueryExecutionServiceImpl {
       this.setState({
         status: "error",
         output: message,
+        result: null,
         lastSql: statement,
       });
     }

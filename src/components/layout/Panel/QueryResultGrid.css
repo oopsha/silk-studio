@@ -1,0 +1,43 @@
+.query-result-grid {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.query-result-grid .ag-root-wrapper {
+  border: none;
+  border-radius: 0;
+}
+
+/* Column title row */
+.query-result-grid .ag-header {
+  background-color: transparent;
+  border-bottom: none;
+}
+
+.query-result-grid .ag-header-row-column {
+  background-color: #202122;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.query-result-grid .ag-header-row {
+  border-bottom: none;
+}
+
+.query-result-grid .ag-header-row-column .ag-header-cell,
+.query-result-grid .ag-header-row-column .ag-header-group-cell {
+  background-color: #202122;
+  font-weight: 600;
+}
+
+/* AG Grid scroll containers — match VS Code slider tones */
+.query-result-grid .ag-body-vertical-scroll,
+.query-result-grid .ag-body-horizontal-scroll,
+.query-result-grid .ag-body-viewport,
+.query-result-grid .ag-center-cols-viewport,
+.query-result-grid .ag-header-viewport,
+.query-result-grid .ag-floating-top-viewport,
+.query-result-grid .ag-floating-bottom-viewport {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scrollbar-slider) transparent;
+}

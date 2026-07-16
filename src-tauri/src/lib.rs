@@ -58,14 +58,9 @@ impl JdbcAgentClient {
         }
     }
 
-    fn execute_query(&mut self, sql: &str) -> Result<String, String> {
+    fn execute_query(&mut self, sql: &str) -> Result<Value, String> {
         self.ensure_connection()?;
-        let response = self.send_request("query.execute", json!({ "sql": sql }))?;
-        response
-            .get("output")
-            .and_then(Value::as_str)
-            .map(str::to_owned)
-            .ok_or_else(|| "Invalid response: missing result.output".to_string())
+        self.send_request("query.execute", json!({ "sql": sql }))
     }
 
     fn ensure_connection(&mut self) -> Result<(), String> {
@@ -216,7 +211,7 @@ struct AppState {
 }
 
 #[tauri::command]
-fn query_execute(sql: String, state: tauri::State<'_, AppState>) -> Result<String, String> {
+fn query_execute(sql: String, state: tauri::State<'_, AppState>) -> Result<Value, String> {
     let statement = sql.trim();
     if statement.is_empty() {
         return Err("Query is empty.".into());

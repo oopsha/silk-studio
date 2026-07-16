@@ -2,6 +2,7 @@ package com.silk.jdbcagent;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -14,8 +15,8 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public final class Main {
   private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -38,12 +39,12 @@ public final class Main {
     String sql = args[1];
     try (AgentRuntime runtime = new AgentRuntime()) {
       runtime.openConnection();
-      System.out.println(runtime.executeQuery(sql));
+      System.out.println(MAPPER.writeValueAsString(runtime.executeQuery(sql)));
     } catch (SQLException error) {
       System.err.println(formatSqlError(error));
       System.exit(1);
-    } catch (RuntimeException error) {
-      System.err.println(error.getMessage());
+    } catch (Exception error) {
+      System.err.println(error.getMessage() == null ? "Query failed." : error.getMessage());
       System.exit(1);
     }
   }
@@ -111,10 +112,8 @@ public final class Main {
             throw new RuntimeException("Missing params.sql");
           }
           runtime.openConnection();
-          String output = runtime.executeQuery(sql);
           response.put("ok", true);
-          ObjectNode result = response.putObject("result");
-          result.put("output", output);
+          response.set("result", runtime.executeQuery(sql));
         }
         case "agent.shutdown" -> {
           response.put("ok", true);
@@ -152,7 +151,7 @@ public final class Main {
       }
     }
 
-    String executeQuery(String sql) throws SQLException {
+    ObjectNode executeQuery(String sql) throws SQLException {
       if (connection == null || connection.isClosed()) {
         throw new SQLException("Connection is not open.");
       }
@@ -166,10 +165,17 @@ public final class Main {
           try (ResultSet rs = statement.getResultSet()) {
             return formatResultSet(rs);
           }
-        } else {
-          int updated = statement.getUpdateCount();
-          return "OK. " + updated + " row(s) affected.";
         }
+
+        int updated = statement.getUpdateCount();
+        ObjectNode result = MAPPER.createObjectNode();
+        result.put("kind", "update");
+        result.putArray("columns");
+        result.putArray("rows");
+        result.put("rowCount", 0);
+        result.put("updateCount", updated);
+        result.put("message", "OK. " + updated + " row(s) affected.");
+        return result;
       }
     }
 
@@ -218,30 +224,54 @@ public final class Main {
     return builder.toString();
   }
 
-  private static String formatResultSet(ResultSet rs) throws SQLException {
+  private static ObjectNode formatResultSet(ResultSet rs) throws SQLException {
     ResultSetMetaData metadata = rs.getMetaData();
-    int columns = metadata.getColumnCount();
-    List<String> headers = new ArrayList<>();
-    for (int i = 1; i <= columns; i++) {
-      headers.add(metadata.getColumnLabel(i));
+    int columnCount = metadata.getColumnCount();
+    String[] headers = uniqueColumnLabels(metadata);
+
+    ArrayNode columns = MAPPER.createArrayNode();
+    for (String header : headers) {
+      columns.add(header);
     }
 
-    List<List<String>> rows = new ArrayList<>();
+    ArrayNode rows = MAPPER.createArrayNode();
     while (rs.next()) {
-      List<String> row = new ArrayList<>(columns);
-      for (int i = 1; i <= columns; i++) {
+      ArrayNode row = MAPPER.createArrayNode();
+      for (int i = 1; i <= columnCount; i++) {
         Object value = rs.getObject(i);
-        row.add(value == null ? "NULL" : String.valueOf(value));
+        if (value == null) {
+          row.addNull();
+        } else {
+          row.add(String.valueOf(value));
+        }
       }
       rows.add(row);
     }
 
-    StringBuilder builder = new StringBuilder();
-    builder.append(String.join(" | ", headers)).append('\n');
-    for (List<String> row : rows) {
-      builder.append(String.join(" | ", row)).append('\n');
+    ObjectNode result = MAPPER.createObjectNode();
+    result.put("kind", "resultSet");
+    result.set("columns", columns);
+    result.set("rows", rows);
+    result.put("rowCount", rows.size());
+    result.putNull("updateCount");
+    result.put("message", rows.size() + " row(s)");
+    return result;
+  }
+
+  private static String[] uniqueColumnLabels(ResultSetMetaData metadata) throws SQLException {
+    int columnCount = metadata.getColumnCount();
+    String[] headers = new String[columnCount];
+    Map<String, Integer> seen = new LinkedHashMap<>();
+
+    for (int i = 1; i <= columnCount; i++) {
+      String label = metadata.getColumnLabel(i);
+      if (label == null || label.isBlank()) {
+        label = "COLUMN_" + i;
+      }
+      int count = seen.getOrDefault(label, 0) + 1;
+      seen.put(label, count);
+      headers[i - 1] = count == 1 ? label : label + "_" + count;
     }
-    builder.append("\nRows: ").append(rows.size());
-    return builder.toString().trim();
+    return headers;
   }
 }
