@@ -1,10 +1,19 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { applyWorkbenchFonts } from "./platform/fonts";
-import "./global.css";
-import "./workbench/workbench.contribution";
+import { applyWorkbenchFonts } from "@silk-studio/ui/platform/fonts.ts";
+import { configureEditorHost } from "@silk-studio/editor/services/editor/editorHost.ts";
+import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
+import { WindowTitleService } from "@silk-studio/workbench/services/windowTitle/windowTitleService.ts";
+import "@silk-studio/ui/global.css";
+import "@silk-studio/workbench/workbench/workbench.contribution";
+import "./workbench/contributions/queryActions.contribution";
 import App from "./App";
 
+configureEditorHost({
+  setContextKey: (key, value) => ContextKeyService.set(key, value),
+  updateWindowTitle: (activeEditor) =>
+    WindowTitleService.updateFromEditor(activeEditor),
+});
 applyWorkbenchFonts();
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

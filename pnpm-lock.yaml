@@ -14,6 +14,15 @@ importers:
       '@silk-studio/db-protocol':
         specifier: workspace:*
         version: link:../../packages/db-protocol
+      '@silk-studio/editor':
+        specifier: workspace:*
+        version: link:../../packages/silk-editor
+      '@silk-studio/ui':
+        specifier: workspace:*
+        version: link:../../packages/silk-ui
+      '@silk-studio/workbench':
+        specifier: workspace:*
+        version: link:../../packages/silk-workbench
       '@tauri-apps/api':
         specifier: ^2
         version: 2.11.1
@@ -62,6 +71,81 @@ importers:
         version: 7.3.5
 
   packages/db-protocol: {}
+
+  packages/silk-editor:
+    dependencies:
+      '@monaco-editor/react':
+        specifier: ^4.7.0
+        version: 4.7.0(monaco-editor@0.52.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@silk-studio/ui':
+        specifier: workspace:*
+        version: link:../silk-ui
+      '@tauri-apps/api':
+        specifier: ^2
+        version: 2.11.1
+      '@tauri-apps/plugin-dialog':
+        specifier: ~2.7.1
+        version: 2.7.1
+      '@tauri-apps/plugin-fs':
+        specifier: ~2.5.1
+        version: 2.5.1
+      monaco-editor:
+        specifier: ^0.52.2
+        version: 0.52.2
+      react:
+        specifier: ^19.1.0
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.7(react@19.2.7)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.1.8
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.1.6
+        version: 19.2.3(@types/react@19.2.17)
+
+  packages/silk-ui:
+    dependencies:
+      '@tauri-apps/api':
+        specifier: ^2
+        version: 2.11.1
+      '@vscode/codicons':
+        specifier: ^0.0.45
+        version: 0.0.45
+      react:
+        specifier: ^19.1.0
+        version: 19.2.7
+    devDependencies:
+      '@types/react':
+        specifier: ^19.1.8
+        version: 19.2.17
+
+  packages/silk-workbench:
+    dependencies:
+      '@silk-studio/editor':
+        specifier: workspace:*
+        version: link:../silk-editor
+      '@silk-studio/ui':
+        specifier: workspace:*
+        version: link:../silk-ui
+      '@tauri-apps/api':
+        specifier: ^2
+        version: 2.11.1
+      react:
+        specifier: ^19.1.0
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.7(react@19.2.7)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.1.8
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.1.6
+        version: 19.2.3(@types/react@19.2.17)
 
 packages:
 

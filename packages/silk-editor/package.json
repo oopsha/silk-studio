@@ -1,0 +1,23 @@
+{
+  "name": "@silk-studio/editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@silk-studio/ui": "workspace:*",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "~2.7.1",
+    "@tauri-apps/plugin-fs": "~2.5.1",
+    "monaco-editor": "^0.52.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6"
+  }
+}

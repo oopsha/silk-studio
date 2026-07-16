@@ -1,9 +1,9 @@
-import { MenuId } from "../../platform/actions/menuId";
-import { MenuRegistry } from "../../platform/actions/menuRegistry";
-import { CommandsRegistry } from "../../platform/commands/commandRegistry";
-import { KeybindingsRegistry } from "../../platform/keybinding/keybindingRegistry";
-import { EditorService } from "../../services/editor/editorService";
-import { LayoutService } from "../../services/layout/layoutService";
+import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
+import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
+import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
+import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
 import { QueryExecutionService } from "../../services/query/queryExecutionService";
 
 CommandsRegistry.registerCommand("silk.query.execute", async () => {
