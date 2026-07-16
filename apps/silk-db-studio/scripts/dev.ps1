@@ -1,7 +1,8 @@
-# Load project .env.local and start Silk Editor (Tauri + Vite).
-# Usage (from repo root):
+# Load the app .env.local and start Silk DB Studio (Tauri + Vite).
+# Usage (from apps/silk-db-studio):
 #   .\scripts\dev.ps1
-#   pnpm run tauri:dev
+# Usage (from the monorepo root):
+#   pnpm --filter @silk-studio/db-studio tauri:dev
 
 $ErrorActionPreference = "Stop"
 

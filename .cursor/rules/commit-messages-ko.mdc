@@ -1,11 +1,11 @@
 ---
-description: silk-editor 저장소 커밋 메시지는 한국어로 작성
+description: silk-studio 저장소 커밋 메시지는 한국어로 작성
 alwaysApply: true
 ---
 
 # 커밋 메시지 (한국어)
 
-이 프로젝트(`silk-editor`)에서 git 커밋을 만들거나 수정할 때 **커밋 메시지는 한국어**로 작성한다.
+이 프로젝트(`silk-studio`)에서 git 커밋을 만들거나 수정할 때 **커밋 메시지는 한국어**로 작성한다.
 
 ## 형식
 

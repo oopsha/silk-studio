@@ -1,14 +1,35 @@
 # Silk Studio
 
-Silk Studio is a local-first monorepo for database, ERD, and web development tools.
+Local-first monorepo for database, ERD, and web development tools.
 
 ## Workspace
 
-- `apps/silk-db-studio` — Tauri desktop database studio
+- `apps/silk-db-studio` — Tauri desktop database studio and DB-specific UI
+- `packages/silk-editor` — Monaco editor, editor state, and tab bar
+- `packages/silk-workbench` — commands, menus, layout services, and workbench views
+- `packages/silk-ui` — design tokens, fonts, icons, and shared UI hooks
+- `packages/db-protocol` — Java/Rust/TypeScript agent protocol contract
 - `packages/jdbc-agent` — shared Java JDBC sidecar
-- `packages/db-protocol` — shared agent protocol contracts
-- `packages/silk-editor` — reusable Monaco editor package
-- `packages/silk-workbench` — reusable workbench services and UI
-- `packages/silk-ui` — shared design tokens, icons, and UI primitives
-- `crates/silk-db-agent-client` — shared Rust client for the JDBC sidecar
+- `crates/silk-db-agent-client` — shared Rust process and protocol client
+
+Dependency direction:
+
+```text
+silk-ui <- silk-editor <- silk-workbench <- silk-db-studio
+                    db-protocol <- silk-db-studio
+jdbc-agent <- silk-db-agent-client <- silk-db-studio (Tauri)
+```
+
+## Development
+
+```powershell
+pnpm install
+cd packages/jdbc-agent
+.\gradlew.bat build
+cd ../..
+Copy-Item apps/silk-db-studio/.env.example apps/silk-db-studio/.env.local
+pnpm --filter @silk-studio/db-studio tauri:dev
+```
+
+The local `.env.local` file is ignored by Git.
 
