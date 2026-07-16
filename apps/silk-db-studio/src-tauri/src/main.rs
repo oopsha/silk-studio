@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    silk_editor_lib::run()
+    silk_db_studio_lib::run()
 }
