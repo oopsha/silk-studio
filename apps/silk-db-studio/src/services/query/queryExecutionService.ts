@@ -2,7 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   isQueryResultPayload,
   type QueryResultPayload,
-} from "./queryResult";
+} from "@silk-studio/db-protocol";
 
 export type QueryExecutionStatus = "idle" | "running" | "success" | "error";
 
