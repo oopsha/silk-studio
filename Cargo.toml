@@ -1,0 +1,6 @@
+[workspace]
+members = [
+  "apps/silk-db-studio/src-tauri",
+  "crates/silk-db-agent-client",
+]
+resolver = "2"
