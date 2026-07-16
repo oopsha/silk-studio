@@ -1,7 +1,14 @@
-# Tauri + React + Typescript
+# Silk Studio
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+Silk Studio is a local-first monorepo for database, ERD, and web development tools.
 
-## Recommended IDE Setup
+## Workspace
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- `apps/silk-db-studio` — Tauri desktop database studio
+- `packages/jdbc-agent` — shared Java JDBC sidecar
+- `packages/db-protocol` — shared agent protocol contracts
+- `packages/silk-editor` — reusable Monaco editor package
+- `packages/silk-workbench` — reusable workbench services and UI
+- `packages/silk-ui` — shared design tokens, icons, and UI primitives
+- `crates/silk-db-agent-client` — shared Rust client for the JDBC sidecar
+
