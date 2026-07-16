@@ -1,0 +1,8 @@
+[package]
+name = "silk-db-agent-client"
+version = "0.1.0"
+description = "Process and JSON-RPC client for the Silk JDBC agent"
+edition = "2021"
+
+[dependencies]
+serde_json = "1"
