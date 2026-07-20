@@ -1,18 +1,18 @@
 # Silk Studio
 
-Local-first monorepo for database, ERD, and web development tools.
+데이터베이스, ERD, 웹 개발 도구를 위한 모노레포입니다.
 
-## Workspace
+## 워크스페이스
 
-- `apps/silk-db-studio` — Tauri desktop database studio and DB-specific UI
-- `packages/silk-editor` — Monaco editor, editor state, and tab bar
-- `packages/silk-workbench` — commands, menus, layout services, and workbench views
-- `packages/silk-ui` — design tokens, fonts, icons, and shared UI hooks
-- `packages/db-protocol` — Java/Rust/TypeScript agent protocol contract
-- `packages/jdbc-agent` — shared Java JDBC sidecar
-- `crates/silk-db-agent-client` — shared Rust process and protocol client
+- `apps/silk-db-studio` — Tauri 데스크톱 DB 스튜디오 및 DB 전용 UI
+- `packages/silk-editor` — Monaco 에디터, 에디터 상태, 탭 바
+- `packages/silk-workbench` — 커맨드, 메뉴, 레이아웃 서비스, 워크벤치 뷰
+- `packages/silk-ui` — 디자인 토큰, 폰트, 아이콘, 공용 UI 훅
+- `packages/db-protocol` — Java/Rust/TypeScript 에이전트 프로토콜 계약
+- `packages/jdbc-agent` — 공용 Java JDBC 사이드카
+- `crates/silk-db-agent-client` — 공용 Rust 프로세스 및 프로토콜 클라이언트
 
-Dependency direction:
+의존성 방향:
 
 ```text
 silk-ui <- silk-editor <- silk-workbench <- silk-db-studio
@@ -20,7 +20,7 @@ silk-ui <- silk-editor <- silk-workbench <- silk-db-studio
 jdbc-agent <- silk-db-agent-client <- silk-db-studio (Tauri)
 ```
 
-## Development
+## 개발
 
 ```powershell
 pnpm install
@@ -31,5 +31,4 @@ Copy-Item apps/silk-db-studio/.env.example apps/silk-db-studio/.env.local
 pnpm --filter @silk-studio/db-studio tauri:dev
 ```
 
-The local `.env.local` file is ignored by Git.
-
+로컬 `.env.local` 파일은 Git에서 무시됩니다.
