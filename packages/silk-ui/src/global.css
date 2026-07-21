@@ -146,6 +146,18 @@ html.pane-sash-resizing * {
   user-select: none !important;
 }
 
+html.workbench-sash-resizing--horizontal,
+html.workbench-sash-resizing--horizontal * {
+  cursor: ns-resize !important;
+  user-select: none !important;
+}
+
+html.workbench-sash-resizing--vertical,
+html.workbench-sash-resizing--vertical * {
+  cursor: ew-resize !important;
+  user-select: none !important;
+}
+
 /* VS Code–style scrollbars (native / AG Grid / panel) */
 * {
   scrollbar-width: thin;
