@@ -1,0 +1,49 @@
+.workbench-sash {
+  position: relative;
+  z-index: 5;
+  flex-shrink: 0;
+  touch-action: none;
+}
+
+.workbench-sash--horizontal {
+  height: 4px;
+  margin: -2px 0;
+  cursor: ns-resize;
+}
+
+.workbench-sash--vertical {
+  width: 4px;
+  margin: 0 -2px;
+  cursor: ew-resize;
+}
+
+.workbench-sash--horizontal::after,
+.workbench-sash--vertical::after {
+  content: "";
+  position: absolute;
+  background-color: transparent;
+  transition: background-color 60ms ease;
+}
+
+.workbench-sash--horizontal::after {
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.workbench-sash--vertical::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+}
+
+.workbench-sash--horizontal:hover::after,
+.workbench-sash--horizontal.workbench-sash--active::after,
+.workbench-sash--vertical:hover::after,
+.workbench-sash--vertical.workbench-sash--active::after {
+  background-color: var(--color-sash-hover-border);
+}
