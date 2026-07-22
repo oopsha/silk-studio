@@ -10,11 +10,11 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "@silk-studio/db-protocol": "workspace:*",
     "@silk-studio/editor": "workspace:*",
     "@silk-studio/ui": "workspace:*",
     "@silk-studio/workbench": "workspace:*",
-    "@monaco-editor/react": "^4.7.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "~2.7.1",
     "@tauri-apps/plugin-fs": "~2.5.1",
@@ -22,7 +22,8 @@
     "ag-grid-community": "^36.0.0",
     "ag-grid-react": "^36.0.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "sql-formatter": "^15.8.2"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

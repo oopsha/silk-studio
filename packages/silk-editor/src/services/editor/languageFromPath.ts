@@ -41,6 +41,13 @@ export function codiconForLanguage(languageId: string): string {
     case "rust":
     case "python":
       return "file-code";
+    case "sql":
+    case "mysql":
+    case "mariadb":
+    case "pgsql":
+    case "plsql":
+    case "tsql":
+      return "database";
     default:
       return "file";
   }

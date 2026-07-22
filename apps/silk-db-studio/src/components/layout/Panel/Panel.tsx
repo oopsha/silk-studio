@@ -12,6 +12,7 @@ function Panel() {
     queryState.status === "success" &&
     queryState.result?.kind === "resultSet" &&
     queryState.result.columns.length > 0;
+  const isRunning = queryState.status === "running";
 
   return (
     <section className="panel">
@@ -21,6 +22,19 @@ function Panel() {
           <span className={`panel__status panel__status--${queryState.status}`}>
             {toStatusLabel(queryState.status, queryState.output)}
           </span>
+          {isRunning ? (
+            <button
+              type="button"
+              className="panel__action"
+              title="Cancel Query"
+              aria-label="Cancel Query"
+              onClick={() =>
+                void CommandService.executeCommand("silk.query.cancel")
+              }
+            >
+              <Codicon name="debug-stop" />
+            </button>
+          ) : null}
           <button
             type="button"
             className="panel__action"
@@ -83,7 +97,7 @@ function Panel() {
 }
 
 function toStatusLabel(
-  status: "idle" | "running" | "success" | "error",
+  status: "idle" | "running" | "success" | "error" | "cancelled",
   output: string,
 ): string {
   switch (status) {
@@ -93,6 +107,8 @@ function toStatusLabel(
       return output || "Success";
     case "error":
       return "Error";
+    case "cancelled":
+      return "Cancelled";
     default:
       return "Idle";
   }

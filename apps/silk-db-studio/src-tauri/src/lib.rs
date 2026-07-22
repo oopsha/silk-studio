@@ -3,7 +3,6 @@ mod secrets;
 use serde_json::Value;
 use silk_db_agent_client::JdbcAgentClient;
 use std::path::PathBuf;
-use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_window_controls::{TitleBarColors, WindowControlsExt};
 
@@ -27,8 +26,8 @@ fn configure_main_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
         window.set_title_bar_height(32)?;
         window.set_title_bar_colors(colors.clone(), colors)?;
         window.set_title_bar_overlay(true)?;
-        window.eval("document.documentElement.dataset.wco = 'true'")?;
     }
+    window.eval("document.documentElement.dataset.wco = 'true'")?;
 
     Ok(())
 }
@@ -51,7 +50,8 @@ fn jdbc_agent_jar() -> PathBuf {
 }
 
 struct AppState {
-    jdbc_agent: Mutex<JdbcAgentClient>,
+    /// Interior-mutable / demuxed client — execute and cancel may run concurrently.
+    jdbc_agent: JdbcAgentClient,
 }
 
 #[tauri::command]
@@ -68,17 +68,18 @@ fn query_execute(
         return Err("Query is empty.".into());
     }
 
-    let mut guard = state
-        .jdbc_agent
-        .lock()
-        .map_err(|_| "Failed to acquire jdbc-agent lock".to_string())?;
-    guard.execute_query(
+    state.jdbc_agent.execute_query(
         statement,
         max_rows,
         query_timeout_sec,
         auto_commit,
         read_only,
     )
+}
+
+#[tauri::command]
+fn query_cancel(state: tauri::State<'_, AppState>) -> Result<Value, String> {
+    state.jdbc_agent.cancel_query()
 }
 
 #[tauri::command]
@@ -90,11 +91,7 @@ fn connection_connect(
     catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
-    let mut guard = state
-        .jdbc_agent
-        .lock()
-        .map_err(|_| "Failed to acquire jdbc-agent lock".to_string())?;
-    guard.connect(
+    state.jdbc_agent.connect(
         url.trim(),
         user.trim(),
         password.as_str(),
@@ -105,11 +102,7 @@ fn connection_connect(
 
 #[tauri::command]
 fn connection_disconnect(state: tauri::State<'_, AppState>) -> Result<Value, String> {
-    let mut guard = state
-        .jdbc_agent
-        .lock()
-        .map_err(|_| "Failed to acquire jdbc-agent lock".to_string())?;
-    guard.disconnect()
+    state.jdbc_agent.disconnect()
 }
 
 #[tauri::command]
@@ -121,11 +114,7 @@ fn connection_test(
     catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
-    let mut guard = state
-        .jdbc_agent
-        .lock()
-        .map_err(|_| "Failed to acquire jdbc-agent lock".to_string())?;
-    guard.test_connection(
+    state.jdbc_agent.test_connection(
         url.trim(),
         user.trim(),
         password.as_str(),
@@ -139,18 +128,14 @@ fn connection_metadata(
     schema: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
-    let mut guard = state
-        .jdbc_agent
-        .lock()
-        .map_err(|_| "Failed to acquire jdbc-agent lock".to_string())?;
-    guard.list_metadata(schema.as_deref())
+    state.jdbc_agent.list_metadata(schema.as_deref())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
-            jdbc_agent: Mutex::new(JdbcAgentClient::new(jdbc_agent_jar())),
+            jdbc_agent: JdbcAgentClient::new(jdbc_agent_jar()),
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -159,6 +144,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ensure_title_bar_overlay,
             query_execute,
+            query_cancel,
             connection_connect,
             connection_disconnect,
             connection_test,

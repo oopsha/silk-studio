@@ -76,7 +76,17 @@ function toLanguageLabel(languageId: string | undefined): string {
 
   switch (languageId) {
     case "sql":
-      return "MS SQL";
+      return "SQL";
+    case "plsql":
+      return "PL/SQL";
+    case "tsql":
+      return "T-SQL";
+    case "mysql":
+      return "MySQL";
+    case "mariadb":
+      return "MariaDB";
+    case "pgsql":
+      return "PostgreSQL";
     case "typescript":
       return "TypeScript";
     case "javascript":
