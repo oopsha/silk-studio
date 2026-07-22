@@ -20,6 +20,17 @@ dependencies {
   // jar is bundled/distributed. Pulls in protobuf-java (mandatory, used by the driver); the
   // optional OCI SDK integration is NOT pulled in by `implementation`.
   implementation 'com.mysql:mysql-connector-j:9.7.0'
+  // Official MariaDB Connector/J. Licensed LGPL-2.1-or-later — see THIRD_PARTY_NOTICES.md.
+  // Separate driver/artifact from mysql-connector-j above (own "mariadb" driver id in the
+  // frontend); its slf4j-api/bouncycastle/OSGi/AWS-RDS/waffle-jna extras are all declared
+  // `optional`/`provided` upstream, so `implementation` pulls in no extra runtime jars. By
+  // default (no `permitMysqlScheme` option) it only claims `jdbc:mariadb:` URLs, so it can't
+  // shadow mysql-connector-j's `jdbc:mysql:` prefix on the same classpath.
+  implementation 'org.mariadb.jdbc:mariadb-java-client:3.5.9'
+  // Official PostgreSQL JDBC Driver (pgJDBC). Licensed BSD-2-Clause — see
+  // THIRD_PARTY_NOTICES.md. Pure Type-4 driver; pulls in checker-qual (annotations) as a
+  // compile/runtime dependency. Claims `jdbc:postgresql:` only.
+  implementation 'org.postgresql:postgresql:42.7.13'
   implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
 }
 

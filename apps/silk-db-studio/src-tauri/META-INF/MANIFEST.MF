@@ -1,6 +1,7 @@
 Manifest-Version: 1.0
 Main-Class: com.silk.jdbcagent.Main
 Class-Path: lib/ojdbc11-23.4.0.24.05.jar lib/orai18n-23.4.0.24.05.jar li
- b/mssql-jdbc-13.4.0.jre11.jar lib/mysql-connector-j-9.7.0.jar lib/jacks
- on-annotations-2.18.2.jar lib/jackson-core-2.18.2.jar lib/jackson-datab
- ind-2.18.2.jar lib/protobuf-java-4.31.1.jar
+ b/mssql-jdbc-13.4.0.jre11.jar lib/mysql-connector-j-9.7.0.jar lib/maria
+ db-java-client-3.5.9.jar lib/postgresql-42.7.13.jar lib/jackson-annotat
+ ions-2.18.2.jar lib/jackson-core-2.18.2.jar lib/jackson-databind-2.18.2
+ .jar lib/protobuf-java-4.31.1.jar lib/checker-qual-3.55.1.jar

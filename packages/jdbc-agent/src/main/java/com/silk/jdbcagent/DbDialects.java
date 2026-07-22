@@ -6,7 +6,12 @@ import java.util.Locale;
 /** Registry that maps a JDBC URL to the {@link DbDialect} that should handle it. */
 final class DbDialects {
   private static final List<DbDialect> ALL =
-      List.of(new OracleDialect(), new SqlServerDialect(), new MySqlDialect());
+      List.of(
+          new OracleDialect(),
+          new SqlServerDialect(),
+          new MySqlDialect(),
+          new MariaDbDialect(),
+          new PostgreSqlDialect());
 
   private DbDialects() {}
 
@@ -21,6 +26,7 @@ final class DbDialects {
       }
     }
     throw new RuntimeException(
-        "Unsupported JDBC URL. Supported prefixes: jdbc:oracle:, jdbc:sqlserver:, jdbc:mysql:");
+        "Unsupported JDBC URL. Supported prefixes: jdbc:oracle:, jdbc:sqlserver:, jdbc:mysql:, "
+            + "jdbc:mariadb:, jdbc:postgresql:");
   }
 }

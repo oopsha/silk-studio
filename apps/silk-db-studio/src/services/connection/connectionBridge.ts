@@ -35,6 +35,7 @@ export async function bridgeTestConnection(
     url: credentials.url,
     user: credentials.user,
     password: credentials.password,
+    schema: credentials.schema?.trim() ? credentials.schema.trim() : null,
     catalog: credentials.catalog?.trim() ? credentials.catalog.trim() : null,
   });
 }

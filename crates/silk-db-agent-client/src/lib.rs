@@ -69,6 +69,7 @@ impl JdbcAgentClient {
         url: &str,
         user: &str,
         password: &str,
+        schema: Option<&str>,
         catalog: Option<&str>,
     ) -> Result<Value, String> {
         let mut params = json!({
@@ -76,6 +77,12 @@ impl JdbcAgentClient {
             "user": user,
             "password": password,
         });
+        if let Some(schema) = schema {
+            let trimmed = schema.trim();
+            if !trimmed.is_empty() {
+                params["schema"] = json!(trimmed);
+            }
+        }
         if let Some(catalog) = catalog {
             let trimmed = catalog.trim();
             if !trimmed.is_empty() {
