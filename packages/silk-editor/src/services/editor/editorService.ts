@@ -225,6 +225,7 @@ class EditorServiceImpl {
   updateTabContent(id: string, content: string): void {
     const tab = this.tabs.find((item) => item.id === id);
     if (!tab || tab.content === content) return;
+    if (tab.uri?.startsWith("silk://")) return;
 
     tab.content = content;
     tab.isDirty = content !== (this.savedContent.get(id) ?? "");

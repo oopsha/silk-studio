@@ -7,6 +7,8 @@ import {
   type ValueFormatterParams,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
+import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
+import type { ColorThemeId } from "@silk-studio/workbench/platform/configuration/configurationDefaults.ts";
 import {
   toQueryResultRows,
   type QueryResultPayload,
@@ -16,51 +18,92 @@ import "./QueryResultGrid.css";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-const gridTheme = themeQuartz.withParams({
-  backgroundColor: "#191a1b",
-  dataBackgroundColor: "#191a1b",
-  foregroundColor: "#bfbfbf",
-  borderColor: "#2a2b2c",
-  // Header block slightly elevated vs body; separator drawn in CSS under whole header
-  headerBackgroundColor: "#202122",
-  headerTextColor: "#bfbfbf",
-  headerFontWeight: 600,
-  headerRowBorder: false,
-  headerColumnBorder: false,
-  // Zebra: even = panel (#191a1b), odd = list.hover, hover = editor.lineHighlight
-  oddRowBackgroundColor: "#1e1f20",
-  rowBorder: false,
-  rowHoverColor: "#242526",
-  selectedRowBackgroundColor: "rgba(57, 148, 188, 0.22)",
-  inputBackgroundColor: "#121314",
-  inputTextColor: "#bfbfbf",
-  inputBorder: { color: "#333536" },
-  fontFamily: "inherit",
-  fontSize: 12,
-  headerFontSize: 12,
-  cellHorizontalPadding: 8,
-  rowHeight: 26,
-  headerHeight: 28,
-});
+const GRID_THEME_PALETTES: Record<
+  ColorThemeId,
+  {
+    backgroundColor: string;
+    headerBackgroundColor: string;
+    oddRowBackgroundColor: string;
+    rowHoverColor: string;
+    borderColor: string;
+    inputBackgroundColor: string;
+  }
+> = {
+  "dark-2026": {
+    backgroundColor: "#191a1b",
+    headerBackgroundColor: "#202122",
+    oddRowBackgroundColor: "#1e1f20",
+    rowHoverColor: "#242526",
+    borderColor: "#2a2b2c",
+    inputBackgroundColor: "#121314",
+  },
+  "dark-plus": {
+    backgroundColor: "#1e1e1e",
+    headerBackgroundColor: "#252526",
+    oddRowBackgroundColor: "#2a2d2e",
+    rowHoverColor: "#2a2d2e",
+    borderColor: "#3c3c3c",
+    inputBackgroundColor: "#3c3c3c",
+  },
+};
 
 type QueryResultGridProps = {
   result: QueryResultPayload;
 };
 
-function formatCellValue(params: ValueFormatterParams<QueryResultRow>): string {
-  if (params.value === null || params.value === undefined) {
-    return "NULL";
-  }
-  return String(params.value);
-}
-
 function QueryResultGrid({ result }: QueryResultGridProps) {
+  const configuration = useConfiguration();
+  const nullDisplay = configuration["queryResult.nullDisplay"];
+  const filterEnabled = configuration["queryResult.filterEnabled"];
+  const rowHeight = configuration["queryResult.rowHeight"];
+  const fontSize = configuration["queryResult.fontSize"];
+  const colorTheme = configuration["workbench.colorTheme"];
+
+  const gridTheme = useMemo(() => {
+    const palette = GRID_THEME_PALETTES[colorTheme];
+    return themeQuartz.withParams({
+      backgroundColor: palette.backgroundColor,
+      dataBackgroundColor: palette.backgroundColor,
+      foregroundColor: "#bfbfbf",
+      borderColor: palette.borderColor,
+      headerBackgroundColor: palette.headerBackgroundColor,
+      headerTextColor: "#bfbfbf",
+      headerFontWeight: 600,
+      headerRowBorder: false,
+      headerColumnBorder: false,
+      oddRowBackgroundColor: palette.oddRowBackgroundColor,
+      rowBorder: false,
+      rowHoverColor: palette.rowHoverColor,
+      selectedRowBackgroundColor: "rgba(57, 148, 188, 0.22)",
+      inputBackgroundColor: palette.inputBackgroundColor,
+      inputTextColor: "#bfbfbf",
+      inputBorder: { color: "#333536" },
+      fontFamily: "inherit",
+      fontSize,
+      headerFontSize: fontSize,
+      cellHorizontalPadding: 8,
+      rowHeight,
+      headerHeight: rowHeight + 2,
+    });
+  }, [colorTheme, fontSize, rowHeight]);
+
+  const formatCellValue = useMemo(
+    () =>
+      (params: ValueFormatterParams<QueryResultRow>): string => {
+        if (params.value === null || params.value === undefined) {
+          return nullDisplay;
+        }
+        return String(params.value);
+      },
+    [nullDisplay],
+  );
+
   const columnDefs = useMemo<ColDef<QueryResultRow>[]>(
     () =>
       result.columns.map((column) => ({
         field: column,
         headerName: column,
-        filter: "agTextColumnFilter",
+        filter: filterEnabled ? "agTextColumnFilter" : false,
         editable: true,
         sortable: true,
         resizable: true,
@@ -68,7 +111,7 @@ function QueryResultGrid({ result }: QueryResultGridProps) {
         minWidth: 120,
         valueFormatter: formatCellValue,
       })),
-    [result.columns],
+    [filterEnabled, formatCellValue, result.columns],
   );
 
   const rowData = useMemo(
@@ -78,12 +121,12 @@ function QueryResultGrid({ result }: QueryResultGridProps) {
 
   const defaultColDef = useMemo<ColDef>(
     () => ({
-      filter: true,
+      filter: filterEnabled,
       editable: true,
       sortable: true,
       resizable: true,
     }),
-    [],
+    [filterEnabled],
   );
 
   return (
@@ -93,6 +136,7 @@ function QueryResultGrid({ result }: QueryResultGridProps) {
         columnDefs={columnDefs}
         rowData={rowData}
         defaultColDef={defaultColDef}
+        rowHeight={rowHeight}
         animateRows={false}
         stopEditingWhenCellsLoseFocus
       />

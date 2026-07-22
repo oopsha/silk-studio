@@ -16,6 +16,7 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class Main {
@@ -38,7 +39,7 @@ public final class Main {
 
     String sql = args[1];
     try (AgentRuntime runtime = new AgentRuntime()) {
-      runtime.openConnection();
+      runtime.openConnection(MAPPER.createObjectNode());
       System.out.println(MAPPER.writeValueAsString(runtime.executeQuery(sql)));
     } catch (SQLException error) {
       System.err.println(formatSqlError(error));
@@ -65,12 +66,15 @@ public final class Main {
         try {
           JsonNode request = MAPPER.readTree(line);
           response = handleRequest(runtime, request);
-        } catch (Exception error) {
+        } catch (Throwable error) {
+          // Catch Throwable, not just Exception: driver/classpath issues surface as
+          // Errors (e.g. NoClassDefFoundError), and letting those escape would kill this
+          // whole long-lived --serve process instead of just failing the one request.
           response = MAPPER.createObjectNode();
           response.putNull("id");
           response.put("ok", false);
           ObjectNode err = response.putObject("error");
-          err.put("message", error.getMessage() == null ? "Invalid request." : error.getMessage());
+          err.put("message", describeThrowable(error, "Invalid request."));
         }
 
         writer.println(MAPPER.writeValueAsString(response));
@@ -79,13 +83,21 @@ public final class Main {
           break;
         }
       }
-    } catch (Exception error) {
-      System.err.println(error.getMessage() == null ? "jdbc-agent server failed." : error.getMessage());
+    } catch (Throwable error) {
+      System.err.println(describeThrowable(error, "jdbc-agent server failed."));
       System.exit(1);
     }
   }
 
-  private static ObjectNode handleRequest(AgentRuntime runtime, JsonNode request) throws SQLException {
+  private static String describeThrowable(Throwable error, String fallback) {
+    String message = error.getMessage();
+    if (message != null && !message.isBlank()) {
+      return message;
+    }
+    return error.getClass().getSimpleName() + (fallback == null ? "" : ": " + fallback);
+  }
+
+  private static ObjectNode handleRequest(AgentRuntime runtime, JsonNode request) {
     String method = request.path("method").asText("");
     JsonNode id = request.get("id");
     JsonNode params = request.path("params");
@@ -101,19 +113,37 @@ public final class Main {
           result.put("message", "pong");
         }
         case "connection.open" -> {
-          runtime.openConnection();
+          runtime.openConnection(params);
           response.put("ok", true);
           ObjectNode result = response.putObject("result");
           result.put("connected", true);
+        }
+        case "connection.close" -> {
+          runtime.closeConnection();
+          response.put("ok", true);
+          ObjectNode result = response.putObject("result");
+          result.put("connected", false);
+        }
+        case "connection.test" -> {
+          runtime.testConnection(params);
+          response.put("ok", true);
+          ObjectNode result = response.putObject("result");
+          result.put("connected", true);
+          result.put("message", "Connection successful.");
+        }
+        case "connection.metadata" -> {
+          runtime.requireConnection();
+          response.put("ok", true);
+          response.set("result", runtime.listMetadata(params));
         }
         case "query.execute" -> {
           String sql = params.path("sql").asText("").trim();
           if (sql.isEmpty()) {
             throw new RuntimeException("Missing params.sql");
           }
-          runtime.openConnection();
+          runtime.requireConnection();
           response.put("ok", true);
-          response.set("result", runtime.executeQuery(sql));
+          response.set("result", runtime.executeQuery(sql, params));
         }
         case "agent.shutdown" -> {
           response.put("ok", true);
@@ -128,37 +158,179 @@ public final class Main {
       err.put("message", formatSqlError(error));
       err.put("sqlState", error.getSQLState());
       err.put("errorCode", error.getErrorCode());
-    } catch (RuntimeException error) {
+    } catch (Throwable error) {
+      // Broad on purpose: classpath/driver failures surface as Errors (e.g.
+      // NoClassDefFoundError), and letting those escape would take down the whole
+      // long-lived --serve process instead of just failing this one request.
       response.put("ok", false);
       ObjectNode err = response.putObject("error");
-      err.put("message", error.getMessage() == null ? "Request failed." : error.getMessage());
+      err.put("message", describeThrowable(error, "Request failed."));
     }
 
     return response;
   }
 
   private static final class AgentRuntime implements AutoCloseable {
-    private final String url = requiredEnv("SILK_DB_URL");
-    private final String user = requiredEnv("SILK_DB_USER");
-    private final String password = requiredEnv("SILK_DB_PASSWORD");
+    private String url;
+    private String user;
+    private String password;
     private final int timeoutSeconds = intEnv("SILK_DB_QUERY_TIMEOUT_SEC", 30);
     private final int maxRows = intEnv("SILK_DB_MAX_ROWS", 200);
     private Connection connection;
+    /** Resolved from the JDBC URL on {@link #openConnection}; see {@link DbDialects#forUrl}. */
+    private DbDialect dialect;
 
-    void openConnection() throws SQLException {
+    void openConnection(JsonNode params) throws SQLException {
+      applyCredentials(params);
+      ensureCredentials();
+      dialect = DbDialects.forUrl(url);
+
+      if (connection != null && !connection.isClosed()) {
+        connection.close();
+        connection = null;
+      }
+
+      connection = DriverManager.getConnection(url, user, password);
+      dialect.afterConnect(connection, params);
+    }
+
+    void requireConnection() throws SQLException {
       if (connection == null || connection.isClosed()) {
-        connection = DriverManager.getConnection(url, user, password);
+        throw new SQLException(
+            "Connection is not open. Connect a database profile in the Connections explorer.");
+      }
+    }
+
+    void closeConnection() throws SQLException {
+      if (connection == null) {
+        return;
+      }
+      try {
+        if (!connection.isClosed()) {
+          connection.close();
+        }
+      } finally {
+        connection = null;
+      }
+    }
+
+    void testConnection(JsonNode params) throws SQLException {
+      applyCredentials(params);
+      ensureCredentials();
+      DbDialect testDialect = DbDialects.forUrl(url);
+
+      try (Connection testConnection = DriverManager.getConnection(url, user, password)) {
+        // Also apply catalog/schema during test so an invalid namespace surfaces as a test
+        // failure rather than only showing up later on the real connect.
+        testDialect.afterConnect(testConnection, params);
+        testDialect.testConnection(testConnection, timeoutSeconds);
+      }
+    }
+
+    void applyConnectionSettings(JsonNode params) throws SQLException {
+      if (connection == null || connection.isClosed()) {
+        return;
+      }
+      if (params.has("autoCommit")) {
+        connection.setAutoCommit(params.path("autoCommit").asBoolean(true));
+      }
+      if (params.has("readOnly")) {
+        connection.setReadOnly(params.path("readOnly").asBoolean(false));
       }
     }
 
     ObjectNode executeQuery(String sql) throws SQLException {
+      return executeQuery(sql, MAPPER.createObjectNode());
+    }
+
+    ObjectNode listMetadata(JsonNode params) throws SQLException {
+      requireConnection();
+      String schemaFilter = params.path("schema").asText("").trim();
+
+      List<String> schemaNames = dialect.listSchemaNames(connection);
+      if (!schemaFilter.isEmpty()) {
+        schemaNames = schemaNames.stream()
+            .filter((name) -> name.equalsIgnoreCase(schemaFilter))
+            .toList();
+        if (schemaNames.isEmpty()) {
+          schemaNames = List.of(schemaFilter);
+        }
+      }
+
+      boolean includeObjects = !schemaFilter.isEmpty();
+      ArrayNode schemas = MAPPER.createArrayNode();
+      for (String schemaName : schemaNames) {
+        ObjectNode schemaNode = MAPPER.createObjectNode();
+        schemaNode.put("name", schemaName);
+        ArrayNode groups = schemaNode.putArray("groups");
+
+        if (includeObjects) {
+          ArrayNode objects = MAPPER.createArrayNode();
+          dialect.collectSchemaObjects(connection, schemaName, objects);
+          populateGroups(groups, dialect.supportedGroups(), objects);
+        }
+
+        schemas.add(schemaNode);
+      }
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.set("schemas", schemas);
+      return result;
+    }
+
+    /**
+     * Partitions the dialect's flat {@code objects} list (each tagged with a {@code kind}) into
+     * one entry per {@code supportedGroups}, in that order. Every supported group is emitted even
+     * when empty (e.g. "Packages" with 0 items), but groups the dialect doesn't declare as
+     * supported never appear — this is what keeps e.g. MySQL from showing an Oracle-only
+     * "Packages" group.
+     */
+    private void populateGroups(
+        ArrayNode groupsOut, List<MetadataGroupId> supportedGroups, ArrayNode objects) {
+      Map<MetadataGroupId, ArrayNode> byGroup = new LinkedHashMap<>();
+      for (MetadataGroupId group : supportedGroups) {
+        byGroup.put(group, MAPPER.createArrayNode());
+      }
+
+      for (JsonNode object : objects) {
+        MetadataGroupId group = MetadataGroupId.forKind(object.path("kind").asText(""));
+        ArrayNode bucket = group == null ? null : byGroup.get(group);
+        if (bucket != null) {
+          bucket.add(object);
+        }
+        // else: dialect emitted a kind outside its own supportedGroups() — dropped rather than
+        // surfaced under a group the frontend doesn't expect for this database.
+      }
+
+      for (Map.Entry<MetadataGroupId, ArrayNode> entry : byGroup.entrySet()) {
+        ObjectNode groupNode = groupsOut.addObject();
+        groupNode.put("id", entry.getKey().id);
+        groupNode.set("objects", entry.getValue());
+      }
+    }
+
+    ObjectNode executeQuery(String sql, JsonNode params) throws SQLException {
       if (connection == null || connection.isClosed()) {
         throw new SQLException("Connection is not open.");
       }
 
+      boolean readOnly = params.path("readOnly").asBoolean(false);
+      if (readOnly && isWriteSql(sql)) {
+        throw new RuntimeException(
+            "Read-only mode is enabled. Write statements are blocked.");
+      }
+
+      applyConnectionSettings(params);
+
+      int maxRowsOverride = params.path("maxRows").asInt(-1);
+      int effectiveMaxRows = maxRowsOverride > 0 ? maxRowsOverride : maxRows;
+
+      int timeoutOverride = params.path("queryTimeoutSec").asInt(-1);
+      int effectiveTimeout = timeoutOverride > 0 ? timeoutOverride : timeoutSeconds;
+
       try (Statement statement = connection.createStatement()) {
-        statement.setQueryTimeout(timeoutSeconds);
-        statement.setMaxRows(maxRows);
+        statement.setQueryTimeout(effectiveTimeout);
+        statement.setMaxRows(effectiveMaxRows);
 
         boolean hasResultSet = statement.execute(sql);
         if (hasResultSet) {
@@ -179,6 +351,44 @@ public final class Main {
       }
     }
 
+    private void applyCredentials(JsonNode params) {
+      if (params.hasNonNull("url")) {
+        url = params.path("url").asText("").trim();
+      } else if (url == null || url.isBlank()) {
+        url = optionalEnv("SILK_DB_URL");
+      }
+
+      if (params.hasNonNull("user")) {
+        user = params.path("user").asText("").trim();
+      } else if (user == null || user.isBlank()) {
+        user = optionalEnv("SILK_DB_USER");
+      }
+
+      if (params.has("password")) {
+        password = params.path("password").asText("");
+      } else if (password == null) {
+        password = optionalEnv("SILK_DB_PASSWORD");
+      }
+    }
+
+    private void ensureCredentials() {
+      if (url == null || url.isBlank()) {
+        throw new RuntimeException(
+            "Missing JDBC URL. Provide connection.open params.url or SILK_DB_URL.");
+      }
+      if (user == null || user.isBlank()) {
+        throw new RuntimeException(
+            "Missing JDBC user. Provide connection.open params.user or SILK_DB_USER.");
+      }
+      if (password == null) {
+        password = "";
+      }
+    }
+
+    boolean isConnected() throws SQLException {
+      return connection != null && !connection.isClosed();
+    }
+
     @Override
     public void close() {
       if (connection == null) return;
@@ -189,15 +399,10 @@ public final class Main {
     }
   }
 
-  private static String requiredEnv(String key) {
+  private static String optionalEnv(String key) {
     String value = System.getenv(key);
     if (value == null || value.isBlank()) {
-      throw new RuntimeException(
-          "Missing environment variable: " + key
-              + "\nExample:"
-              + "\nSILK_DB_URL=jdbc:oracle:thin:@localhost:1521/FREEPDB1"
-              + "\nSILK_DB_USER=SYSTEM"
-              + "\nSILK_DB_PASSWORD=your_password");
+      return null;
     }
     return value.trim();
   }
@@ -213,6 +418,13 @@ public final class Main {
     } catch (NumberFormatException ignored) {
       return fallback;
     }
+  }
+
+  private static boolean isWriteSql(String sql) {
+    return sql.trim()
+        .toLowerCase()
+        .matches(
+            "^(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|call|exec|execute)\\b.*");
   }
 
   private static String formatSqlError(SQLException error) {

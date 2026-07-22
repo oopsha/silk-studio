@@ -24,9 +24,101 @@ impl JdbcAgentClient {
         }
     }
 
-    pub fn execute_query(&mut self, sql: &str) -> Result<Value, String> {
+    pub fn connect(
+        &mut self,
+        url: &str,
+        user: &str,
+        password: &str,
+        schema: Option<&str>,
+        catalog: Option<&str>,
+    ) -> Result<Value, String> {
+        let mut params = json!({
+            "url": url,
+            "user": user,
+            "password": password,
+        });
+        if let Some(schema) = schema {
+            let trimmed = schema.trim();
+            if !trimmed.is_empty() {
+                params["schema"] = json!(trimmed);
+            }
+        }
+        if let Some(catalog) = catalog {
+            let trimmed = catalog.trim();
+            if !trimmed.is_empty() {
+                params["catalog"] = json!(trimmed);
+            }
+        }
+        let result = self.send_request("connection.open", params)?;
+        if let Some(process) = self.process.as_mut() {
+            process.connected = true;
+        }
+        Ok(result)
+    }
+
+    pub fn disconnect(&mut self) -> Result<Value, String> {
+        let result = self.send_request("connection.close", json!({}))?;
+        if let Some(process) = self.process.as_mut() {
+            process.connected = false;
+        }
+        Ok(result)
+    }
+
+    pub fn test_connection(
+        &mut self,
+        url: &str,
+        user: &str,
+        password: &str,
+        catalog: Option<&str>,
+    ) -> Result<Value, String> {
+        let mut params = json!({
+            "url": url,
+            "user": user,
+            "password": password,
+        });
+        if let Some(catalog) = catalog {
+            let trimmed = catalog.trim();
+            if !trimmed.is_empty() {
+                params["catalog"] = json!(trimmed);
+            }
+        }
+        self.send_request("connection.test", params)
+    }
+
+    pub fn list_metadata(&mut self, schema: Option<&str>) -> Result<Value, String> {
         self.ensure_connection()?;
-        self.send_request("query.execute", json!({ "sql": sql }))
+        let mut params = json!({});
+        if let Some(schema) = schema {
+            if !schema.trim().is_empty() {
+                params["schema"] = json!(schema.trim());
+            }
+        }
+        self.send_request("connection.metadata", params)
+    }
+
+    pub fn execute_query(
+        &mut self,
+        sql: &str,
+        max_rows: Option<u32>,
+        query_timeout_sec: Option<u32>,
+        auto_commit: Option<bool>,
+        read_only: Option<bool>,
+    ) -> Result<Value, String> {
+        self.ensure_connection()?;
+        let mut params = json!({ "sql": sql });
+        if let Some(max_rows) = max_rows {
+            params["maxRows"] = json!(max_rows);
+        }
+        if let Some(query_timeout_sec) = query_timeout_sec {
+            params["queryTimeoutSec"] = json!(query_timeout_sec);
+        }
+        if let Some(auto_commit) = auto_commit {
+            params["autoCommit"] = json!(auto_commit);
+        }
+        if let Some(read_only) = read_only {
+            params["readOnly"] = json!(read_only);
+        }
+        self.send_request("query.execute", params)
     }
 
     fn ensure_connection(&mut self) -> Result<(), String> {
@@ -35,11 +127,9 @@ impl JdbcAgentClient {
             return Ok(());
         }
 
-        self.send_request("connection.open", json!({}))?;
-        if let Some(process) = self.process.as_mut() {
-            process.connected = true;
-        }
-        Ok(())
+        Err(
+            "No active database connection. Connect a profile in the Connections explorer.".into(),
+        )
     }
 
     fn ensure_process(&mut self) -> Result<&mut AgentProcess, String> {

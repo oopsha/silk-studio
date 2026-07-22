@@ -1,11 +1,10 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { CommandService } from "../../../../../platform/commands/commandService";
 import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
 import { codiconForLanguage } from "@silk-studio/editor/services/editor/languageFromPath.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import { useEditorTabs } from "@silk-studio/editor/services/editor/useEditorTabs.ts";
-import { WindowTitleService } from "../../../../../services/windowTitle/windowTitleService";
 import AccordionPanel from "../../AccordionPanel/AccordionPanel";
 import { PaneSash, useResizablePanes } from "../../PaneView";
 import ViewPaneTitle from "../../ViewPaneTitle/ViewPaneTitle";
@@ -18,6 +17,12 @@ import "./ExplorerView.css";
 
 type ExplorerSectionId = "openEditors" | "workspace" | "outline" | "timeline";
 
+type ExplorerViewProps = {
+  renderConnections?: () => ReactNode;
+  connectionsTitle?: string;
+  connectionsActions?: ReactNode;
+};
+
 type ExplorerSegment =
   | { type: "openEditors"; expanded: boolean }
   | { type: "collapsed"; id: ExplorerSectionId }
@@ -29,13 +34,6 @@ const SECTION_ORDER: ExplorerSectionId[] = [
   "outline",
   "timeline",
 ];
-
-const WORKSPACE_ACTIONS = [
-  { icon: "new-file", label: "New File" },
-  { icon: "new-folder", label: "New Folder" },
-  { icon: "refresh", label: "Refresh Explorer" },
-  { icon: "collapse-all", label: "Collapse Folders in Explorer" },
-] as const;
 
 const OPEN_EDITORS_ACTIONS = [
   {
@@ -53,7 +51,7 @@ const VIEW_MENU_ITEMS: {
   canToggle: boolean;
 }[] = [
   { id: "openEditors", label: "Open Editors", canToggle: true },
-  { id: "workspace", label: "Folders", canToggle: false },
+  { id: "workspace", label: "Connections", canToggle: false },
   { id: "outline", label: "Outline", canToggle: true },
   { id: "timeline", label: "Timeline", canToggle: true },
 ];
@@ -156,10 +154,13 @@ function OpenEditorsList({
   );
 }
 
-function ExplorerView() {
+function ExplorerView({
+  renderConnections,
+  connectionsTitle = "CONNECTIONS",
+  connectionsActions,
+}: ExplorerViewProps) {
   const viewsMenuButtonRef = useRef<HTMLButtonElement>(null);
   const activeTab = useActiveEditor();
-  const workspaceTitle = WindowTitleService.getWorkspaceName().toUpperCase();
   const [viewsMenuOpen, setViewsMenuOpen] = useState(false);
   const [outlineMenuOpen, setOutlineMenuOpen] = useState(false);
   const [timelineMenuOpen, setTimelineMenuOpen] = useState(false);
@@ -231,13 +232,13 @@ function ExplorerView() {
     }));
   }
 
-  const workspaceActions = renderSectionActions(WORKSPACE_ACTIONS);
   const openEditorsActions = renderSectionActions(OPEN_EDITORS_ACTIONS);
+  const WORKSPACE_ACTIONS_NODE = connectionsActions;
 
   function sectionTitle(id: ExplorerSectionId) {
     const titles: Record<ExplorerSectionId, string> = {
       openEditors: "Open Editors",
-      workspace: workspaceTitle,
+      workspace: connectionsTitle,
       outline: "Outline",
       timeline: "Timeline",
     };
@@ -249,13 +250,17 @@ function ExplorerView() {
       case "workspace":
         return (
           <AccordionPanel
-            title={workspaceTitle}
+            title={connectionsTitle}
             expanded
             variant="fill"
             onToggle={() => toggleSection("workspace")}
-            actions={workspaceActions}
+            actions={WORKSPACE_ACTIONS_NODE}
           >
-            <div className="accordion-panel__empty">No folders opened</div>
+            {renderConnections ? (
+              renderConnections()
+            ) : (
+              <div className="accordion-panel__empty">No connections</div>
+            )}
           </AccordionPanel>
         );
       case "outline":
@@ -338,7 +343,7 @@ function ExplorerView() {
             title={sectionTitle(segment.id)}
             expanded={false}
             onToggle={() => toggleSection(segment.id)}
-            actions={segment.id === "workspace" ? workspaceActions : undefined}
+            actions={segment.id === "workspace" ? WORKSPACE_ACTIONS_NODE : undefined}
           />
         </div>
       );

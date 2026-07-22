@@ -107,7 +107,13 @@ function TabBar({ commands }: TabBarProps) {
                 }}
               >
                 <span className="tab-bar__tab-icon" aria-hidden>
-                  <Codicon name={codiconForLanguage(tab.languageId)} />
+                  <Codicon
+                    name={
+                      tab.uri === "silk://settings"
+                        ? "settings-gear"
+                        : codiconForLanguage(tab.languageId)
+                    }
+                  />
                 </span>
                 <span className="tab-bar__tab-label">{tab.label}</span>
                 <span className="tab-bar__tab-actions">

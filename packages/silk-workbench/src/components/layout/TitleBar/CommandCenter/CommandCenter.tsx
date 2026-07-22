@@ -111,8 +111,7 @@ function CommandCenter() {
   const quickPickOpen = quickPick?.open ?? false;
 
   const commandCenterEnabled =
-
-    ConfigurationService.getValue<boolean>("window.commandCenter") !== false;
+    ConfigurationService.getValue("window.commandCenter") !== false;
 
 
 

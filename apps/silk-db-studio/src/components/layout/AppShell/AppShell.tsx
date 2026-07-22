@@ -11,8 +11,18 @@ import TitleBar from "@silk-studio/workbench/components/layout/TitleBar/index.ts
 import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
 import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayoutState.ts";
 import { useWorkbenchSashDrag } from "@silk-studio/workbench/services/layout/useWorkbenchSashDrag.ts";
+import SettingsEditor from "@silk-studio/workbench/components/settings/index.ts";
+import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import ConnectionsExplorer from "../../connections/ConnectionsExplorer.tsx";
+import ConnectionEditor from "../../connections/ConnectionEditor.tsx";
+import { ConnectionEditorService } from "../../../services/connection/connectionEditorService.ts";
+import { ConnectionTreeService } from "../../../services/connection/connectionTreeService.ts";
+import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
+import { SettingsService } from "@silk-studio/workbench/services/settings/settingsService.ts";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
+import { useWorkbenchKeybindings } from "@silk-studio/workbench/services/keybinding/useWorkbenchKeybindings.ts";
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
+import { useConnectionState } from "../../../services/connection/useConnectionState.ts";
 
 const tabBarCommands = {
   executeCommand: (commandId: string) =>
@@ -22,17 +32,66 @@ const tabBarCommands = {
 };
 
 function AppShell() {
+  useWorkbenchKeybindings();
   const layout = useLayoutState();
+  const configuration = useConfiguration();
+  const connection = useConnectionState();
   const { startDrag } = useWorkbenchSashDrag();
 
   const panelOnBottom = layout.panelPosition === "bottom";
   const showEditor = !layout.panelMaximized;
+
+  const connectionsActions = (
+    <>
+      <button
+        type="button"
+        className="accordion-panel__action"
+        title="New Connection"
+        aria-label="New Connection"
+        onClick={() => ConnectionEditorService.openNewConnection()}
+      >
+        <Codicon name="add" />
+      </button>
+      <button
+        type="button"
+        className="accordion-panel__action"
+        title="Refresh"
+        aria-label="Refresh"
+        disabled={!connection.connectedProfileId}
+        onClick={() => {
+          const profileId = connection.connectedProfileId;
+          if (!profileId) return;
+          void ConnectionTreeService.loadSchemas(profileId, true);
+        }}
+      >
+        <Codicon name="refresh" />
+      </button>
+    </>
+  );
 
   const editorArea = (
     <div
       className={`app-shell__editor${showEditor ? "" : " app-shell__editor--hidden"}`}
     >
       <EditorArea
+        configuration={{
+          colorTheme: configuration["workbench.colorTheme"],
+          fontSize: configuration["editor.fontSize"],
+          tabSize: configuration["editor.tabSize"],
+          insertSpaces: configuration["editor.insertSpaces"],
+          lineNumbers: configuration["editor.lineNumbers"],
+          minimapEnabled: configuration["editor.minimap.enabled"],
+          wordWrap: configuration["editor.wordWrap"],
+        }}
+        renderAlternative={(tab) => {
+          if (SettingsService.isSettingsTab(tab.uri)) {
+            return <SettingsEditor />;
+          }
+          if (ConnectionEditorService.isConnectionEditorTab(tab.uri)) {
+            return <ConnectionEditor />;
+          }
+          return null;
+        }}
         onRunQuery={() =>
           void CommandService.executeCommand("silk.query.execute")
         }
@@ -110,7 +169,11 @@ function AppShell() {
                     className="app-shell__sidebar"
                     style={{ width: layout.sidebarWidth }}
                   >
-                    <Sidebar />
+                    <Sidebar
+                      connectionsTitle="CONNECTIONS"
+                      connectionsActions={connectionsActions}
+                      renderConnections={() => <ConnectionsExplorer />}
+                    />
                   </div>
                   <WorkbenchSash
                     orientation="vertical"

@@ -16,6 +16,8 @@
     "fs:default",
     "window-controls:default",
     "allow-ensure-title-bar-overlay",
-    "allow-query-execute"
+    "allow-query-execute",
+    "allow-connection-commands",
+    "allow-secret-commands"
   ]
 }

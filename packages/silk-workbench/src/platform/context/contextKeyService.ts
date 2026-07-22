@@ -1,3 +1,5 @@
+import { ConfigurationService } from "../configuration/configurationService";
+
 type ContextChangeListener = () => void;
 
 class ContextKeyServiceImpl {
@@ -20,7 +22,9 @@ class ContextKeyServiceImpl {
 
     if (expression.startsWith("config.")) {
       const configKey = expression.slice("config.".length);
-      return ConfigurationService.getValue<boolean>(configKey) !== false;
+      return ConfigurationService.getValue(
+        configKey as Parameters<typeof ConfigurationService.getValue>[0],
+      ) !== false;
     }
 
     return this.get(expression);
@@ -38,17 +42,5 @@ class ContextKeyServiceImpl {
   }
 }
 
-class ConfigurationServiceImpl {
-  private readonly values = new Map<string, unknown>([
-    ["window.commandCenter", true],
-    ["workbench.navigationControl.enabled", true],
-    ["workbench.layoutControl.enabled", true],
-  ]);
-
-  getValue<T>(key: string): T | undefined {
-    return this.values.get(key) as T | undefined;
-  }
-}
-
+export { ConfigurationService };
 export const ContextKeyService = new ContextKeyServiceImpl();
-export const ConfigurationService = new ConfigurationServiceImpl();

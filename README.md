@@ -27,8 +27,7 @@ pnpm install
 cd packages/jdbc-agent
 .\gradlew.bat build
 cd ../..
-Copy-Item apps/silk-db-studio/.env.example apps/silk-db-studio/.env.local
-pnpm --filter @silk-studio/db-studio tauri:dev
+pnpm --filter @silk-studio/db-studio tauri dev
 ```
 
-로컬 `.env.local` 파일은 Git에서 무시됩니다.
+첫 실행 후 `Ctrl+,` → **Database**에서 연결 프로필을 만들고 **Connect**하세요.
