@@ -1,4 +1,9 @@
-export type ConnectionDriverId = "oracle" | "sqlserver" | "mysql";
+export type ConnectionDriverId =
+  | "oracle"
+  | "sqlserver"
+  | "mysql"
+  | "mariadb"
+  | "postgresql";
 
 export type ConnectionProfile = {
   id: string;
@@ -7,9 +12,16 @@ export type ConnectionProfile = {
   url: string;
   user: string;
   password: string;
-  /** Database/catalog applied on connect (SQL Server `USE`); unused by Oracle. */
+  /**
+   * Database/catalog. SQL Server: applied via `USE`. MySQL/MariaDB: applied via `USE`.
+   * PostgreSQL: select the database in the JDBC URL path (pgJDBC cannot switch databases
+   * after connect). Oracle: unused.
+   */
   catalog: string;
-  /** Default schema applied on connect (Oracle) or highlighted in Explorer (SQL Server). */
+  /**
+   * Default schema. Oracle: `ALTER SESSION SET CURRENT_SCHEMA`. PostgreSQL: `SET search_path`.
+   * SQL Server: Explorer highlight only. MySQL/MariaDB: kept in sync with `catalog`.
+   */
   defaultSchema: string;
   createdAt: number;
   updatedAt: number;
@@ -46,6 +58,10 @@ export const DEFAULT_SQLSERVER_URL =
   "jdbc:sqlserver://localhost:1433;encrypt=true;trustServerCertificate=true";
 
 export const DEFAULT_MYSQL_URL = "jdbc:mysql://localhost:3306";
+
+export const DEFAULT_MARIADB_URL = "jdbc:mariadb://localhost:3306";
+
+export const DEFAULT_POSTGRESQL_URL = "jdbc:postgresql://localhost:5432/postgres";
 
 /**
  * Static per-driver definition used by the connection editor to render the right fields/labels
@@ -108,6 +124,31 @@ export const CONNECTION_DRIVERS: ConnectionDriverDefinition[] = [
     showSchemaField: false,
     schemaLabel: "Default Schema",
     schemaHint: "",
+  },
+  {
+    id: "mariadb",
+    label: "MariaDB (Connector/J)",
+    defaultUrl: DEFAULT_MARIADB_URL,
+    supportsCatalog: true,
+    catalogLabel: "Database",
+    catalogHint: "Applied on connect via USE. Leave empty to use the login's default database.",
+    // Same as MySQL: no schema concept distinct from the database itself.
+    showSchemaField: false,
+    schemaLabel: "Default Schema",
+    schemaHint: "",
+  },
+  {
+    id: "postgresql",
+    label: "PostgreSQL (pgJDBC)",
+    defaultUrl: DEFAULT_POSTGRESQL_URL,
+    supportsCatalog: true,
+    catalogLabel: "Database",
+    catalogHint:
+      "Specify the database in the JDBC URL path (jdbc:postgresql://host:5432/dbname). pgJDBC selects the database at connect time and cannot switch afterwards.",
+    showSchemaField: true,
+    schemaLabel: "Default Schema",
+    schemaHint:
+      "Applied on connect via SET search_path TO <schema>, public. Leave empty to use the login's default search_path.",
   },
 ];
 

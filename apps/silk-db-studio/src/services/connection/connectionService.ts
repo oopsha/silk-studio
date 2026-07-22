@@ -275,13 +275,14 @@ class ConnectionServiceImpl {
   private toCredentials(
     input: Pick<
       ConnectionProfileInput,
-      "driverId" | "url" | "user" | "password" | "catalog"
+      "driverId" | "url" | "user" | "password" | "catalog" | "defaultSchema"
     >,
   ) {
     return {
       url: input.url.trim() || defaultUrlForDriver(input.driverId),
       user: input.user.trim(),
       password: input.password,
+      schema: resolveDefaultSchema(input) || undefined,
       catalog: input.catalog.trim() || undefined,
     };
   }
@@ -327,7 +328,9 @@ export const ConnectionService = new ConnectionServiceImpl();
  * the Explorer's existing default-schema highlighting keeps working without driver-specific
  * cases outside this service.
  */
-function resolveDefaultSchema(input: ConnectionProfileInput): string {
+function resolveDefaultSchema(
+  input: Pick<ConnectionProfileInput, "driverId" | "catalog" | "defaultSchema">,
+): string {
   const driver = getConnectionDriver(input.driverId);
   return driver.showSchemaField ? input.defaultSchema.trim() : input.catalog.trim();
 }

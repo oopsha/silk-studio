@@ -31,5 +31,6 @@ java -jar build/libs/jdbc-agent-all.jar query.execute "select * from dual"
 ## Bundled Drivers & Licensing
 
 See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for the JDBC drivers bundled in
-`build/libs/lib/` and their licenses — MySQL Connector/J in particular is GPLv2 (+ FOSS
-Exception), which needs care if this agent is ever redistributed outside this repo.
+`build/libs/lib/` and their licenses — MySQL Connector/J (GPLv2 + FOSS Exception) and MariaDB
+Connector/J (LGPL-2.1-or-later) in particular need care if this agent is ever redistributed
+outside this repo. PostgreSQL JDBC is BSD-2-Clause.

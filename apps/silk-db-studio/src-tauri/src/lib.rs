@@ -117,6 +117,7 @@ fn connection_test(
     url: String,
     user: String,
     password: String,
+    schema: Option<String>,
     catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
@@ -124,7 +125,13 @@ fn connection_test(
         .jdbc_agent
         .lock()
         .map_err(|_| "Failed to acquire jdbc-agent lock".to_string())?;
-    guard.test_connection(url.trim(), user.trim(), password.as_str(), catalog.as_deref())
+    guard.test_connection(
+        url.trim(),
+        user.trim(),
+        password.as_str(),
+        schema.as_deref(),
+        catalog.as_deref(),
+    )
 }
 
 #[tauri::command]

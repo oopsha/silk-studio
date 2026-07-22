@@ -11,11 +11,17 @@ export type ConnectionCredentials = {
   user: string;
   password: string;
   /**
-   * Optional default schema applied after open. Oracle: `ALTER SESSION SET CURRENT_SCHEMA`.
+   * Optional default schema applied after open.
+   * Oracle: `ALTER SESSION SET CURRENT_SCHEMA`.
+   * PostgreSQL: `SET search_path TO <schema>, public`.
    * SQL Server: informational only (no session-scoped equivalent), used for Explorer UI.
    */
   schema?: string;
-  /** Optional catalog/database applied after open (SQL Server `USE`); ignored by Oracle. */
+  /**
+   * Optional catalog/database applied after open (SQL Server / MySQL / MariaDB `USE`).
+   * PostgreSQL: select the database in the JDBC URL path instead — pgJDBC cannot switch
+   * databases after connect. Ignored by Oracle.
+   */
   catalog?: string;
 };
 
