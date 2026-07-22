@@ -14,10 +14,6 @@ import {
 } from "../../../themes/dark2026-monaco";
 import "./EditorArea.css";
 
-function handleEditorWillMount(monaco: Monaco) {
-  defineWorkbenchMonacoThemes(monaco);
-}
-
 export type EditorConfigurationOptions = {
   colorTheme: WorkbenchColorThemeId;
   fontSize: number;
@@ -32,20 +28,32 @@ type EditorAreaProps = {
   onRunQuery?: () => void;
   renderAlternative?: (tab: EditorTab) => React.ReactNode | null;
   configuration: EditorConfigurationOptions;
+  /** Extra Monaco setup (language registration, providers) before the first editor mounts. */
+  beforeMount?: (monaco: Monaco) => void;
 };
 
 function EditorArea({
   onRunQuery,
   renderAlternative,
   configuration,
+  beforeMount,
 }: EditorAreaProps) {
   const activeTab = useActiveEditor();
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const cursorListenerRef = useRef<IDisposable | null>(null);
 
+  const handleEditorWillMount = useCallback(
+    (monaco: Monaco) => {
+      defineWorkbenchMonacoThemes(monaco);
+      beforeMount?.(monaco);
+    },
+    [beforeMount],
+  );
+
   const handleMount = useCallback(
     (instance: editor.IStandaloneCodeEditor, monaco: Monaco) => {
       editorRef.current = instance;
+      EditorService.setActiveTextEditor(instance);
       cursorListenerRef.current?.dispose();
 
       const position = instance.getPosition();
@@ -95,6 +103,10 @@ function EditorArea({
     return () => {
       cursorListenerRef.current?.dispose();
       cursorListenerRef.current = null;
+      if (editorRef.current) {
+        EditorService.setActiveTextEditor(null);
+        editorRef.current = null;
+      }
       EditorStatusService.resetCursorPosition();
     };
   }, []);

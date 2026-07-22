@@ -60,6 +60,10 @@
   color: #f48771;
 }
 
+.panel__status--cancelled {
+  color: #cca700;
+}
+
 .panel__content {
   flex: 1;
   margin: 0;

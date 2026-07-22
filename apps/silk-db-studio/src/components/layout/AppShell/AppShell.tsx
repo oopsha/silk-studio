@@ -23,6 +23,7 @@ import { CommandService } from "@silk-studio/workbench/platform/commands/command
 import { useWorkbenchKeybindings } from "@silk-studio/workbench/services/keybinding/useWorkbenchKeybindings.ts";
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
 import { useConnectionState } from "../../../services/connection/useConnectionState.ts";
+import { registerSqlLanguages } from "../../../services/sql/registerSqlLanguages.ts";
 
 const tabBarCommands = {
   executeCommand: (commandId: string) =>
@@ -83,6 +84,7 @@ function AppShell() {
           minimapEnabled: configuration["editor.minimap.enabled"],
           wordWrap: configuration["editor.wordWrap"],
         }}
+        beforeMount={registerSqlLanguages}
         renderAlternative={(tab) => {
           if (SettingsService.isSettingsTab(tab.uri)) {
             return <SettingsEditor />;

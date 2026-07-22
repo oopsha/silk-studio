@@ -18,9 +18,24 @@ import java.sql.Statement;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public final class Main {
   private static final ObjectMapper MAPPER = new ObjectMapper();
+
+  /**
+   * Runs {@code query.execute} off the stdin reader thread so {@code query.cancel} can be
+   * processed (and {@link Statement#cancel()} called) while a long query is in flight.
+   */
+  private static final ExecutorService QUERY_EXECUTOR =
+      Executors.newSingleThreadExecutor(
+          (runnable) -> {
+            Thread thread = new Thread(runnable, "jdbc-agent-query");
+            thread.setDaemon(true);
+            return thread;
+          });
 
   private Main() {}
 
@@ -62,22 +77,32 @@ public final class Main {
           continue;
         }
 
-        ObjectNode response;
+        final JsonNode request;
         try {
-          JsonNode request = MAPPER.readTree(line);
-          response = handleRequest(runtime, request);
+          request = MAPPER.readTree(line);
         } catch (Throwable error) {
-          // Catch Throwable, not just Exception: driver/classpath issues surface as
-          // Errors (e.g. NoClassDefFoundError), and letting those escape would kill this
-          // whole long-lived --serve process instead of just failing the one request.
-          response = MAPPER.createObjectNode();
+          ObjectNode response = MAPPER.createObjectNode();
           response.putNull("id");
           response.put("ok", false);
           ObjectNode err = response.putObject("error");
           err.put("message", describeThrowable(error, "Invalid request."));
+          writeResponse(writer, response);
+          continue;
         }
 
-        writer.println(MAPPER.writeValueAsString(response));
+        String method = request.path("method").asText("");
+        if ("query.execute".equals(method)) {
+          // Keep reading stdin (for query.cancel) while execute runs on QUERY_EXECUTOR.
+          QUERY_EXECUTOR.execute(
+              () -> {
+                ObjectNode response = handleRequest(runtime, request);
+                writeResponse(writer, response);
+              });
+          continue;
+        }
+
+        ObjectNode response = handleRequest(runtime, request);
+        writeResponse(writer, response);
 
         if (response.path("result").path("shutdown").asBoolean(false)) {
           break;
@@ -86,6 +111,23 @@ public final class Main {
     } catch (Throwable error) {
       System.err.println(describeThrowable(error, "jdbc-agent server failed."));
       System.exit(1);
+    } finally {
+      QUERY_EXECUTOR.shutdownNow();
+      try {
+        QUERY_EXECUTOR.awaitTermination(2, TimeUnit.SECONDS);
+      } catch (InterruptedException ignored) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
+  private static void writeResponse(PrintWriter writer, ObjectNode response) {
+    synchronized (writer) {
+      try {
+        writer.println(MAPPER.writeValueAsString(response));
+      } catch (Exception error) {
+        System.err.println(describeThrowable(error, "Failed to write response."));
+      }
     }
   }
 
@@ -145,6 +187,12 @@ public final class Main {
           response.put("ok", true);
           response.set("result", runtime.executeQuery(sql, params));
         }
+        case "query.cancel" -> {
+          boolean cancelled = runtime.cancelActiveQuery();
+          response.put("ok", true);
+          ObjectNode result = response.putObject("result");
+          result.put("cancelled", cancelled);
+        }
         case "agent.shutdown" -> {
           response.put("ok", true);
           ObjectNode result = response.putObject("result");
@@ -179,6 +227,8 @@ public final class Main {
     private Connection connection;
     /** Resolved from the JDBC URL on {@link #openConnection}; see {@link DbDialects#forUrl}. */
     private DbDialect dialect;
+    /** In-flight statement for {@link #cancelActiveQuery}; visible across threads. */
+    private volatile Statement activeStatement;
 
     void openConnection(JsonNode params) throws SQLException {
       applyCredentials(params);
@@ -328,7 +378,9 @@ public final class Main {
       int timeoutOverride = params.path("queryTimeoutSec").asInt(-1);
       int effectiveTimeout = timeoutOverride > 0 ? timeoutOverride : timeoutSeconds;
 
-      try (Statement statement = connection.createStatement()) {
+      Statement statement = connection.createStatement();
+      activeStatement = statement;
+      try {
         statement.setQueryTimeout(effectiveTimeout);
         statement.setMaxRows(effectiveMaxRows);
 
@@ -348,6 +400,29 @@ public final class Main {
         result.put("updateCount", updated);
         result.put("message", "OK. " + updated + " row(s) affected.");
         return result;
+      } finally {
+        activeStatement = null;
+        try {
+          statement.close();
+        } catch (SQLException ignored) {
+        }
+      }
+    }
+
+    /**
+     * Best-effort cancel of the in-flight {@link #executeQuery}. Must be callable from another
+     * thread while {@code statement.execute} is blocked (JDBC {@link Statement#cancel()}).
+     */
+    boolean cancelActiveQuery() {
+      Statement statement = activeStatement;
+      if (statement == null) {
+        return false;
+      }
+      try {
+        statement.cancel();
+        return true;
+      } catch (SQLException error) {
+        return false;
       }
     }
 

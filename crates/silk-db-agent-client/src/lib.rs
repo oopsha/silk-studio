@@ -1,31 +1,43 @@
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
-struct AgentProcess {
-    child: Child,
-    stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
-    next_id: u64,
-    connected: bool,
+type PendingMap = Arc<Mutex<HashMap<u64, Sender<Result<Value, String>>>>>;
+
+struct AgentIo {
+    stdin: Mutex<ChildStdin>,
+    next_id: AtomicU64,
+    pending: PendingMap,
+    connected: AtomicBool,
+    child: Mutex<Child>,
+    /// Reader thread handle; joined on drop after the child is killed.
+    reader: Mutex<Option<JoinHandle<()>>>,
 }
 
+/// Thread-safe JDBC agent client. Requests/responses are demultiplexed by id so
+/// [`Self::cancel_query`] can run while [`Self::execute_query`] is waiting.
 pub struct JdbcAgentClient {
     agent_jar: PathBuf,
-    process: Option<AgentProcess>,
+    io: Mutex<Option<Arc<AgentIo>>>,
 }
 
 impl JdbcAgentClient {
     pub fn new(agent_jar: impl Into<PathBuf>) -> Self {
         Self {
             agent_jar: agent_jar.into(),
-            process: None,
+            io: Mutex::new(None),
         }
     }
 
     pub fn connect(
-        &mut self,
+        &self,
         url: &str,
         user: &str,
         password: &str,
@@ -50,22 +62,20 @@ impl JdbcAgentClient {
             }
         }
         let result = self.send_request("connection.open", params)?;
-        if let Some(process) = self.process.as_mut() {
-            process.connected = true;
-        }
+        self.ensure_process()?.connected.store(true, Ordering::SeqCst);
         Ok(result)
     }
 
-    pub fn disconnect(&mut self) -> Result<Value, String> {
+    pub fn disconnect(&self) -> Result<Value, String> {
         let result = self.send_request("connection.close", json!({}))?;
-        if let Some(process) = self.process.as_mut() {
-            process.connected = false;
+        if let Ok(io) = self.ensure_process() {
+            io.connected.store(false, Ordering::SeqCst);
         }
         Ok(result)
     }
 
     pub fn test_connection(
-        &mut self,
+        &self,
         url: &str,
         user: &str,
         password: &str,
@@ -92,7 +102,7 @@ impl JdbcAgentClient {
         self.send_request("connection.test", params)
     }
 
-    pub fn list_metadata(&mut self, schema: Option<&str>) -> Result<Value, String> {
+    pub fn list_metadata(&self, schema: Option<&str>) -> Result<Value, String> {
         self.ensure_connection()?;
         let mut params = json!({});
         if let Some(schema) = schema {
@@ -104,7 +114,7 @@ impl JdbcAgentClient {
     }
 
     pub fn execute_query(
-        &mut self,
+        &self,
         sql: &str,
         max_rows: Option<u32>,
         query_timeout_sec: Option<u32>,
@@ -128,72 +138,149 @@ impl JdbcAgentClient {
         self.send_request("query.execute", params)
     }
 
-    fn ensure_connection(&mut self) -> Result<(), String> {
-        let process = self.ensure_process()?;
-        if process.connected {
+    /// Cancels the in-flight JDBC statement. Safe to call while [`Self::execute_query`] waits.
+    pub fn cancel_query(&self) -> Result<Value, String> {
+        self.ensure_process()?;
+        self.send_request("query.cancel", json!({}))
+    }
+
+    fn ensure_connection(&self) -> Result<(), String> {
+        let io = self.ensure_process()?;
+        if io.connected.load(Ordering::SeqCst) {
             return Ok(());
         }
-
         Err(
             "No active database connection. Connect a profile in the Connections explorer.".into(),
         )
     }
 
-    fn ensure_process(&mut self) -> Result<&mut AgentProcess, String> {
-        if self.process.is_none() {
-            if !self.agent_jar.exists() {
-                let agent_dir = self
-                    .agent_jar
-                    .parent()
-                    .and_then(|path| path.parent())
-                    .and_then(|path| path.parent())
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| self.agent_jar.clone());
-                return Err(format!(
-                    "jdbc-agent is not built.\nBuild it first:\ncd {}\nWindows: .\\gradlew.bat build\nmacOS/Linux: ./gradlew build\nThen retry query execution.",
-                    agent_dir.display()
-                ));
+    fn ensure_process(&self) -> Result<Arc<AgentIo>, String> {
+        {
+            let guard = self
+                .io
+                .lock()
+                .map_err(|_| "Failed to lock jdbc-agent process slot".to_string())?;
+            if let Some(existing) = guard.as_ref() {
+                return Ok(Arc::clone(existing));
             }
-
-            let mut child = Command::new("java")
-                .arg("-Dfile.encoding=UTF-8")
-                .arg("-Dsun.jnu.encoding=UTF-8")
-                .arg("-jar")
-                .arg(&self.agent_jar)
-                .arg("--serve")
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::inherit())
-                .spawn()
-                .map_err(|error| format!("Failed to start jdbc-agent: {error}"))?;
-
-            let stdin = child
-                .stdin
-                .take()
-                .ok_or_else(|| "Failed to capture jdbc-agent stdin".to_string())?;
-            let stdout = child
-                .stdout
-                .take()
-                .ok_or_else(|| "Failed to capture jdbc-agent stdout".to_string())?;
-
-            self.process = Some(AgentProcess {
-                child,
-                stdin,
-                stdout: BufReader::new(stdout),
-                next_id: 1,
-                connected: false,
-            });
         }
 
-        self.process
-            .as_mut()
-            .ok_or_else(|| "Failed to initialize jdbc-agent process".to_string())
+        if !self.agent_jar.exists() {
+            let agent_dir = self
+                .agent_jar
+                .parent()
+                .and_then(|path| path.parent())
+                .and_then(|path| path.parent())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| self.agent_jar.clone());
+            return Err(format!(
+                "jdbc-agent is not built.\nBuild it first:\ncd {}\nWindows: .\\gradlew.bat build\nmacOS/Linux: ./gradlew build\nThen retry query execution.",
+                agent_dir.display()
+            ));
+        }
+
+        let mut child = Command::new("java")
+            .arg("-Dfile.encoding=UTF-8")
+            .arg("-Dsun.jnu.encoding=UTF-8")
+            .arg("-jar")
+            .arg(&self.agent_jar)
+            .arg("--serve")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .map_err(|error| format!("Failed to start jdbc-agent: {error}"))?;
+
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "Failed to capture jdbc-agent stdin".to_string())?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "Failed to capture jdbc-agent stdout".to_string())?;
+
+        let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
+        let pending_for_reader = Arc::clone(&pending);
+
+        let reader = thread::spawn(move || {
+            let mut stdout = BufReader::new(stdout);
+            loop {
+                let mut line = String::new();
+                match stdout.read_line(&mut line) {
+                    Ok(0) => break,
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+
+                let Ok(parsed) = serde_json::from_str::<Value>(trimmed) else {
+                    continue;
+                };
+                let Some(response_id) = parsed.get("id").and_then(Value::as_u64) else {
+                    continue;
+                };
+
+                let sender = {
+                    let Ok(mut map) = pending_for_reader.lock() else {
+                        break;
+                    };
+                    map.remove(&response_id)
+                };
+
+                if let Some(sender) = sender {
+                    let _ = sender.send(parse_agent_result(parsed));
+                }
+            }
+
+            if let Ok(mut map) = pending_for_reader.lock() {
+                for (_, sender) in map.drain() {
+                    let _ = sender.send(Err("jdbc-agent terminated unexpectedly.".into()));
+                }
+            }
+        });
+
+        let created = Arc::new(AgentIo {
+            stdin: Mutex::new(stdin),
+            next_id: AtomicU64::new(1),
+            pending,
+            connected: AtomicBool::new(false),
+            child: Mutex::new(child),
+            reader: Mutex::new(Some(reader)),
+        });
+
+        let mut guard = self
+            .io
+            .lock()
+            .map_err(|_| "Failed to lock jdbc-agent process slot".to_string())?;
+        if let Some(existing) = guard.as_ref() {
+            // Lost the startup race — discard this process and use the winner.
+            let _ = created.child.lock().map(|mut child| {
+                let _ = child.kill();
+                let _ = child.wait();
+            });
+            return Ok(Arc::clone(existing));
+        }
+        *guard = Some(Arc::clone(&created));
+        Ok(created)
     }
 
-    fn send_request(&mut self, method: &str, params: Value) -> Result<Value, String> {
-        let process = self.ensure_process()?;
-        let id = process.next_id;
-        process.next_id += 1;
+    fn send_request(&self, method: &str, params: Value) -> Result<Value, String> {
+        let io = self.ensure_process()?;
+        let id = io.next_id.fetch_add(1, Ordering::SeqCst);
+
+        let (tx, rx): (Sender<Result<Value, String>>, Receiver<Result<Value, String>>) = channel();
+        {
+            let mut pending = io
+                .pending
+                .lock()
+                .map_err(|_| "Failed to lock jdbc-agent pending map".to_string())?;
+            pending.insert(id, tx);
+        }
 
         let payload = json!({
             "id": id,
@@ -202,70 +289,69 @@ impl JdbcAgentClient {
         })
         .to_string();
 
-        process
-            .stdin
-            .write_all(payload.as_bytes())
-            .map_err(|error| format!("Failed to write request: {error}"))?;
-        process
-            .stdin
-            .write_all(b"\n")
-            .map_err(|error| format!("Failed to write request line ending: {error}"))?;
-        process
-            .stdin
-            .flush()
-            .map_err(|error| format!("Failed to flush request: {error}"))?;
-
-        let mut line = String::new();
-        let bytes = process
-            .stdout
-            .read_line(&mut line)
-            .map_err(|error| format!("Failed to read response: {error}"))?;
-
-        if bytes == 0 {
-            self.process = None;
-            return Err("jdbc-agent terminated unexpectedly.".into());
+        {
+            let mut stdin = io
+                .stdin
+                .lock()
+                .map_err(|_| "Failed to lock jdbc-agent stdin".to_string())?;
+            stdin
+                .write_all(payload.as_bytes())
+                .map_err(|error| format!("Failed to write request: {error}"))?;
+            stdin
+                .write_all(b"\n")
+                .map_err(|error| format!("Failed to write request line ending: {error}"))?;
+            stdin
+                .flush()
+                .map_err(|error| format!("Failed to flush request: {error}"))?;
         }
 
-        let response: Value = serde_json::from_str(line.trim())
-            .map_err(|error| format!("Invalid response JSON from jdbc-agent: {error}"))?;
-
-        let response_id = response
-            .get("id")
-            .and_then(Value::as_u64)
-            .ok_or_else(|| "Invalid response: missing id".to_string())?;
-        if response_id != id {
-            return Err(format!(
-                "Mismatched response id. expected={id}, actual={response_id}"
-            ));
-        }
-
-        let ok = response
-            .get("ok")
-            .and_then(Value::as_bool)
-            .ok_or_else(|| "Invalid response: missing ok".to_string())?;
-        if !ok {
-            let message = response
-                .get("error")
-                .and_then(|value| value.get("message"))
-                .and_then(Value::as_str)
-                .unwrap_or("Unknown jdbc-agent error");
-            return Err(message.to_string());
-        }
-
-        Ok(response.get("result").cloned().unwrap_or_else(|| json!({})))
+        // Long queries can exceed the DB timeout setting; keep a high ceiling for IPC wait.
+        rx.recv_timeout(Duration::from_secs(60 * 60))
+            .map_err(|_| "Timed out waiting for jdbc-agent response.".to_string())?
     }
+}
+
+fn parse_agent_result(response: Value) -> Result<Value, String> {
+    let ok = response
+        .get("ok")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| "Invalid response: missing ok".to_string())?;
+    if !ok {
+        let message = response
+            .get("error")
+            .and_then(|value| value.get("message"))
+            .and_then(Value::as_str)
+            .unwrap_or("Unknown jdbc-agent error");
+        return Err(message.to_string());
+    }
+
+    Ok(response.get("result").cloned().unwrap_or_else(|| json!({})))
 }
 
 impl Drop for JdbcAgentClient {
     fn drop(&mut self) {
-        if let Some(mut process) = self.process.take() {
-            let _ = process
-                .stdin
-                .write_all(br#"{"id":0,"method":"agent.shutdown","params":{}}"#);
-            let _ = process.stdin.write_all(b"\n");
-            let _ = process.stdin.flush();
-            let _ = process.child.kill();
-            let _ = process.child.wait();
+        let Ok(mut guard) = self.io.lock() else {
+            return;
+        };
+        let Some(io) = guard.take() else {
+            return;
+        };
+
+        if let Ok(mut stdin) = io.stdin.lock() {
+            let _ = stdin.write_all(br#"{"id":0,"method":"agent.shutdown","params":{}}"#);
+            let _ = stdin.write_all(b"\n");
+            let _ = stdin.flush();
         }
+
+        if let Ok(mut child) = io.child.lock() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+
+        if let Ok(mut reader) = io.reader.lock() {
+            if let Some(handle) = reader.take() {
+                let _ = handle.join();
+            }
+        };
     }
 }

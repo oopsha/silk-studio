@@ -1,3 +1,4 @@
+import type { editor } from "monaco-editor";
 import type { EditorTab, OpenEditorInput } from "./editorTypes";
 import { EditorHost } from "./editorHost";
 import {
@@ -7,9 +8,18 @@ import {
 
 type EditorChangeListener = () => void;
 
+export type ActiveEditorSnapshot = {
+  content: string;
+  /** Character offsets into `content` (UTF-16 code units, Monaco model offsets). */
+  selectionStart: number;
+  selectionEnd: number;
+};
+
 function createTabId(): string {
   return `tab-${crypto.randomUUID()}`;
 }
+
+type LanguageIdResolver = (path: string, fromExtension: string) => string;
 
 class EditorServiceImpl {
   private tabs: EditorTab[] = [];
@@ -19,6 +29,11 @@ class EditorServiceImpl {
   private readonly listeners = new Set<EditorChangeListener>();
   private initialized = false;
   private enablePreviewEditors = true;
+  /** Live Monaco instance for the active text editor; cleared on unmount. */
+  private activeTextEditor: editor.IStandaloneCodeEditor | null = null;
+  private defaultUntitledLanguageId = "plaintext";
+  private resolveLanguageId: LanguageIdResolver = (_path, fromExtension) =>
+    fromExtension;
 
   ensureInitialTab(): void {
     if (this.initialized) return;
@@ -43,11 +58,72 @@ class EditorServiceImpl {
     return id ? this.tabs.find((tab) => tab.id === id) : undefined;
   }
 
-  openUntitled(): string {
+  /**
+   * Called from EditorArea on Monaco mount/unmount so query commands can read the live
+   * selection/cursor (tab content alone is not enough — selection lives in the editor model).
+   */
+  setActiveTextEditor(instance: editor.IStandaloneCodeEditor | null): void {
+    this.activeTextEditor = instance;
+  }
+
+  getActiveTextEditor(): editor.IStandaloneCodeEditor | null {
+    return this.activeTextEditor;
+  }
+
+  setDefaultUntitledLanguageId(languageId: string): void {
+    this.defaultUntitledLanguageId = languageId;
+  }
+
+  configureLanguageIdResolver(resolver: LanguageIdResolver): void {
+    this.resolveLanguageId = resolver;
+  }
+
+  setTabLanguageId(id: string, languageId: string): void {
+    const tab = this.tabs.find((item) => item.id === id);
+    if (!tab || tab.languageId === languageId) return;
+    tab.languageId = languageId;
+    this.fireDidChange();
+  }
+
+  /**
+   * Snapshot of the active Monaco buffer + selection offsets. Falls back to the whole tab
+   * content with a collapsed selection at the end when Monaco is not mounted yet.
+   */
+  getActiveEditorSnapshot(): ActiveEditorSnapshot | null {
+    const tab = this.getActiveTab();
+    if (!tab) return null;
+
+    const instance = this.activeTextEditor;
+    if (!instance) {
+      const content = tab.content;
+      return {
+        content,
+        selectionStart: content.length,
+        selectionEnd: content.length,
+      };
+    }
+
+    const model = instance.getModel();
+    const content = model?.getValue() ?? tab.content;
+    const selection = instance.getSelection();
+    if (!model || !selection) {
+      return {
+        content,
+        selectionStart: content.length,
+        selectionEnd: content.length,
+      };
+    }
+
+    const selectionStart = model.getOffsetAt(selection.getStartPosition());
+    const selectionEnd = model.getOffsetAt(selection.getEndPosition());
+    return { content, selectionStart, selectionEnd };
+  }
+
+  openUntitled(languageId?: string): string {
     const label = `Untitled-${this.untitledCounter++}`;
     return this.openEditor({
       label,
-      languageId: "plaintext",
+      languageId: languageId ?? this.defaultUntitledLanguageId,
       content: "",
       preview: false,
     });
@@ -102,10 +178,11 @@ class EditorServiceImpl {
   }
 
   openFile(path: string, content: string, preview?: boolean): string {
+    const fromExtension = languageIdFromPath(path);
     return this.openEditor({
       uri: path,
       label: basenameFromPath(path),
-      languageId: languageIdFromPath(path),
+      languageId: this.resolveLanguageId(path, fromExtension),
       content,
       preview: preview ?? this.enablePreviewEditors,
     });
