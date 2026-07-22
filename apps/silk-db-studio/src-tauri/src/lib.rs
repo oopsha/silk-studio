@@ -1,3 +1,5 @@
+mod secrets;
+
 use serde_json::Value;
 use silk_db_agent_client::JdbcAgentClient;
 use std::path::PathBuf;
@@ -53,7 +55,14 @@ struct AppState {
 }
 
 #[tauri::command]
-fn query_execute(sql: String, state: tauri::State<'_, AppState>) -> Result<Value, String> {
+fn query_execute(
+    sql: String,
+    max_rows: Option<u32>,
+    query_timeout_sec: Option<u32>,
+    auto_commit: Option<bool>,
+    read_only: Option<bool>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
     let statement = sql.trim();
     if statement.is_empty() {
         return Err("Query is empty.".into());
@@ -63,7 +72,71 @@ fn query_execute(sql: String, state: tauri::State<'_, AppState>) -> Result<Value
         .jdbc_agent
         .lock()
         .map_err(|_| "Failed to acquire jdbc-agent lock".to_string())?;
-    guard.execute_query(statement)
+    guard.execute_query(
+        statement,
+        max_rows,
+        query_timeout_sec,
+        auto_commit,
+        read_only,
+    )
+}
+
+#[tauri::command]
+fn connection_connect(
+    url: String,
+    user: String,
+    password: String,
+    schema: Option<String>,
+    catalog: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let mut guard = state
+        .jdbc_agent
+        .lock()
+        .map_err(|_| "Failed to acquire jdbc-agent lock".to_string())?;
+    guard.connect(
+        url.trim(),
+        user.trim(),
+        password.as_str(),
+        schema.as_deref(),
+        catalog.as_deref(),
+    )
+}
+
+#[tauri::command]
+fn connection_disconnect(state: tauri::State<'_, AppState>) -> Result<Value, String> {
+    let mut guard = state
+        .jdbc_agent
+        .lock()
+        .map_err(|_| "Failed to acquire jdbc-agent lock".to_string())?;
+    guard.disconnect()
+}
+
+#[tauri::command]
+fn connection_test(
+    url: String,
+    user: String,
+    password: String,
+    catalog: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let mut guard = state
+        .jdbc_agent
+        .lock()
+        .map_err(|_| "Failed to acquire jdbc-agent lock".to_string())?;
+    guard.test_connection(url.trim(), user.trim(), password.as_str(), catalog.as_deref())
+}
+
+#[tauri::command]
+fn connection_metadata(
+    schema: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let mut guard = state
+        .jdbc_agent
+        .lock()
+        .map_err(|_| "Failed to acquire jdbc-agent lock".to_string())?;
+    guard.list_metadata(schema.as_deref())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -78,7 +151,14 @@ pub fn run() {
         .plugin(tauri_plugin_window_controls::init())
         .invoke_handler(tauri::generate_handler![
             ensure_title_bar_overlay,
-            query_execute
+            query_execute,
+            connection_connect,
+            connection_disconnect,
+            connection_test,
+            connection_metadata,
+            secrets::secret_set,
+            secrets::secret_get,
+            secrets::secret_delete,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

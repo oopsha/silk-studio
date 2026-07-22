@@ -1,5 +1,8 @@
 .editor-area {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-height: 0;
+  overflow: hidden;
   background-color: var(--color-editor);
 }

@@ -70,10 +70,6 @@ CommandsRegistry.registerCommand("workbench.action.lockEditorGroup", () => {
   console.log("[command] workbench.action.lockEditorGroup");
 });
 
-CommandsRegistry.registerCommand("workbench.action.configureEditors", () => {
-  console.log("[command] workbench.action.configureEditors");
-});
-
 CommandsRegistry.registerCommand("workbench.action.splitEditorRight", () => {
   console.log("[command] workbench.action.splitEditorRight");
 });

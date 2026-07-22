@@ -1,0 +1,130 @@
+.connection-editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px 32px;
+  color: var(--color-foreground);
+  background-color: var(--color-editor);
+}
+
+.connection-editor__header {
+  margin-bottom: 16px;
+}
+
+.connection-editor__title {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.connection-editor__intro {
+  margin: 0;
+  color: var(--color-description);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.connection-editor__feedback {
+  margin: 0 0 12px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.connection-editor__feedback--success {
+  color: #73c991;
+}
+
+.connection-editor__feedback--error,
+.connection-editor__error {
+  color: #f14c4c;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.connection-editor__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 640px;
+}
+
+.connection-editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-description);
+}
+
+.connection-editor__input {
+  padding: 6px 8px;
+  color: var(--color-input-foreground);
+  background-color: var(--color-input-background);
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.connection-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.connection-editor__button {
+  padding: 5px 10px;
+  color: var(--color-foreground);
+  background-color: var(--color-input-background);
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.connection-editor__button:hover:not(:disabled) {
+  background-color: var(--color-list-hover);
+}
+
+.connection-editor__button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.connection-editor__button--primary {
+  color: #ffffff;
+  background-color: #0078d4;
+  border-color: #0078d4;
+}
+
+.connection-editor__button--primary:hover:not(:disabled) {
+  background-color: #026ec1;
+}
+
+.connection-editor__schema-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.connection-editor__schema-row .connection-editor__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.connection-editor__hint {
+  color: var(--color-description);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.connection-editor__intro code {
+  font-family: var(--font-family-monospace, Consolas, monospace);
+  font-size: 11px;
+}

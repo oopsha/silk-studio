@@ -1,0 +1,129 @@
+.connections-explorer {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  padding: 2px 0 8px;
+  font-size: 13px;
+}
+
+.connections-explorer__profile {
+  min-width: 0;
+}
+
+.connections-explorer__profile--active > .connections-explorer__row {
+  background-color: var(--color-list-hover);
+}
+
+.connections-explorer__profile--connected > .connections-explorer__row .connections-explorer__status {
+  color: #73c991;
+}
+
+.connections-explorer__row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 22px;
+  padding-right: 4px;
+}
+
+.connections-explorer__row:hover {
+  background-color: var(--color-list-hover);
+}
+
+.connections-explorer__twistie,
+.connections-explorer__icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--color-foreground);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.connections-explorer__twistie:hover,
+.connections-explorer__icon-button:hover:not(:disabled) {
+  background-color: var(--color-menu-selection-background);
+}
+
+.connections-explorer__icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.connections-explorer__twistie-spacer {
+  width: 22px;
+  flex-shrink: 0;
+}
+
+.connections-explorer__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+  overflow: hidden;
+  color: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.connections-explorer__label--default-schema {
+  font-weight: 700;
+}
+
+.connections-explorer__status {
+  width: 10px;
+  color: var(--color-description);
+  font-size: 10px;
+}
+
+.connections-explorer__row-actions {
+  display: none;
+  align-items: center;
+  gap: 1px;
+}
+
+.connections-explorer__row:hover .connections-explorer__row-actions {
+  display: inline-flex;
+}
+
+.connections-explorer__children {
+  padding-left: 12px;
+}
+
+.connections-explorer__empty {
+  padding: 4px 8px 4px 24px;
+  color: var(--color-description);
+  font-size: 12px;
+}
+
+.connections-explorer__empty--root {
+  padding: 12px;
+}
+
+.connections-explorer__error {
+  padding: 4px 8px 4px 24px;
+  color: #f14c4c;
+  font-size: 12px;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.connections-explorer__error--root {
+  padding: 8px 12px;
+}

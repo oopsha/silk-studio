@@ -1,14 +1,31 @@
+import type { ReactNode } from "react";
 import { useActiveView } from "../../../services/view/useActiveView";
 import ExplorerView from "./views/ExplorerView/ExplorerView";
 import "./Sidebar.css";
 
-function Sidebar() {
+type SidebarProps = {
+  renderConnections?: () => ReactNode;
+  connectionsTitle?: string;
+  connectionsActions?: ReactNode;
+};
+
+function Sidebar({
+  renderConnections,
+  connectionsTitle,
+  connectionsActions,
+}: SidebarProps) {
   const activeViewId = useActiveView();
 
   return (
     <aside className="sidebar">
       <div className="sidebar__content">
-        {activeViewId === "explorer" ? <ExplorerView /> : null}
+        {activeViewId === "explorer" ? (
+          <ExplorerView
+            renderConnections={renderConnections}
+            connectionsTitle={connectionsTitle}
+            connectionsActions={connectionsActions}
+          />
+        ) : null}
         {activeViewId === "search" ? (
           <div className="sidebar-view-placeholder">Search</div>
         ) : null}

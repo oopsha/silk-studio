@@ -1,0 +1,66 @@
+package com.silk.jdbcagent;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.List;
+
+/**
+ * Encapsulates the per-database differences that {@link Main.AgentRuntime} would otherwise have
+ * to special-case: connection test query, applying a default catalog/schema after connecting, and
+ * discovering schemas/objects via {@link java.sql.DatabaseMetaData}.
+ *
+ * <p>Add a new implementation + register it in {@link DbDialects} to support another database;
+ * the rest of the agent (request handling, JSON shapes) stays untouched.
+ */
+interface DbDialect {
+  /** Stable id surfaced in error messages; matches the frontend's {@code ConnectionDriverId}. */
+  String id();
+
+  /** Whether this dialect handles the given (already trimmed, lower-cased) JDBC URL. */
+  boolean matchesUrl(String normalizedUrl);
+
+  /** Runs a cheap round-trip query to verify the connection actually works. */
+  void testConnection(Connection connection, int timeoutSeconds) throws SQLException;
+
+  /**
+   * Applies profile-level defaults (catalog/database, default schema) right after the physical
+   * JDBC connection is established. {@code params} is the raw {@code connection.open} request.
+   */
+  void afterConnect(Connection connection, JsonNode params) throws SQLException;
+
+  /** Lists the schema/namespace names a user should be able to browse. */
+  List<String> listSchemaNames(Connection connection) throws SQLException;
+
+  /**
+   * Populates {@code objects} with the tables/views/procedures/functions/packages visible under
+   * {@code schemaName}. Only kinds the database actually supports need to be emitted (must be a
+   * subset of {@link #supportedGroups()}).
+   */
+  void collectSchemaObjects(Connection connection, String schemaName, ArrayNode objects)
+      throws SQLException;
+
+  /**
+   * Which Explorer object groups this database has a concept of, in display order. {@link Main}
+   * partitions {@link #collectSchemaObjects}'s flat object list into exactly these groups —
+   * databases with no PACKAGE concept (SQL Server, MySQL, ...) must omit
+   * {@link MetadataGroupId#PACKAGES} here so the Explorer never shows an empty "Packages" group
+   * for them.
+   */
+  List<MetadataGroupId> supportedGroups();
+
+  /** Shared helper: run {@code testSql} with a timeout and require at least one row back. */
+  default void runTestQuery(Connection connection, int timeoutSeconds, String testSql)
+      throws SQLException {
+    try (Statement statement = connection.createStatement()) {
+      statement.setQueryTimeout(timeoutSeconds);
+      try (var rs = statement.executeQuery(testSql)) {
+        if (!rs.next()) {
+          throw new RuntimeException("Connection test query returned no rows.");
+        }
+      }
+    }
+  }
+}

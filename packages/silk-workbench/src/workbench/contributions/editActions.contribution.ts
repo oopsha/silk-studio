@@ -3,25 +3,44 @@ import { MenuRegistry } from "../../platform/actions/menuRegistry";
 import { CommandsRegistry } from "../../platform/commands/commandRegistry";
 import { KeybindingsRegistry } from "../../platform/keybinding/keybindingRegistry";
 
+// Monaco (editor) and AG Grid (query result grid) implement their own native undo/redo and
+// clipboard handling — the global keybinding registry lets Ctrl+Z/Y/X/C/V pass through
+// untouched while focus is inside those widgets (see `NATIVE_CLIPBOARD_COMMANDS` in
+// keybindingRegistry.ts). The handlers below therefore only run for plain, read-only text
+// surfaces elsewhere in the workbench (error messages, labels, etc.) and via the Edit menu.
+
 CommandsRegistry.registerCommand("silk.edit.undo", () => {
-  console.log("[command] silk.edit.undo");
+  // No generic document model to undo outside of Monaco/native inputs (handled natively).
 });
 
 CommandsRegistry.registerCommand("silk.edit.redo", () => {
-  console.log("[command] silk.edit.redo");
+  // No generic document model to redo outside of Monaco/native inputs (handled natively).
 });
 
 CommandsRegistry.registerCommand("silk.edit.cut", () => {
-  console.log("[command] silk.edit.cut");
+  // Nothing to remove from read-only text — fall back to copying the current selection.
+  void copyCurrentSelectionToClipboard();
 });
 
 CommandsRegistry.registerCommand("silk.edit.copy", () => {
-  console.log("[command] silk.edit.copy");
+  void copyCurrentSelectionToClipboard();
 });
 
 CommandsRegistry.registerCommand("silk.edit.paste", () => {
-  console.log("[command] silk.edit.paste");
+  // No focused native input/textarea/contenteditable — there's nowhere to paste into.
 });
+
+async function copyCurrentSelectionToClipboard(): Promise<void> {
+  const text = window.getSelection()?.toString();
+  if (!text) {
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (error) {
+    console.warn("[silk.edit.copy] clipboard write failed", error);
+  }
+}
 
 MenuRegistry.appendMenuItem(MenuId.MenubarEditMenu, {
   command: {

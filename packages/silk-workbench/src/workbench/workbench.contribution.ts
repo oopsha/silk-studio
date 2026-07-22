@@ -7,6 +7,7 @@ import "./contributions/viewActions.contribution";
 import "./contributions/goActions.contribution";
 import "./contributions/titlebar.contribution";
 import "./contributions/layoutActions.contribution";
+import "./contributions/settingsActions.contribution";
 import "./contributions/terminalActions.contribution";
 import "./contributions/helpActions.contribution";
 import "./contributions/activityBar.contribution";

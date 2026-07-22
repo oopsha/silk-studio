@@ -7,8 +7,9 @@ From the monorepo root:
 
 ```powershell
 pnpm --filter @silk-studio/db-studio build
-pnpm --filter @silk-studio/db-studio tauri:dev
+pnpm --filter @silk-studio/db-studio tauri dev
 ```
 
-JDBC credentials belong in this directory's ignored `.env.local` file. Build
-`packages/jdbc-agent` before executing a query.
+Database connections are managed in the Explorer **Connections** view (connection profiles + object tree).
+Session options (query timeout, auto-commit, read-only) live under **Settings → Database**.
+Build `packages/jdbc-agent` before connecting or executing a query.

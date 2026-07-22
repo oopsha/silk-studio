@@ -8,6 +8,18 @@ repositories {
 
 dependencies {
   implementation 'com.oracle.database.jdbc:ojdbc11:23.4.0.24.05'
+  // ORA-17056 방지: KO16MSWIN949 등 EUC/MSWIN 계열 문자집합 지원 (orai18n)
+  implementation 'com.oracle.database.nls:orai18n:23.4.0.24.05'
+  // Official Microsoft JDBC Driver for SQL Server. The jre11 classifier's Windows
+  // Integrated Auth / Entra ID extras (azure-identity, bcprov, antlr4-runtime, gson) are
+  // declared `optional`/`provided` upstream, so `implementation` does NOT pull them in —
+  // this stays scoped to SQL authentication only, matching the multi-jdbc-rollout plan.
+  implementation 'com.microsoft.sqlserver:mssql-jdbc:13.4.0.jre11'
+  // Official MySQL Connector/J. Licensed GPLv2 + Universal FOSS Exception 1.0 (unlike the
+  // Oracle/Microsoft drivers above) — see THIRD_PARTY_NOTICES.md before changing how this
+  // jar is bundled/distributed. Pulls in protobuf-java (mandatory, used by the driver); the
+  // optional OCI SDK integration is NOT pulled in by `implementation`.
+  implementation 'com.mysql:mysql-connector-j:9.7.0'
   implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
 }
 
@@ -21,14 +33,36 @@ java {
   }
 }
 
+// Oracle's ojdbc11.jar is a *sealed* jar (see its META-INF/MANIFEST.MF), which means the
+// JVM enforces that every class in its packages must come from that exact jar file.
+// Naively merging its .class files into a single uber-jar together with orai18n.jar (via
+// zipTree + DuplicatesStrategy.EXCLUDE) is fragile and has caused sporadic
+// `NoClassDefFoundError`s at runtime (e.g. oracle/jdbc/driver/RowidBinder going missing)
+// because sealing / duplicate-entry handling doesn't play well with class merging.
+//
+// Instead we ship a *thin* runnable jar (just our own classes) plus a `lib/` folder with
+// the untouched dependency jars next to it, wired together via the manifest's Class-Path
+// attribute. `java -jar jdbc-agent-all.jar` resolves Class-Path entries relative to the
+// jar's own directory, so no changes are needed on the Rust/Tauri launcher side.
+tasks.register('copyRuntimeLibs', Copy) {
+  from configurations.runtimeClasspath
+  into layout.buildDirectory.dir('libs/lib')
+}
+
 tasks.jar {
-  duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+  dependsOn tasks.copyRuntimeLibs
   manifest {
-    attributes 'Main-Class': application.mainClass.get()
-  }
-  from {
-    configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    attributes(
+      'Main-Class': application.mainClass.get(),
+      'Class-Path': configurations.runtimeClasspath.files
+        .collect { "lib/${it.name}" }
+        .join(' '),
+    )
   }
   archiveBaseName = 'jdbc-agent'
   archiveClassifier = 'all'
+}
+
+tasks.named('assemble') {
+  dependsOn tasks.copyRuntimeLibs
 }

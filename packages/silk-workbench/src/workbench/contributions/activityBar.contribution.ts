@@ -11,7 +11,6 @@ function registerStubCommand(id: string): void {
 
 const MANAGE_COMMANDS = [
   "workbench.action.showCommands",
-  "workbench.action.openSettings",
   "workbench.view.extensions",
   "workbench.action.openGlobalKeybindings",
   "workbench.action.openSnippets",
@@ -20,7 +19,6 @@ const MANAGE_COMMANDS = [
   "update.check",
   "workbench.profiles.actions.createTemporaryProfile",
   "workbench.profiles.actions.switchProfile",
-  "workbench.action.selectTheme",
   "workbench.action.selectIconTheme",
   "workbench.action.selectProductIconTheme",
 ] as const;
@@ -41,10 +39,6 @@ for (const id of [...MANAGE_COMMANDS, ...ACCOUNT_COMMANDS]) {
 KeybindingsRegistry.registerKeybinding(
   "workbench.action.showCommands",
   "Ctrl+Shift+P",
-);
-KeybindingsRegistry.registerKeybinding(
-  "workbench.action.openSettings",
-  "Ctrl+,",
 );
 KeybindingsRegistry.registerKeybinding(
   "workbench.view.extensions",

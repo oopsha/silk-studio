@@ -27,3 +27,9 @@ This creates a runnable fat jar:
 ```bash
 java -jar build/libs/jdbc-agent-all.jar query.execute "select * from dual"
 ```
+
+## Bundled Drivers & Licensing
+
+See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for the JDBC drivers bundled in
+`build/libs/lib/` and their licenses — MySQL Connector/J in particular is GPLv2 (+ FOSS
+Exception), which needs care if this agent is ever redistributed outside this repo.

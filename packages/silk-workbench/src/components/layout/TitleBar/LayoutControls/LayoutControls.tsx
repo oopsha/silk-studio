@@ -36,8 +36,7 @@ function useLayoutActions(): ResolvedToolbarEntry[] {
 function LayoutControls() {
   const actions = useLayoutActions();
   const layoutControlEnabled =
-    ConfigurationService.getValue<boolean>("workbench.layoutControl.enabled") !==
-    false;
+    ConfigurationService.getValue("workbench.layoutControl.enabled") !== false;
 
   if (!layoutControlEnabled || actions.length === 0) {
     return null;

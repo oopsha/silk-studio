@@ -3,6 +3,10 @@ import {
   isQueryResultPayload,
   type QueryResultPayload,
 } from "@silk-studio/db-protocol";
+import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
+import { formatErrorMessage } from "../formatErrorMessage";
+import { ConnectionService } from "../connection/connectionService";
+import { assertReadOnlyQueryAllowed } from "./sqlGuard";
 
 export type QueryExecutionStatus = "idle" | "running" | "success" | "error";
 
@@ -31,7 +35,7 @@ class QueryExecutionServiceImpl {
   }
 
   async execute(sql: string): Promise<void> {
-    const statement = sql.trim();
+    const statement = stripTrailingSemicolon(sql.trim());
     if (!statement) {
       this.setState({
         status: "error",
@@ -60,7 +64,34 @@ class QueryExecutionServiceImpl {
         return;
       }
 
-      const payload = await invoke<unknown>("query_execute", { sql: statement });
+      const readOnly = ConfigurationService.getValue("database.readOnly");
+      assertReadOnlyQueryAllowed(statement, readOnly);
+
+      if (!ConnectionService.isConnected()) {
+        const activeProfile = ConnectionService.getActiveProfile();
+        if (activeProfile) {
+          await ConnectionService.connect(activeProfile.id, { silent: true });
+        }
+      }
+
+      if (!ConnectionService.isConnected()) {
+        throw new Error(
+          "No active database connection. Connect a profile in the Connections explorer.",
+        );
+      }
+
+      const maxRows = ConfigurationService.getValue("queryResult.maxRows");
+      const queryTimeoutSec = ConfigurationService.getValue(
+        "database.queryTimeoutSec",
+      );
+      const autoCommit = ConfigurationService.getValue("database.autoCommit");
+      const payload = await invoke<unknown>("query_execute", {
+        sql: statement,
+        maxRows,
+        queryTimeoutSec,
+        autoCommit,
+        readOnly,
+      });
       if (!isQueryResultPayload(payload)) {
         throw new Error("Invalid query result payload from desktop bridge.");
       }
@@ -72,12 +103,7 @@ class QueryExecutionServiceImpl {
         lastSql: statement,
       });
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : "Failed to execute query.";
+      const message = formatErrorMessage(error, "Failed to execute query.");
       this.setState({
         status: "error",
         output: message,
@@ -101,3 +127,8 @@ class QueryExecutionServiceImpl {
 }
 
 export const QueryExecutionService = new QueryExecutionServiceImpl();
+
+/** JDBC(Oracle) does not accept a statement-terminator `;`; strip it like DBeaver. */
+function stripTrailingSemicolon(sql: string): string {
+  return sql.replace(/;\s*$/, "").trimEnd();
+}

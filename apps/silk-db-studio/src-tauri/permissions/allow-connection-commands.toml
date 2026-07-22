@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "allow-connection-commands"
+description = "Allows JDBC connection management through jdbc-agent."
+commands.allow = [
+  "connection_connect",
+  "connection_disconnect",
+  "connection_test",
+  "connection_metadata",
+]
