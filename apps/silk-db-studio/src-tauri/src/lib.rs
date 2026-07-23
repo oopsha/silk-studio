@@ -131,6 +131,15 @@ fn connection_metadata(
     state.jdbc_agent.list_metadata(schema.as_deref())
 }
 
+#[tauri::command]
+fn connection_columns(
+    schema: String,
+    table: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    state.jdbc_agent.list_columns(schema.trim(), table.trim())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -149,6 +158,7 @@ pub fn run() {
             connection_disconnect,
             connection_test,
             connection_metadata,
+            connection_columns,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_delete,

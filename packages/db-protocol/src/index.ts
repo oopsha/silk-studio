@@ -86,6 +86,21 @@ export type ConnectionMetadataResult = {
   schemas: MetadataSchema[];
 };
 
+/** Column metadata for SQL autocomplete (`connection.columns`). */
+export type MetadataColumn = {
+  name: string;
+  typeName?: string;
+};
+
+export type ConnectionColumnsParams = {
+  schema: string;
+  table: string;
+};
+
+export type ConnectionColumnsResult = {
+  columns: MetadataColumn[];
+};
+
 export type AgentMethod =
   | "agent.ping"
   | "agent.shutdown"
@@ -93,6 +108,7 @@ export type AgentMethod =
   | "connection.close"
   | "connection.test"
   | "connection.metadata"
+  | "connection.columns"
   | "query.execute";
 
 export type AgentRequest<TParams = unknown> = {
@@ -193,4 +209,23 @@ export function isConnectionMetadataResult(
       item.groups.every(isMetadataGroup)
     );
   });
+}
+
+function isMetadataColumn(value: unknown): value is MetadataColumn {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.name === "string" &&
+    (entry.typeName === undefined || typeof entry.typeName === "string")
+  );
+}
+
+export function isConnectionColumnsResult(
+  value: unknown,
+): value is ConnectionColumnsResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Array.isArray(record.columns) && record.columns.every(isMetadataColumn)
+  );
 }

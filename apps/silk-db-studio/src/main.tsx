@@ -9,6 +9,7 @@ import "@silk-studio/workbench/workbench/workbench.contribution";
 import "./workbench/contributions/queryActions.contribution";
 import "./workbench/contributions/sqlLanguage.contribution";
 import "./workbench/contributions/sqlFormat.contribution";
+import "./workbench/contributions/queryHistory.contribution";
 import App from "./App";
 
 configureEditorHost({

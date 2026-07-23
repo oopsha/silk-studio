@@ -120,4 +120,15 @@ abstract class MySqlCompatibleDialect implements DbDialect {
 
     // No PACKAGE concept; nothing to add for the "package" kind.
   }
+
+  @Override
+  public void collectTableColumns(
+      Connection connection, String schemaName, String tableName, ArrayNode columns)
+      throws SQLException {
+    // schemaName is the database/catalog name for MySQL-compatible drivers.
+    DatabaseMetaData metadata = connection.getMetaData();
+    try (ResultSet rs = metadata.getColumns(schemaName, null, tableName, "%")) {
+      MetadataColumns.appendFromResultSet(rs, columns);
+    }
+  }
 }

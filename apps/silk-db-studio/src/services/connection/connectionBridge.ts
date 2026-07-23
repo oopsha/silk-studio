@@ -1,6 +1,8 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
+  isConnectionColumnsResult,
   isConnectionMetadataResult,
+  type ConnectionColumnsResult,
   type ConnectionCredentials,
   type ConnectionMetadataResult,
 } from "@silk-studio/db-protocol";
@@ -51,6 +53,23 @@ export async function bridgeListMetadata(
   });
   if (!isConnectionMetadataResult(payload)) {
     throw new Error("Invalid connection metadata payload from desktop bridge.");
+  }
+  return payload;
+}
+
+export async function bridgeListColumns(
+  schema: string,
+  table: string,
+): Promise<ConnectionColumnsResult> {
+  if (!isTauri()) {
+    throw new Error("Database metadata is available in the desktop app only.");
+  }
+  const payload = await invoke<unknown>("connection_columns", {
+    schema: schema.trim(),
+    table: table.trim(),
+  });
+  if (!isConnectionColumnsResult(payload)) {
+    throw new Error("Invalid connection columns payload from desktop bridge.");
   }
   return payload;
 }

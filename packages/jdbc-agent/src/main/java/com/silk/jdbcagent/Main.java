@@ -178,6 +178,11 @@ public final class Main {
           response.put("ok", true);
           response.set("result", runtime.listMetadata(params));
         }
+        case "connection.columns" -> {
+          runtime.requireConnection();
+          response.put("ok", true);
+          response.set("result", runtime.listColumns(params));
+        }
         case "query.execute" -> {
           String sql = params.path("sql").asText("").trim();
           if (sql.isEmpty()) {
@@ -325,6 +330,25 @@ public final class Main {
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("schemas", schemas);
+      return result;
+    }
+
+    ObjectNode listColumns(JsonNode params) throws SQLException {
+      requireConnection();
+      String schemaName = params.path("schema").asText("").trim();
+      String tableName = params.path("table").asText("").trim();
+      if (schemaName.isEmpty()) {
+        throw new RuntimeException("Missing params.schema");
+      }
+      if (tableName.isEmpty()) {
+        throw new RuntimeException("Missing params.table");
+      }
+
+      ArrayNode columns = MAPPER.createArrayNode();
+      dialect.collectTableColumns(connection, schemaName, tableName, columns);
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.set("columns", columns);
       return result;
     }
 

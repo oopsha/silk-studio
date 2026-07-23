@@ -156,4 +156,15 @@ final class PostgreSqlDialect implements DbDialect {
       object.put("kind", "function");
     }
   }
+
+  @Override
+  public void collectTableColumns(
+      Connection connection, String schemaName, String tableName, ArrayNode columns)
+      throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    String catalog = connection.getCatalog();
+    try (ResultSet rs = metadata.getColumns(catalog, schemaName, tableName, "%")) {
+      MetadataColumns.appendFromResultSet(rs, columns);
+    }
+  }
 }

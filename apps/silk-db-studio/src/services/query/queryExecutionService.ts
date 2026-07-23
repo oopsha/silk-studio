@@ -6,6 +6,8 @@ import {
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { formatErrorMessage } from "../formatErrorMessage";
 import { ConnectionService } from "../connection/connectionService";
+import { QueryHistoryService } from "./queryHistoryService";
+import type { QueryHistoryStatus } from "./queryHistoryTypes";
 import { assertReadOnlyQueryAllowed } from "./sqlGuard";
 import { stripTrailingSemicolon } from "./sqlExecutable";
 
@@ -61,6 +63,7 @@ class QueryExecutionServiceImpl {
 
     const generation = ++this.runGeneration;
     this.cancelRequested = false;
+    const startedAt = performance.now();
 
     this.setState({
       status: "running",
@@ -72,12 +75,14 @@ class QueryExecutionServiceImpl {
     try {
       if (!isTauri()) {
         if (!this.isCurrentRun(generation)) return;
+        const output = `Desktop-only JDBC execution.\n\nSQL:\n${statement}`;
         this.setState({
           status: "success",
-          output: `Desktop-only JDBC execution.\n\nSQL:\n${statement}`,
+          output,
           result: null,
           lastSql: statement,
         });
+        this.recordHistory(statement, "success", startedAt, output);
         return;
       }
 
@@ -121,6 +126,7 @@ class QueryExecutionServiceImpl {
           result: null,
           lastSql: statement,
         });
+        this.recordHistory(statement, "cancelled", startedAt, "Query cancelled.");
         return;
       }
 
@@ -134,6 +140,7 @@ class QueryExecutionServiceImpl {
         result: payload,
         lastSql: statement,
       });
+      this.recordHistory(statement, "success", startedAt, payload.message);
     } catch (error) {
       if (!this.isCurrentRun(generation)) {
         return;
@@ -146,6 +153,7 @@ class QueryExecutionServiceImpl {
           result: null,
           lastSql: statement,
         });
+        this.recordHistory(statement, "cancelled", startedAt, "Query cancelled.");
         return;
       }
 
@@ -156,6 +164,7 @@ class QueryExecutionServiceImpl {
         result: null,
         lastSql: statement,
       });
+      this.recordHistory(statement, "error", startedAt, message);
     }
   }
 
@@ -192,6 +201,26 @@ class QueryExecutionServiceImpl {
   onDidChange(listener: QueryExecutionListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  private recordHistory(
+    sql: string,
+    status: QueryHistoryStatus,
+    startedAt: number,
+    summary: string,
+  ): void {
+    const profile =
+      ConnectionService.getConnectedProfile() ??
+      ConnectionService.getActiveProfile();
+    QueryHistoryService.record({
+      sql,
+      status,
+      durationMs: performance.now() - startedAt,
+      connectionProfileId: profile?.id ?? null,
+      connectionName: profile?.name ?? null,
+      driverId: profile?.driverId ?? null,
+      summary,
+    });
   }
 
   private isCurrentRun(generation: number): boolean {

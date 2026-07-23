@@ -134,6 +134,17 @@ final class SqlServerDialect implements DbDialect {
     // SQL Server has no PACKAGE concept; nothing to add for the "package" kind.
   }
 
+  @Override
+  public void collectTableColumns(
+      Connection connection, String schemaName, String tableName, ArrayNode columns)
+      throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    String catalog = connection.getCatalog();
+    try (ResultSet rs = metadata.getColumns(catalog, schemaName, tableName, "%")) {
+      MetadataColumns.appendFromResultSet(rs, columns);
+    }
+  }
+
   /**
    * mssql-jdbc's {@code getProcedures} suffixes names with a numbered-procedure marker
    * (e.g. {@code "MyProc;1"}); strip it so the Explorer shows the plain object name.

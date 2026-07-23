@@ -9,6 +9,10 @@ CommandsRegistry.registerCommand("silk.view.explorer", () => {
   ViewService.openView("explorer");
 });
 
+CommandsRegistry.registerCommand("silk.view.history", () => {
+  ViewService.openView("history");
+});
+
 CommandsRegistry.registerCommand("silk.view.terminal", () => {
   console.log("[command] silk.view.terminal");
 });
@@ -24,6 +28,15 @@ MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
 
 MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
   command: {
+    id: "silk.view.history",
+    title: { value: "Query History", mnemonicTitle: "Query &&History" },
+  },
+  group: "1_views",
+  order: 15,
+});
+
+MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
+  command: {
     id: "silk.view.terminal",
     title: { value: "Terminal", mnemonicTitle: "&&Terminal" },
   },
@@ -32,4 +45,5 @@ MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
 });
 
 KeybindingsRegistry.registerKeybinding("silk.view.explorer", "Ctrl+Shift+E");
+KeybindingsRegistry.registerKeybinding("silk.view.history", "Ctrl+Shift+H");
 KeybindingsRegistry.registerKeybinding("silk.view.terminal", "Ctrl+`");
