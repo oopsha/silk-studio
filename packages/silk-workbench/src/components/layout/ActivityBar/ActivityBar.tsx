@@ -18,6 +18,7 @@ const ACTIVITY_VIEWS: ActivityView[] = [
   { id: "explorer", icon: "files", label: "Explorer" },
   { id: "search", icon: "search", label: "Search" },
   { id: "scm", icon: "source-control", label: "Source Control" },
+  { id: "history", icon: "history", label: "Query History" },
 ];
 
 function ActivityBar() {

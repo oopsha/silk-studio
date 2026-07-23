@@ -113,6 +113,22 @@ impl JdbcAgentClient {
         self.send_request("connection.metadata", params)
     }
 
+    pub fn list_columns(&self, schema: &str, table: &str) -> Result<Value, String> {
+        self.ensure_connection()?;
+        let schema = schema.trim();
+        let table = table.trim();
+        if schema.is_empty() {
+            return Err("schema is required.".into());
+        }
+        if table.is_empty() {
+            return Err("table is required.".into());
+        }
+        self.send_request(
+            "connection.columns",
+            json!({ "schema": schema, "table": table }),
+        )
+    }
+
     pub fn execute_query(
         &self,
         sql: &str,

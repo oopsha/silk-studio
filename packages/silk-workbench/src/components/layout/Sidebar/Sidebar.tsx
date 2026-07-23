@@ -7,12 +7,14 @@ type SidebarProps = {
   renderConnections?: () => ReactNode;
   connectionsTitle?: string;
   connectionsActions?: ReactNode;
+  renderHistory?: () => ReactNode;
 };
 
 function Sidebar({
   renderConnections,
   connectionsTitle,
   connectionsActions,
+  renderHistory,
 }: SidebarProps) {
   const activeViewId = useActiveView();
 
@@ -31,6 +33,13 @@ function Sidebar({
         ) : null}
         {activeViewId === "scm" ? (
           <div className="sidebar-view-placeholder">Source Control</div>
+        ) : null}
+        {activeViewId === "history" ? (
+          renderHistory ? (
+            renderHistory()
+          ) : (
+            <div className="sidebar-view-placeholder">Query History</div>
+          )
         ) : null}
       </div>
     </aside>

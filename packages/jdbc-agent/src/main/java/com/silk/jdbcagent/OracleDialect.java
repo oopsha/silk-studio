@@ -80,6 +80,34 @@ final class OracleDialect implements DbDialect {
   }
 
   @Override
+  public void collectTableColumns(
+      Connection connection, String schemaName, String tableName, ArrayNode columns)
+      throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    // Oracle unquoted identifiers are stored uppercased — try given case, then UPPER.
+    String[] schemas = distinctCases(schemaName);
+    String[] tables = distinctCases(tableName);
+    for (String schema : schemas) {
+      for (String table : tables) {
+        try (ResultSet rs = metadata.getColumns(null, schema, table, "%")) {
+          MetadataColumns.appendFromResultSet(rs, columns);
+        }
+        if (columns.size() > 0) {
+          return;
+        }
+      }
+    }
+  }
+
+  private static String[] distinctCases(String value) {
+    String upper = value.toUpperCase(java.util.Locale.ROOT);
+    if (value.equals(upper)) {
+      return new String[] {value};
+    }
+    return new String[] {value, upper};
+  }
+
+  @Override
   public void collectSchemaObjects(Connection connection, String schemaName, ArrayNode objects)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();

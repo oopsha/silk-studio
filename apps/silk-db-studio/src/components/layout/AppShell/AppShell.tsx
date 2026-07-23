@@ -15,6 +15,7 @@ import SettingsEditor from "@silk-studio/workbench/components/settings/index.ts"
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import ConnectionsExplorer from "../../connections/ConnectionsExplorer.tsx";
 import ConnectionEditor from "../../connections/ConnectionEditor.tsx";
+import QueryHistoryView from "../../query-history/QueryHistoryView.tsx";
 import { ConnectionEditorService } from "../../../services/connection/connectionEditorService.ts";
 import { ConnectionTreeService } from "../../../services/connection/connectionTreeService.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
@@ -24,6 +25,8 @@ import { useWorkbenchKeybindings } from "@silk-studio/workbench/services/keybind
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
 import { useConnectionState } from "../../../services/connection/useConnectionState.ts";
 import { registerSqlLanguages } from "../../../services/sql/registerSqlLanguages.ts";
+import { registerSqlCompletion } from "../../../services/sql/registerSqlCompletion.ts";
+import type { Monaco } from "@monaco-editor/react";
 
 const tabBarCommands = {
   executeCommand: (commandId: string) =>
@@ -38,6 +41,11 @@ function AppShell() {
   const configuration = useConfiguration();
   const connection = useConnectionState();
   const { startDrag } = useWorkbenchSashDrag();
+
+  const handleEditorBeforeMount = (monaco: Monaco) => {
+    registerSqlLanguages(monaco);
+    registerSqlCompletion(monaco);
+  };
 
   const panelOnBottom = layout.panelPosition === "bottom";
   const showEditor = !layout.panelMaximized;
@@ -84,7 +92,7 @@ function AppShell() {
           minimapEnabled: configuration["editor.minimap.enabled"],
           wordWrap: configuration["editor.wordWrap"],
         }}
-        beforeMount={registerSqlLanguages}
+        beforeMount={handleEditorBeforeMount}
         renderAlternative={(tab) => {
           if (SettingsService.isSettingsTab(tab.uri)) {
             return <SettingsEditor />;
@@ -175,6 +183,7 @@ function AppShell() {
                       connectionsTitle="CONNECTIONS"
                       connectionsActions={connectionsActions}
                       renderConnections={() => <ConnectionsExplorer />}
+                      renderHistory={() => <QueryHistoryView />}
                     />
                   </div>
                   <WorkbenchSash

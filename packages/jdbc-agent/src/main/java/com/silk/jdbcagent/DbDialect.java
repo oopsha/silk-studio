@@ -43,6 +43,14 @@ interface DbDialect {
       throws SQLException;
 
   /**
+   * Populates {@code columns} with column descriptors ({@code name}, optional {@code typeName})
+   * for {@code tableName} under {@code schemaName}. Used by SQL autocomplete.
+   */
+  void collectTableColumns(
+      Connection connection, String schemaName, String tableName, ArrayNode columns)
+      throws SQLException;
+
+  /**
    * Which Explorer object groups this database has a concept of, in display order. {@link Main}
    * partitions {@link #collectSchemaObjects}'s flat object list into exactly these groups —
    * databases with no PACKAGE concept (SQL Server, MySQL, ...) must omit

@@ -148,6 +148,9 @@ function EditorArea({
           renderLineHighlight: "line",
           minimap: { enabled: configuration.minimapEnabled },
           wordWrap: configuration.wordWrap,
+          suggestOnTriggerCharacters: true,
+          quickSuggestions: { other: true, comments: false, strings: false },
+          wordBasedSuggestions: "off",
           scrollBeyondLastLine: false,
           automaticLayout: true,
         }}

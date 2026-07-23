@@ -1,6 +1,6 @@
 import { LayoutService } from "../layout/layoutService";
 
-export type ActivityViewId = "explorer" | "search" | "scm";
+export type ActivityViewId = "explorer" | "search" | "scm" | "history";
 
 type ViewChangeListener = () => void;
 
