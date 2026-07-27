@@ -6,8 +6,15 @@ import {
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { formatErrorMessage } from "../formatErrorMessage";
 import { ConnectionService } from "../connection/connectionService";
+import { resolveActiveDriverId } from "../sql/sqlDialect";
 import { QueryHistoryService } from "./queryHistoryService";
 import type { QueryHistoryStatus } from "./queryHistoryTypes";
+import {
+  applySqlErrorMarkers,
+  clearSqlErrorMarkers,
+  type SqlSourceRange,
+} from "./sqlErrorMarkers";
+import { buildExplainPlan } from "./sqlExplain";
 import { assertReadOnlyQueryAllowed } from "./sqlGuard";
 import { stripTrailingSemicolon } from "./sqlExecutable";
 
@@ -23,6 +30,14 @@ export type QueryExecutionState = {
   output: string;
   result: QueryResultPayload | null;
   lastSql: string;
+};
+
+export type QueryExecuteOptions = {
+  /** Buffer range of the executed SQL for Monaco error markers. */
+  sourceRange?: SqlSourceRange;
+  /** Override SQL stored in history (e.g. original statement for Explain). */
+  historySql?: string;
+  skipHistory?: boolean;
 };
 
 type QueryExecutionListener = () => void;
@@ -49,7 +64,7 @@ class QueryExecutionServiceImpl {
     return this.state.status === "running";
   }
 
-  async execute(sql: string): Promise<void> {
+  async execute(sql: string, options?: QueryExecuteOptions): Promise<void> {
     const statement = stripTrailingSemicolon(sql.trim());
     if (!statement) {
       this.setState({
@@ -64,6 +79,7 @@ class QueryExecutionServiceImpl {
     const generation = ++this.runGeneration;
     this.cancelRequested = false;
     const startedAt = performance.now();
+    clearSqlErrorMarkers();
 
     this.setState({
       status: "running",
@@ -82,51 +98,29 @@ class QueryExecutionServiceImpl {
           result: null,
           lastSql: statement,
         });
-        this.recordHistory(statement, "success", startedAt, output);
+        this.recordHistory(
+          options?.historySql ?? statement,
+          "success",
+          startedAt,
+          output,
+          options,
+        );
         return;
       }
 
       const readOnly = ConfigurationService.getValue("database.readOnly");
       assertReadOnlyQueryAllowed(statement, readOnly);
 
-      if (!ConnectionService.isConnected()) {
-        const activeProfile = ConnectionService.getActiveProfile();
-        if (activeProfile) {
-          await ConnectionService.connect(activeProfile.id, { silent: true });
-        }
-      }
+      await this.ensureConnected();
 
-      if (!ConnectionService.isConnected()) {
-        throw new Error(
-          "No active database connection. Connect a profile in the Connections explorer.",
-        );
-      }
-
-      const maxRows = ConfigurationService.getValue("queryResult.maxRows");
-      const queryTimeoutSec = ConfigurationService.getValue(
-        "database.queryTimeoutSec",
-      );
-      const autoCommit = ConfigurationService.getValue("database.autoCommit");
-      const payload = await invoke<unknown>("query_execute", {
-        sql: statement,
-        maxRows,
-        queryTimeoutSec,
-        autoCommit,
-        readOnly,
-      });
+      const payload = await this.invokeQuery(statement, readOnly);
 
       if (!this.isCurrentRun(generation)) {
         return;
       }
 
       if (this.cancelRequested) {
-        this.setState({
-          status: "cancelled",
-          output: "Query cancelled.",
-          result: null,
-          lastSql: statement,
-        });
-        this.recordHistory(statement, "cancelled", startedAt, "Query cancelled.");
+        this.finishCancelled(statement, startedAt, options);
         return;
       }
 
@@ -140,31 +134,181 @@ class QueryExecutionServiceImpl {
         result: payload,
         lastSql: statement,
       });
-      this.recordHistory(statement, "success", startedAt, payload.message);
+      this.recordHistory(
+        options?.historySql ?? statement,
+        "success",
+        startedAt,
+        payload.message,
+        options,
+      );
     } catch (error) {
+      this.handleRunError(error, statement, generation, startedAt, options);
+    }
+  }
+
+  /**
+   * Runs a driver-specific Explain / Explain Plan for the given statement and
+   * shows the plan result in the panel (same result grid as normal execute).
+   */
+  async explain(sql: string, options?: QueryExecuteOptions): Promise<void> {
+    const statement = stripTrailingSemicolon(sql.trim());
+    if (!statement) {
+      this.setState({
+        status: "error",
+        output: "Query is empty. Write SQL in the editor and explain again.",
+        result: null,
+        lastSql: sql,
+      });
+      return;
+    }
+
+    const driverId = resolveActiveDriverId();
+    const plan = buildExplainPlan(driverId, statement);
+    if (plan.steps.length === 0) {
+      this.setState({
+        status: "error",
+        output: "Nothing to explain.",
+        result: null,
+        lastSql: statement,
+      });
+      return;
+    }
+
+    const generation = ++this.runGeneration;
+    this.cancelRequested = false;
+    const startedAt = performance.now();
+    clearSqlErrorMarkers();
+
+    const historySql = options?.historySql ?? `${plan.label}\n${statement}`;
+    const displaySql =
+      plan.steps.find((step) => step.captureResult)?.sql ?? statement;
+
+    this.setState({
+      status: "running",
+      output: `Running ${plan.label}...`,
+      result: null,
+      lastSql: displaySql,
+    });
+
+    const teardownSql =
+      plan.steps.find((step) => step.kind === "teardown")?.sql ?? null;
+    let captured: QueryResultPayload | null = null;
+    let capturedMessage = "";
+    /** SQL Server SHOWPLAN was turned on — must restore even on failure. */
+    let showplanArmed = false;
+
+    try {
+      if (!isTauri()) {
+        if (!this.isCurrentRun(generation)) return;
+        const preview = plan.steps
+          .filter((step) => step.kind !== "teardown")
+          .map((step) => step.sql)
+          .join("\n\n");
+        const output = `Desktop-only JDBC explain.\n\n${plan.label} steps:\n${preview}`;
+        this.setState({
+          status: "success",
+          output,
+          result: null,
+          lastSql: displaySql,
+        });
+        this.recordHistory(
+          historySql,
+          "success",
+          startedAt,
+          output,
+          options,
+        );
+        return;
+      }
+
+      await this.ensureConnected();
+
+      for (const step of plan.steps) {
+        if (step.kind === "teardown") {
+          continue;
+        }
+
+        if (this.cancelRequested || !this.isCurrentRun(generation)) {
+          break;
+        }
+
+        // Explain does not execute DML (SHOWPLAN / EXPLAIN PLAN). Always talk to the
+        // agent with readOnly=false so Oracle can write PLAN_TABLE and SQL Server can
+        // accept subject DML under SHOWPLAN. Frontend still blocks accidental writes
+        // for normal execute via assertReadOnlyQueryAllowed.
+        const payload = await this.invokeQuery(step.sql, false);
+
+        if (step.kind === "setup" && driverId === "sqlserver") {
+          showplanArmed = true;
+        }
+
+        if (!this.isCurrentRun(generation)) {
+          return;
+        }
+
+        if (this.cancelRequested) {
+          this.finishCancelled(displaySql, startedAt, {
+            ...options,
+            historySql,
+          });
+          return;
+        }
+
+        if (!isQueryResultPayload(payload)) {
+          throw new Error("Invalid query result payload from desktop bridge.");
+        }
+
+        if (step.captureResult) {
+          captured = payload;
+          capturedMessage = payload.message;
+        }
+      }
+
       if (!this.isCurrentRun(generation)) {
         return;
       }
 
-      if (this.cancelRequested || isCancelError(error)) {
-        this.setState({
-          status: "cancelled",
-          output: "Query cancelled.",
-          result: null,
-          lastSql: statement,
+      if (this.cancelRequested) {
+        this.finishCancelled(displaySql, startedAt, {
+          ...options,
+          historySql,
         });
-        this.recordHistory(statement, "cancelled", startedAt, "Query cancelled.");
         return;
       }
 
-      const message = formatErrorMessage(error, "Failed to execute query.");
+      if (!captured) {
+        throw new Error("Explain completed without a plan result.");
+      }
+
       this.setState({
-        status: "error",
-        output: message,
-        result: null,
-        lastSql: statement,
+        status: "success",
+        output: capturedMessage || `${plan.label} completed.`,
+        result: captured,
+        lastSql: displaySql,
       });
-      this.recordHistory(statement, "error", startedAt, message);
+      this.recordHistory(
+        historySql,
+        "success",
+        startedAt,
+        capturedMessage || `${plan.label} completed.`,
+        options,
+      );
+    } catch (error) {
+      this.handleRunError(error, displaySql, generation, startedAt, {
+        ...options,
+        historySql,
+      });
+    } finally {
+      if (showplanArmed && teardownSql && isTauri()) {
+        try {
+          await this.invokeQuery(teardownSql, false);
+        } catch (teardownError) {
+          console.warn(
+            "[silk.query.explain] failed to restore SHOWPLAN session state",
+            teardownError,
+          );
+        }
+      }
     }
   }
 
@@ -203,12 +347,101 @@ class QueryExecutionServiceImpl {
     return () => this.listeners.delete(listener);
   }
 
+  private async ensureConnected(): Promise<void> {
+    if (!ConnectionService.isConnected()) {
+      const activeProfile = ConnectionService.getActiveProfile();
+      if (activeProfile) {
+        await ConnectionService.connect(activeProfile.id, { silent: true });
+      }
+    }
+
+    if (!ConnectionService.isConnected()) {
+      throw new Error(
+        "No active database connection. Connect a profile in the Connections explorer.",
+      );
+    }
+  }
+
+  private async invokeQuery(
+    sql: string,
+    readOnly: boolean,
+  ): Promise<unknown> {
+    const maxRows = ConfigurationService.getValue("queryResult.maxRows");
+    const queryTimeoutSec = ConfigurationService.getValue(
+      "database.queryTimeoutSec",
+    );
+    const autoCommit = ConfigurationService.getValue("database.autoCommit");
+    return invoke<unknown>("query_execute", {
+      sql,
+      maxRows,
+      queryTimeoutSec,
+      autoCommit,
+      readOnly,
+    });
+  }
+
+  private handleRunError(
+    error: unknown,
+    statement: string,
+    generation: number,
+    startedAt: number,
+    options?: QueryExecuteOptions,
+  ): void {
+    if (!this.isCurrentRun(generation)) {
+      return;
+    }
+
+    if (this.cancelRequested || isCancelError(error)) {
+      this.finishCancelled(statement, startedAt, options);
+      return;
+    }
+
+    const message = formatErrorMessage(error, "Failed to execute query.");
+    this.setState({
+      status: "error",
+      output: message,
+      result: null,
+      lastSql: statement,
+    });
+    this.recordHistory(
+      options?.historySql ?? statement,
+      "error",
+      startedAt,
+      message,
+      options,
+    );
+    applySqlErrorMarkers(message, options?.sourceRange ?? null);
+  }
+
+  private finishCancelled(
+    statement: string,
+    startedAt: number,
+    options?: QueryExecuteOptions,
+  ): void {
+    this.setState({
+      status: "cancelled",
+      output: "Query cancelled.",
+      result: null,
+      lastSql: statement,
+    });
+    this.recordHistory(
+      options?.historySql ?? statement,
+      "cancelled",
+      startedAt,
+      "Query cancelled.",
+      options,
+    );
+  }
+
   private recordHistory(
     sql: string,
     status: QueryHistoryStatus,
     startedAt: number,
     summary: string,
+    options?: QueryExecuteOptions,
   ): void {
+    if (options?.skipHistory) return;
+
     const profile =
       ConnectionService.getConnectedProfile() ??
       ConnectionService.getActiveProfile();

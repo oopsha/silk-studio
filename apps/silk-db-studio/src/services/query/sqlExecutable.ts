@@ -9,6 +9,8 @@ export type SqlExtractMode = "selection" | "statement";
 export type ExtractExecutableSqlResult = {
   sql: string;
   mode: SqlExtractMode;
+  /** Inclusive-exclusive offsets into `content` for the trimmed SQL body (no trailing `;`). */
+  range: { start: number; end: number };
 };
 
 export function extractExecutableSql(
@@ -20,17 +22,45 @@ export function extractExecutableSql(
   const end = clamp(Math.max(selectionStart, selectionEnd), 0, content.length);
 
   if (end > start) {
-    const selected = content.slice(start, end).trim();
-    if (selected.length > 0) {
-      return { sql: stripTrailingSemicolon(selected), mode: "selection" };
+    const trimmed = trimSqlRange(content, start, end);
+    if (trimmed.sql.length > 0) {
+      return { sql: trimmed.sql, mode: "selection", range: trimmed.range };
     }
   }
 
-  const range = findStatementRange(content, start);
+  const statement = findStatementRange(content, start);
+  const trimmed = trimSqlRange(content, statement.start, statement.end);
   return {
-    sql: stripTrailingSemicolon(content.slice(range.start, range.end).trim()),
+    sql: trimmed.sql,
     mode: "statement",
+    range: trimmed.range,
   };
+}
+
+/**
+ * Trims leading/trailing whitespace and a trailing `;` within `[sliceStart, sliceEnd)`,
+ * returning the SQL text and its absolute offsets in `content`.
+ */
+export function trimSqlRange(
+  content: string,
+  sliceStart: number,
+  sliceEnd: number,
+): { sql: string; range: { start: number; end: number } } {
+  let start = clamp(sliceStart, 0, content.length);
+  let end = clamp(sliceEnd, 0, content.length);
+  while (start < end && /\s/.test(content[start])) {
+    start += 1;
+  }
+  while (end > start && /\s/.test(content[end - 1])) {
+    end -= 1;
+  }
+  if (end > start && content[end - 1] === ";") {
+    end -= 1;
+    while (end > start && /\s/.test(content[end - 1])) {
+      end -= 1;
+    }
+  }
+  return { sql: content.slice(start, end), range: { start, end } };
 }
 
 /**

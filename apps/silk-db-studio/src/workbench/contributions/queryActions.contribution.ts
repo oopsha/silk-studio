@@ -11,14 +11,14 @@ CommandsRegistry.registerCommand("silk.query.execute", async () => {
   const snapshot = EditorService.getActiveEditorSnapshot();
   if (!snapshot) return;
 
-  const { sql } = extractExecutableSql(
+  const { sql, range } = extractExecutableSql(
     snapshot.content,
     snapshot.selectionStart,
     snapshot.selectionEnd,
   );
 
   LayoutService.showPanel();
-  await QueryExecutionService.execute(sql);
+  await QueryExecutionService.execute(sql, { sourceRange: range });
 });
 
 CommandsRegistry.registerCommand("silk.query.executeAll", async () => {
@@ -26,7 +26,23 @@ CommandsRegistry.registerCommand("silk.query.executeAll", async () => {
   if (!active) return;
 
   LayoutService.showPanel();
-  await QueryExecutionService.execute(active.content);
+  await QueryExecutionService.execute(active.content, {
+    sourceRange: { start: 0, end: active.content.length },
+  });
+});
+
+CommandsRegistry.registerCommand("silk.query.explain", async () => {
+  const snapshot = EditorService.getActiveEditorSnapshot();
+  if (!snapshot) return;
+
+  const { sql, range } = extractExecutableSql(
+    snapshot.content,
+    snapshot.selectionStart,
+    snapshot.selectionEnd,
+  );
+
+  LayoutService.showPanel();
+  await QueryExecutionService.explain(sql, { sourceRange: range });
 });
 
 CommandsRegistry.registerCommand("silk.query.cancel", async () => {
@@ -53,15 +69,28 @@ MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
 
 MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
   command: {
+    id: "silk.query.explain",
+    title: "Explain Plan",
+  },
+  group: "2_run",
+  order: 17,
+});
+
+MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+  command: {
     id: "silk.query.cancel",
     title: "Cancel Query",
   },
   group: "2_run",
-  order: 17,
+  order: 18,
 });
 
 KeybindingsRegistry.registerKeybinding("silk.query.execute", "Ctrl+Enter");
 KeybindingsRegistry.registerKeybinding(
   "silk.query.executeAll",
   "Ctrl+Shift+Enter",
+);
+KeybindingsRegistry.registerKeybinding(
+  "silk.query.explain",
+  "Ctrl+Shift+E",
 );
