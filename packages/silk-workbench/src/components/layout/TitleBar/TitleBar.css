@@ -117,41 +117,18 @@ html.platform-mac .title-bar--mac-overlay .title-bar__traffic-lights-spacer {
   app-region: no-drag;
 }
 
-html.platform-mac .title-bar--mac-overlay .title-bar__mac-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: var(--title-bar-traffic-lights-width);
-  height: 100%;
-  padding-left: 12px;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
-
-html.platform-mac .title-bar--mac-overlay .title-bar__mac-control {
-  width: 12px;
-  height: 12px;
-  margin: 0;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-}
-
-html.platform-mac .title-bar--mac-overlay .title-bar__mac-control--close {
-  background-color: #ff5f57;
-}
-
-html.platform-mac .title-bar--mac-overlay .title-bar__mac-control--minimize {
-  background-color: #febc2e;
-}
-
-html.platform-mac .title-bar--mac-overlay .title-bar__mac-control--zoom {
-  background-color: #28c840;
-}
-
 html.platform-mac .title-bar--mac-overlay .title-bar__left {
   padding-left: 0;
+}
+
+html.platform-mac .title-bar--no-inapp-menubar .title-bar__menubar-spacer {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 0;
+  height: 100%;
+  pointer-events: auto;
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 html.platform-mac .title-bar--mac-overlay .title-bar__right {
@@ -160,4 +137,5 @@ html.platform-mac .title-bar--mac-overlay .title-bar__right {
 
 html.platform-mac .title-bar--mac-overlay .layout-controls {
   margin-left: 0;
+  padding-right: 12px;
 }
