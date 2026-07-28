@@ -4,8 +4,10 @@ use serde_json::Value;
 use silk_db_agent_client::JdbcAgentClient;
 use std::path::PathBuf;
 use tauri::Manager;
+#[cfg(target_os = "windows")]
 use tauri_plugin_window_controls::{TitleBarColors, WindowControlsExt};
 
+#[cfg(target_os = "windows")]
 fn title_bar_colors() -> TitleBarColors {
     TitleBarColors {
         default: Some("transparent".into()),
@@ -26,8 +28,13 @@ fn configure_main_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
         window.set_title_bar_height(32)?;
         window.set_title_bar_colors(colors.clone(), colors)?;
         window.set_title_bar_overlay(true)?;
+        window.eval("document.documentElement.dataset.wco = 'true'")?;
     }
-    window.eval("document.documentElement.dataset.wco = 'true'")?;
+
+    #[cfg(target_os = "macos")]
+    {
+        window.eval("document.documentElement.dataset.macOverlayTitlebar = 'true'")?;
+    }
 
     Ok(())
 }

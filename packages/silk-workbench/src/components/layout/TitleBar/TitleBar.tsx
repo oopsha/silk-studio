@@ -1,6 +1,7 @@
 import { useEffect, useState, type MouseEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { detectWorkbenchPlatform } from "@silk-studio/ui/platform/fonts.ts";
 import Menubar from "../../menubar";
 import WindowAppIcon from "./WindowAppIcon";
 import CommandCenter from "./CommandCenter";
@@ -13,6 +14,10 @@ import "./TitleBar.css";
 import "./WindowAppIcon.css";
 
 function detectWco(): boolean {
+  if (detectWorkbenchPlatform() !== "windows") {
+    return false;
+  }
+
   return (
     document.documentElement.dataset.wco === "true" ||
     document.getElementById("tbo-controls") !== null
@@ -23,7 +28,7 @@ function useWco(): boolean {
   const [enabled, setEnabled] = useState(detectWco);
 
   useEffect(() => {
-    if (!isTauri()) return;
+    if (!isTauri() || detectWorkbenchPlatform() !== "windows") return;
 
     let disposed = false;
 
@@ -65,6 +70,8 @@ function useWco(): boolean {
 }
 
 function TitleBar() {
+  const platform = detectWorkbenchPlatform();
+  const isMacOverlay = platform === "mac" && isTauri();
   const wco = useWco();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -109,7 +116,7 @@ function TitleBar() {
 
   return (
     <header
-      className={`title-bar title-bar--has-center${wco ? " title-bar--wco" : ""}`}
+      className={`title-bar title-bar--has-center${wco ? " title-bar--wco" : ""}${isMacOverlay ? " title-bar--mac-overlay" : ""}`}
     >
       <div
         className={`title-bar__drag-region${menuOpen ? " title-bar__drag-region--hidden" : ""}`}
@@ -118,7 +125,11 @@ function TitleBar() {
       />
 
       <div className="title-bar__left">
-        <WindowAppIcon />
+        {isMacOverlay ? (
+          <div className="title-bar__traffic-lights-spacer" aria-hidden />
+        ) : (
+          <WindowAppIcon />
+        )}
         <Menubar
           onMenuOpenChange={setMenuOpen}
           onDragRegionMouseDown={handleDragRegionMouseDown}
