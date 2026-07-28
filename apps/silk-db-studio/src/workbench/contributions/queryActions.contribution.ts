@@ -5,30 +5,34 @@ import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/
 import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
 import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
 import { QueryExecutionService } from "../../services/query/queryExecutionService";
-import { extractExecutableSql } from "../../services/query/sqlExecutable";
+import {
+  extractExecutableSql,
+  extractExecutableStatements,
+  statementsInRange,
+} from "../../services/query/sqlExecutable";
 
 CommandsRegistry.registerCommand("silk.query.execute", async () => {
   const snapshot = EditorService.getActiveEditorSnapshot();
   if (!snapshot) return;
 
-  const { sql, range } = extractExecutableSql(
+  const { statements } = extractExecutableStatements(
     snapshot.content,
     snapshot.selectionStart,
     snapshot.selectionEnd,
   );
 
   LayoutService.showPanel();
-  await QueryExecutionService.execute(sql, { sourceRange: range });
+  await QueryExecutionService.executeStatements(statements);
 });
 
 CommandsRegistry.registerCommand("silk.query.executeAll", async () => {
   const active = EditorService.getActiveTab();
   if (!active) return;
 
+  const statements = statementsInRange(active.content, 0, active.content.length);
+
   LayoutService.showPanel();
-  await QueryExecutionService.execute(active.content, {
-    sourceRange: { start: 0, end: active.content.length },
-  });
+  await QueryExecutionService.executeStatements(statements);
 });
 
 CommandsRegistry.registerCommand("silk.query.explain", async () => {

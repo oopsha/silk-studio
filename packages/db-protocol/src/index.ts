@@ -139,6 +139,8 @@ export type QueryResultPayload = {
   rowCount: number;
   updateCount: number | null;
   message: string;
+  /** True when the agent stopped at maxRows and more rows may exist. */
+  truncated?: boolean;
 };
 
 export function isQueryResultPayload(
@@ -158,7 +160,8 @@ export function isQueryResultPayload(
     ) &&
     typeof record.rowCount === "number" &&
     (record.updateCount === null || typeof record.updateCount === "number") &&
-    typeof record.message === "string"
+    typeof record.message === "string" &&
+    (record.truncated === undefined || typeof record.truncated === "boolean")
   );
 }
 

@@ -13,28 +13,107 @@ export type ExtractExecutableSqlResult = {
   range: { start: number; end: number };
 };
 
+export type ExecutableStatement = {
+  sql: string;
+  range: { start: number; end: number };
+};
+
+export type ExtractExecutableStatementsResult = {
+  statements: ExecutableStatement[];
+  mode: SqlExtractMode;
+};
+
 export function extractExecutableSql(
   content: string,
   selectionStart: number,
   selectionEnd: number,
 ): ExtractExecutableSqlResult {
+  const { statements, mode } = extractExecutableStatements(
+    content,
+    selectionStart,
+    selectionEnd,
+  );
+  if (statements.length === 0) {
+    return { sql: "", mode, range: { start: 0, end: 0 } };
+  }
+  if (statements.length === 1) {
+    return { sql: statements[0].sql, mode, range: statements[0].range };
+  }
+  // Legacy single-string extract: join with newlines (prefer extractExecutableStatements).
+  const first = statements[0];
+  const last = statements[statements.length - 1];
+  return {
+    sql: statements.map((item) => item.sql).join(";\n"),
+    mode,
+    range: { start: first.range.start, end: last.range.end },
+  };
+}
+
+/**
+ * Statements to run for Ctrl+Enter:
+ * - non-empty selection → every `;`-separated statement inside the selection
+ * - otherwise → the single statement owned by the cursor
+ */
+export function extractExecutableStatements(
+  content: string,
+  selectionStart: number,
+  selectionEnd: number,
+): ExtractExecutableStatementsResult {
   const start = clamp(Math.min(selectionStart, selectionEnd), 0, content.length);
   const end = clamp(Math.max(selectionStart, selectionEnd), 0, content.length);
 
   if (end > start) {
-    const trimmed = trimSqlRange(content, start, end);
-    if (trimmed.sql.length > 0) {
-      return { sql: trimmed.sql, mode: "selection", range: trimmed.range };
+    const statements = statementsInRange(content, start, end);
+    if (statements.length > 0) {
+      return { statements, mode: "selection" };
     }
   }
 
   const statement = findStatementRange(content, start);
   const trimmed = trimSqlRange(content, statement.start, statement.end);
+  if (!trimmed.sql) {
+    return { statements: [], mode: "statement" };
+  }
   return {
-    sql: trimmed.sql,
+    statements: [{ sql: trimmed.sql, range: trimmed.range }],
     mode: "statement",
-    range: trimmed.range,
   };
+}
+
+/** Split `[rangeStart, rangeEnd)` into trimmed executable statements (absolute offsets). */
+export function statementsInRange(
+  content: string,
+  rangeStart: number,
+  rangeEnd: number,
+): ExecutableStatement[] {
+  const start = clamp(rangeStart, 0, content.length);
+  const end = clamp(rangeEnd, 0, content.length);
+  if (end <= start) return [];
+
+  const slice = content.slice(start, end);
+  const relative = splitSqlStatements(slice);
+  const statements: ExecutableStatement[] = [];
+
+  for (const relativeRange of relative) {
+    const trimmed = trimSqlRange(
+      content,
+      start + relativeRange.start,
+      start + relativeRange.end,
+    );
+    if (trimmed.sql.length > 0) {
+      statements.push({ sql: trimmed.sql, range: trimmed.range });
+    }
+  }
+
+  // Selection with no `;` still counts as one statement.
+  if (statements.length === 0) {
+    const trimmed = trimSqlRange(content, start, end);
+    if (trimmed.sql.length > 0) {
+      statements.push({ sql: trimmed.sql, range: trimmed.range });
+    }
+  }
+
+  return statements;
 }
 
 /**

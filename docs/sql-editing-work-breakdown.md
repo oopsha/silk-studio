@@ -151,10 +151,12 @@
 ## 같이 넣지 말 것 (로드맵 5)
 
 결과 그리드의 정렬·필터 고도화, CSV, 다중 결과 탭, 안전 UPDATE 등은 **5. 결과 그리드**로 남겨 둔다.  
+배분은 [`result-grid-work-breakdown.md`](./result-grid-work-breakdown.md) 참고.  
 4번 요청에 섞으면 범위가 다시 커진다.
 
 ---
 
 ## 다음 단계
 
-로드맵 **5. 결과 그리드** 또는 미해결 이슈(PL/SQL 문장 분리, FROM 기반 컬럼 자동완성 등)를 진행하면 된다.
+로드맵 **5. 결과 그리드**([`result-grid-work-breakdown.md`](./result-grid-work-breakdown.md)의 **5-A**부터)  
+또는 미해결 이슈(PL/SQL 문장 분리, FROM 기반 컬럼 자동완성 등)를 진행하면 된다.
