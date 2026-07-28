@@ -103,3 +103,28 @@
   flex-shrink: 0;
   width: var(--title-bar-controls-width, 138px);
 }
+
+/* macOS: native traffic lights (close / minimize / zoom) overlay the left inset. */
+html.platform-mac .title-bar--mac-overlay {
+  --title-bar-traffic-lights-width: 78px;
+}
+
+html.platform-mac .title-bar--mac-overlay .title-bar__traffic-lights-spacer {
+  flex-shrink: 0;
+  width: var(--title-bar-traffic-lights-width);
+  height: 100%;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+html.platform-mac .title-bar--mac-overlay .title-bar__left {
+  padding-left: 0;
+}
+
+html.platform-mac .title-bar--mac-overlay .title-bar__right {
+  justify-content: flex-end;
+}
+
+html.platform-mac .title-bar--mac-overlay .layout-controls {
+  margin-left: 0;
+}
