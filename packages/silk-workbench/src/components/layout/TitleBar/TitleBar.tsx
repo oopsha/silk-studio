@@ -73,7 +73,6 @@ function TitleBar() {
   const platform = detectWorkbenchPlatform();
   const isMacOverlay = platform === "mac" && isTauri();
   const wco = useWco();
-  const [macFullscreen, setMacFullscreen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -106,33 +105,6 @@ function TitleBar() {
     void getCurrentWindow().setBackgroundColor("#191a1b");
   }, []);
 
-  useEffect(() => {
-    if (!isMacOverlay) return;
-
-    let disposed = false;
-    const window = getCurrentWindow();
-
-    async function syncFullscreenState() {
-      try {
-        const fullscreen = await window.isFullscreen();
-        if (!disposed) setMacFullscreen(fullscreen);
-      } catch (error) {
-        console.warn("[titlebar] failed to read fullscreen state", error);
-      }
-    }
-
-    void syncFullscreenState();
-
-    const unlistenPromise = window.onResized(() => {
-      void syncFullscreenState();
-    });
-
-    return () => {
-      disposed = true;
-      void unlistenPromise.then((unlisten) => unlisten());
-    };
-  }, [isMacOverlay]);
-
   async function handleDragRegionMouseDown(event: MouseEvent<HTMLDivElement>) {
     if (!isTauri() || event.button !== 0) return;
 
@@ -142,71 +114,36 @@ function TitleBar() {
     }
   }
 
-  async function handleMacClose() {
-    if (!isTauri()) return;
-    await getCurrentWindow().close();
-  }
-
-  async function handleMacMinimize() {
-    if (!isTauri()) return;
-    await getCurrentWindow().minimize();
-  }
-
-  async function handleMacZoom() {
-    if (!isTauri()) return;
-
-    const window = getCurrentWindow();
-    const fullscreen = await window.isFullscreen();
-    if (fullscreen) {
-      await window.setFullscreen(false);
-      return;
-    }
-    await window.toggleMaximize();
-  }
+  const showInAppMenubar = !isMacOverlay;
 
   return (
     <header
-      className={`title-bar title-bar--has-center${wco ? " title-bar--wco" : ""}${isMacOverlay ? " title-bar--mac-overlay" : ""}`}
+      className={`title-bar title-bar--has-center${wco ? " title-bar--wco" : ""}${isMacOverlay ? " title-bar--mac-overlay title-bar--no-inapp-menubar" : ""}`}
     >
       <div
-        className={`title-bar__drag-region${menuOpen ? " title-bar__drag-region--hidden" : ""}`}
+        className={`title-bar__drag-region${menuOpen && showInAppMenubar ? " title-bar__drag-region--hidden" : ""}`}
         data-tauri-drag-region
         onMouseDown={handleDragRegionMouseDown}
       />
 
       <div className="title-bar__left">
         {isMacOverlay ? (
-          macFullscreen ? (
-            <div className="title-bar__mac-controls" role="group" aria-label="Window controls">
-              <button
-                type="button"
-                className="title-bar__mac-control title-bar__mac-control--close"
-                aria-label="Close window"
-                onClick={() => void handleMacClose()}
-              />
-              <button
-                type="button"
-                className="title-bar__mac-control title-bar__mac-control--minimize"
-                aria-label="Minimize window"
-                onClick={() => void handleMacMinimize()}
-              />
-              <button
-                type="button"
-                className="title-bar__mac-control title-bar__mac-control--zoom"
-                aria-label="Zoom window"
-                onClick={() => void handleMacZoom()}
-              />
-            </div>
-          ) : (
-            <div className="title-bar__traffic-lights-spacer" aria-hidden />
-          )
+          <div className="title-bar__traffic-lights-spacer" aria-hidden />
         ) : (
           <WindowAppIcon />
         )}
-        <Menubar
-          onMenuOpenChange={setMenuOpen}
-          onDragRegionMouseDown={handleDragRegionMouseDown}
-        />
+        {showInAppMenubar ? (
+          <Menubar
+            onMenuOpenChange={setMenuOpen}
+            onDragRegionMouseDown={handleDragRegionMouseDown}
+          />
+        ) : (
+          <div
+            className="title-bar__menubar-spacer"
+            data-tauri-drag-region
+            onMouseDown={handleDragRegionMouseDown}
+          />
+        )}
       </div>
 
       <div className="title-bar__center">
