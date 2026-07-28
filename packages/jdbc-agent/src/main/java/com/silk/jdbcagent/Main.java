@@ -406,12 +406,13 @@ public final class Main {
       activeStatement = statement;
       try {
         statement.setQueryTimeout(effectiveTimeout);
-        statement.setMaxRows(effectiveMaxRows);
+        // Fetch one extra row so we can tell whether the result was truncated.
+        statement.setMaxRows(effectiveMaxRows + 1);
 
         boolean hasResultSet = statement.execute(sql);
         if (hasResultSet) {
           try (ResultSet rs = statement.getResultSet()) {
-            return formatResultSet(rs);
+            return formatResultSet(rs, effectiveMaxRows);
           }
         }
 
@@ -422,6 +423,7 @@ public final class Main {
         result.putArray("rows");
         result.put("rowCount", 0);
         result.put("updateCount", updated);
+        result.put("truncated", false);
         result.put("message", "OK. " + updated + " row(s) affected.");
         return result;
       } finally {
@@ -535,7 +537,8 @@ public final class Main {
     return builder.toString();
   }
 
-  private static ObjectNode formatResultSet(ResultSet rs) throws SQLException {
+  private static ObjectNode formatResultSet(ResultSet rs, int maxRows)
+      throws SQLException {
     ResultSetMetaData metadata = rs.getMetaData();
     int columnCount = metadata.getColumnCount();
     String[] headers = uniqueColumnLabels(metadata);
@@ -546,7 +549,12 @@ public final class Main {
     }
 
     ArrayNode rows = MAPPER.createArrayNode();
+    boolean truncated = false;
     while (rs.next()) {
+      if (rows.size() >= maxRows) {
+        truncated = true;
+        break;
+      }
       ArrayNode row = MAPPER.createArrayNode();
       for (int i = 1; i <= columnCount; i++) {
         Object value = rs.getObject(i);
@@ -565,7 +573,14 @@ public final class Main {
     result.set("rows", rows);
     result.put("rowCount", rows.size());
     result.putNull("updateCount");
-    result.put("message", rows.size() + " row(s)");
+    result.put("truncated", truncated);
+    if (truncated) {
+      result.put(
+          "message",
+          rows.size() + " row(s) (truncated at maxRows=" + maxRows + ")");
+    } else {
+      result.put("message", rows.size() + " row(s)");
+    }
     return result;
   }
 

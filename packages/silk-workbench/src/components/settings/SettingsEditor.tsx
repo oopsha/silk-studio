@@ -263,7 +263,7 @@ function QueryResultSettings() {
       <h2 className="settings-section__title">Query Result</h2>
       <SettingRow
         title="Max Rows"
-        description="한 번에 조회할 최대 행 수입니다. 다음 쿼리 실행부터 적용됩니다."
+        description="한 번에 조회할 최대 행 수입니다. 초과분은 잘리고 Truncated 배지로 표시됩니다. 다음 쿼리 실행부터 적용됩니다."
       >
         <input
           className="settings-control settings-control--number"

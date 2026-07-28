@@ -64,6 +64,103 @@
   color: #cca700;
 }
 
+.panel__tabs {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  min-height: 28px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-tab-inactive-background, #252526);
+  scrollbar-width: thin;
+}
+
+.panel__tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  min-width: 72px;
+  height: 28px;
+  padding: 0 6px 0 10px;
+  border-right: 1px solid var(--color-tab-border, var(--color-border));
+  color: var(--color-tab-inactive-foreground, var(--color-description));
+  background-color: transparent;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.panel__tab::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background-color: transparent;
+}
+
+.panel__tab:hover {
+  color: var(--color-tab-active-foreground, var(--color-foreground));
+  background-color: var(--color-tab-hover-background, rgba(255, 255, 255, 0.04));
+}
+
+.panel__tab--active {
+  color: var(--color-tab-active-foreground, var(--color-foreground));
+  background-color: var(--color-tab-active-background, var(--color-surface));
+}
+
+.panel__tab--active::before {
+  background-color: var(--color-tab-active-border-top, #0078d4);
+}
+
+.panel__tab-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+.panel__tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.panel__tab-close:hover {
+  opacity: 1;
+  background-color: var(--color-toolbar-hover-background);
+}
+
+.panel__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.panel__running-banner {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--color-border);
+  color: #d7ba7d;
+  background-color: color-mix(in srgb, #d7ba7d 12%, transparent);
+  font-size: 12px;
+}
+
 .panel__content {
   flex: 1;
   margin: 0;
@@ -77,6 +174,10 @@
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
+}
+
+.panel__content--error {
+  color: #f48771;
 }
 
 .panel__content::selection {

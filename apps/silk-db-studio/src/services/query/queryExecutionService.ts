@@ -17,6 +17,12 @@ import {
 import { buildExplainPlan } from "./sqlExplain";
 import { assertReadOnlyQueryAllowed } from "./sqlGuard";
 import { stripTrailingSemicolon } from "./sqlExecutable";
+import {
+  buildQueryResultTabTitle,
+  MAX_QUERY_RESULT_TABS,
+  type QueryResultTab,
+  type QueryResultTabStatus,
+} from "./queryResultTab";
 
 export type QueryExecutionStatus =
   | "idle"
@@ -27,9 +33,13 @@ export type QueryExecutionStatus =
 
 export type QueryExecutionState = {
   status: QueryExecutionStatus;
+  /** Status-line / message for the current run or active tab. */
   output: string;
+  /** Active tab result (convenience mirror). */
   result: QueryResultPayload | null;
   lastSql: string;
+  tabs: QueryResultTab[];
+  activeTabId: string | null;
 };
 
 export type QueryExecuteOptions = {
@@ -47,6 +57,8 @@ const INITIAL_STATE: QueryExecutionState = {
   output: "Run a SQL statement to see results.",
   result: null,
   lastSql: "",
+  tabs: [],
+  activeTabId: null,
 };
 
 class QueryExecutionServiceImpl {
@@ -55,6 +67,9 @@ class QueryExecutionServiceImpl {
   /** Monotonic token so a late response after cancel/re-run is ignored. */
   private runGeneration = 0;
   private cancelRequested = false;
+  private tabSequence = 0;
+  /** 1-based index within the current execute batch (reset each run). */
+  private runTabOrdinal = 0;
 
   getState(): QueryExecutionState {
     return this.state;
@@ -64,85 +79,222 @@ class QueryExecutionServiceImpl {
     return this.state.status === "running";
   }
 
+  setActiveTab(tabId: string): void {
+    const tab = this.state.tabs.find((item) => item.id === tabId);
+    if (!tab) return;
+    this.setState({
+      ...this.state,
+      status: tab.status === "success" ? "success" : tab.status,
+      output: tab.output,
+      result: tab.result,
+      lastSql: tab.sql,
+      activeTabId: tab.id,
+    });
+  }
+
+  closeTab(tabId: string): void {
+    const tabs = this.state.tabs.filter((item) => item.id !== tabId);
+    if (tabs.length === this.state.tabs.length) return;
+
+    if (tabs.length === 0) {
+      this.setState({
+        status: "idle",
+        output: "Run a SQL statement to see results.",
+        result: null,
+        lastSql: this.state.lastSql,
+        tabs: [],
+        activeTabId: null,
+      });
+      return;
+    }
+
+    const closingActive = this.state.activeTabId === tabId;
+    let activeTabId = this.state.activeTabId;
+    if (closingActive) {
+      const closedIndex = this.state.tabs.findIndex((item) => item.id === tabId);
+      const next =
+        tabs[Math.min(closedIndex, tabs.length - 1)] ?? tabs[tabs.length - 1];
+      activeTabId = next.id;
+    }
+
+    const active = tabs.find((item) => item.id === activeTabId) ?? tabs[0];
+    this.setState({
+      status: active.status === "success" ? "success" : active.status,
+      output: active.output,
+      result: active.result,
+      lastSql: active.sql,
+      tabs,
+      activeTabId: active.id,
+    });
+  }
+
+  closeAllTabs(): void {
+    this.setState({
+      status: this.state.status === "running" ? "running" : "idle",
+      output:
+        this.state.status === "running"
+          ? this.state.output
+          : "Run a SQL statement to see results.",
+      result: null,
+      lastSql: this.state.lastSql,
+      tabs: [],
+      activeTabId: null,
+    });
+  }
+
   async execute(sql: string, options?: QueryExecuteOptions): Promise<void> {
     const statement = stripTrailingSemicolon(sql.trim());
     if (!statement) {
-      this.setState({
+      this.patchRunStatus({
         status: "error",
         output: "Query is empty. Write SQL in the editor and run again.",
-        result: null,
         lastSql: sql,
+      });
+      return;
+    }
+
+    await this.executeStatements(
+      [{ sql: statement, range: options?.sourceRange }],
+      options,
+    );
+  }
+
+  /**
+   * Run one or more statements sequentially. Each statement becomes its own tab
+   * for this run only — a new execute replaces all prior result tabs.
+   */
+  async executeStatements(
+    statements: Array<{ sql: string; range?: SqlSourceRange }>,
+    options?: QueryExecuteOptions,
+  ): Promise<void> {
+    const prepared = statements
+      .map((item) => ({
+        sql: stripTrailingSemicolon(item.sql.trim()),
+        range: item.range,
+      }))
+      .filter((item) => item.sql.length > 0);
+
+    if (prepared.length === 0) {
+      this.patchRunStatus({
+        status: "error",
+        output: "Query is empty. Write SQL in the editor and run again.",
       });
       return;
     }
 
     const generation = ++this.runGeneration;
     this.cancelRequested = false;
-    const startedAt = performance.now();
     clearSqlErrorMarkers();
 
-    this.setState({
-      status: "running",
-      output: "Executing query...",
-      result: null,
-      lastSql: statement,
-    });
+    const total = prepared.length;
+    this.beginRun(
+      prepared[0].sql,
+      total === 1 ? "Executing query..." : `Executing 1/${total}...`,
+    );
 
     try {
       if (!isTauri()) {
         if (!this.isCurrentRun(generation)) return;
-        const output = `Desktop-only JDBC execution.\n\nSQL:\n${statement}`;
-        this.setState({
-          status: "success",
-          output,
-          result: null,
-          lastSql: statement,
-        });
-        this.recordHistory(
-          options?.historySql ?? statement,
-          "success",
-          startedAt,
-          output,
-          options,
-        );
+        for (let index = 0; index < prepared.length; index += 1) {
+          if (!this.isCurrentRun(generation) || this.cancelRequested) {
+            this.finishCancelled(prepared[index].sql, performance.now(), options);
+            return;
+          }
+          const item = prepared[index];
+          const output = `Desktop-only JDBC execution.\n\nSQL:\n${item.sql}`;
+          this.commitTab({
+            sql: item.sql,
+            output,
+            result: null,
+            status: "success",
+          });
+          this.recordHistory(item.sql, "success", performance.now(), output, options);
+        }
         return;
       }
 
       const readOnly = ConfigurationService.getValue("database.readOnly");
-      assertReadOnlyQueryAllowed(statement, readOnly);
-
       await this.ensureConnected();
 
-      const payload = await this.invokeQuery(statement, readOnly);
+      for (let index = 0; index < prepared.length; index += 1) {
+        if (!this.isCurrentRun(generation)) {
+          return;
+        }
+        if (this.cancelRequested) {
+          this.finishCancelled(prepared[index].sql, performance.now(), options);
+          return;
+        }
 
-      if (!this.isCurrentRun(generation)) {
-        return;
+        const item = prepared[index];
+        if (total > 1) {
+          this.patchRunStatus({
+            status: "running",
+            output: `Executing ${index + 1}/${total}...`,
+            lastSql: item.sql,
+          });
+        }
+
+        const startedAt = performance.now();
+        try {
+          assertReadOnlyQueryAllowed(item.sql, readOnly);
+          const payload = await this.invokeQuery(item.sql, readOnly);
+
+          if (!this.isCurrentRun(generation)) {
+            return;
+          }
+          if (this.cancelRequested) {
+            this.finishCancelled(item.sql, startedAt, options);
+            return;
+          }
+          if (!isQueryResultPayload(payload)) {
+            throw new Error("Invalid query result payload from desktop bridge.");
+          }
+
+          this.commitTab({
+            sql: item.sql,
+            output: payload.message,
+            result: payload,
+            status: "success",
+          });
+          this.recordHistory(
+            options?.historySql && total === 1
+              ? options.historySql
+              : item.sql,
+            "success",
+            startedAt,
+            payload.message,
+            options,
+          );
+        } catch (error) {
+          if (!this.isCurrentRun(generation)) {
+            return;
+          }
+          if (this.cancelRequested || isCancelError(error)) {
+            this.finishCancelled(item.sql, startedAt, options);
+            return;
+          }
+
+          const message = formatErrorMessage(error, "Failed to execute query.");
+          this.commitTab({
+            sql: item.sql,
+            output: message,
+            result: null,
+            status: "error",
+          });
+          this.recordHistory(item.sql, "error", startedAt, message, options);
+          applySqlErrorMarkers(message, item.range ?? null);
+          // Continue remaining statements so N selections still yield N tabs.
+        }
       }
-
-      if (this.cancelRequested) {
-        this.finishCancelled(statement, startedAt, options);
-        return;
-      }
-
-      if (!isQueryResultPayload(payload)) {
-        throw new Error("Invalid query result payload from desktop bridge.");
-      }
-
-      this.setState({
-        status: "success",
-        output: payload.message,
-        result: payload,
-        lastSql: statement,
-      });
-      this.recordHistory(
-        options?.historySql ?? statement,
-        "success",
-        startedAt,
-        payload.message,
-        options,
-      );
     } catch (error) {
-      this.handleRunError(error, statement, generation, startedAt, options);
+      // Connection / setup failure before any statement.
+      this.handleRunError(
+        error,
+        prepared[0].sql,
+        generation,
+        performance.now(),
+        { ...options, sourceRange: prepared[0].range },
+      );
     }
   }
 
@@ -153,10 +305,9 @@ class QueryExecutionServiceImpl {
   async explain(sql: string, options?: QueryExecuteOptions): Promise<void> {
     const statement = stripTrailingSemicolon(sql.trim());
     if (!statement) {
-      this.setState({
+      this.patchRunStatus({
         status: "error",
         output: "Query is empty. Write SQL in the editor and explain again.",
-        result: null,
         lastSql: sql,
       });
       return;
@@ -165,10 +316,9 @@ class QueryExecutionServiceImpl {
     const driverId = resolveActiveDriverId();
     const plan = buildExplainPlan(driverId, statement);
     if (plan.steps.length === 0) {
-      this.setState({
+      this.patchRunStatus({
         status: "error",
         output: "Nothing to explain.",
-        result: null,
         lastSql: statement,
       });
       return;
@@ -183,12 +333,7 @@ class QueryExecutionServiceImpl {
     const displaySql =
       plan.steps.find((step) => step.captureResult)?.sql ?? statement;
 
-    this.setState({
-      status: "running",
-      output: `Running ${plan.label}...`,
-      result: null,
-      lastSql: displaySql,
-    });
+    this.beginRun(displaySql, `Running ${plan.label}...`);
 
     const teardownSql =
       plan.steps.find((step) => step.kind === "teardown")?.sql ?? null;
@@ -205,11 +350,11 @@ class QueryExecutionServiceImpl {
           .map((step) => step.sql)
           .join("\n\n");
         const output = `Desktop-only JDBC explain.\n\n${plan.label} steps:\n${preview}`;
-        this.setState({
-          status: "success",
+        this.commitTab({
+          sql: displaySql,
           output,
           result: null,
-          lastSql: displaySql,
+          status: "success",
         });
         this.recordHistory(
           historySql,
@@ -280,17 +425,18 @@ class QueryExecutionServiceImpl {
         throw new Error("Explain completed without a plan result.");
       }
 
-      this.setState({
-        status: "success",
-        output: capturedMessage || `${plan.label} completed.`,
+      const output = capturedMessage || `${plan.label} completed.`;
+      this.commitTab({
+        sql: displaySql,
+        output,
         result: captured,
-        lastSql: displaySql,
+        status: "success",
       });
       this.recordHistory(
         historySql,
         "success",
         startedAt,
-        capturedMessage || `${plan.label} completed.`,
+        output,
         options,
       );
     } catch (error) {
@@ -318,18 +464,17 @@ class QueryExecutionServiceImpl {
     }
 
     this.cancelRequested = true;
-    this.setState({
-      ...this.state,
+    this.patchRunStatus({
+      status: "running",
       output: "Cancelling query...",
     });
 
     if (!isTauri()) {
       this.runGeneration += 1;
       this.setState({
+        ...this.state,
         status: "cancelled",
         output: "Query cancelled.",
-        result: null,
-        lastSql: this.state.lastSql,
       });
       return;
     }
@@ -345,6 +490,69 @@ class QueryExecutionServiceImpl {
   onDidChange(listener: QueryExecutionListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  private beginRun(sql: string, output: string): void {
+    this.runTabOrdinal = 0;
+    this.setState({
+      ...this.state,
+      status: "running",
+      output,
+      lastSql: sql,
+      result: null,
+      tabs: [],
+      activeTabId: null,
+    });
+  }
+
+  private commitTab(input: {
+    sql: string;
+    output: string;
+    result: QueryResultPayload | null;
+    status: QueryResultTabStatus;
+  }): void {
+    this.runTabOrdinal += 1;
+    this.tabSequence += 1;
+    const tab: QueryResultTab = {
+      id: `result-${this.tabSequence}-${Date.now()}`,
+      title: buildQueryResultTabTitle(
+        input.sql,
+        input.result,
+        this.runTabOrdinal,
+      ),
+      sql: input.sql,
+      status: input.status,
+      output: input.output,
+      result: input.result,
+      createdAt: Date.now(),
+    };
+
+    let tabs = [...this.state.tabs, tab];
+    if (tabs.length > MAX_QUERY_RESULT_TABS) {
+      tabs = tabs.slice(tabs.length - MAX_QUERY_RESULT_TABS);
+    }
+
+    this.setState({
+      status: input.status === "success" ? "success" : input.status,
+      output: input.output,
+      result: input.result,
+      lastSql: input.sql,
+      tabs,
+      activeTabId: tab.id,
+    });
+  }
+
+  private patchRunStatus(patch: {
+    status: QueryExecutionStatus;
+    output: string;
+    lastSql?: string;
+  }): void {
+    this.setState({
+      ...this.state,
+      status: patch.status,
+      output: patch.output,
+      lastSql: patch.lastSql ?? this.state.lastSql,
+    });
   }
 
   private async ensureConnected(): Promise<void> {
@@ -398,9 +606,9 @@ class QueryExecutionServiceImpl {
 
     const message = formatErrorMessage(error, "Failed to execute query.");
     this.setState({
+      ...this.state,
       status: "error",
       output: message,
-      result: null,
       lastSql: statement,
     });
     this.recordHistory(
@@ -419,9 +627,9 @@ class QueryExecutionServiceImpl {
     options?: QueryExecuteOptions,
   ): void {
     this.setState({
+      ...this.state,
       status: "cancelled",
       output: "Query cancelled.",
-      result: null,
       lastSql: statement,
     });
     this.recordHistory(

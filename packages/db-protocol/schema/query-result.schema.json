@@ -38,6 +38,10 @@
     },
     "message": {
       "type": "string"
+    },
+    "truncated": {
+      "type": "boolean",
+      "description": "True when the result set was cut off at queryResult.maxRows"
     }
   }
 }
