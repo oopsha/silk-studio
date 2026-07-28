@@ -23,6 +23,7 @@ import {
   type QueryResultTab,
   type QueryResultTabStatus,
 } from "./queryResultTab";
+import { QueryResultDirtyService } from "./queryResultDirtyService";
 
 export type QueryExecutionStatus =
   | "idle"
@@ -48,6 +49,10 @@ export type QueryExecuteOptions = {
   /** Override SQL stored in history (e.g. original statement for Explain). */
   historySql?: string;
   skipHistory?: boolean;
+  /** Explorer Open Data — table results may be editable; views are read-only. */
+  relationKind?: "table" | "view";
+  /** Override the result tab label (e.g. schema.object from the explorer). */
+  tabTitle?: string;
 };
 
 type QueryExecutionListener = () => void;
@@ -93,6 +98,7 @@ class QueryExecutionServiceImpl {
   }
 
   closeTab(tabId: string): void {
+    QueryResultDirtyService.removeTab(tabId);
     const tabs = this.state.tabs.filter((item) => item.id !== tabId);
     if (tabs.length === this.state.tabs.length) return;
 
@@ -139,6 +145,68 @@ class QueryExecutionServiceImpl {
       lastSql: this.state.lastSql,
       tabs: [],
       activeTabId: null,
+    });
+  }
+
+  /** Execute a single write statement without opening a new result tab. */
+  async executeWriteStatement(sql: string): Promise<void> {
+    if (!isTauri()) {
+      throw new Error("Database writes are available in the desktop app only.");
+    }
+
+    const readOnly = ConfigurationService.getValue("database.readOnly");
+    assertReadOnlyQueryAllowed(sql, readOnly);
+    await this.ensureConnected();
+
+    const payload = await this.invokeQuery(sql, readOnly);
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid query result payload from desktop bridge.");
+    }
+
+    const record = payload as Record<string, unknown>;
+    if (record.kind === "update" || record.kind === "resultSet") {
+      return;
+    }
+    throw new Error("Unexpected response while executing UPDATE.");
+  }
+
+  /** Re-run the tab's SELECT and replace its grid data in place. */
+  async refreshTabResult(tabId: string): Promise<void> {
+    const tab = this.state.tabs.find((item) => item.id === tabId);
+    if (!tab) {
+      throw new Error("Result tab not found.");
+    }
+
+    if (!isTauri()) {
+      throw new Error("Refreshing results is available in the desktop app only.");
+    }
+
+    const readOnly = ConfigurationService.getValue("database.readOnly");
+    assertReadOnlyQueryAllowed(tab.sql, readOnly);
+    await this.ensureConnected();
+
+    const payload = await this.invokeQuery(tab.sql, readOnly);
+    if (!isQueryResultPayload(payload)) {
+      throw new Error("Invalid query result payload from desktop bridge.");
+    }
+
+    const tabs = this.state.tabs.map((item) =>
+      item.id === tabId
+        ? {
+            ...item,
+            result: payload,
+            output: payload.message || item.output,
+          }
+        : item,
+    );
+    const active = tabs.find((item) => item.id === tabId);
+    const isActive = this.state.activeTabId === tabId;
+
+    this.setState({
+      ...this.state,
+      tabs,
+      result: isActive ? payload : this.state.result,
+      output: isActive ? active?.output ?? this.state.output : this.state.output,
     });
   }
 
@@ -255,6 +323,8 @@ class QueryExecutionServiceImpl {
             output: payload.message,
             result: payload,
             status: "success",
+            relationKind: options?.relationKind,
+            title: options?.tabTitle,
           });
           this.recordHistory(
             options?.historySql && total === 1
@@ -280,6 +350,8 @@ class QueryExecutionServiceImpl {
             output: message,
             result: null,
             status: "error",
+            relationKind: options?.relationKind,
+            title: options?.tabTitle,
           });
           this.recordHistory(item.sql, "error", startedAt, message, options);
           applySqlErrorMarkers(message, item.range ?? null);
@@ -510,21 +582,26 @@ class QueryExecutionServiceImpl {
     output: string;
     result: QueryResultPayload | null;
     status: QueryResultTabStatus;
+    relationKind?: "table" | "view";
+    title?: string;
   }): void {
     this.runTabOrdinal += 1;
     this.tabSequence += 1;
     const tab: QueryResultTab = {
       id: `result-${this.tabSequence}-${Date.now()}`,
-      title: buildQueryResultTabTitle(
-        input.sql,
-        input.result,
-        this.runTabOrdinal,
-      ),
+      title:
+        input.title ??
+        buildQueryResultTabTitle(
+          input.sql,
+          input.result,
+          this.runTabOrdinal,
+        ),
       sql: input.sql,
       status: input.status,
       output: input.output,
       result: input.result,
       createdAt: Date.now(),
+      relationKind: input.relationKind,
     };
 
     let tabs = [...this.state.tabs, tab];

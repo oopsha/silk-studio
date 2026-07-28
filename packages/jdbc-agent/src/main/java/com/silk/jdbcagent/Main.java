@@ -183,6 +183,16 @@ public final class Main {
           response.put("ok", true);
           response.set("result", runtime.listColumns(params));
         }
+        case "connection.primaryKeys" -> {
+          runtime.requireConnection();
+          response.put("ok", true);
+          response.set("result", runtime.listPrimaryKeys(params));
+        }
+        case "connection.ddl" -> {
+          runtime.requireConnection();
+          response.put("ok", true);
+          response.set("result", runtime.fetchObjectDdl(params));
+        }
         case "query.execute" -> {
           String sql = params.path("sql").asText("").trim();
           if (sql.isEmpty()) {
@@ -349,6 +359,53 @@ public final class Main {
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("columns", columns);
+      return result;
+    }
+
+    ObjectNode listPrimaryKeys(JsonNode params) throws SQLException {
+      requireConnection();
+      String schemaName = params.path("schema").asText("").trim();
+      String tableName = params.path("table").asText("").trim();
+      if (tableName.isEmpty()) {
+        throw new RuntimeException("Missing params.table");
+      }
+
+      ArrayNode keys = MAPPER.createArrayNode();
+      String resolvedSchema =
+          dialect.collectPrimaryKeys(connection, schemaName, tableName, keys);
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.set("keys", keys);
+      if (resolvedSchema != null && !resolvedSchema.isBlank()) {
+        result.put("schema", resolvedSchema);
+      }
+      return result;
+    }
+
+    ObjectNode fetchObjectDdl(JsonNode params) throws SQLException {
+      requireConnection();
+      String schemaName = params.path("schema").asText("").trim();
+      String objectName = params.path("name").asText("").trim();
+      String kind = params.path("kind").asText("").trim().toLowerCase(java.util.Locale.ROOT);
+      if (schemaName.isEmpty()) {
+        throw new RuntimeException("Missing params.schema");
+      }
+      if (objectName.isEmpty()) {
+        throw new RuntimeException("Missing params.name");
+      }
+      if (kind.isEmpty()) {
+        throw new RuntimeException("Missing params.kind");
+      }
+
+      String ddl = dialect.fetchObjectDdl(connection, schemaName, objectName, kind);
+      if (ddl == null || ddl.isBlank()) {
+        throw new RuntimeException(
+            "No DDL found for " + schemaName + "." + objectName + " (" + kind + ").");
+      }
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.put("ddl", ddl.trim());
+      result.put("dialectId", dialect.id());
       return result;
     }
 

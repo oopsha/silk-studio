@@ -4,9 +4,68 @@
   flex-direction: column;
   min-height: 0;
   height: 100%;
+  overflow: hidden;
+  padding: 0;
+  font-size: 13px;
+}
+
+.connections-explorer__toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 6px 8px 4px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.connections-explorer__filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 0 4px 0 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background-color: var(--color-input-background, transparent);
+  color: var(--color-description);
+}
+
+.connections-explorer__filter .codicon {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.connections-explorer__filter-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-foreground);
+  font: inherit;
+  font-size: 12px;
+}
+
+.connections-explorer__filter-input::placeholder {
+  color: var(--color-description);
+}
+
+.connections-explorer__action-msg {
+  padding: 0 2px;
+  color: #89d185;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connections-explorer__body {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 2px 0 8px;
-  font-size: 13px;
 }
 
 .connections-explorer__profile {
@@ -31,6 +90,21 @@
 
 .connections-explorer__row:hover {
   background-color: var(--color-list-hover);
+}
+
+.connections-explorer__row--selected,
+.connections-explorer__row--selected:hover {
+  background-color: var(--color-list-active-selection-background, rgba(57, 148, 188, 0.28));
+}
+
+.connections-explorer__row--object {
+  cursor: pointer;
+  outline: none;
+}
+
+.connections-explorer__row--object:focus-visible {
+  outline: 1px solid var(--color-focus-border, #007fd4);
+  outline-offset: -1px;
 }
 
 .connections-explorer__twistie,
@@ -115,6 +189,10 @@
 }
 
 .connections-explorer__error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   padding: 4px 8px 4px 24px;
   color: #f14c4c;
   font-size: 12px;
@@ -126,4 +204,24 @@
 
 .connections-explorer__error--root {
   padding: 8px 12px;
+}
+
+.connections-explorer__link-button {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #3794bc;
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.connections-explorer__link-button:hover:not(:disabled) {
+  color: #4fc1ff;
+}
+
+.connections-explorer__link-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

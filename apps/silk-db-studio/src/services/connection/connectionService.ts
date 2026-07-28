@@ -21,8 +21,10 @@ import type {
   ConnectionState,
 } from "./connectionTypes";
 import { defaultUrlForDriver, getConnectionDriver } from "./connectionTypes";
+import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { formatErrorMessage } from "../formatErrorMessage";
 import { ConnectionTreeService } from "./connectionTreeService";
+import { ExplorerUiService } from "./explorerUiService";
 
 type ConnectionListener = () => void;
 
@@ -219,7 +221,9 @@ class ConnectionServiceImpl {
         status: "connected",
         errorMessage: null,
       });
-      void ConnectionTreeService.loadSchemas(profileId, true);
+      void ConnectionTreeService.loadSchemas(profileId, true).then(() =>
+        this.preloadDefaultSchema(profileId),
+      );
     } catch (error) {
       const message = formatErrorMessage(error, "Failed to connect.");
       ConnectionTreeService.setConnectedProfileId(null);
@@ -232,6 +236,36 @@ class ConnectionServiceImpl {
       if (!options.silent) {
         throw new Error(message);
       }
+    }
+  }
+
+  private async preloadDefaultSchema(profileId: string): Promise<void> {
+    if (
+      !ConfigurationService.getValue("database.explorer.preloadDefaultSchema")
+    ) {
+      return;
+    }
+    if (this.state.connectedProfileId !== profileId) {
+      return;
+    }
+
+    const profile = this.getProfile(profileId);
+    const schemaName = profile?.defaultSchema.trim();
+    if (!schemaName) {
+      return;
+    }
+
+    try {
+      await ConnectionTreeService.loadSchemaObjects(profileId, schemaName);
+      if (this.state.connectedProfileId === profileId) {
+        ExplorerUiService.requestExpandSchema(profileId, schemaName);
+      }
+    } catch (error) {
+      console.warn(
+        "[silk.connection] failed to preload default schema",
+        schemaName,
+        error,
+      );
     }
   }
 

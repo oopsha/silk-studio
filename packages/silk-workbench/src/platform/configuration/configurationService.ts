@@ -120,6 +120,10 @@ class ConfigurationServiceImpl {
       this.values["database.readOnly"] =
         CONFIGURATION_DEFAULTS["database.readOnly"];
     }
+    if (typeof this.values["database.explorer.preloadDefaultSchema"] !== "boolean") {
+      this.values["database.explorer.preloadDefaultSchema"] =
+        CONFIGURATION_DEFAULTS["database.explorer.preloadDefaultSchema"];
+    }
     if (typeof this.values["ai.enabled"] !== "boolean") {
       this.values["ai.enabled"] = CONFIGURATION_DEFAULTS["ai.enabled"];
     }

@@ -101,6 +101,33 @@ export type ConnectionColumnsResult = {
   columns: MetadataColumn[];
 };
 
+/** Primary-key column metadata (`connection.primaryKeys`). */
+export type MetadataPrimaryKeyColumn = {
+  name: string;
+};
+
+export type ConnectionPrimaryKeysParams = {
+  schema: string;
+  table: string;
+};
+
+export type ConnectionPrimaryKeysResult = {
+  /** Resolved owner/schema when the request omitted schema. */
+  schema?: string;
+  keys: MetadataPrimaryKeyColumn[];
+};
+
+export type ConnectionDdlParams = {
+  schema: string;
+  name: string;
+  kind: MetadataObjectKind;
+};
+
+export type ConnectionDdlResult = {
+  ddl: string;
+  dialectId: string;
+};
+
 export type AgentMethod =
   | "agent.ping"
   | "agent.shutdown"
@@ -109,6 +136,8 @@ export type AgentMethod =
   | "connection.test"
   | "connection.metadata"
   | "connection.columns"
+  | "connection.primaryKeys"
+  | "connection.ddl"
   | "query.execute";
 
 export type AgentRequest<TParams = unknown> = {
@@ -230,5 +259,36 @@ export function isConnectionColumnsResult(
   const record = value as Record<string, unknown>;
   return (
     Array.isArray(record.columns) && record.columns.every(isMetadataColumn)
+  );
+}
+
+function isMetadataPrimaryKeyColumn(
+  value: unknown,
+): value is MetadataPrimaryKeyColumn {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.name === "string";
+}
+
+export function isConnectionPrimaryKeysResult(
+  value: unknown,
+): value is ConnectionPrimaryKeysResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Array.isArray(record.keys) &&
+    record.keys.every(isMetadataPrimaryKeyColumn) &&
+    (record.schema === undefined || typeof record.schema === "string")
+  );
+}
+
+export function isConnectionDdlResult(
+  value: unknown,
+): value is ConnectionDdlResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.ddl === "string" &&
+    typeof record.dialectId === "string"
   );
 }

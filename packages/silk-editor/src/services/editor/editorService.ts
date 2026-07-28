@@ -19,6 +19,14 @@ function createTabId(): string {
   return `tab-${crypto.randomUUID()}`;
 }
 
+/** Alternative editor tabs that sync Monaco content and dirty state via EditorService. */
+const MANAGED_SILK_URI_PREFIXES = ["silk://plsql/"];
+
+function isManagedSilkTabUri(uri: string | undefined): boolean {
+  if (!uri) return false;
+  return MANAGED_SILK_URI_PREFIXES.some((prefix) => uri.startsWith(prefix));
+}
+
 type LanguageIdResolver = (path: string, fromExtension: string) => string;
 
 class EditorServiceImpl {
@@ -302,10 +310,22 @@ class EditorServiceImpl {
   updateTabContent(id: string, content: string): void {
     const tab = this.tabs.find((item) => item.id === id);
     if (!tab || tab.content === content) return;
-    if (tab.uri?.startsWith("silk://")) return;
+    if (tab.uri?.startsWith("silk://") && !isManagedSilkTabUri(tab.uri)) return;
 
     tab.content = content;
     tab.isDirty = content !== (this.savedContent.get(id) ?? "");
+    this.updateContextKeys();
+    this.fireDidChange();
+  }
+
+  /** Set content and saved baseline for managed silk:// editor tabs (e.g. PL/SQL source). */
+  setTabContentBaseline(id: string, content: string): void {
+    const tab = this.tabs.find((item) => item.id === id);
+    if (!tab || !isManagedSilkTabUri(tab.uri)) return;
+
+    tab.content = content;
+    tab.isDirty = false;
+    this.savedContent.set(id, content);
     this.updateContextKeys();
     this.fireDidChange();
   }

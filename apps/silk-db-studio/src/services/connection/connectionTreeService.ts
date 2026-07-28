@@ -58,6 +58,53 @@ class ConnectionTreeServiceImpl {
     this.fireDidChange();
   }
 
+  /**
+   * Clear cached objects for one schema so the next expand / refresh reloads them.
+   * Does not remove the schema from the list.
+   */
+  invalidateSchema(profileId: string, schemaName: string): void {
+    const cache = this.caches.get(profileId);
+    if (!cache) return;
+
+    let changed = false;
+    const schemas = cache.schemas.map((schema) => {
+      if (schema.name.toLowerCase() !== schemaName.toLowerCase()) {
+        return schema;
+      }
+      changed = true;
+      return {
+        name: schema.name,
+        status: "idle" as const,
+        errorMessage: null,
+        groups: [],
+      };
+    });
+    if (!changed) return;
+
+    this.caches.set(profileId, { ...cache, schemas });
+    this.fireDidChange();
+  }
+
+  /** Force-reload objects under a schema (all groups). */
+  async refreshSchemaObjects(
+    profileId: string,
+    schemaName: string,
+  ): Promise<void> {
+    await this.loadSchemaObjects(profileId, schemaName, true);
+  }
+
+  /**
+   * Drop one schema's object cache, then reload it.
+   * Prefer this after DDL mutations (6-E) so the tree matches the database.
+   */
+  async invalidateAndRefreshSchema(
+    profileId: string,
+    schemaName: string,
+  ): Promise<void> {
+    this.invalidateSchema(profileId, schemaName);
+    await this.loadSchemaObjects(profileId, schemaName, true);
+  }
+
   async loadSchemas(profileId: string, force = false): Promise<void> {
     if (this.connectedProfileId !== profileId) {
       throw new Error("Connect this profile before loading database objects.");

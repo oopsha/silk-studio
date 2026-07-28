@@ -15,9 +15,15 @@ import SettingsEditor from "@silk-studio/workbench/components/settings/index.ts"
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import ConnectionsExplorer from "../../connections/ConnectionsExplorer.tsx";
 import ConnectionEditor from "../../connections/ConnectionEditor.tsx";
+import ExplorerSearchQuickPick from "../../connections/ExplorerSearchQuickPick.tsx";
+import ExplorerObjectMutationDialog from "../../connections/ExplorerObjectMutationDialog.tsx";
+import DdlEditorView from "../../ddl/DdlEditorView.tsx";
+import PlsqlEditorView from "../../plsql/PlsqlEditorView.tsx";
 import QueryHistoryView from "../../query-history/QueryHistoryView.tsx";
 import { ConnectionEditorService } from "../../../services/connection/connectionEditorService.ts";
-import { ConnectionTreeService } from "../../../services/connection/connectionTreeService.ts";
+import { isDdlEditorTab } from "../../../services/connection/ddlEditorConstants.ts";
+import { isPlsqlEditorTab } from "../../../services/connection/plsqlEditorConstants.ts";
+import { EXPLORER_COMMANDS } from "../../../services/connection/explorerObjectActions.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { SettingsService } from "@silk-studio/workbench/services/settings/settingsService.ts";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
@@ -64,14 +70,36 @@ function AppShell() {
       <button
         type="button"
         className="accordion-panel__action"
+        title="Search Database Objects (Ctrl+Shift+O)"
+        aria-label="Search Database Objects"
+        disabled={!connection.connectedProfileId}
+        onClick={() =>
+          void CommandService.executeCommand(EXPLORER_COMMANDS.searchObjects)
+        }
+      >
+        <Codicon name="search" />
+      </button>
+      <button
+        type="button"
+        className="accordion-panel__action"
+        title="Collapse All"
+        aria-label="Collapse All"
+        disabled={!connection.connectedProfileId}
+        onClick={() =>
+          void CommandService.executeCommand(EXPLORER_COMMANDS.collapseAll)
+        }
+      >
+        <Codicon name="collapse-all" />
+      </button>
+      <button
+        type="button"
+        className="accordion-panel__action"
         title="Refresh"
         aria-label="Refresh"
         disabled={!connection.connectedProfileId}
-        onClick={() => {
-          const profileId = connection.connectedProfileId;
-          if (!profileId) return;
-          void ConnectionTreeService.loadSchemas(profileId, true);
-        }}
+        onClick={() =>
+          void CommandService.executeCommand(EXPLORER_COMMANDS.refresh)
+        }
       >
         <Codicon name="refresh" />
       </button>
@@ -99,6 +127,12 @@ function AppShell() {
           }
           if (ConnectionEditorService.isConnectionEditorTab(tab.uri)) {
             return <ConnectionEditor />;
+          }
+          if (isDdlEditorTab(tab.uri)) {
+            return <DdlEditorView />;
+          }
+          if (isPlsqlEditorTab(tab.uri)) {
+            return <PlsqlEditorView />;
           }
           return null;
         }}
@@ -260,6 +294,8 @@ function AppShell() {
 
         <StatusBar />
       </div>
+      <ExplorerSearchQuickPick />
+      <ExplorerObjectMutationDialog />
     </div>
   );
 }

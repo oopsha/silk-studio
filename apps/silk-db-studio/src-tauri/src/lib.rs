@@ -140,6 +140,27 @@ fn connection_columns(
     state.jdbc_agent.list_columns(schema.trim(), table.trim())
 }
 
+#[tauri::command]
+fn connection_primary_keys(
+    schema: String,
+    table: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    state.jdbc_agent.list_primary_keys(schema.trim(), table.trim())
+}
+
+#[tauri::command]
+fn connection_ddl(
+    schema: String,
+    name: String,
+    kind: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    state
+        .jdbc_agent
+        .fetch_object_ddl(schema.trim(), name.trim(), kind.trim())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -159,6 +180,8 @@ pub fn run() {
             connection_test,
             connection_metadata,
             connection_columns,
+            connection_primary_keys,
+            connection_ddl,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_delete,

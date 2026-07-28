@@ -23,6 +23,7 @@ export type WorkbenchConfiguration = {
   "database.queryTimeoutSec": number;
   "database.autoCommit": boolean;
   "database.readOnly": boolean;
+  "database.explorer.preloadDefaultSchema": boolean;
   "ai.enabled": boolean;
   "ai.provider": AiProviderId;
   "ai.model": string;
@@ -53,6 +54,7 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "database.queryTimeoutSec": 30,
   "database.autoCommit": true,
   "database.readOnly": false,
+  "database.explorer.preloadDefaultSchema": true,
   "ai.enabled": false,
   "ai.provider": "openai",
   "ai.model": "gpt-4o-mini",

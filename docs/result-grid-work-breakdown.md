@@ -132,24 +132,24 @@
 
 ## 5-E. 안전 UPDATE
 
-**상태:** 미구현
+**상태:** ✅ 완료
 
-**의존성:** 5-A 이상. PK/메타데이터는 탐색기·`connection` API와 겹칠 수 있음 → 로드맵 6과 조율
+**의존성:** 5-A 이상. PK 메타는 `connection.primaryKeys` agent API 추가
 
 ### 범위
 
-- 셀 편집 → dirty 행 추적 (현재 `editable: true`만 있고 DB 반영 없음)
-- WHERE에 쓸 키 전략
-  - PK 컬럼 메타 조회 우선
-  - 없으면 전체 컬럼 비교 또는 “키 컬럼 선택” UI (위험도  Explicit)
-- 미리보기: 생성될 `UPDATE … WHERE …` 목록
-- 확인 다이얼로그 후 실행, 성공/실패 피드백
-- read-only 모드·트랜잭션/autoCommit 설정과 충돌 없이
+- 셀 편집 → dirty 행 추적 (`QueryResultDirtyService`)
+- WHERE: PK 컬럼 메타 조회 (`connection.primaryKeys`) — **PK 없으면 저장 차단**
+- 단일 테이블 `SELECT … FROM …`만 지원 (JOIN/UNION/서브쿼리 차단)
+- **스키마 생략 시** JDBC 세션 컨텍스트(`CURRENT_SCHEMA`, `search_path`, `getCatalog()` 등)로 PK·UPDATE 대상 해석
+- 미리보기: 생성될 `UPDATE … WHERE …` 목록 (`QueryResultUpdateDialog`)
+- 확인 후 실행 → 성공 시 원 SELECT 재실행으로 그리드 갱신
+- read-only 모드·autoCommit은 기존 `query_execute` 경로 그대로 사용
 
 ### 완료 기준
 
-- 셀 수정 후 미리보기에서 SQL을 보고 확인해야만 DB에 반영
-- PK 없는 테이블은 안전하게 막거나 경고 후 진행
+- 셀 수정 후 미리보기에서 SQL을 보고 확인해야만 DB에 반영 ✅
+- PK 없는 테이블은 저장 버튼·편집 차단 + "Save blocked" 배지 ✅
 
 ### 요청 문구 예
 
@@ -164,7 +164,7 @@
  → 5-B 컬럼 상태 저장  ✅
  → 5-C 다중 결과 탭  ✅
  → 5-D 대용량/페이지 (v1)  ✅
- → 5-E 안전 UPDATE
+ → 5-E 안전 UPDATE  ✅
 ```
 
 - `5-B`와 `5-C`는 서로 의존이 약해서, A 이후 순서를 바꿔도 된다.
@@ -185,5 +185,5 @@
 
 ## 다음 단계
 
-Agent 모드에서 **5-E** (안전 UPDATE)부터 진행하면 된다.  
-(그리드 라이브러리 전환은 DevExtreme/Enterprise 결정 후 별도)
+결과 그리드(로드맵 5) 5-A~5-E가 완료되었다.  
+그리드 라이브러리 전환(DevExtreme/Enterprise)은 별도 결정 후 진행.

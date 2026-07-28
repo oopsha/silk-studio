@@ -45,6 +45,16 @@
   color: #e2c08d;
 }
 
+.query-result-grid__badge--dirty {
+  background-color: color-mix(in srgb, #3794bc 30%, transparent);
+  color: #9cdcfe;
+}
+
+.query-result-grid__badge--blocked {
+  background-color: color-mix(in srgb, #f48771 24%, transparent);
+  color: #f48771;
+}
+
 .query-result-grid__action-msg {
   color: #89d185;
 }
@@ -77,6 +87,10 @@
 .query-result-grid__action:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+.query-result-grid__action--save:not(:disabled) {
+  color: #9cdcfe;
 }
 
 .query-result-grid__body {

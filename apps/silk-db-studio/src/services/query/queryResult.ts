@@ -3,19 +3,31 @@ export type {
   QueryResultPayload,
 } from "@silk-studio/db-protocol";
 
+/** Internal row key — not part of result columns. */
+export const QUERY_RESULT_ROW_INDEX_KEY = "__rowIndex";
+
 export type QueryResultRow = Record<string, string | null>;
 
 export function toQueryResultRows(
   columns: string[],
   rows: Array<Array<string | null>>,
 ): QueryResultRow[] {
-  return rows.map((cells) => {
-    const row: QueryResultRow = {};
+  return rows.map((cells, rowIndex) => {
+    const row: QueryResultRow = {
+      [QUERY_RESULT_ROW_INDEX_KEY]: String(rowIndex),
+    };
     columns.forEach((column, index) => {
       row[column] = cells[index] ?? null;
     });
     return row;
   });
+}
+
+export function getQueryResultRowIndex(row: QueryResultRow): number {
+  const raw = row[QUERY_RESULT_ROW_INDEX_KEY];
+  if (raw == null) return 0;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 /**

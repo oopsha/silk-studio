@@ -99,6 +99,59 @@ final class OracleDialect implements DbDialect {
     }
   }
 
+  @Override
+  public String collectPrimaryKeys(
+      Connection connection, String schemaName, String tableName, ArrayNode keys)
+      throws SQLException {
+    List<String> candidates = new ArrayList<>();
+    String currentSchema =
+        MetadataTableScope.querySingleString(
+            connection, "SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') FROM DUAL");
+    if (currentSchema != null) {
+      candidates.add(currentSchema);
+    }
+    candidates.addAll(MetadataTableScope.sessionSchemaCandidates(connection));
+    String user = connection.getMetaData().getUserName();
+    if (user != null && !user.isBlank()) {
+      candidates.add(user.trim());
+    }
+    return MetadataTableScope.collectPrimaryKeys(
+        connection, schemaName, tableName, keys, candidates, null);
+  }
+
+  @Override
+  public String fetchObjectDdl(
+      Connection connection, String schemaName, String objectName, String kind)
+      throws SQLException {
+    String metadataType = MetadataDdl.oracleMetadataType(kind);
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(
+          "BEGIN "
+              + "DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM,'SQLTERMINATOR',true); "
+              + "DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM,'PRETTY',true); "
+              + "END;");
+    }
+
+    for (String schema : distinctCases(schemaName)) {
+      for (String object : distinctCases(objectName)) {
+        try (PreparedStatement statement =
+            connection.prepareStatement(
+                "SELECT DBMS_METADATA.GET_DDL(?, ?, ?) FROM DUAL")) {
+          statement.setString(1, metadataType);
+          statement.setString(2, object);
+          statement.setString(3, schema);
+          try (ResultSet rs = statement.executeQuery()) {
+            String ddl = MetadataDdl.readFirstColumnAsString(rs);
+            if (ddl != null && !ddl.isBlank()) {
+              return ddl.trim();
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   private static String[] distinctCases(String value) {
     String upper = value.toUpperCase(java.util.Locale.ROOT);
     if (value.equals(upper)) {
