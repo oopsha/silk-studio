@@ -7,4 +7,6 @@ commands.allow = [
   "connection_test",
   "connection_metadata",
   "connection_columns",
+  "connection_primary_keys",
+  "connection_ddl",
 ]

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -165,6 +166,91 @@ final class PostgreSqlDialect implements DbDialect {
     String catalog = connection.getCatalog();
     try (ResultSet rs = metadata.getColumns(catalog, schemaName, tableName, "%")) {
       MetadataColumns.appendFromResultSet(rs, columns);
+    }
+  }
+
+  @Override
+  public String collectPrimaryKeys(
+      Connection connection, String schemaName, String tableName, ArrayNode keys)
+      throws SQLException {
+    List<String> candidates = new ArrayList<>();
+    String currentSchema =
+        MetadataTableScope.querySingleString(connection, "SELECT current_schema()");
+    if (currentSchema != null) {
+      candidates.add(currentSchema);
+    }
+    candidates.addAll(MetadataTableScope.sessionSchemaCandidates(connection));
+    return MetadataTableScope.collectPrimaryKeys(
+        connection, schemaName, tableName, keys, candidates, connection.getCatalog());
+  }
+
+  @Override
+  public String fetchObjectDdl(
+      Connection connection, String schemaName, String objectName, String kind)
+      throws SQLException {
+    return switch (kind) {
+      case "table" -> fetchPostgreSqlTableDdl(connection, schemaName, objectName);
+      case "view" -> fetchPostgreSqlViewDdl(connection, schemaName, objectName);
+      case "function", "procedure" -> fetchPostgreSqlRoutineDdl(connection, schemaName, objectName);
+      default -> throw new RuntimeException("Unsupported object kind for DDL: " + kind);
+    };
+  }
+
+  private String fetchPostgreSqlViewDdl(
+      Connection connection, String schemaName, String objectName) throws SQLException {
+    String sql =
+        "SELECT pg_get_viewdef(c.oid, true) "
+            + "FROM pg_catalog.pg_class c "
+            + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            + "WHERE n.nspname = ? AND c.relname = ? AND c.relkind IN ('v', 'm')";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, objectName);
+      try (ResultSet rs = statement.executeQuery()) {
+        return MetadataDdl.readFirstColumnAsString(rs);
+      }
+    }
+  }
+
+  private String fetchPostgreSqlRoutineDdl(
+      Connection connection, String schemaName, String objectName) throws SQLException {
+    String sql =
+        "SELECT pg_get_functiondef(p.oid) "
+            + "FROM pg_catalog.pg_proc p "
+            + "JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace "
+            + "WHERE n.nspname = ? AND p.proname = ? "
+            + "ORDER BY p.oid";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, objectName);
+      try (ResultSet rs = statement.executeQuery()) {
+        return MetadataDdl.readAllFirstColumns(rs, "\n\n");
+      }
+    }
+  }
+
+  private String fetchPostgreSqlTableDdl(
+      Connection connection, String schemaName, String objectName) throws SQLException {
+    String sql =
+        "SELECT "
+            + "'CREATE TABLE ' || quote_ident(n.nspname) || '.' || quote_ident(c.relname) || E' (\\n' || "
+            + "pg_catalog.array_to_string(ARRAY("
+            + "  SELECT '    ' || quote_ident(a.attname) || ' ' || "
+            + "         pg_catalog.format_type(a.atttypid, a.atttypmod) || "
+            + "         CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END "
+            + "  FROM pg_catalog.pg_attribute a "
+            + "  WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped "
+            + "  ORDER BY a.attnum"
+            + "), E',\\n') || E'\\n);' "
+            + "FROM pg_catalog.pg_class c "
+            + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            + "WHERE n.nspname = ? AND c.relname = ? AND c.relkind IN ('r', 'p')";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, objectName);
+      try (ResultSet rs = statement.executeQuery()) {
+        return MetadataDdl.readFirstColumnAsString(rs);
+      }
     }
   }
 }

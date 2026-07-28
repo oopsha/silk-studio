@@ -8,6 +8,7 @@ import "@silk-studio/ui/global.css";
 import "@silk-studio/workbench/workbench/workbench.contribution";
 import "./workbench/contributions/queryActions.contribution";
 import "./workbench/contributions/queryResultActions.contribution";
+import "./workbench/contributions/explorerObjectActions.contribution";
 import "./workbench/contributions/sqlLanguage.contribution";
 import "./workbench/contributions/sqlFormat.contribution";
 import "./workbench/contributions/queryHistory.contribution";

@@ -251,6 +251,24 @@ function DatabaseSettings() {
           <span>읽기 전용 보호를 사용합니다.</span>
         </label>
       </SettingRow>
+      <SettingRow
+        title="Preload Default Schema"
+        description="연결 성공 후 기본 스키마 객체를 자동으로 로드합니다. Quick Pick 검색에 바로 쓰입니다."
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={configuration["database.explorer.preloadDefaultSchema"]}
+            onChange={(event) =>
+              ConfigurationService.updateValue(
+                "database.explorer.preloadDefaultSchema",
+                event.target.checked,
+              )
+            }
+          />
+          <span>기본 스키마를 미리 로드합니다.</span>
+        </label>
+      </SettingRow>
     </section>
   );
 }

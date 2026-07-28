@@ -1,9 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import type { MetadataObject, MetadataObjectKind } from "@silk-studio/db-protocol";
+import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
+import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
+import type {
+  MetadataGroupId,
+  MetadataObject,
+  MetadataObjectKind,
+} from "@silk-studio/db-protocol";
 import { ConnectionEditorService } from "../../services/connection/connectionEditorService";
 import { ConnectionService } from "../../services/connection/connectionService";
 import { ConnectionTreeService } from "../../services/connection/connectionTreeService";
+import { filterSchemaTree } from "../../services/connection/connectionTreeFilter";
+import {
+  buildGroupMenuItems,
+  buildObjectMenuItems,
+  buildSchemaMenuItems,
+  defaultObjectAction,
+  EXPLORER_COMMANDS,
+  formatQualifiedName,
+  type ExplorerMenuItem,
+  type ExplorerMenuOptions,
+  type ExplorerObjectRef,
+} from "../../services/connection/explorerObjectActions";
+import { ExplorerUiService } from "../../services/connection/explorerUiService";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import {
   getMetadataGroupDefinition,
@@ -12,9 +31,19 @@ import {
 import { useConnectionState } from "../../services/connection/useConnectionState";
 import { useConnectionTree } from "../../services/connection/useConnectionTree";
 import type { ConnectionProfile } from "../../services/connection/connectionTypes";
+import ExplorerContextMenu from "./ExplorerContextMenu";
 import "./ConnectionsExplorer.css";
 
 type ExpandedMap = Record<string, boolean>;
+
+type SelectedObjectKey = string;
+
+type ContextMenuState = {
+  x: number;
+  y: number;
+  items: ExplorerMenuItem[];
+  payload: unknown;
+};
 
 function objectIcon(kind: MetadataObjectKind): string {
   switch (kind) {
@@ -31,19 +60,40 @@ function objectIcon(kind: MetadataObjectKind): string {
   }
 }
 
+function objectSelectionKey(
+  profileId: string,
+  schemaName: string,
+  objectName: string,
+): SelectedObjectKey {
+  return `${profileId}::${schemaName}::${objectName}`;
+}
+
 function ProfileTree({
   profile,
   isConnected,
   isActive,
+  filter,
+  selectedKey,
+  onSelectObject,
+  onOpenContextMenu,
+  onFlash,
+  menuOptions,
 }: {
   profile: ConnectionProfile;
   isConnected: boolean;
   isActive: boolean;
+  filter: string;
+  selectedKey: SelectedObjectKey | null;
+  onSelectObject: (key: SelectedObjectKey | null) => void;
+  onOpenContextMenu: (state: ContextMenuState) => void;
+  onFlash: (message: string) => void;
+  menuOptions: ExplorerMenuOptions;
 }) {
   const tree = useConnectionTree(isConnected ? profile.id : null);
   const [expanded, setExpanded] = useState<ExpandedMap>({});
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const filterActive = filter.trim().length > 0;
 
   useEffect(() => {
     if (!isConnected) {
@@ -52,10 +102,37 @@ function ProfileTree({
     }
   }, [isConnected]);
 
+  useEffect(() => {
+    let lastCollapse = ExplorerUiService.getCollapseGeneration();
+    return ExplorerUiService.onDidChange(() => {
+      const collapseGen = ExplorerUiService.getCollapseGeneration();
+      if (collapseGen !== lastCollapse) {
+        lastCollapse = collapseGen;
+        setExpanded({});
+      }
+
+      const expand = ExplorerUiService.getExpandRequest();
+      if (expand && expand.profileId === profile.id && isConnected) {
+        setExpanded({
+          [`profile:${profile.id}`]: true,
+          [`schema:${expand.schemaName}`]: true,
+        });
+        ExplorerUiService.clearExpandRequest();
+      }
+    });
+  }, [profile.id, isConnected]);
+
   function toggle(key: string, defaultValue = false) {
     setExpanded((current) => ({
       ...current,
       [key]: !(current[key] ?? defaultValue),
+    }));
+  }
+
+  function setExpandedValue(key: string, value: boolean) {
+    setExpanded((current) => ({
+      ...current,
+      [key]: value,
     }));
   }
 
@@ -71,7 +148,34 @@ function ProfileTree({
     }
   }
 
+  const filtered = useMemo(
+    () => filterSchemaTree(tree.schemas, filter),
+    [tree.schemas, filter],
+  );
+
   const profileExpanded = expanded[`profile:${profile.id}`] ?? isConnected;
+
+  async function refreshSchema(schemaName: string) {
+    await run(async () => {
+      await ConnectionTreeService.refreshSchemaObjects(profile.id, schemaName);
+      onFlash(`Refreshed ${schemaName}`);
+    });
+  }
+
+  async function handleObjectAction(ref: ExplorerObjectRef) {
+    const action = defaultObjectAction(ref.object.kind, profile.driverId);
+    const commandId =
+      action === "openData"
+        ? EXPLORER_COMMANDS.openData
+        : action === "openSource"
+          ? EXPLORER_COMMANDS.openSource
+          : EXPLORER_COMMANDS.viewDdl;
+    try {
+      await CommandService.executeCommand(commandId, ref);
+    } catch (error) {
+      onFlash(formatErrorMessage(error, "Action failed."));
+    }
+  }
 
   return (
     <div
@@ -86,10 +190,7 @@ function ProfileTree({
           aria-label={profileExpanded ? "Collapse" : "Expand"}
           onClick={() => {
             const next = !profileExpanded;
-            setExpanded((current) => ({
-              ...current,
-              [`profile:${profile.id}`]: next,
-            }));
+            setExpandedValue(`profile:${profile.id}`, next);
             if (next && isConnected && tree.status === "idle") {
               void run(() => ConnectionTreeService.loadSchemas(profile.id));
             }
@@ -155,11 +256,12 @@ function ProfileTree({
           <button
             type="button"
             className="connections-explorer__icon-button"
-            title="Refresh"
+            title="Refresh connection"
             disabled={busy || !isConnected}
             onClick={() =>
               void run(async () => {
                 await ConnectionTreeService.loadSchemas(profile.id, true);
+                onFlash("Schemas refreshed");
               })
             }
           >
@@ -208,7 +310,19 @@ function ProfileTree({
 
       {localError || tree.errorMessage ? (
         <div className="connections-explorer__error">
-          {localError ?? tree.errorMessage}
+          <span>{localError ?? tree.errorMessage}</span>
+          {isConnected ? (
+            <button
+              type="button"
+              className="connections-explorer__link-button"
+              disabled={busy}
+              onClick={() =>
+                void run(() => ConnectionTreeService.loadSchemas(profile.id, true))
+              }
+            >
+              Retry
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -222,23 +336,47 @@ function ProfileTree({
             <div className="connections-explorer__empty">Loading schemas…</div>
           ) : tree.schemas.length === 0 ? (
             <div className="connections-explorer__empty">No schemas found.</div>
+          ) : filtered.every((entry) => !entry.visible) ? (
+            <div className="connections-explorer__empty">
+              No matches for “{filter.trim()}”.
+            </div>
           ) : (
-            tree.schemas.map((schema) => {
+            filtered.map((entry) => {
+              if (!entry.visible) return null;
+              const { schema } = entry;
               const schemaKey = `schema:${profile.id}:${schema.name}`;
-              const schemaExpanded = expanded[schemaKey] ?? false;
+              const forceExpand = filterActive && entry.visible;
+              const schemaExpanded =
+                expanded[schemaKey] ?? (forceExpand ? true : false);
               const isDefaultSchema =
                 profile.defaultSchema.trim().length > 0 &&
                 schema.name.toLowerCase() ===
                   profile.defaultSchema.trim().toLowerCase();
+
               return (
                 <div key={schema.name} className="connections-explorer__node">
-                  <div className="connections-explorer__row">
+                  <div
+                    className="connections-explorer__row"
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      onOpenContextMenu({
+                        x: event.clientX,
+                        y: event.clientY,
+                        items: buildSchemaMenuItems(),
+                        payload: {
+                          profileId: profile.id,
+                          schemaName: schema.name,
+                        },
+                      });
+                    }}
+                  >
                     <button
                       type="button"
                       className="connections-explorer__twistie"
+                      aria-label={schemaExpanded ? "Collapse" : "Expand"}
                       onClick={() => {
                         const next = !schemaExpanded;
-                        toggle(schemaKey);
+                        setExpandedValue(schemaKey, next);
                         if (next && schema.status === "idle") {
                           void run(() =>
                             ConnectionTreeService.loadSchemaObjects(
@@ -260,12 +398,28 @@ function ProfileTree({
                           : ""
                       }`}
                       title={
-                        isDefaultSchema ? "Default schema for this connection" : undefined
+                        isDefaultSchema
+                          ? "Default schema for this connection"
+                          : undefined
                       }
                     >
                       <Codicon name="symbol-namespace" />
                       <span>{schema.name}</span>
                     </span>
+                    <div className="connections-explorer__row-actions">
+                      <button
+                        type="button"
+                        className="connections-explorer__icon-button"
+                        title={`Refresh ${schema.name}`}
+                        disabled={busy || !isConnected}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void refreshSchema(schema.name);
+                        }}
+                      >
+                        <Codicon name="refresh" />
+                      </button>
+                    </div>
                   </div>
                   {schemaExpanded ? (
                     <div className="connections-explorer__children">
@@ -275,21 +429,63 @@ function ProfileTree({
                         </div>
                       ) : schema.status === "error" ? (
                         <div className="connections-explorer__error">
-                          {schema.errorMessage}
+                          <span>{schema.errorMessage}</span>
+                          <button
+                            type="button"
+                            className="connections-explorer__link-button"
+                            disabled={busy}
+                            onClick={() => void refreshSchema(schema.name)}
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      ) : schema.status === "idle" ? (
+                        <div className="connections-explorer__empty">
+                          Expand to load objects.
+                        </div>
+                      ) : entry.groups.length === 0 && filterActive ? (
+                        <div className="connections-explorer__empty">
+                          No matching objects.
                         </div>
                       ) : (
-                        sortMetadataGroups(schema.groups).map((group) => {
+                        sortMetadataGroups(
+                          entry.groups.map((item) => item.group),
+                        ).map((group) => {
                           const definition = getMetadataGroupDefinition(group.id);
+                          const filteredObjects =
+                            entry.groups.find((item) => item.group.id === group.id)
+                              ?.objects ?? group.objects;
                           const groupKey = `group:${definition.id}:${profile.id}:${schema.name}`;
                           const defaultExpanded = definition.id === "tables";
+                          const groupForceExpand =
+                            filterActive && filteredObjects.length > 0;
                           return (
                             <ObjectGroup
                               key={definition.id}
+                              profileId={profile.id}
+                              schemaName={schema.name}
+                              menuOptions={menuOptions}
+                              groupId={definition.id}
                               title={definition.title}
                               icon={definition.icon}
-                              items={group.objects}
-                              expanded={expanded[groupKey] ?? defaultExpanded}
+                              items={filteredObjects}
+                              expanded={
+                                expanded[groupKey] ??
+                                (groupForceExpand || defaultExpanded)
+                              }
+                              selectedKey={selectedKey}
+                              busy={busy}
                               onToggle={() => toggle(groupKey, defaultExpanded)}
+                              onSelectObject={onSelectObject}
+                              onOpenContextMenu={onOpenContextMenu}
+                              onRefresh={() => void refreshSchema(schema.name)}
+                              onObjectAction={(object) =>
+                                void handleObjectAction({
+                                  profileId: profile.id,
+                                  schemaName: schema.name,
+                                  object,
+                                })
+                              }
                             />
                           );
                         })
@@ -307,24 +503,56 @@ function ProfileTree({
 }
 
 function ObjectGroup({
+  profileId,
+  schemaName,
+  groupId,
   title,
   icon,
   items,
   expanded,
+  selectedKey,
+  busy,
   onToggle,
+  onSelectObject,
+  onOpenContextMenu,
+  onRefresh,
+  onObjectAction,
+  menuOptions,
 }: {
+  profileId: string;
+  schemaName: string;
+  menuOptions: ExplorerMenuOptions;
+  groupId: MetadataGroupId;
   title: string;
   icon: string;
   items: MetadataObject[];
   expanded: boolean;
+  selectedKey: SelectedObjectKey | null;
+  busy: boolean;
   onToggle: () => void;
+  onSelectObject: (key: SelectedObjectKey | null) => void;
+  onOpenContextMenu: (state: ContextMenuState) => void;
+  onRefresh: () => void;
+  onObjectAction: (object: MetadataObject) => void;
 }) {
   return (
     <div className="connections-explorer__node">
-      <div className="connections-explorer__row">
+      <div
+        className="connections-explorer__row"
+        onContextMenu={(event) => {
+          event.preventDefault();
+          onOpenContextMenu({
+            x: event.clientX,
+            y: event.clientY,
+            items: buildGroupMenuItems(),
+            payload: { profileId, schemaName, groupId },
+          });
+        }}
+      >
         <button
           type="button"
           className="connections-explorer__twistie"
+          aria-label={expanded ? "Collapse" : "Expand"}
           onClick={onToggle}
         >
           <Codicon name={expanded ? "chevron-down" : "chevron-right"} />
@@ -335,21 +563,72 @@ function ObjectGroup({
             {title} ({items.length})
           </span>
         </span>
+        <div className="connections-explorer__row-actions">
+          <button
+            type="button"
+            className="connections-explorer__icon-button"
+            title={`Refresh ${title}`}
+            disabled={busy}
+            onClick={(event) => {
+              event.stopPropagation();
+              onRefresh();
+            }}
+          >
+            <Codicon name="refresh" />
+          </button>
+        </div>
       </div>
       {expanded ? (
         <div className="connections-explorer__children">
           {items.length === 0 ? (
             <div className="connections-explorer__empty">None</div>
           ) : (
-            items.map((item) => (
-              <div key={item.name} className="connections-explorer__row">
-                <span className="connections-explorer__twistie-spacer" />
-                <span className="connections-explorer__label">
-                  <Codicon name={objectIcon(item.kind)} />
-                  <span>{item.name}</span>
-                </span>
-              </div>
-            ))
+            items.map((item) => {
+              const key = objectSelectionKey(profileId, schemaName, item.name);
+              const selected = selectedKey === key;
+              return (
+                <div
+                  key={item.name}
+                  className={`connections-explorer__row connections-explorer__row--object${
+                    selected ? " connections-explorer__row--selected" : ""
+                  }`}
+                  role="treeitem"
+                  tabIndex={0}
+                  aria-selected={selected}
+                  onClick={() => onSelectObject(key)}
+                  onDoubleClick={() => onObjectAction(item)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      onObjectAction(item);
+                    }
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    onSelectObject(key);
+                    onOpenContextMenu({
+                      x: event.clientX,
+                      y: event.clientY,
+                      items: buildObjectMenuItems(item.kind, menuOptions),
+                      payload: {
+                        profileId,
+                        schemaName,
+                        object: item,
+                      } satisfies ExplorerObjectRef,
+                    });
+                  }}
+                >
+                  <span className="connections-explorer__twistie-spacer" />
+                  <span
+                    className="connections-explorer__label"
+                    title={formatQualifiedName(schemaName, item.name)}
+                  >
+                    <Codicon name={objectIcon(item.kind)} />
+                    <span>{item.name}</span>
+                  </span>
+                </div>
+              );
+            })
           )}
         </div>
       ) : null}
@@ -359,27 +638,173 @@ function ObjectGroup({
 
 function ConnectionsExplorer() {
   const connection = useConnectionState();
+  const configuration = useConfiguration();
+  const readOnly = configuration["database.readOnly"];
+  const [filter, setFilter] = useState("");
+  const [selectedKey, setSelectedKey] = useState<SelectedObjectKey | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const actionTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (actionTimerRef.current != null) {
+        window.clearTimeout(actionTimerRef.current);
+      }
+    };
+  }, []);
+
+  function flash(message: string) {
+    setActionMessage(message);
+    if (actionTimerRef.current != null) {
+      window.clearTimeout(actionTimerRef.current);
+    }
+    actionTimerRef.current = window.setTimeout(() => {
+      setActionMessage(null);
+      actionTimerRef.current = null;
+    }, 2800);
+  }
+
+  async function handleMenuSelect(item: ExplorerMenuItem, payload: unknown) {
+    if (item.stubMessage) {
+      if (item.commandId) {
+        await CommandService.executeCommand(item.commandId, payload);
+      }
+      flash(item.stubMessage);
+      return;
+    }
+
+    if (item.commandId === EXPLORER_COMMANDS.copyName) {
+      await CommandService.executeCommand(item.commandId, payload);
+      flash("Name copied");
+      return;
+    }
+
+    if (item.commandId === EXPLORER_COMMANDS.refreshSchema) {
+      try {
+        await CommandService.executeCommand(item.commandId, payload);
+        const schemaName =
+          payload &&
+          typeof payload === "object" &&
+          "schemaName" in payload &&
+          typeof (payload as { schemaName: unknown }).schemaName === "string"
+            ? (payload as { schemaName: string }).schemaName
+            : "schema";
+        flash(`Refreshed ${schemaName}`);
+      } catch (error) {
+        flash(formatErrorMessage(error, "Refresh failed."));
+      }
+      return;
+    }
+
+    if (
+      item.commandId === EXPLORER_COMMANDS.openData ||
+      item.commandId === EXPLORER_COMMANDS.openSource ||
+      item.commandId === EXPLORER_COMMANDS.viewDdl ||
+      item.commandId === EXPLORER_COMMANDS.dropObject ||
+      item.commandId === EXPLORER_COMMANDS.renameObject
+    ) {
+      try {
+        await CommandService.executeCommand(item.commandId, payload);
+      } catch (error) {
+        flash(formatErrorMessage(error, "Action failed."));
+      }
+      return;
+    }
+
+    if (item.commandId) {
+      await CommandService.executeCommand(item.commandId, payload);
+    }
+  }
 
   return (
     <div className="connections-explorer">
-      {connection.profiles.length === 0 ? (
-        <div className="connections-explorer__empty connections-explorer__empty--root">
-          No connections yet. Use + to create one.
-        </div>
-      ) : (
-        connection.profiles.map((profile) => (
-          <ProfileTree
-            key={profile.id}
-            profile={profile}
-            isActive={connection.activeProfileId === profile.id}
-            isConnected={connection.connectedProfileId === profile.id}
+      <div className="connections-explorer__toolbar">
+        <div className="connections-explorer__filter">
+          <Codicon name="search" />
+          <input
+            type="search"
+            className="connections-explorer__filter-input"
+            placeholder="Filter schemas & objects…"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            aria-label="Filter schemas and objects"
           />
-        ))
-      )}
-      {connection.status === "error" && connection.errorMessage ? (
-        <div className="connections-explorer__error connections-explorer__error--root">
-          {connection.errorMessage}
+          {filter ? (
+            <button
+              type="button"
+              className="connections-explorer__icon-button"
+              title="Clear filter"
+              aria-label="Clear filter"
+              onClick={() => setFilter("")}
+            >
+              <Codicon name="clear-all" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="connections-explorer__icon-button"
+            title="Search Database Objects (Ctrl+Shift+O)"
+            aria-label="Search Database Objects"
+            disabled={!connection.connectedProfileId}
+            onClick={() =>
+              void CommandService.executeCommand(EXPLORER_COMMANDS.searchObjects)
+            }
+          >
+            <Codicon name="zoom-in" />
+          </button>
         </div>
+        {actionMessage ? (
+          <div className="connections-explorer__action-msg" role="status">
+            {actionMessage}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="connections-explorer__body">
+        {connection.profiles.length === 0 ? (
+          <div className="connections-explorer__empty connections-explorer__empty--root">
+            No connections yet. Use + to create one.
+          </div>
+        ) : (
+          connection.profiles.map((profile) => (
+            <ProfileTree
+              key={profile.id}
+              profile={profile}
+              isActive={connection.activeProfileId === profile.id}
+              isConnected={connection.connectedProfileId === profile.id}
+              filter={filter}
+              selectedKey={selectedKey}
+              onSelectObject={setSelectedKey}
+              onOpenContextMenu={setContextMenu}
+              onFlash={flash}
+              menuOptions={{
+                driverId: profile.driverId,
+                readOnly,
+                canMutate:
+                  connection.connectedProfileId === profile.id &&
+                  connection.status === "connected" &&
+                  !readOnly,
+              }}
+            />
+          ))
+        )}
+        {connection.status === "error" && connection.errorMessage ? (
+          <div className="connections-explorer__error connections-explorer__error--root">
+            {connection.errorMessage}
+          </div>
+        ) : null}
+      </div>
+
+      {contextMenu ? (
+        <ExplorerContextMenu
+          anchor={{ top: contextMenu.y, left: contextMenu.x }}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+          onSelect={(item) => {
+            void handleMenuSelect(item, contextMenu.payload);
+          }}
+        />
       ) : null}
     </div>
   );

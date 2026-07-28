@@ -51,6 +51,17 @@ interface DbDialect {
       throws SQLException;
 
   /**
+   * Populates {@code keys} with primary-key column names ({@code name}) for {@code tableName}.
+   * When {@code schemaName} is blank, resolves the owner from JDBC session context (same rules
+   * as unqualified {@code SELECT}).
+   *
+   * @return resolved schema/owner, or {@code null} when no PK metadata was found
+   */
+  String collectPrimaryKeys(
+      Connection connection, String schemaName, String tableName, ArrayNode keys)
+      throws SQLException;
+
+  /**
    * Which Explorer object groups this database has a concept of, in display order. {@link Main}
    * partitions {@link #collectSchemaObjects}'s flat object list into exactly these groups —
    * databases with no PACKAGE concept (SQL Server, MySQL, ...) must omit
@@ -58,6 +69,13 @@ interface DbDialect {
    * for them.
    */
   List<MetadataGroupId> supportedGroups();
+
+  /**
+   * Returns the DDL/source text for a database object, or {@code null} when not found.
+   */
+  String fetchObjectDdl(
+      Connection connection, String schemaName, String objectName, String kind)
+      throws SQLException;
 
   /** Shared helper: run {@code testSql} with a timeout and require at least one row back. */
   default void runTestQuery(Connection connection, int timeoutSeconds, String testSql)

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -142,6 +143,89 @@ final class SqlServerDialect implements DbDialect {
     String catalog = connection.getCatalog();
     try (ResultSet rs = metadata.getColumns(catalog, schemaName, tableName, "%")) {
       MetadataColumns.appendFromResultSet(rs, columns);
+    }
+  }
+
+  @Override
+  public String collectPrimaryKeys(
+      Connection connection, String schemaName, String tableName, ArrayNode keys)
+      throws SQLException {
+    List<String> candidates = new ArrayList<>();
+    String currentSchema =
+        MetadataTableScope.querySingleString(connection, "SELECT SCHEMA_NAME()");
+    if (currentSchema != null) {
+      candidates.add(currentSchema);
+    }
+    candidates.addAll(MetadataTableScope.sessionSchemaCandidates(connection));
+    return MetadataTableScope.collectPrimaryKeys(
+        connection, schemaName, tableName, keys, candidates, connection.getCatalog());
+  }
+
+  @Override
+  public String fetchObjectDdl(
+      Connection connection, String schemaName, String objectName, String kind)
+      throws SQLException {
+    if ("table".equals(kind)) {
+      return fetchSqlServerTableDdl(connection, schemaName, objectName);
+    }
+
+    String objectType =
+        switch (kind) {
+          case "view" -> "V";
+          case "procedure" -> "P";
+          case "function" -> "FN";
+          default -> throw new RuntimeException("Unsupported object kind for DDL: " + kind);
+        };
+
+    String sql =
+        "SELECT m.definition "
+            + "FROM sys.sql_modules m "
+            + "INNER JOIN sys.objects o ON m.object_id = o.object_id "
+            + "INNER JOIN sys.schemas s ON o.schema_id = s.schema_id "
+            + "WHERE s.name = ? AND o.name = ? AND o.type = ?";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, objectName);
+      statement.setString(3, objectType);
+      try (ResultSet rs = statement.executeQuery()) {
+        return MetadataDdl.readFirstColumnAsString(rs);
+      }
+    }
+  }
+
+  private String fetchSqlServerTableDdl(
+      Connection connection, String schemaName, String objectName) throws SQLException {
+    String sql =
+        "SELECT "
+            + "'CREATE TABLE ' + QUOTENAME(?) + '.' + QUOTENAME(?) + ' (' + CHAR(13) + CHAR(10) + "
+            + "STUFF(("
+            + "  SELECT CHAR(13) + CHAR(10) + '    , ' + QUOTENAME(c.COLUMN_NAME) + ' ' + "
+            + "         c.DATA_TYPE + "
+            + "         CASE "
+            + "           WHEN c.CHARACTER_MAXIMUM_LENGTH IS NOT NULL "
+            + "             THEN '(' + CASE WHEN c.CHARACTER_MAXIMUM_LENGTH = -1 THEN 'max' "
+            + "               ELSE CAST(c.CHARACTER_MAXIMUM_LENGTH AS varchar(20)) END + ')' "
+            + "           WHEN c.NUMERIC_PRECISION IS NOT NULL "
+            + "             THEN '(' + CAST(c.NUMERIC_PRECISION AS varchar(20)) + "
+            + "               CASE WHEN c.NUMERIC_SCALE IS NOT NULL AND c.NUMERIC_SCALE > 0 "
+            + "                 THEN ',' + CAST(c.NUMERIC_SCALE AS varchar(20)) ELSE '' END + ')' "
+            + "           ELSE '' "
+            + "         END + "
+            + "         CASE WHEN c.IS_NULLABLE = 'NO' THEN ' NOT NULL' ELSE '' END "
+            + "  FROM INFORMATION_SCHEMA.COLUMNS c "
+            + "  WHERE c.TABLE_SCHEMA = ? AND c.TABLE_NAME = ? "
+            + "  ORDER BY c.ORDINAL_POSITION "
+            + "  FOR XML PATH(''), TYPE).value('.', 'nvarchar(max)'), 1, 7, '    ') + "
+            + "CHAR(13) + CHAR(10) + ');'";
+
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, objectName);
+      statement.setString(3, schemaName);
+      statement.setString(4, objectName);
+      try (ResultSet rs = statement.executeQuery()) {
+        return MetadataDdl.readFirstColumnAsString(rs);
+      }
     }
   }
 

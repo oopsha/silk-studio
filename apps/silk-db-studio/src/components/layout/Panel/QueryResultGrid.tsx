@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   AllCommunityModule,
   ModuleRegistry,
   themeQuartz,
+  type CellValueChangedEvent,
   type ColDef,
   type GridApi,
   type GridReadyEvent,
@@ -15,11 +16,22 @@ import type { ColorThemeId } from "@silk-studio/workbench/platform/configuration
 import {
   toQueryResultRows,
   isResultTruncated,
+  getQueryResultRowIndex,
   type QueryResultPayload,
   type QueryResultRow,
 } from "../../../services/query/queryResult";
 import { QueryResultGridService, DEFAULT_COLUMN_WIDTH } from "../../../services/query/queryResultGridService";
+import { QueryResultDirtyService } from "../../../services/query/queryResultDirtyService";
+import {
+  buildUpdatePreview,
+  executeConfirmedUpdates,
+  getSaveBlockedReason,
+  resolveUpdateEligibility,
+  type UpdatePreview,
+} from "../../../services/query/queryResultUpdateService";
+import QueryResultUpdateDialog from "./QueryResultUpdateDialog";
 import "./QueryResultGrid.css";
+import "./QueryResultUpdateDialog.css";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -53,10 +65,13 @@ const GRID_THEME_PALETTES: Record<
 };
 
 type QueryResultGridProps = {
+  tabId: string;
+  sql: string;
   result: QueryResultPayload;
+  relationKind?: "table" | "view";
 };
 
-function QueryResultGrid({ result }: QueryResultGridProps) {
+function QueryResultGrid({ tabId, sql, result, relationKind }: QueryResultGridProps) {
   const configuration = useConfiguration();
   const nullDisplay = configuration["queryResult.nullDisplay"];
   const filterEnabled = configuration["queryResult.filterEnabled"];
@@ -68,12 +83,64 @@ function QueryResultGrid({ result }: QueryResultGridProps) {
   const apiRef = useRef<GridApi<QueryResultRow> | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const actionTimerRef = useRef<number | null>(null);
+  const [primaryKeys, setPrimaryKeys] = useState<string[] | null>(null);
+  const [saveBlockedReason, setSaveBlockedReason] = useState<string | null>(null);
+  const [preview, setPreview] = useState<UpdatePreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [executingUpdates, setExecutingUpdates] = useState(false);
+  const [openingPreview, setOpeningPreview] = useState(false);
+
+  const dirtyCount = useSyncExternalStore(
+    (onStoreChange) => QueryResultDirtyService.onDidChange(onStoreChange),
+    () => QueryResultDirtyService.getDirtyCount(tabId),
+    () => QueryResultDirtyService.getDirtyCount(tabId),
+  );
 
   const snapshot = useSyncExternalStore(
     (onStoreChange) => QueryResultGridService.onDidChangeSnapshot(onStoreChange),
     () => QueryResultGridService.getSnapshot(),
     () => QueryResultGridService.getSnapshot(),
   );
+
+  const normalizeEditedValue = useCallback(
+    (value: unknown): string | null => {
+      if (value === null || value === undefined) {
+        return null;
+      }
+      const text = String(value);
+      if (text === nullDisplay || text.trim() === "") {
+        return null;
+      }
+      return text;
+    },
+    [nullDisplay],
+  );
+
+  useEffect(() => {
+    QueryResultDirtyService.initTab(tabId, result.columns, result.rows);
+    return () => {
+      QueryResultDirtyService.removeTab(tabId);
+    };
+  }, [tabId, result.columns, result.rows]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void resolveUpdateEligibility(sql, result.columns, { relationKind }).then(
+      (eligibility) => {
+      if (cancelled) return;
+      if (eligibility.eligible) {
+        setPrimaryKeys(eligibility.primaryKeys);
+        setSaveBlockedReason(null);
+        return;
+      }
+      setPrimaryKeys([]);
+      setSaveBlockedReason(eligibility.reason);
+    },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [sql, result.columns, relationKind]);
 
   const gridTheme = useMemo(() => {
     const palette = GRID_THEME_PALETTES[colorTheme];
@@ -114,6 +181,11 @@ function QueryResultGrid({ result }: QueryResultGridProps) {
     [nullDisplay],
   );
 
+  const primaryKeySet = useMemo(
+    () => new Set(primaryKeys ?? []),
+    [primaryKeys],
+  );
+
   const columnDefs = useMemo<ColDef<QueryResultRow>[]>(
     () =>
       result.columns.map((column) => ({
@@ -122,7 +194,11 @@ function QueryResultGrid({ result }: QueryResultGridProps) {
         headerName: column,
         filter: filterEnabled ? "agTextColumnFilter" : false,
         floatingFilter: filterEnabled,
-        editable: true,
+        // Editing is always allowed; only known PK columns stay read-only.
+        editable:
+          primaryKeys == null || primaryKeys.length === 0
+            ? true
+            : !primaryKeySet.has(column),
         sortable: true,
         resizable: true,
         unSortIcon: true,
@@ -130,7 +206,7 @@ function QueryResultGrid({ result }: QueryResultGridProps) {
         minWidth: 80,
         valueFormatter: formatCellValue,
       })),
-    [filterEnabled, formatCellValue, result.columns],
+    [filterEnabled, formatCellValue, primaryKeySet, primaryKeys, result.columns],
   );
 
   const rowData = useMemo(
@@ -176,12 +252,26 @@ function QueryResultGrid({ result }: QueryResultGridProps) {
     actionTimerRef.current = window.setTimeout(() => {
       setActionMessage(null);
       actionTimerRef.current = null;
-    }, 1800);
+    }, 2800);
   };
 
   const handleGridReady = (event: GridReadyEvent<QueryResultRow>) => {
     apiRef.current = event.api;
     QueryResultGridService.attach(event.api, result.columns, nullDisplay);
+  };
+
+  const handleCellValueChanged = (event: CellValueChangedEvent<QueryResultRow>) => {
+    const rowIndex = event.data ? getQueryResultRowIndex(event.data) : null;
+    const field = event.colDef.field;
+    if (rowIndex == null || !field || field === "__rowIndex") {
+      return;
+    }
+    QueryResultDirtyService.setCell(
+      tabId,
+      rowIndex,
+      field,
+      normalizeEditedValue(event.newValue),
+    );
   };
 
   const handleCopySelection = async () => {
@@ -238,14 +328,81 @@ function QueryResultGrid({ result }: QueryResultGridProps) {
     QueryResultGridService.scheduleColumnLayoutSave();
   };
 
+  const saveHint =
+    saveBlockedReason ??
+    getSaveBlockedReason(sql, dirtyCount, { relationKind });
+
+  const canAttemptSave = dirtyCount > 0 && !saveBlockedReason;
+
+  const handleOpenSavePreview = async () => {
+    if (!canAttemptSave) {
+      if (saveHint) {
+        flashMessage(saveHint);
+      }
+      return;
+    }
+
+    setOpeningPreview(true);
+    setPreviewError(null);
+    try {
+      const nextPreview = await buildUpdatePreview(tabId, sql, result.columns, {
+        relationKind,
+      });
+      if ("blocked" in nextPreview) {
+        flashMessage(nextPreview.reason);
+        return;
+      }
+      setPreview(nextPreview);
+    } catch (error) {
+      console.warn("[query-result] update preview failed", error);
+      flashMessage("Failed to build UPDATE preview");
+    } finally {
+      setOpeningPreview(false);
+    }
+  };
+
+  const handleClosePreview = () => {
+    if (executingUpdates) return;
+    setPreview(null);
+    setPreviewError(null);
+  };
+
+  const handleConfirmUpdates = async () => {
+    if (!preview) return;
+    setExecutingUpdates(true);
+    setPreviewError(null);
+    const outcome = await executeConfirmedUpdates(tabId, preview.statements);
+    setExecutingUpdates(false);
+    if (!outcome.ok) {
+      setPreviewError(outcome.message);
+      return;
+    }
+    setPreview(null);
+    flashMessage(outcome.message);
+  };
+
+  const tableLabel = preview
+    ? preview.eligibility.schema
+      ? `${preview.eligibility.schema}.${preview.eligibility.table}`
+      : preview.eligibility.table
+    : "";
+
   return (
     <div className="query-result-grid">
       <div className="query-result-grid__toolbar">
         <div
           className="query-result-grid__status"
-          title={statusTitle(snapshot, truncated, maxRows)}
+          title={statusTitle(snapshot, truncated, maxRows, saveBlockedReason)}
         >
           <span>{formatRowStatus(snapshot)}</span>
+          {dirtyCount > 0 ? (
+            <span
+              className="query-result-grid__badge query-result-grid__badge--dirty"
+              title={`${dirtyCount} edited cell${dirtyCount === 1 ? "" : "s"} not saved`}
+            >
+              {dirtyCount} unsaved
+            </span>
+          ) : null}
           {truncated ? (
             <span
               className="query-result-grid__badge query-result-grid__badge--warn"
@@ -263,11 +420,32 @@ function QueryResultGrid({ result }: QueryResultGridProps) {
           {snapshot.hasCustomLayout ? (
             <span className="query-result-grid__badge">Layout saved</span>
           ) : null}
+          {saveBlockedReason ? (
+            <span
+              className="query-result-grid__badge query-result-grid__badge--blocked"
+              title={saveBlockedReason}
+            >
+              Save blocked
+            </span>
+          ) : null}
           {actionMessage ? (
             <span className="query-result-grid__action-msg">{actionMessage}</span>
           ) : null}
         </div>
         <div className="query-result-grid__actions">
+          <button
+            type="button"
+            className="query-result-grid__action query-result-grid__action--save"
+            title={
+              saveHint ??
+              "Preview and execute UPDATE statements for edited cells"
+            }
+            aria-label="Save changes"
+            disabled={!canAttemptSave || openingPreview}
+            onClick={() => void handleOpenSavePreview()}
+          >
+            <Codicon name="save" />
+          </button>
           <button
             type="button"
             className="query-result-grid__action"
@@ -334,10 +512,12 @@ function QueryResultGrid({ result }: QueryResultGridProps) {
           defaultColDef={defaultColDef}
           rowHeight={rowHeight}
           animateRows={false}
-          // Keep row/column virtualization on (defaults); light buffer for large sets.
           rowBuffer={8}
           suppressColumnVirtualisation={false}
           stopEditingWhenCellsLoseFocus
+          getRowId={(params) =>
+            params.data ? String(getQueryResultRowIndex(params.data)) : "0"
+          }
           cellSelection
           rowSelection={{
             mode: "multiRow",
@@ -346,6 +526,7 @@ function QueryResultGrid({ result }: QueryResultGridProps) {
             enableClickSelection: true,
           }}
           onGridReady={handleGridReady}
+          onCellValueChanged={handleCellValueChanged}
           onFilterChanged={() => QueryResultGridService.refreshSnapshot()}
           onSortChanged={() => QueryResultGridService.refreshSnapshot()}
           onModelUpdated={() => QueryResultGridService.refreshSnapshot()}
@@ -360,6 +541,19 @@ function QueryResultGrid({ result }: QueryResultGridProps) {
           onColumnPinned={persistLayout}
         />
       </div>
+
+      {preview ? (
+        <QueryResultUpdateDialog
+          tableLabel={tableLabel}
+          dirtyRowCount={preview.dirtyRowCount}
+          dirtyCellCount={preview.dirtyCellCount}
+          statements={preview.statements}
+          errorMessage={previewError}
+          executing={executingUpdates}
+          onCancel={handleClosePreview}
+          onConfirm={() => void handleConfirmUpdates()}
+        />
+      ) : null}
     </div>
   );
 }
@@ -385,6 +579,7 @@ function statusTitle(
   },
   truncated: boolean,
   maxRows: number,
+  saveBlockedReason: string | null,
 ): string {
   const parts = [
     `${snapshot.displayedRows} displayed`,
@@ -393,10 +588,14 @@ function statusTitle(
   if (truncated) {
     parts.push(`truncated at maxRows=${maxRows}`);
   }
+  if (saveBlockedReason) {
+    parts.push(saveBlockedReason);
+  }
   if (snapshot.filterActive) parts.push("filter active");
   if (snapshot.sortActive) parts.push("sort active");
   if (snapshot.hasCustomLayout) parts.push("column layout saved");
   parts.push("Copy/CSV use the filtered & sorted view");
+  parts.push("Edited cells require preview + confirm before UPDATE");
   return parts.join(" · ");
 }
 

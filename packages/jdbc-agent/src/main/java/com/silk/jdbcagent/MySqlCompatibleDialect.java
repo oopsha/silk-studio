@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -130,5 +131,50 @@ abstract class MySqlCompatibleDialect implements DbDialect {
     try (ResultSet rs = metadata.getColumns(schemaName, null, tableName, "%")) {
       MetadataColumns.appendFromResultSet(rs, columns);
     }
+  }
+
+  @Override
+  public String collectPrimaryKeys(
+      Connection connection, String schemaName, String tableName, ArrayNode keys)
+      throws SQLException {
+    List<String> candidates = new ArrayList<>();
+    String catalog = connection.getCatalog();
+    if (catalog != null && !catalog.isBlank()) {
+      candidates.add(catalog.trim());
+    }
+    candidates.addAll(MetadataTableScope.sessionSchemaCandidates(connection));
+    return MetadataTableScope.collectPrimaryKeys(
+        connection, schemaName, tableName, keys, candidates, catalog);
+  }
+
+  @Override
+  public String fetchObjectDdl(
+      Connection connection, String schemaName, String objectName, String kind)
+      throws SQLException {
+    String sql =
+        switch (kind) {
+          case "table" -> "SHOW CREATE TABLE `" + quoteMySqlIdentifier(schemaName) + "`.`"
+              + quoteMySqlIdentifier(objectName) + "`";
+          case "view" -> "SHOW CREATE VIEW `" + quoteMySqlIdentifier(schemaName) + "`.`"
+              + quoteMySqlIdentifier(objectName) + "`";
+          case "procedure" -> "SHOW CREATE PROCEDURE `" + quoteMySqlIdentifier(schemaName) + "`.`"
+              + quoteMySqlIdentifier(objectName) + "`";
+          case "function" -> "SHOW CREATE FUNCTION `" + quoteMySqlIdentifier(schemaName) + "`.`"
+              + quoteMySqlIdentifier(objectName) + "`";
+          default -> throw new RuntimeException("Unsupported object kind for DDL: " + kind);
+        };
+
+    try (Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery(sql)) {
+      if (!rs.next()) {
+        return null;
+      }
+      String ddl = rs.getString(2);
+      return ddl == null ? null : ddl.trim();
+    }
+  }
+
+  private static String quoteMySqlIdentifier(String value) {
+    return value.replace("`", "``");
   }
 }

@@ -1,0 +1,175 @@
+.explorer-mutation-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 6500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background-color: rgba(0, 0, 0, 0.45);
+}
+
+.explorer-mutation-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 100%);
+  max-height: min(80vh, 640px);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background-color: var(--color-surface);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.explorer-mutation-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.explorer-mutation-dialog__header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.explorer-mutation-dialog__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--color-foreground);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.explorer-mutation-dialog__close:hover:not(:disabled) {
+  background-color: var(--color-toolbar-hover-background);
+}
+
+.explorer-mutation-dialog__close:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.explorer-mutation-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.explorer-mutation-dialog__summary,
+.explorer-mutation-dialog__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-description);
+}
+
+.explorer-mutation-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.explorer-mutation-dialog__field-label {
+  font-size: 11px;
+  color: var(--color-description);
+}
+
+.explorer-mutation-dialog__input {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background-color: var(--color-input-background, transparent);
+  color: var(--color-foreground);
+  font: inherit;
+  font-size: 13px;
+}
+
+.explorer-mutation-dialog__input:focus {
+  outline: 1px solid var(--color-focus-border);
+  border-color: var(--color-focus-border);
+}
+
+.explorer-mutation-dialog__sql {
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background-color: #121314;
+  color: #d4d4d4;
+  font-family: var(--font-family-monospace, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.explorer-mutation-dialog__error {
+  margin: 0;
+  font-size: 12px;
+  color: #f48771;
+}
+
+.explorer-mutation-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.explorer-mutation-dialog__button {
+  min-width: 88px;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--color-foreground);
+  background-color: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.explorer-mutation-dialog__button:hover:not(:disabled) {
+  background-color: var(--color-toolbar-hover-background);
+}
+
+.explorer-mutation-dialog__button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.explorer-mutation-dialog__button--primary {
+  color: #ffffff;
+  background-color: #0e639c;
+  border-color: #0e639c;
+}
+
+.explorer-mutation-dialog__button--primary:hover:not(:disabled) {
+  background-color: #1177bb;
+  border-color: #1177bb;
+}
+
+.explorer-mutation-dialog__button--danger {
+  color: #ffffff;
+  background-color: #a1260d;
+  border-color: #a1260d;
+}
+
+.explorer-mutation-dialog__button--danger:hover:not(:disabled) {
+  background-color: #c72e0f;
+  border-color: #c72e0f;
+}

@@ -129,6 +129,43 @@ impl JdbcAgentClient {
         )
     }
 
+    pub fn list_primary_keys(&self, schema: &str, table: &str) -> Result<Value, String> {
+        self.ensure_connection()?;
+        let table = table.trim();
+        if table.is_empty() {
+            return Err("table is required.".into());
+        }
+        self.send_request(
+            "connection.primaryKeys",
+            json!({ "schema": schema.trim(), "table": table }),
+        )
+    }
+
+    pub fn fetch_object_ddl(
+        &self,
+        schema: &str,
+        name: &str,
+        kind: &str,
+    ) -> Result<Value, String> {
+        self.ensure_connection()?;
+        let schema = schema.trim();
+        let name = name.trim();
+        let kind = kind.trim();
+        if schema.is_empty() {
+            return Err("schema is required.".into());
+        }
+        if name.is_empty() {
+            return Err("object name is required.".into());
+        }
+        if kind.is_empty() {
+            return Err("object kind is required.".into());
+        }
+        self.send_request(
+            "connection.ddl",
+            json!({ "schema": schema, "name": name, "kind": kind }),
+        )
+    }
+
     pub fn execute_query(
         &self,
         sql: &str,

@@ -172,7 +172,13 @@ function Panel() {
             {queryState.output}
           </pre>
         ) : gridResult && activeTab ? (
-          <QueryResultGrid key={activeTab.id} result={gridResult} />
+          <QueryResultGrid
+            key={activeTab.id}
+            tabId={activeTab.id}
+            sql={activeTab.sql}
+            result={gridResult}
+            relationKind={activeTab.relationKind}
+          />
         ) : (
           <pre className="panel__content">
             {activeTab?.output ?? queryState.output}

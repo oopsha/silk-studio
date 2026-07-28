@@ -14,6 +14,8 @@ export type QueryResultTab = {
   output: string;
   result: QueryResultPayload | null;
   createdAt: number;
+  /** When opened from the explorer, marks table vs view for save eligibility. */
+  relationKind?: "table" | "view";
 };
 
 export function buildQueryResultTabTitle(
