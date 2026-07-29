@@ -9,10 +9,11 @@
 - Monaco **`plsql`** 언어 등록 (`registerSqlLanguages`, Oracle 연결 시 dialect)
 - 탐색기 **6-B** — `connection.ddl` + 읽기 전용 `DdlEditorView` (`silk://ddl/...`)
 - **7-A** — `PlsqlEditorView` (`silk://plsql/...`), Oracle procedure/function/package 편집 탭·dirty
+- **7-B** — Save / `Ctrl+S` → CREATE OR REPLACE 미리보기·확인 → `executeWriteStatement` + 스키마 트리 갱신
 - 탐색기 **6-A~6-E** — procedure / function / package 목록·View DDL·Edit·Open Data·DROP/Rename
 - 실행·쓰기 — `QueryExecutionService.executeWriteStatement`, `sqlGuard` read-only 가드
-- 확인 다이얼로그 패턴 — `ExplorerObjectMutationDialog`, `QueryResultUpdateDialog`
-- **미구현**: `CREATE OR REPLACE` 저장, **컴파일**, `USER_ERRORS` 오류 표시, 로컬 스냅샷 **diff·롤백**, AI 수정 루프
+- 확인 다이얼로그 패턴 — `ExplorerObjectMutationDialog`, `QueryResultUpdateDialog`, `PlsqlSaveDialog`
+- **미구현**: **컴파일**, `USER_ERRORS` 오류 표시, 로컬 스냅샷 **diff·롤백**, AI 수정 루프
 
 ### v1 대상 DB·객체
 
@@ -54,7 +55,7 @@
 
 ## 7-B. 저장 (CREATE OR REPLACE)
 
-**상태:** 미구현
+**상태:** 완료
 
 **의존성:** 7-A (편집 탭). `query.execute` / `executeWriteStatement` 재사용
 
@@ -243,7 +244,8 @@
 | 편집 탭·dirty | `EditorService`, `silk-editor` |
 | 쓰기 실행 | `QueryExecutionService.executeWriteStatement` |
 | read-only | `sqlGuard`, `database.readOnly` |
-| 확인 다이얼로그 | `ExplorerObjectMutationDialog`, `QueryResultUpdateDialog` |
+| 확인 다이얼로그 | `ExplorerObjectMutationDialog`, `QueryResultUpdateDialog`, `PlsqlSaveDialog` |
+| PL/SQL 저장 | `plsqlSaveService`, `plsqlSaveSql`, `plsqlSave.contribution` (`silk.file.save` 가로채기) |
 | 오류 마커 | `sqlErrorMarkers` |
 | 트리 갱신 | `ConnectionTreeService.invalidateAndRefreshSchema` |
 | 탐색기 메뉴 | `explorerObjectActions`, `explorerObjectActions.contribution` |
@@ -252,5 +254,5 @@
 
 ## 다음 단계
 
-Agent 모드에서 **7-B** (저장 — CREATE OR REPLACE)부터 진행하면 된다.  
-(6번 탐색기·DDL 보기·Open Data·검색·DROP/Rename은 완료)
+Agent 모드에서 **7-C** (컴파일 + 오류 표시)부터 진행하면 된다.  
+(6번 탐색기·7-A 편집 탭·7-B 저장은 완료)

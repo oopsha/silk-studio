@@ -3,6 +3,7 @@ import { Editor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
+import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
@@ -17,6 +18,7 @@ import {
   parsePlsqlEditorUri,
   PLSQL_SOURCE_LOADING,
 } from "../../services/connection/plsqlEditorConstants";
+import { getPlsqlSaveBlockedReason } from "../../services/connection/plsqlSaveService";
 import { registerSqlLanguages } from "../../services/sql/registerSqlLanguages";
 import "./PlsqlEditorView.css";
 
@@ -108,11 +110,31 @@ function PlsqlEditorView() {
         ? "Loading PL/SQL source…"
         : "PL/SQL source";
 
+  const saveBlockedReason = getPlsqlSaveBlockedReason(activeTab?.id);
+  const canSave = !readOnly && saveBlockedReason === null;
+
   return (
     <div className="plsql-editor-view">
       <div className="plsql-editor-view__banner" role="status">
-        {banner}
-        {ref ? ` · ${ref.schemaName}.${ref.objectName}` : ""}
+        <span className="plsql-editor-view__banner-text">
+          {banner}
+          {ref ? ` · ${ref.schemaName}.${ref.objectName}` : ""}
+        </span>
+        <button
+          type="button"
+          className="plsql-editor-view__save"
+          disabled={!canSave}
+          title={
+            readOnly
+              ? "Read-only mode is enabled"
+              : saveBlockedReason ?? "Save to database (Ctrl+S)"
+          }
+          onClick={() => {
+            void CommandService.executeCommand("silk.file.save");
+          }}
+        >
+          Save
+        </button>
       </div>
       <div className="plsql-editor-view__body">
         <Editor
