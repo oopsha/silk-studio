@@ -12,6 +12,7 @@ import "./workbench/contributions/explorerObjectActions.contribution";
 import "./workbench/contributions/sqlLanguage.contribution";
 import "./workbench/contributions/sqlFormat.contribution";
 import "./workbench/contributions/queryHistory.contribution";
+import "./workbench/contributions/plsqlSave.contribution";
 import App from "./App";
 
 configureEditorHost({

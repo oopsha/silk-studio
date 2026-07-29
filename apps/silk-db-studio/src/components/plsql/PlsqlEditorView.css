@@ -8,12 +8,44 @@
 }
 
 .plsql-editor-view__banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   flex-shrink: 0;
   padding: 4px 12px;
   border-bottom: 1px solid var(--color-border);
   background-color: var(--color-surface);
   color: var(--color-description);
   font-size: 12px;
+}
+
+.plsql-editor-view__banner-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plsql-editor-view__save {
+  flex-shrink: 0;
+  height: 22px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--color-foreground);
+  background-color: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.plsql-editor-view__save:hover:not(:disabled) {
+  background-color: var(--color-toolbar-hover-background);
+}
+
+.plsql-editor-view__save:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .plsql-editor-view__body {

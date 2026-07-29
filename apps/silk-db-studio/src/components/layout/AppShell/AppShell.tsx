@@ -17,6 +17,7 @@ import ConnectionsExplorer from "../../connections/ConnectionsExplorer.tsx";
 import ConnectionEditor from "../../connections/ConnectionEditor.tsx";
 import ExplorerSearchQuickPick from "../../connections/ExplorerSearchQuickPick.tsx";
 import ExplorerObjectMutationDialog from "../../connections/ExplorerObjectMutationDialog.tsx";
+import PlsqlSaveDialog from "../../plsql/PlsqlSaveDialog.tsx";
 import DdlEditorView from "../../ddl/DdlEditorView.tsx";
 import PlsqlEditorView from "../../plsql/PlsqlEditorView.tsx";
 import QueryHistoryView from "../../query-history/QueryHistoryView.tsx";
@@ -296,6 +297,7 @@ function AppShell() {
       </div>
       <ExplorerSearchQuickPick />
       <ExplorerObjectMutationDialog />
+      <PlsqlSaveDialog />
     </div>
   );
 }
