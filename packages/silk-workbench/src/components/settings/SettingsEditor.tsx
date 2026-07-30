@@ -8,10 +8,15 @@ import type {
   WordWrapMode,
 } from "../../platform/configuration/configurationDefaults";
 import { useConfiguration } from "../../platform/configuration/useConfiguration";
+import { AiAuditLogService } from "../../services/ai/aiAuditLogService";
+import { formatEstimatedCostUsd } from "../../services/ai/aiAuditLogPricing";
+import type { AiAuditLogEntry } from "../../services/ai/aiAuditLogTypes";
 import { AiSecretService } from "../../services/ai/aiSecretService";
 import { testConfiguredConnection } from "../../services/ai/aiProviderService";
 import { AiProviderError } from "../../services/ai/aiProviderTypes";
+import { useAiAuditLog } from "../../services/ai/useAiAuditLog";
 import { useAiHasApiKey } from "../../services/ai/useAiReadyState";
+import { shouldUseDevSecretStore } from "../../services/secrets/devSecretStore";
 import {
   AI_API_KEY_PLACEHOLDERS,
   AI_DEFAULT_MODEL,
@@ -26,6 +31,117 @@ import {
 import { SettingsService } from "../../services/settings/settingsService";
 import { useSettingsCategory } from "../../services/settings/useSettingsCategory";
 import "./SettingsEditor.css";
+
+const AI_AUDIT_DISPLAY_LIMIT = 50;
+
+function formatAuditTime(at: number): string {
+  try {
+    return new Date(at).toLocaleString();
+  } catch {
+    return String(at);
+  }
+}
+
+function formatTokenPair(entry: AiAuditLogEntry): string {
+  const input =
+    typeof entry.inputTokens === "number" ? String(entry.inputTokens) : "—";
+  const output =
+    typeof entry.outputTokens === "number" ? String(entry.outputTokens) : "—";
+  if (input === "—" && output === "—") return "—";
+  return `${input} / ${output}`;
+}
+
+function AiAuditLogPanel() {
+  const entries = useAiAuditLog();
+  const visible = entries.slice(0, AI_AUDIT_DISPLAY_LIMIT);
+  const totalCost = AiAuditLogService.getTotalEstimatedCostUsd();
+
+  function handleClear(): void {
+    if (entries.length === 0) return;
+    if (!window.confirm("Clear all AI audit log entries?")) return;
+    AiAuditLogService.clear();
+  }
+
+  function handleExport(): void {
+    const blob = new Blob([AiAuditLogService.exportJson()], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `silk-ai-audit-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="settings-ai-audit">
+      <p className="settings-ai-audit__summary">
+        {entries.length === 0
+          ? "No AI calls recorded yet."
+          : `${entries.length} call(s) · est. total ${formatEstimatedCostUsd(totalCost)} (approx.)`}
+      </p>
+      <p className="settings-ai-audit__note">
+        Stores time, provider, model, tokens, and rough cost locally. Prompts and
+        API keys are never logged. Prices are estimates only.
+      </p>
+      <div className="settings-ai-audit__actions">
+        <button
+          type="button"
+          className="settings-button"
+          disabled={entries.length === 0}
+          onClick={handleExport}
+        >
+          Export JSON
+        </button>
+        <button
+          type="button"
+          className="settings-button"
+          disabled={entries.length === 0}
+          onClick={handleClear}
+        >
+          Clear log
+        </button>
+      </div>
+      {visible.length > 0 ? (
+        <ul className="settings-ai-audit__list">
+          {visible.map((entry) => (
+            <li key={entry.id} className="settings-ai-audit__item">
+              <div className="settings-ai-audit__item-meta">
+                <span
+                  className={`settings-ai-audit__status settings-ai-audit__status--${entry.status}`}
+                >
+                  {entry.status}
+                </span>
+                <span>{formatAuditTime(entry.at)}</span>
+                <span>
+                  {entry.kind === "test_connection" ? "Test" : "Chat"}
+                </span>
+              </div>
+              <div className="settings-ai-audit__item-detail">
+                {AI_PROVIDER_LABELS[entry.provider]} · {entry.model || "(model)"}
+              </div>
+              <div className="settings-ai-audit__item-detail">
+                tokens in/out {formatTokenPair(entry)} · est.{" "}
+                {formatEstimatedCostUsd(entry.estimatedCostUsd)}
+                {typeof entry.durationMs === "number"
+                  ? ` · ${entry.durationMs}ms`
+                  : ""}
+                {entry.errorCode ? ` · ${entry.errorCode}` : ""}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {entries.length > AI_AUDIT_DISPLAY_LIMIT ? (
+        <p className="settings-ai-audit__note">
+          Showing latest {AI_AUDIT_DISPLAY_LIMIT}. Export JSON for the full
+          ring buffer.
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 type SettingRowProps = {
   title: string;
@@ -462,9 +578,19 @@ function AiSettings() {
     <section className="settings-section">
       <h2 className="settings-section__title">AI</h2>
       <p className="settings-placeholder settings-placeholder--intro">
-        BYOK(Bring Your Own Key)로 제공자 API를 직접 연결합니다. API 키는
-        configuration이 아니라 <strong>OS 자격 증명 저장소(키링)</strong>에
-        provider별로 보관됩니다. Chat UI는 이후 단계에서 연결됩니다.
+        BYOK(Bring Your Own Key)로 제공자 API를 직접 연결합니다.{" "}
+        {shouldUseDevSecretStore() ? (
+          <>
+            <strong>개발 모드</strong>에서는 localStorage에 보관합니다. Keychain에
+            있던 키는 처음 한 번 암호를 허용하면 자동 이전되고, 이후에는 요청이
+            없습니다. 릴리즈 빌드에서는 OS 키링을 사용합니다.
+          </>
+        ) : (
+          <>
+            API 키는 configuration이 아니라{" "}
+            <strong>OS 자격 증명 저장소(키링)</strong>에 provider별로 보관됩니다.
+          </>
+        )}
       </p>
       <SettingRow title="Enable AI Assistant">
         <label className="settings-checkbox">
@@ -561,9 +687,11 @@ function AiSettings() {
         className="settings-row--ai-key"
         title="API Key"
         description={
-          provider === "gemini"
-            ? "Google AI Studio 키. Free Tier는 프로젝트 RPM/TPM/RPD 한도가 있으며, 빌링 미연결 시 초과분 자동 과금은 없습니다. 2026-06 이후 unrestricted 키는 거절될 수 있으니 AI Studio에서 새 키를 만들거나 Generative Language API로 제한하세요."
-            : "제공자 API 키입니다. 저장 시 OS 키링에만 기록되며 localStorage에는 남지 않습니다."
+          shouldUseDevSecretStore()
+            ? "개발 모드: API 키는 localStorage에 저장됩니다 (Keychain 우회)."
+            : provider === "gemini"
+              ? "Google AI Studio 키. Free Tier는 프로젝트 RPM/TPM/RPD 한도가 있으며, 빌링 미연결 시 초과분 자동 과금은 없습니다. 2026-06 이후 unrestricted 키는 거절될 수 있으니 AI Studio에서 새 키를 만들거나 Generative Language API로 제한하세요."
+              : "제공자 API 키입니다. 저장 시 OS 키링에만 기록되며 localStorage에는 남지 않습니다."
         }
       >
         <div className="settings-ai-key">
@@ -667,7 +795,7 @@ function AiSettings() {
       </SettingRow>
       <SettingRow
         title="Allow SQL Execution"
-        description="활성화하면 AI가 생성한 SQL 실행을 허용합니다. roadmap 8에서 권한 분리와 함께 적용됩니다."
+        description="켜면 AI Chat에서 제안 SQL의 Execute…가 보입니다. 실행은 항상 확인 후에만 하며, 자동 실행은 없습니다. database.readOnly가 켜져 있으면 쓰기/DDL은 차단됩니다."
       >
         <label className="settings-checkbox">
           <input
@@ -680,8 +808,14 @@ function AiSettings() {
               )
             }
           />
-          <span>AI가 제안한 SQL을 자동 실행할 수 있게 합니다.</span>
+          <span>확인 후 AI 제안 SQL 실행을 허용합니다 (자동 실행 없음).</span>
         </label>
+      </SettingRow>
+      <SettingRow
+        title="AI call log"
+        description="최근 AI 호출 감사 로그입니다. 프롬프트·API 키는 저장하지 않습니다."
+      >
+        <AiAuditLogPanel />
       </SettingRow>
     </section>
   );

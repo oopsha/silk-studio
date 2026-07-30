@@ -1,0 +1,26 @@
+.ai-sql-diff-dialog__tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 8px;
+}
+
+.ai-sql-diff-dialog__tab {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--color-description);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--corner-radius-medium, 4px);
+  cursor: pointer;
+}
+
+.ai-sql-diff-dialog__tab:hover {
+  color: var(--color-foreground);
+  background-color: var(--color-toolbar-hover-background);
+}
+
+.ai-sql-diff-dialog__tab--active {
+  color: var(--color-foreground);
+  border-color: var(--color-border);
+  background-color: var(--color-list-active-selection-background, transparent);
+}

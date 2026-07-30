@@ -4,6 +4,8 @@ import { applyWorkbenchFonts } from "@silk-studio/ui/platform/fonts.ts";
 import { configureEditorHost } from "@silk-studio/editor/services/editor/editorHost.ts";
 import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import { WindowTitleService } from "@silk-studio/workbench/services/windowTitle/windowTitleService.ts";
+import { configureDbStudioAiContextHost } from "./services/ai/configureAiContextHost";
+import { configureDbStudioAiSqlProposalHost } from "./services/ai/configureAiSqlProposalHost";
 import "@silk-studio/ui/global.css";
 import "@silk-studio/workbench/workbench/workbench.contribution";
 import "./workbench/contributions/queryActions.contribution";
@@ -22,6 +24,8 @@ configureEditorHost({
   updateWindowTitle: (activeEditor) =>
     WindowTitleService.updateFromEditor(activeEditor),
 });
+configureDbStudioAiContextHost();
+configureDbStudioAiSqlProposalHost();
 applyWorkbenchFonts();
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

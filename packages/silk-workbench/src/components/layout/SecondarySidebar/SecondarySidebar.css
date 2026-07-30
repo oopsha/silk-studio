@@ -11,9 +11,11 @@
 .secondary-sidebar__header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   flex-shrink: 0;
+  gap: 8px;
   height: 35px;
-  padding: 0 12px;
+  padding: 0 8px 0 12px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -21,6 +23,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -28,24 +31,252 @@
   color: var(--color-foreground);
 }
 
-.secondary-sidebar__content {
+.secondary-sidebar__header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.secondary-sidebar__icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--color-description);
+  background: transparent;
+  border: none;
+  border-radius: var(--corner-radius-medium, 4px);
+  cursor: pointer;
+}
+
+.secondary-sidebar__icon-button:hover:not(:disabled) {
+  color: var(--color-foreground);
+  background-color: var(--color-toolbar-hover-background);
+}
+
+.secondary-sidebar__icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.secondary-sidebar__meta {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-description);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.secondary-sidebar__messages {
   display: flex;
   flex: 1;
   flex-direction: column;
+  gap: 12px;
   min-height: 0;
-  padding: 16px;
+  padding: 12px;
+  overflow: auto;
 }
 
-.secondary-sidebar__placeholder {
-  margin: 0;
+.secondary-sidebar__empty {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: auto 0;
   color: var(--color-description);
   font-size: 13px;
   line-height: 1.5;
 }
 
-.secondary-sidebar__settings-button {
+.secondary-sidebar__empty p {
+  margin: 0;
+}
+
+.secondary-sidebar__message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.secondary-sidebar__message-role {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-description);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.secondary-sidebar__message-body {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.secondary-sidebar__message--user .secondary-sidebar__message-body {
+  color: var(--color-foreground);
+  background-color: var(--color-command-center-background);
+  border: 1px solid var(--color-command-center-border);
+}
+
+.secondary-sidebar__message--assistant .secondary-sidebar__message-body {
+  color: var(--color-editor-foreground);
+  background-color: var(--color-editor);
+  border: 1px solid var(--color-border);
+}
+
+.secondary-sidebar__message--error .secondary-sidebar__message-body {
+  color: #f48771;
+  border-color: rgba(244, 135, 113, 0.4);
+}
+
+.secondary-sidebar__proposals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.secondary-sidebar__proposal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background-color: var(--color-surface);
+}
+
+.secondary-sidebar__proposal-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.secondary-sidebar__proposal-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-description);
+}
+
+.secondary-sidebar__proposal-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #f48771;
+  border: 1px solid rgba(244, 135, 113, 0.45);
+  background-color: rgba(244, 135, 113, 0.08);
+}
+
+.secondary-sidebar__proposal-preview {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.secondary-sidebar__proposal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.secondary-sidebar__proposal-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  color: var(--color-foreground);
+  background-color: var(--color-input-background);
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.secondary-sidebar__proposal-button:hover {
+  background-color: var(--color-list-hover);
+}
+
+.secondary-sidebar__proposal-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.secondary-sidebar__proposal-button--execute {
+  border-color: rgba(14, 99, 156, 0.55);
+}
+
+.secondary-sidebar__banner {
+  flex-shrink: 0;
+  margin: 0 12px 8px;
+  padding: 8px 10px;
+  color: #f48771;
+  background-color: rgba(244, 135, 113, 0.08);
+  border: 1px solid rgba(244, 135, 113, 0.35);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.secondary-sidebar__composer {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.secondary-sidebar__input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 72px;
+  max-height: 160px;
+  padding: 8px 10px;
+  resize: vertical;
+  color: var(--color-input-foreground);
+  background-color: var(--color-input-background);
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.secondary-sidebar__input:focus {
+  outline: 1px solid var(--color-focus-border);
+  outline-offset: -1px;
+}
+
+.secondary-sidebar__input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.secondary-sidebar__composer-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.secondary-sidebar__settings-button,
+.secondary-sidebar__send-button {
   align-self: flex-start;
-  margin-top: 12px;
   padding: 6px 12px;
   color: var(--color-foreground);
   background-color: var(--color-input-background);
@@ -55,6 +286,12 @@
   cursor: pointer;
 }
 
-.secondary-sidebar__settings-button:hover {
+.secondary-sidebar__settings-button:hover,
+.secondary-sidebar__send-button:hover:not(:disabled) {
   background-color: var(--color-list-hover);
+}
+
+.secondary-sidebar__send-button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }

@@ -212,6 +212,16 @@ class LayoutServiceImpl {
     this.commit();
   }
 
+  showAuxiliaryBar(): void {
+    if (this.auxiliaryBarVisible) return;
+    this.auxiliaryBarVisible = true;
+    this.commit();
+  }
+
+  isAuxiliaryBarVisible(): boolean {
+    return this.auxiliaryBarVisible;
+  }
+
   setSidebarWidth(width: number): void {
     const next = Math.max(LAYOUT_MIN.sidebarWidth, Math.round(width));
     if (next === this.sidebarWidth) return;

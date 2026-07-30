@@ -11,10 +11,14 @@
 - Provider·모델 프리셋 — [`aiSettingsConstants`](../packages/silk-workbench/src/services/settings/aiSettingsConstants.ts) (**gemini** 기본 · openai / anthropic / custom)
 - API 키 — OS 키링 provider별 슬롯 ([`AiSecretService`](../packages/silk-workbench/src/services/ai/aiSecretService.ts)); 평문 `ai.apiKey`는 1회 마이그레이션 후 제거
 - Provider 클라이언트 — Gemini / OpenAI / Anthropic / Custom OpenAI-compatible ([`aiProviderService`](../packages/silk-workbench/src/services/ai/aiProviderService.ts)), Settings **Test connection**
-- [`SecondarySidebar`](../packages/silk-workbench/src/components/layout/SecondarySidebar/SecondarySidebar.tsx) — ready 상태 안내 (Chat UI는 8-B)
+- [`SecondarySidebar`](../packages/silk-workbench/src/components/layout/SecondarySidebar/SecondarySidebar.tsx) — 멀티턴 채팅·스트리밍·취소 (`AiChatService`, 8-B)
+- AI 컨텍스트 조립 — Settings 플래그로 스키마·선택·쿼리 히스토리 (`aiContextService`, 8-C)
+- NL→SQL 검수 — 응답 SQL 추출 · Diff/삽입 확인 · Copy (`AiSqlDiffDialog`, 8-D). **자동 실행 없음**
+- AI 제안 SQL 실행 — `ai.allowExecute` · `database.readOnly` · 확인 다이얼로그 후 실행 · 채팅 해석 (8-E)
+- AI 감사 로그 — 호출 시각·provider·model·토큰·대략 비용 로컬 저장 · Settings에서 조회/Export/Clear (8-F)
 - SQL 실행·가드 — `QueryExecutionService`, `sqlGuard`, `database.readOnly` (4·5번)
 - 스키마·선택·히스토리 원천 — 연결(3) · 에디터(4) · 탐색기(6) · 쿼리 히스토리(4)
-- **미구현**: 채팅 UX·스트리밍 UI(8-B), NL→SQL 검수·실행·해석(8-C~E), 감사·비용(8-F)
+- **로드맵 8번 본편 + 8-F 완료**
 - **이후**: PL/SQL AI 수정 루프 — [`plsql-work-breakdown.md`](./plsql-work-breakdown.md) **7-F** (본 문서 완료 후)
 
 ### v1 범위
@@ -87,7 +91,7 @@
 
 ## 8-B. AI Chat UI · 대화 루프
 
-**상태:** 미구현
+**상태:** 완료
 
 **의존성:** 8-A
 
@@ -119,7 +123,7 @@
 
 ## 8-C. 컨텍스트 조립
 
-**상태:** 미구현
+**상태:** 완료
 
 **의존성:** 8-B, 연결·SQL 에디터·탐색기·쿼리 히스토리(3·4·6)
 
@@ -150,7 +154,7 @@
 
 ## 8-D. 자연어 → SQL 제안 · 검수
 
-**상태:** 미구현
+**상태:** 완료
 
 **의존성:** 8-C
 
@@ -182,7 +186,7 @@
 
 ## 8-E. 실행 권한 분리 · 결과 해석
 
-**상태:** 미구현
+**상태:** 완료
 
 **의존성:** 8-D, `QueryExecutionService`(4·5)
 
@@ -213,7 +217,7 @@
 
 ## 8-F. 감사 · 비용 · 세션 (선택/후속)
 
-**상태:** 미구현
+**상태:** 완료
 
 **의존성:** 8-B~8-E
 
