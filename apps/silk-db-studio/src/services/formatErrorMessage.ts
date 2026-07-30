@@ -1,3 +1,5 @@
+import { AppLogService } from "@silk-studio/workbench/services/diagnostics/appLogService.ts";
+
 export function formatErrorMessage(
   error: unknown,
   fallback = "Operation failed.",
@@ -18,4 +20,15 @@ export function formatErrorMessage(
   }
 
   return fallback;
+}
+
+/** Format for UI and record in the diagnostics ring buffer / log file. */
+export function reportError(
+  error: unknown,
+  source: string,
+  fallback = "Operation failed.",
+): string {
+  const message = formatErrorMessage(error, fallback);
+  void AppLogService.error(message, source);
+  return message;
 }

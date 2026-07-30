@@ -16,9 +16,11 @@ import {
 } from "../../platform/actions/menuService";
 import { CommandService } from "../../platform/commands/commandService";
 import { ContextKeyService } from "../../platform/context/contextKeyService";
+import {
+  APP_DISPLAY_NAME,
+} from "../diagnostics/appVersion";
 
-const APP_NAME = "Silk DB Studio";
-const APP_VERSION = "0.1.0";
+const APP_NAME = APP_DISPLAY_NAME;
 const REBUILD_DEBOUNCE_MS = 80;
 
 type NativeMenuChild =
@@ -107,13 +109,10 @@ async function buildAppSubmenu(): Promise<Submenu> {
   return Submenu.new({
     text: APP_NAME,
     items: [
-      await PredefinedMenuItem.new({
-        item: {
-          About: {
-            name: APP_NAME,
-            version: APP_VERSION,
-          },
-        },
+      await MenuItem.new({
+        id: "silk.help.about",
+        text: `About ${APP_NAME}`,
+        action: () => runCommand("silk.help.about"),
       }),
       await PredefinedMenuItem.new({ item: "Separator" }),
       await MenuItem.new({

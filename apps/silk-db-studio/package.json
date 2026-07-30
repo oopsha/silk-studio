@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "prepare:runtime": "node ../../scripts/prepare-runtime-resources.mjs",
+    "tauri": "tauri",
+    "tauri:build": "node ../../scripts/prepare-runtime-resources.mjs && tauri build"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

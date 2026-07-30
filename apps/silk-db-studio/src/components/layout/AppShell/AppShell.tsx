@@ -19,6 +19,8 @@ import ExplorerSearchQuickPick from "../../connections/ExplorerSearchQuickPick.t
 import ExplorerObjectMutationDialog from "../../connections/ExplorerObjectMutationDialog.tsx";
 import AiSqlDiffDialog from "../../ai/AiSqlDiffDialog.tsx";
 import AiSqlExecuteDialog from "../../ai/AiSqlExecuteDialog.tsx";
+import AboutDialog from "@silk-studio/workbench/components/diagnostics/AboutDialog.tsx";
+import AppToast from "@silk-studio/workbench/components/diagnostics/AppToast.tsx";
 import PlsqlSaveDialog from "../../plsql/PlsqlSaveDialog.tsx";
 import PlsqlSnapshotDialog from "../../plsql/PlsqlSnapshotDialog.tsx";
 import DdlEditorView from "../../ddl/DdlEditorView.tsx";
@@ -304,6 +306,8 @@ function AppShell() {
       <AiSqlExecuteDialog />
       <PlsqlSaveDialog />
       <PlsqlSnapshotDialog />
+      <AboutDialog />
+      <AppToast />
     </div>
   );
 }

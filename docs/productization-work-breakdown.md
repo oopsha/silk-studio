@@ -6,15 +6,17 @@
 
 ## 현재 상태 (기준)
 
-- Tauri 2 번들 골격 — [`tauri.conf.json`](../apps/silk-db-studio/src-tauri/tauri.conf.json) (`bundle.active`, 아이콘)
-- jdbc-agent — Gradle Java 17 · thin jar + `lib/` ([`packages/jdbc-agent`](../packages/jdbc-agent/)); 런처는 **시스템 PATH `java`** ([`silk-db-agent-client`](../crates/silk-db-agent-client/src/lib.rs))
-- 개발 시 jar 경로 — monorepo `packages/jdbc-agent/build/libs/...` (설치본 경로·번들 JRE **미구성**)
-- 기능별 오류 문자열 — [`formatErrorMessage`](../apps/silk-db-studio/src/services/formatErrorMessage.ts), 패널·연결·탐색기·PL/SQL·AI 등 화면별 표시
+- Tauri 2 번들 골격 — [`tauri.conf.json`](../apps/silk-db-studio/src-tauri/tauri.conf.json) (`bundle.active`, 아이콘, **resources: jdbc-agent + jre**)
+- jdbc-agent — Gradle Java 17 · thin jar + `lib/` ([`packages/jdbc-agent`](../packages/jdbc-agent/)); 런타임은 **번들 Temurin JRE 17** (없으면 dev에서 PATH `java`)
+- 경로 해석 — [`runtime_paths.rs`](../apps/silk-db-studio/src-tauri/src/runtime_paths.rs) (설치본 `resource_dir` → monorepo 폴백)
+- 스테이징 — [`scripts/prepare-runtime-resources.mjs`](../scripts/prepare-runtime-resources.mjs) · 가이드 [`docs/bundled-runtime.md`](./bundled-runtime.md)
+- 기능별 오류 문자열 — [`formatErrorMessage`](../apps/silk-db-studio/src/services/formatErrorMessage.ts) · [`reportError`](../apps/silk-db-studio/src/services/formatErrorMessage.ts) (진단 로그 연동)
 - AI 감사 로그(8-F) — 호출 메타만 (앱 진단 로그와 **별개**)
 - 키바인딩 레지스트리·메뉴 accelerator — [`packages/silk-workbench/src/platform/keybinding/`](../packages/silk-workbench/src/platform/keybinding/)
-- Help / About · Keyboard Shortcuts · Command Palette · Check for Updates — **스텁** (`console.log` 또는 미구현 커맨드)
+- Help / About · Copy Diagnostics · Open Log Folder — **구현** (`silk.help.*`); Keyboard Shortcuts · Command Palette · Check for Updates — **스텁**
+- 앱 진단 로그 — `app_data_dir/logs/silk-db-studio.log` (로테이션·시크릿 마스킹)
 - 내부 작업 문서 — [`docs/roadmap.md`](./roadmap.md), 각 `*-work-breakdown.md`
-- **없음**: 파일 로그·Copy diagnostics · `tauri-plugin-updater` · GitHub Actions · 단위/e2e 테스트 · 사용자 가이드 · 체계적 a11y 패스
+- **없음**: `tauri-plugin-updater` · GitHub Releases · 단위/e2e 테스트 · 사용자 가이드 · 체계적 a11y 패스
 
 ### v1 범위
 
@@ -47,7 +49,7 @@
 
 ## 9-A. 오류 UX · 로그 · 진단
 
-**상태:** 미구현
+**상태:** 완료
 
 **의존성:** 없음 (기능 로드맵과 독립)
 
@@ -65,6 +67,13 @@
 - 사용자가 진단 문자열을 복사해 이슈에 붙일 수 있음
 - 로그 파일이 로컬에 쌓이고 About에 버전이 보임
 
+### 구현 메모
+
+- Rust: [`app_log.rs`](../apps/silk-db-studio/src-tauri/src/app_log.rs) — `app_log_write` / `app_runtime_info` / `app_log_open_folder`
+- TS: `packages/silk-workbench/src/services/diagnostics/*`, Help 커맨드 `silk.help.about|copyDiagnostics|openLogFolder`
+- 토스트: `AppNotificationService` + `AppToast` (Copy diagnostics 피드백 등)
+- 시크릿 마스킹: 프론트 `redactSecrets` + Rust `redact_secrets` 이중 방어
+
 ### 요청 문구 예
 
 > 오류/로그/진단 기반을 넣어줘. Copy diagnostics와 About 버전, 로컬 로그 파일을 추가해. API 키·비밀번호는 로그에 남기지 마.
@@ -73,7 +82,7 @@
 
 ## 9-B. 패키징 경로 · 번들 JRE + jdbc-agent
 
-**상태:** 미구현
+**상태:** 완료
 
 **의존성:** jdbc-agent 빌드 산출물. 9-A와 병행 가능하나 **릴리스 전 필수**
 
@@ -89,6 +98,13 @@
 
 - **시스템 Java 없이** 설치 앱에서 연결·쿼리가 됨
 - Mac·Windows 패키지에 agent(+런타임)가 포함됨
+
+### 구현 메모
+
+- 경로: [`runtime_paths.rs`](../apps/silk-db-studio/src-tauri/src/runtime_paths.rs) · 클라이언트 [`JdbcAgentClient::new(jar, java_bin)`](../crates/silk-db-agent-client/src/lib.rs)
+- 스테이징/JRE: [`scripts/prepare-runtime-resources.mjs`](../scripts/prepare-runtime-resources.mjs) (Temurin 17, OS/arch별)
+- 번들: `tauri.conf.json` → `bundle.resources` = `resources/jdbc-agent`, `resources/jre`
+- 문서: [`docs/bundled-runtime.md`](./bundled-runtime.md)
 
 ### 요청 문구 예
 
@@ -230,12 +246,13 @@
 
 | 영역 | 경로·패턴 |
 |------|-----------|
-| 오류 메시지 | `formatErrorMessage`, AI/쿼리/연결 화면별 표시 |
-| Help 스텁 | `helpActions.contribution.ts`, `nativeMenubarService` (macOS About) |
+| 오류 메시지 | `formatErrorMessage` / `reportError`, AI/쿼리/연결 화면별 표시 |
+| Help · 진단 | `helpActions.contribution.ts`, `services/diagnostics/*`, About/AppToast |
 | Updates 스텁 | `activityBar.contribution.ts` (`update.check`) |
 | 키바인딩 | `platform/keybinding`, 메뉴 `accelerator` |
-| Agent 런치 | `crates/silk-db-agent-client`, `apps/.../src-tauri/src/lib.rs` `jdbc_agent_jar` |
+| Agent 런치 | `crates/silk-db-agent-client`, `runtime_paths.rs`, `scripts/prepare-runtime-resources.mjs` |
 | Agent 빌드 | `packages/jdbc-agent` (`gradlew`, `THIRD_PARTY_NOTICES.md`) |
+| 번들 런타임 | `docs/bundled-runtime.md`, `src-tauri/resources/{jdbc-agent,jre}` |
 | Tauri 번들 | `apps/silk-db-studio/src-tauri/tauri.conf.json` |
 | 로컬 링 버퍼 패턴 | `AiAuditLogService`, `QueryHistoryService` (메타만 저장 참고) |
 
@@ -243,5 +260,5 @@
 
 ## 다음 단계
 
-Agent 모드에서 **9-A**(오류·로그·진단 · About)부터 진행하면 된다.  
+**9-A · 9-B** 완료. 다음은 **9-C**(Tauri updater · GitHub Releases) 또는 **9-D**(테스트·CI) 권장.  
 (로드맵 8번 AI 본편·8-F는 [`ai-assistant-work-breakdown.md`](./ai-assistant-work-breakdown.md) 기준 완료)

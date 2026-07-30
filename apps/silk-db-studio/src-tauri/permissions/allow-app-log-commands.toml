@@ -1,0 +1,8 @@
+[[permission]]
+identifier = "allow-app-log-commands"
+description = "Allows writing diagnostics logs and reading runtime/version info."
+commands.allow = [
+  "app_log_write",
+  "app_runtime_info",
+  "app_log_open_folder",
+]

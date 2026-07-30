@@ -1,10 +1,11 @@
 mod ai_http;
+mod app_log;
+mod runtime_paths;
 mod secrets;
 mod window_layout;
 
 use serde_json::Value;
 use silk_db_agent_client::JdbcAgentClient;
-use std::path::PathBuf;
 use tauri::Manager;
 #[cfg(target_os = "windows")]
 use tauri_plugin_window_controls::{TitleBarColors, WindowControlsExt};
@@ -44,18 +45,6 @@ fn configure_main_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
 #[tauri::command]
 fn ensure_title_bar_overlay(window: tauri::WebviewWindow) -> Result<(), String> {
     configure_main_window(&window).map_err(|e| e.to_string())
-}
-
-fn jdbc_agent_jar() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("..")
-        .join("packages")
-        .join("jdbc-agent")
-        .join("build")
-        .join("libs")
-        .join("jdbc-agent-all.jar")
 }
 
 struct AppState {
@@ -193,9 +182,7 @@ fn connection_compile(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(AppState {
-            jdbc_agent: JdbcAgentClient::new(jdbc_agent_jar()),
-        })
+        .manage(app_log::AppLogState::new())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_system_symbols::init())
@@ -223,8 +210,31 @@ pub fn run() {
             window_layout::window_layout_apply_and_show,
             window_layout::window_layout_show,
             window_layout::window_layout_file_exists,
+            app_log::app_log_write,
+            app_log::app_runtime_info,
+            app_log::app_log_open_folder,
         ])
         .setup(|app| {
+            let paths = runtime_paths::resolve_runtime_paths(app.handle());
+            app.manage(app_log::ManagedRuntimePaths(paths.clone()));
+            app.manage(AppState {
+                jdbc_agent: JdbcAgentClient::new(
+                    paths.agent_jar.clone(),
+                    paths.java_bin.clone(),
+                ),
+            });
+
+            let handle = app.handle().clone();
+            {
+                let log_state = app.state::<app_log::AppLogState>();
+                app_log::write_startup_banner(&handle, &log_state, &paths);
+            }
+
+            if let Err(error) = runtime_paths::smoke_check(&paths) {
+                let log_state = app.state::<app_log::AppLogState>();
+                let _ = app_log::append_startup_warning(&handle, &log_state, &error);
+            }
+
             if let Some(window) = app.get_webview_window("main") {
                 // Always restore (if possible) then show — never leave visible:false stuck.
                 window_layout::restore_main_window(app.handle(), &window);
