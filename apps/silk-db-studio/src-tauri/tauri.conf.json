@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm build && node ../../scripts/prepare-runtime-resources.mjs",
     "frontendDist": "../dist"
   },
   "app": {
@@ -34,6 +34,10 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "resources": [
+      "resources/jdbc-agent",
+      "resources/jre"
     ]
   }
 }

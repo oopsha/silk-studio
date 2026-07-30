@@ -4,8 +4,10 @@ import { applyWorkbenchFonts } from "@silk-studio/ui/platform/fonts.ts";
 import { configureEditorHost } from "@silk-studio/editor/services/editor/editorHost.ts";
 import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import { WindowTitleService } from "@silk-studio/workbench/services/windowTitle/windowTitleService.ts";
+import { AppLogService } from "@silk-studio/workbench/services/diagnostics/appLogService.ts";
 import { configureDbStudioAiContextHost } from "./services/ai/configureAiContextHost";
 import { configureDbStudioAiSqlProposalHost } from "./services/ai/configureAiSqlProposalHost";
+import { configureDbStudioDiagnosticsHost } from "./services/diagnostics/configureDiagnosticsHost";
 import "@silk-studio/ui/global.css";
 import "@silk-studio/workbench/workbench/workbench.contribution";
 import "./workbench/contributions/queryActions.contribution";
@@ -26,6 +28,9 @@ configureEditorHost({
 });
 configureDbStudioAiContextHost();
 configureDbStudioAiSqlProposalHost();
+configureDbStudioDiagnosticsHost();
+AppLogService.installGlobalHandlers();
+void AppLogService.info("Frontend bootstrap complete.", "bootstrap");
 applyWorkbenchFonts();
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

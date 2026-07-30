@@ -63,3 +63,14 @@ pgJDBC (`org.postgresql:postgresql`) is licensed under
 `postgresql-*.jar` under `build/libs/lib/` and is loaded only through standard `java.sql`
 interfaces — same packaging rules as the other drivers above (thin launcher jar + external
 `lib/`, no class merging).
+
+## Eclipse Temurin JRE 17 (bundled with the desktop app)
+
+Release packages of Silk DB Studio may include an **Eclipse Temurin JRE 17** (HotSpot) under
+`apps/silk-db-studio/src-tauri/resources/jre/`, fetched by
+[`scripts/prepare-runtime-resources.mjs`](../../scripts/prepare-runtime-resources.mjs) and
+copied into the Tauri bundle. Temurin builds are licensed under
+**GPLv2 with the Classpath Exception** — see [Adoptium](https://adoptium.net/docs/faq/) and the
+notices inside the JRE tree. Keep the runtime unmodified; do not mix its classes into
+`jdbc-agent` jars. A `SILK_JRE_SOURCE.txt` stamp is written next to the staged JRE for
+provenance. Full packaging notes: [`docs/bundled-runtime.md`](../../docs/bundled-runtime.md).

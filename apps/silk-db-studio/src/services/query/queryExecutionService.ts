@@ -4,7 +4,7 @@ import {
   type QueryResultPayload,
 } from "@silk-studio/db-protocol";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
-import { formatErrorMessage } from "../formatErrorMessage";
+import { formatErrorMessage, reportError } from "../formatErrorMessage";
 import { ConnectionService } from "../connection/connectionService";
 import { resolveActiveDriverId } from "../sql/sqlDialect";
 import { QueryHistoryService } from "./queryHistoryService";
@@ -344,7 +344,11 @@ class QueryExecutionServiceImpl {
             return;
           }
 
-          const message = formatErrorMessage(error, "Failed to execute query.");
+          const message = reportError(
+            error,
+            "query.execute",
+            "Failed to execute query.",
+          );
           this.commitTab({
             sql: item.sql,
             output: message,
@@ -681,7 +685,11 @@ class QueryExecutionServiceImpl {
       return;
     }
 
-    const message = formatErrorMessage(error, "Failed to execute query.");
+    const message = reportError(
+      error,
+      "query.execute",
+      "Failed to execute query.",
+    );
     this.setState({
       ...this.state,
       status: "error",

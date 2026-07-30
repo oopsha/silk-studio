@@ -25,15 +25,25 @@ struct AgentIo {
 /// [`Self::cancel_query`] can run while [`Self::execute_query`] is waiting.
 pub struct JdbcAgentClient {
     agent_jar: PathBuf,
+    java_bin: PathBuf,
     io: Mutex<Option<Arc<AgentIo>>>,
 }
 
 impl JdbcAgentClient {
-    pub fn new(agent_jar: impl Into<PathBuf>) -> Self {
+    pub fn new(agent_jar: impl Into<PathBuf>, java_bin: impl Into<PathBuf>) -> Self {
         Self {
             agent_jar: agent_jar.into(),
+            java_bin: java_bin.into(),
             io: Mutex::new(None),
         }
+    }
+
+    pub fn agent_jar(&self) -> &PathBuf {
+        &self.agent_jar
+    }
+
+    pub fn java_bin(&self) -> &PathBuf {
+        &self.java_bin
     }
 
     pub fn connect(
@@ -251,17 +261,28 @@ impl JdbcAgentClient {
             let agent_dir = self
                 .agent_jar
                 .parent()
-                .and_then(|path| path.parent())
-                .and_then(|path| path.parent())
                 .map(PathBuf::from)
                 .unwrap_or_else(|| self.agent_jar.clone());
             return Err(format!(
-                "jdbc-agent is not built.\nBuild it first:\ncd {}\nWindows: .\\gradlew.bat build\nmacOS/Linux: ./gradlew build\nThen retry query execution.",
+                "jdbc-agent jar not found at {}.\n\
+For development: cd packages/jdbc-agent && ./gradlew build (Windows: .\\gradlew.bat build)\n\
+For release packaging: run scripts/prepare-runtime-resources.mjs before tauri build.\n\
+Agent directory: {}",
+                self.agent_jar.display(),
                 agent_dir.display()
             ));
         }
 
-        let mut child = Command::new("java")
+        if !java_bin_usable(&self.java_bin) {
+            return Err(format!(
+                "Java runtime not found at {}.\n\
+Release builds must include a bundled JRE under resources/jre (see docs/bundled-runtime.md).\n\
+For local development, install JDK/JRE 17+ and ensure `java` is on PATH.",
+                self.java_bin.display()
+            ));
+        }
+
+        let mut child = Command::new(&self.java_bin)
             .arg("-Dfile.encoding=UTF-8")
             .arg("-Dsun.jnu.encoding=UTF-8")
             .arg("-jar")
@@ -271,7 +292,13 @@ impl JdbcAgentClient {
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
-            .map_err(|error| format!("Failed to start jdbc-agent: {error}"))?;
+            .map_err(|error| {
+                format!(
+                    "Failed to start jdbc-agent with {} -jar {}: {error}",
+                    self.java_bin.display(),
+                    self.agent_jar.display()
+                )
+            })?;
 
         let stdin = child
             .stdin
@@ -408,6 +435,14 @@ fn parse_agent_result(response: Value) -> Result<Value, String> {
     }
 
     Ok(response.get("result").cloned().unwrap_or_else(|| json!({})))
+}
+
+fn java_bin_usable(java_bin: &PathBuf) -> bool {
+    if java_bin.is_file() {
+        return true;
+    }
+    // Bare `java` / `java.exe` on PATH — existence is checked at spawn time.
+    java_bin.components().count() == 1
 }
 
 impl Drop for JdbcAgentClient {

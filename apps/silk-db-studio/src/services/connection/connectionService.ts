@@ -22,7 +22,7 @@ import type {
 } from "./connectionTypes";
 import { defaultUrlForDriver, getConnectionDriver } from "./connectionTypes";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
-import { formatErrorMessage } from "../formatErrorMessage";
+import { reportError } from "../formatErrorMessage";
 import { ConnectionTreeService } from "./connectionTreeService";
 import { ExplorerUiService } from "./explorerUiService";
 
@@ -225,7 +225,7 @@ class ConnectionServiceImpl {
         this.preloadDefaultSchema(profileId),
       );
     } catch (error) {
-      const message = formatErrorMessage(error, "Failed to connect.");
+      const message = reportError(error, "connection.connect", "Failed to connect.");
       ConnectionTreeService.setConnectedProfileId(null);
       this.setState({
         ...this.state,

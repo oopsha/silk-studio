@@ -1,0 +1,133 @@
+.about-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 6600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background-color: rgba(0, 0, 0, 0.45);
+}
+
+.about-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(440px, 100%);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background-color: var(--color-surface);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.about-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.about-dialog__header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.about-dialog__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--color-foreground);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.about-dialog__close:hover {
+  background-color: var(--color-toolbar-hover-background);
+}
+
+.about-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.about-dialog__product {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.about-dialog__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.about-dialog__meta > div {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+.about-dialog__meta dt {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-description);
+}
+
+.about-dialog__meta dd {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-foreground);
+  word-break: break-all;
+}
+
+.about-dialog__path {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+}
+
+.about-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.about-dialog__button {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--color-foreground);
+  background-color: var(--color-button-background, #0e639c);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.about-dialog__button:hover {
+  filter: brightness(1.08);
+}
+
+.about-dialog__button--secondary {
+  background-color: transparent;
+  border-color: var(--color-border);
+}
+
+.about-dialog__button--secondary:hover {
+  background-color: var(--color-toolbar-hover-background);
+  filter: none;
+}

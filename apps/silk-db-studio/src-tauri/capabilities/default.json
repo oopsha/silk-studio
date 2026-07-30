@@ -29,6 +29,7 @@
     "allow-connection-commands",
     "allow-secret-commands",
     "allow-ai-http-commands",
-    "allow-window-layout-commands"
+    "allow-window-layout-commands",
+    "allow-app-log-commands"
   ]
 }

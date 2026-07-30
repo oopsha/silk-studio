@@ -1,0 +1,50 @@
+.app-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 36px;
+  z-index: 7000;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background-color: var(--color-surface);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  color: var(--color-foreground);
+}
+
+.app-toast--success {
+  border-color: color-mix(in srgb, #3fa266 55%, var(--color-border));
+}
+
+.app-toast--error {
+  border-color: color-mix(in srgb, #f14c4c 55%, var(--color-border));
+}
+
+.app-toast__message {
+  flex: 1;
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.app-toast__dismiss {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--color-description);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.app-toast__dismiss:hover {
+  color: var(--color-foreground);
+  background-color: var(--color-toolbar-hover-background);
+}
