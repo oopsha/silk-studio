@@ -67,6 +67,7 @@ async function* streamOpenAiCompatible(
         model,
         messages,
         stream: true,
+        stream_options: { include_usage: true },
       }),
       signal: request.signal,
     });

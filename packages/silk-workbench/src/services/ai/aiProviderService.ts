@@ -1,5 +1,6 @@
 import { ConfigurationService } from "../../platform/configuration/configurationService";
 import type { AiProviderId } from "../../platform/configuration/configurationDefaults";
+import { AiAuditLogService } from "./aiAuditLogService";
 import { AiSecretService } from "./aiSecretService";
 import {
   AiProviderError,
@@ -162,5 +163,33 @@ export async function testConfiguredConnection(options?: {
     signal: options?.signal,
   };
 
-  await getAiProviderClient(provider).testConnection(request);
+  const startedAt = performance.now();
+  try {
+    await getAiProviderClient(provider).testConnection(request);
+    AiAuditLogService.record({
+      kind: "test_connection",
+      provider,
+      model,
+      status: "success",
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+  } catch (error) {
+    const cancelled =
+      (error instanceof AiProviderError && error.code === "cancelled") ||
+      options?.signal?.aborted;
+    AiAuditLogService.record({
+      kind: "test_connection",
+      provider,
+      model,
+      status: cancelled ? "cancelled" : "error",
+      errorCode:
+        error instanceof AiProviderError
+          ? error.code
+          : cancelled
+            ? "cancelled"
+            : "unknown",
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+    throw error;
+  }
 }

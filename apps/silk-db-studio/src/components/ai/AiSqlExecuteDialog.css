@@ -1,0 +1,14 @@
+.ai-sql-execute-dialog__ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-foreground);
+  cursor: pointer;
+}
+
+.ai-sql-execute-dialog__ack input {
+  margin-top: 2px;
+}

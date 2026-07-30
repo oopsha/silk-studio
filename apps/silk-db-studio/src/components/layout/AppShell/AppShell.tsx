@@ -17,6 +17,8 @@ import ConnectionsExplorer from "../../connections/ConnectionsExplorer.tsx";
 import ConnectionEditor from "../../connections/ConnectionEditor.tsx";
 import ExplorerSearchQuickPick from "../../connections/ExplorerSearchQuickPick.tsx";
 import ExplorerObjectMutationDialog from "../../connections/ExplorerObjectMutationDialog.tsx";
+import AiSqlDiffDialog from "../../ai/AiSqlDiffDialog.tsx";
+import AiSqlExecuteDialog from "../../ai/AiSqlExecuteDialog.tsx";
 import PlsqlSaveDialog from "../../plsql/PlsqlSaveDialog.tsx";
 import PlsqlSnapshotDialog from "../../plsql/PlsqlSnapshotDialog.tsx";
 import DdlEditorView from "../../ddl/DdlEditorView.tsx";
@@ -298,6 +300,8 @@ function AppShell() {
       </div>
       <ExplorerSearchQuickPick />
       <ExplorerObjectMutationDialog />
+      <AiSqlDiffDialog />
+      <AiSqlExecuteDialog />
       <PlsqlSaveDialog />
       <PlsqlSnapshotDialog />
     </div>

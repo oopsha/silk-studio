@@ -16,6 +16,7 @@ import {
   DEFAULT_ORACLE_URL,
   getConnectionDriver,
 } from "../../services/connection/connectionTypes";
+import { shouldUseDevSecretStore } from "@silk-studio/workbench/services/secrets/devSecretStore.ts";
 import "./ConnectionEditor.css";
 
 const EMPTY_FORM: ConnectionProfileInput = {
@@ -123,8 +124,9 @@ function ConnectionEditor() {
           {profileId === "new" ? "New Connection" : "Edit Connection"}
         </h2>
         <p className="connection-editor__intro">
-          비밀번호는 Windows Credential Manager / macOS Keychain 등 OS 보안
-          저장소에 보관됩니다. Database/Schema 적용 방식은 드라이버마다 다릅니다.
+          {shouldUseDevSecretStore()
+            ? "개발 모드: 비밀번호는 localStorage에 보관합니다. Keychain에만 있던 값은 처음 한 번 암호를 허용하면 자동으로 이전되며, 이후에는 암호 창이 뜨지 않습니다."
+            : "비밀번호는 Windows Credential Manager / macOS Keychain 등 OS 보안 저장소에 보관됩니다. Database/Schema 적용 방식은 드라이버마다 다릅니다."}
         </p>
       </header>
 
