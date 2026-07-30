@@ -14,6 +14,8 @@ import {
 } from "./plsqlEditorConstants";
 import { PlsqlSaveDialogService } from "./plsqlSaveDialogService";
 import { buildPlsqlSaveSql } from "./plsqlSaveSql";
+import { recordPlsqlSnapshot } from "./plsqlSnapshotService";
+import { bridgeFetchObjectDdl } from "./connectionDdlBridge";
 
 function assertSaveAllowed(ref: PlsqlEditorRef): void {
   const readOnly = ConfigurationService.getValue("database.readOnly");
@@ -88,13 +90,55 @@ export async function openPlsqlSaveDialog(tabId?: string): Promise<boolean> {
     ConfigurationService.getValue("database.readOnly"),
   );
 
-  return PlsqlSaveDialogService.open({
+  const objectLabel = buildPlsqlTabLabel(
+    ref.schemaName,
+    ref.objectName,
+    ref.kind,
+    ref.packageBody,
+  );
+
+  const openPromise = PlsqlSaveDialogService.open({
     tabId: tab.id,
     ref,
     sql,
     warnings,
-    objectLabel: buildPlsqlTabLabel(ref.schemaName, ref.objectName, ref.kind),
+    objectLabel,
+    bufferContent: tab.content,
+    dbSource: null,
+    dbSourceError: null,
+    dbSourceLoading: true,
   });
+
+  void bridgeFetchObjectDdl(
+    ref.schemaName,
+    ref.objectName,
+    ref.kind,
+    ref.packageBody,
+  )
+    .then((result) => {
+      const current = PlsqlSaveDialogService.getRequest();
+      if (!current || current.tabId !== tab.id) return;
+      const source = result.ddl.endsWith("\n") ? result.ddl : `${result.ddl}\n`;
+      PlsqlSaveDialogService.patch({
+        dbSource: source,
+        dbSourceError: null,
+        dbSourceLoading: false,
+      });
+    })
+    .catch((error) => {
+      const current = PlsqlSaveDialogService.getRequest();
+      if (!current || current.tabId !== tab.id) return;
+      PlsqlSaveDialogService.patch({
+        dbSource: null,
+        dbSourceError: formatErrorMessage(
+          error,
+          "Failed to load current database source for diff.",
+        ),
+        dbSourceLoading: false,
+      });
+    });
+
+  return openPromise;
 }
 
 export async function executePlsqlSave(
@@ -116,6 +160,7 @@ export async function executePlsqlSave(
 
   const tab = EditorService.getTabs().find((item) => item.id === tabId);
   if (tab) {
+    recordPlsqlSnapshot(ref, tab.content, "save");
     EditorService.markTabSaved(tabId, tab.uri, tab.label);
   }
 }

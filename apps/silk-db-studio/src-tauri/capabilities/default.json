@@ -12,12 +12,23 @@
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-start-dragging",
+    "core:window:allow-outer-size",
+    "core:window:allow-outer-position",
+    "core:window:allow-inner-size",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-is-maximized",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-scale-factor",
     "dialog:default",
     "fs:default",
     "window-controls:default",
     "allow-ensure-title-bar-overlay",
     "allow-query-execute",
     "allow-connection-commands",
-    "allow-secret-commands"
+    "allow-secret-commands",
+    "allow-ai-http-commands",
+    "allow-window-layout-commands"
   ]
 }

@@ -27,6 +27,14 @@
   white-space: nowrap;
 }
 
+.plsql-editor-view__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.plsql-editor-view__action,
 .plsql-editor-view__save {
   flex-shrink: 0;
   height: 22px;
@@ -39,13 +47,62 @@
   cursor: pointer;
 }
 
+.plsql-editor-view__action:hover:not(:disabled),
 .plsql-editor-view__save:hover:not(:disabled) {
   background-color: var(--color-toolbar-hover-background);
 }
 
+.plsql-editor-view__action:disabled,
 .plsql-editor-view__save:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+.plsql-editor-view__errors {
+  flex-shrink: 0;
+  max-height: 140px;
+  overflow: auto;
+  border-bottom: 1px solid var(--color-border);
+  background-color: #1e1e1e;
+}
+
+.plsql-editor-view__error {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 12px;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
+  color: #f48771;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plsql-editor-view__error:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.plsql-editor-view__error--static {
+  cursor: default;
+}
+
+.plsql-editor-view__error--static:hover {
+  background: transparent;
+}
+
+.plsql-editor-view__error-loc {
+  flex-shrink: 0;
+  color: #c586c0;
+  font-variant-numeric: tabular-nums;
+}
+
+.plsql-editor-view__error-msg {
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .plsql-editor-view__body {

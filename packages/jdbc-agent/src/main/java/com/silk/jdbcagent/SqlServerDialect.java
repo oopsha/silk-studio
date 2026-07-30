@@ -163,7 +163,11 @@ final class SqlServerDialect implements DbDialect {
 
   @Override
   public String fetchObjectDdl(
-      Connection connection, String schemaName, String objectName, String kind)
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody)
       throws SQLException {
     if ("table".equals(kind)) {
       return fetchSqlServerTableDdl(connection, schemaName, objectName);

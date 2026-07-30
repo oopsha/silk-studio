@@ -72,10 +72,36 @@ interface DbDialect {
 
   /**
    * Returns the DDL/source text for a database object, or {@code null} when not found.
+   *
+   * <p>{@code packageBody} is only meaningful for {@code kind=package} (Oracle PACKAGE BODY).
    */
   String fetchObjectDdl(
-      Connection connection, String schemaName, String objectName, String kind)
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody)
       throws SQLException;
+
+  /**
+   * Recompiles a stored PL/SQL (or equivalent) object and returns compile diagnostics.
+   * Default: unsupported.
+   *
+   * <p>{@code packageBody} is only meaningful for {@code kind=package}:
+   * {@code true} → body, {@code false} → spec, {@code null} → both.
+   *
+   * @return JSON object with {@code success}, {@code dialectId}, {@code errors[]}
+   */
+  default com.fasterxml.jackson.databind.node.ObjectNode compileObject(
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody,
+      com.fasterxml.jackson.databind.ObjectMapper mapper)
+      throws SQLException {
+    throw new RuntimeException("Compile is not supported for " + id() + ".");
+  }
 
   /** Shared helper: run {@code testSql} with a timeout and require at least one row back. */
   default void runTestQuery(Connection connection, int timeoutSeconds, String testSql)

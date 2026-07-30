@@ -44,6 +44,7 @@ export const EXPLORER_COMMANDS = {
   dropObject: "silk.explorer.dropObject",
   renameObject: "silk.explorer.renameObject",
   openSource: "silk.explorer.openSource",
+  openPackageBody: "silk.explorer.openPackageBody",
 } as const;
 
 /** Default double-click / Enter action for an object kind. */
@@ -78,6 +79,7 @@ export function buildObjectMenuItems(
     supportsRenameObject(kind, driverId);
   const canEditSource =
     driverId !== undefined && supportsPlsqlSourceEdit(driverId, kind);
+  const isPackage = kind === "package";
 
   return [
     {
@@ -88,7 +90,7 @@ export function buildObjectMenuItems(
     },
     {
       id: "editSource",
-      label: "Edit",
+      label: isPackage ? "Edit Spec" : "Edit",
       commandId: EXPLORER_COMMANDS.openSource,
       enabled: canEditSource,
       stubMessage:
@@ -96,6 +98,16 @@ export function buildObjectMenuItems(
           ? "Edit is available for Oracle procedures, functions, and packages."
           : undefined,
     },
+    ...(isPackage
+      ? [
+          {
+            id: "editPackageBody",
+            label: "Edit Body",
+            commandId: EXPLORER_COMMANDS.openPackageBody,
+            enabled: canEditSource,
+          } satisfies ExplorerMenuItem,
+        ]
+      : []),
     {
       id: "viewDdl",
       label: "View DDL",

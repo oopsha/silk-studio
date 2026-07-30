@@ -5,6 +5,7 @@ import {
 } from "./configurationDefaults";
 import { applyWorkbenchConfiguration } from "./applyConfiguration";
 import { loadConfiguration, saveConfiguration } from "./configurationStorage";
+import { resolveAiModelForProvider } from "../../services/settings/aiSettingsConstants";
 
 type ConfigurationChangeListener = () => void;
 
@@ -47,10 +48,12 @@ class ConfigurationServiceImpl {
     const stored = loadConfiguration();
     if (!stored) return;
 
-    this.values = {
-      ...CONFIGURATION_DEFAULTS,
-      ...stored,
-    };
+    this.values = { ...CONFIGURATION_DEFAULTS };
+    for (const key of Object.keys(CONFIGURATION_DEFAULTS) as ConfigurationKey[]) {
+      if (stored[key] !== undefined) {
+        (this.values as WorkbenchConfiguration)[key] = stored[key] as never;
+      }
+    }
 
     if (
       this.values["workbench.colorTheme"] !== "dark-2026" &&
@@ -128,6 +131,7 @@ class ConfigurationServiceImpl {
       this.values["ai.enabled"] = CONFIGURATION_DEFAULTS["ai.enabled"];
     }
     if (
+      this.values["ai.provider"] !== "gemini" &&
       this.values["ai.provider"] !== "openai" &&
       this.values["ai.provider"] !== "anthropic" &&
       this.values["ai.provider"] !== "custom"
@@ -137,12 +141,19 @@ class ConfigurationServiceImpl {
     if (typeof this.values["ai.model"] !== "string") {
       this.values["ai.model"] = CONFIGURATION_DEFAULTS["ai.model"];
     } else {
-      this.values["ai.model"] = this.values["ai.model"].slice(0, 128);
+      this.values["ai.model"] = resolveAiModelForProvider(
+        this.values["ai.provider"],
+        this.values["ai.model"].slice(0, 128),
+      );
     }
-    if (typeof this.values["ai.apiKey"] !== "string") {
-      this.values["ai.apiKey"] = CONFIGURATION_DEFAULTS["ai.apiKey"];
+    if (typeof this.values["ai.customBaseUrl"] !== "string") {
+      this.values["ai.customBaseUrl"] =
+        CONFIGURATION_DEFAULTS["ai.customBaseUrl"];
     } else {
-      this.values["ai.apiKey"] = this.values["ai.apiKey"].slice(0, 512);
+      this.values["ai.customBaseUrl"] = this.values["ai.customBaseUrl"].slice(
+        0,
+        512,
+      );
     }
     if (typeof this.values["ai.context.includeSchema"] !== "boolean") {
       this.values["ai.context.includeSchema"] =

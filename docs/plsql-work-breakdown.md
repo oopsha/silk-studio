@@ -10,10 +10,13 @@
 - 탐색기 **6-B** — `connection.ddl` + 읽기 전용 `DdlEditorView` (`silk://ddl/...`)
 - **7-A** — `PlsqlEditorView` (`silk://plsql/...`), Oracle procedure/function/package 편집 탭·dirty
 - **7-B** — Save / `Ctrl+S` → CREATE OR REPLACE 미리보기·확인 → `executeWriteStatement` + 스키마 트리 갱신
+- **7-C** — Compile / `Ctrl+Shift+F9` → `connection.compile` + ALL_ERRORS → Monaco 마커·오류 목록
+- **7-D** — 로컬 스냅샷(localStorage) · Monaco Diff · 롤백 · DB Reload
+- **7-E** — package SPEC/BODY 탭 분리 · 저장 전 DB 소스 Diff
 - 탐색기 **6-A~6-E** — procedure / function / package 목록·View DDL·Edit·Open Data·DROP/Rename
 - 실행·쓰기 — `QueryExecutionService.executeWriteStatement`, `sqlGuard` read-only 가드
 - 확인 다이얼로그 패턴 — `ExplorerObjectMutationDialog`, `QueryResultUpdateDialog`, `PlsqlSaveDialog`
-- **미구현**: **컴파일**, `USER_ERRORS` 오류 표시, 로컬 스냅샷 **diff·롤백**, AI 수정 루프
+- **미구현**: AI 수정 루프
 
 ### v1 대상 DB·객체
 
@@ -85,7 +88,7 @@
 
 ## 7-C. 컴파일 + 오류 표시
 
-**상태:** 미구현
+**상태:** 완료
 
 **의존성:** 7-A. **agent·프로토콜 신규 API 필수**
 
@@ -117,7 +120,7 @@
 
 ## 7-D. 로컬 스냅샷 · diff · 롤백
 
-**상태:** 미구현
+**상태:** 완료
 
 **의존성:** 7-A·7-B 권장 (저장 시점 스냅샷). **DB/agent 신규 API 없음** (로컬 저장)
 
@@ -145,7 +148,7 @@
 
 ## 7-E. 배포 UX 정리 (선택)
 
-**상태:** 미구현 — **7-B·7-D 이후** 또는 생략 가능
+**상태:** 완료
 
 **의존성:** 7-B (실제 DB 반영은 저장과 동일). 탐색기·설정과 정리만
 
@@ -169,7 +172,7 @@
 
 ## 7-F. AI 수정 루프
 
-**상태:** 미구현 — **로드맵 8번 이후**
+**상태:** 미구현 — **로드맵 8번 이후** ([`ai-assistant-work-breakdown.md`](./ai-assistant-work-breakdown.md))
 
 **의존성:** 7-A~7-C, **8. AI 어시스턴트** (컨텍스트·실행 권한·감사)
 
@@ -229,7 +232,7 @@
 |-----|------|------|
 | `connection.ddl` | 소스 로드 | ✅ 있음 (6-B) |
 | `query.execute` | CREATE OR REPLACE 저장 | ✅ 있음 |
-| `connection.compile` | 컴파일 + 오류 목록 | **7-C** |
+| `connection.compile` | 컴파일 + 오류 목록 | ✅ 있음 (7-C) |
 | `connection.metadata` | invalid 상태(선택) | 7-E·후순위 |
 
 규칙: **프로토콜 → jdbc-agent → Tauri → 앱** 순으로 추가.
@@ -246,7 +249,9 @@
 | read-only | `sqlGuard`, `database.readOnly` |
 | 확인 다이얼로그 | `ExplorerObjectMutationDialog`, `QueryResultUpdateDialog`, `PlsqlSaveDialog` |
 | PL/SQL 저장 | `plsqlSaveService`, `plsqlSaveSql`, `plsqlSave.contribution` (`silk.file.save` 가로채기) |
-| 오류 마커 | `sqlErrorMarkers` |
+| 오류 마커 | `sqlErrorMarkers`, `plsqlCompileMarkers` |
+| PL/SQL 컴파일 | `plsqlCompileService`, `connection.compile`, `silk.plsql.compile` |
+| PL/SQL 스냅샷 | `plsqlSnapshotService`, `plsqlSnapshotStorage`, `PlsqlSnapshotDialog` |
 | 트리 갱신 | `ConnectionTreeService.invalidateAndRefreshSchema` |
 | 탐색기 메뉴 | `explorerObjectActions`, `explorerObjectActions.contribution` |
 
@@ -254,5 +259,5 @@
 
 ## 다음 단계
 
-Agent 모드에서 **7-C** (컴파일 + 오류 표시)부터 진행하면 된다.  
-(6번 탐색기·7-A 편집 탭·7-B 저장은 완료)
+Agent 모드에서 **7-F**(AI 수정 루프, 8번 AI 이후)를 진행하면 된다.  
+(6번 탐색기·7-A~7-E는 완료)

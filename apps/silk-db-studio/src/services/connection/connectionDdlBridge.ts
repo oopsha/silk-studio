@@ -9,6 +9,7 @@ export async function bridgeFetchObjectDdl(
   schema: string,
   name: string,
   kind: MetadataObjectKind,
+  packageBody?: boolean,
 ): Promise<ConnectionDdlResult> {
   if (!isTauri()) {
     throw new Error("DDL metadata is available in the desktop app only.");
@@ -17,6 +18,7 @@ export async function bridgeFetchObjectDdl(
     schema: schema.trim(),
     name: name.trim(),
     kind,
+    packageBody,
   });
   if (!isConnectionDdlResult(payload)) {
     throw new Error("Invalid connection DDL payload from desktop bridge.");

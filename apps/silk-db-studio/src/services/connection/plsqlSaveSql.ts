@@ -87,7 +87,10 @@ export function buildPlsqlSaveSql(
   }
 
   if (!/^\s*CREATE\b/i.test(sql)) {
-    const keyword = oracleKindKeyword(ref.kind);
+    const keyword =
+      ref.kind === "package" && ref.packageBody
+        ? "PACKAGE BODY"
+        : oracleKindKeyword(ref.kind);
     throw new Error(
       `Source must start with CREATE (OR REPLACE) ${keyword}. Paste a full object definition before saving.`,
     );
@@ -96,6 +99,22 @@ export function buildPlsqlSaveSql(
   if (/^\s*CREATE\s+(?!OR\s+REPLACE\b)/i.test(sql)) {
     sql = sql.replace(/^\s*CREATE\b/i, "CREATE OR REPLACE");
     warnings.push("Rewrote CREATE to CREATE OR REPLACE.");
+  }
+
+  const isBodySql = /^\s*CREATE(?:\s+OR\s+REPLACE)?\s+(?:EDITIONABLE\s+|NONEDITIONABLE\s+)?PACKAGE\s+BODY\b/i.test(
+    sql,
+  );
+  if (ref.kind === "package") {
+    if (ref.packageBody && !isBodySql) {
+      warnings.push(
+        "This tab is PACKAGE BODY, but the buffer does not look like CREATE PACKAGE BODY.",
+      );
+    }
+    if (!ref.packageBody && isBodySql) {
+      warnings.push(
+        "This tab is PACKAGE SPEC, but the buffer looks like CREATE PACKAGE BODY.",
+      );
+    }
   }
 
   const definedName = extractPlsqlObjectName(sql, ref.kind);

@@ -49,12 +49,17 @@ final class MetadataDdl {
   }
 
   static String oracleMetadataType(String kind) {
+    return oracleMetadataType(kind, null);
+  }
+
+  static String oracleMetadataType(String kind, Boolean packageBody) {
     return switch (kind) {
       case "table" -> "TABLE";
       case "view" -> "VIEW";
       case "procedure" -> "PROCEDURE";
       case "function" -> "FUNCTION";
-      case "package" -> "PACKAGE";
+      case "package" ->
+          Boolean.TRUE.equals(packageBody) ? "PACKAGE_BODY" : "PACKAGE";
       default -> throw new IllegalArgumentException("Unsupported object kind for DDL: " + kind);
     };
   }

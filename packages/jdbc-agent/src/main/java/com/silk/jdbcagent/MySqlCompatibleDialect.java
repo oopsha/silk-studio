@@ -149,7 +149,11 @@ abstract class MySqlCompatibleDialect implements DbDialect {
 
   @Override
   public String fetchObjectDdl(
-      Connection connection, String schemaName, String objectName, String kind)
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody)
       throws SQLException {
     String sql =
         switch (kind) {

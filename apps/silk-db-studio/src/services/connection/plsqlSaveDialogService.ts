@@ -6,6 +6,12 @@ export type PlsqlSaveDialogRequest = {
   sql: string;
   warnings: string[];
   objectLabel: string;
+  /** Current editor buffer (for Diff vs DB). */
+  bufferContent: string;
+  /** Live DB source at dialog open time; null while loading / on failure. */
+  dbSource: string | null;
+  dbSourceError: string | null;
+  dbSourceLoading: boolean;
 };
 
 type PlsqlSaveDialogListener = () => void;
@@ -37,6 +43,12 @@ class PlsqlSaveDialogServiceImpl {
     return new Promise((resolve) => {
       this.pendingResolve = resolve;
     });
+  }
+
+  patch(partial: Partial<PlsqlSaveDialogRequest>): void {
+    if (!this.request) return;
+    this.request = { ...this.request, ...partial };
+    this.fireDidChange();
   }
 
   close(saved = false): void {

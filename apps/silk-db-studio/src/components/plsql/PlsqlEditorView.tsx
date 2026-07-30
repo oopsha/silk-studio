@@ -18,7 +18,16 @@ import {
   parsePlsqlEditorUri,
   PLSQL_SOURCE_LOADING,
 } from "../../services/connection/plsqlEditorConstants";
+import { revealPlsqlCompileError } from "../../services/connection/plsqlCompileMarkers";
+import {
+  getPlsqlCompileBlockedReason,
+} from "../../services/connection/plsqlCompileService";
+import {
+  PlsqlCompileStateService,
+  type PlsqlCompileState,
+} from "../../services/connection/plsqlCompileStateService";
 import { getPlsqlSaveBlockedReason } from "../../services/connection/plsqlSaveService";
+import { getPlsqlSnapshotBlockedReason } from "../../services/connection/plsqlSnapshotService";
 import { registerSqlLanguages } from "../../services/sql/registerSqlLanguages";
 import "./PlsqlEditorView.css";
 
@@ -33,6 +42,15 @@ function PlsqlEditorView() {
   const configuration = useConfiguration();
   const readOnly = configuration["database.readOnly"];
   const [loadState, setLoadState] = useState<LoadState>({ status: "idle" });
+  const [compileState, setCompileState] = useState<PlsqlCompileState>(() =>
+    PlsqlCompileStateService.getState(),
+  );
+
+  useEffect(() => {
+    return PlsqlCompileStateService.onDidChange(() => {
+      setCompileState(PlsqlCompileStateService.getState());
+    });
+  }, []);
 
   useEffect(() => {
     if (!ref || !activeTab) {
@@ -48,7 +66,12 @@ function PlsqlEditorView() {
     let cancelled = false;
     setLoadState({ status: "loading" });
 
-    void bridgeFetchObjectDdl(ref.schemaName, ref.objectName, ref.kind)
+    void bridgeFetchObjectDdl(
+      ref.schemaName,
+      ref.objectName,
+      ref.kind,
+      ref.packageBody,
+    )
       .then((result) => {
         if (cancelled || !activeTab) return;
         const source = result.ddl.endsWith("\n") ? result.ddl : `${result.ddl}\n`;
@@ -71,6 +94,7 @@ function PlsqlEditorView() {
     ref?.schemaName,
     ref?.objectName,
     ref?.kind,
+    ref?.packageBody,
     activeTab?.id,
   ]);
 
@@ -112,30 +136,135 @@ function PlsqlEditorView() {
 
   const saveBlockedReason = getPlsqlSaveBlockedReason(activeTab?.id);
   const canSave = !readOnly && saveBlockedReason === null;
+  const compileBlockedReason = getPlsqlCompileBlockedReason(activeTab?.id);
+  const canCompile =
+    !readOnly &&
+    compileBlockedReason === null &&
+    compileState.status !== "compiling";
+  const snapshotBlockedReason = getPlsqlSnapshotBlockedReason(activeTab?.id);
+  const canSnapshot = snapshotBlockedReason === null;
+
+  const showCompilePanel =
+    !!activeTab &&
+    compileState.tabId === activeTab.id &&
+    (compileState.status === "success" ||
+      compileState.status === "error" ||
+      compileState.status === "failed" ||
+      compileState.status === "compiling");
 
   return (
     <div className="plsql-editor-view">
       <div className="plsql-editor-view__banner" role="status">
         <span className="plsql-editor-view__banner-text">
           {banner}
-          {ref ? ` · ${ref.schemaName}.${ref.objectName}` : ""}
+          {ref
+            ? ` · ${ref.schemaName}.${ref.objectName}${
+                ref.kind === "package"
+                  ? ref.packageBody
+                    ? " (body)"
+                    : " (spec)"
+                  : ""
+              }`
+            : ""}
+          {showCompilePanel && compileState.message
+            ? ` · ${compileState.message}`
+            : ""}
         </span>
-        <button
-          type="button"
-          className="plsql-editor-view__save"
-          disabled={!canSave}
-          title={
-            readOnly
-              ? "Read-only mode is enabled"
-              : saveBlockedReason ?? "Save to database (Ctrl+S)"
-          }
-          onClick={() => {
-            void CommandService.executeCommand("silk.file.save");
-          }}
-        >
-          Save
-        </button>
+        <div className="plsql-editor-view__actions">
+          <button
+            type="button"
+            className="plsql-editor-view__action"
+            disabled={!canSnapshot}
+            title={snapshotBlockedReason ?? "Local snapshot history"}
+            onClick={() => {
+              void CommandService.executeCommand("silk.plsql.snapshot.history");
+            }}
+          >
+            History
+          </button>
+          <button
+            type="button"
+            className="plsql-editor-view__action"
+            disabled={!canSnapshot}
+            title={snapshotBlockedReason ?? "Take a local snapshot"}
+            onClick={() => {
+              void CommandService.executeCommand("silk.plsql.snapshot.take");
+            }}
+          >
+            Snapshot
+          </button>
+          <button
+            type="button"
+            className="plsql-editor-view__action"
+            disabled={!canSnapshot}
+            title={
+              snapshotBlockedReason ?? "Reload source from database"
+            }
+            onClick={() => {
+              void CommandService.executeCommand("silk.plsql.reloadFromDb");
+            }}
+          >
+            Reload
+          </button>
+          <button
+            type="button"
+            className="plsql-editor-view__action"
+            disabled={!canCompile}
+            title={
+              readOnly
+                ? "Read-only mode is enabled"
+                : compileBlockedReason ?? "Compile (Ctrl+Shift+F9)"
+            }
+            onClick={() => {
+              void CommandService.executeCommand("silk.plsql.compile");
+            }}
+          >
+            Compile
+          </button>
+          <button
+            type="button"
+            className="plsql-editor-view__action"
+            disabled={!canSave}
+            title={
+              readOnly
+                ? "Read-only mode is enabled"
+                : saveBlockedReason ?? "Save to database (Ctrl+S)"
+            }
+            onClick={() => {
+              void CommandService.executeCommand("silk.file.save");
+            }}
+          >
+            Save
+          </button>
+        </div>
       </div>
+      {showCompilePanel && compileState.errors.length > 0 ? (
+        <div className="plsql-editor-view__errors" role="list">
+          {compileState.errors.map((item, index) => (
+            <button
+              key={`${item.sequence ?? index}-${item.line}-${item.column}-${item.message}`}
+              type="button"
+              className="plsql-editor-view__error"
+              role="listitem"
+              onClick={() => revealPlsqlCompileError(item.line, item.column)}
+            >
+              <span className="plsql-editor-view__error-loc">
+                {item.line}:{item.column}
+              </span>
+              <span className="plsql-editor-view__error-msg">{item.message}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {showCompilePanel &&
+      compileState.status === "failed" &&
+      compileState.message ? (
+        <div className="plsql-editor-view__errors" role="alert">
+          <div className="plsql-editor-view__error plsql-editor-view__error--static">
+            {compileState.message}
+          </div>
+        </div>
+      ) : null}
       <div className="plsql-editor-view__body">
         <Editor
           key={activeTab?.id}

@@ -121,9 +121,13 @@ final class OracleDialect implements DbDialect {
 
   @Override
   public String fetchObjectDdl(
-      Connection connection, String schemaName, String objectName, String kind)
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody)
       throws SQLException {
-    String metadataType = MetadataDdl.oracleMetadataType(kind);
+    String metadataType = MetadataDdl.oracleMetadataType(kind, packageBody);
     try (Statement statement = connection.createStatement()) {
       statement.execute(
           "BEGIN "
@@ -150,6 +154,129 @@ final class OracleDialect implements DbDialect {
       }
     }
     return null;
+  }
+
+  @Override
+  public ObjectNode compileObject(
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody,
+      com.fasterxml.jackson.databind.ObjectMapper mapper)
+      throws SQLException {
+    String normalizedKind = kind.trim().toLowerCase(java.util.Locale.ROOT);
+    if (!normalizedKind.equals("procedure")
+        && !normalizedKind.equals("function")
+        && !normalizedKind.equals("package")) {
+      throw new RuntimeException(
+          "Compile is only supported for procedure, function, and package.");
+    }
+
+    String alterSql = buildCompileAlterSql(schemaName, objectName, normalizedKind, packageBody);
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(alterSql);
+    } catch (SQLException ignored) {
+      // Oracle often surfaces compile failures as warnings/exceptions; ALL_ERRORS is authoritative.
+    }
+
+    ArrayNode errors = mapper.createArrayNode();
+    List<String> oracleTypes = compileErrorTypes(normalizedKind, packageBody);
+    for (String schema : distinctCases(schemaName)) {
+      for (String object : distinctCases(objectName)) {
+        for (String oracleType : oracleTypes) {
+          collectAllErrors(connection, schema, object, oracleType, errors);
+        }
+        if (errors.size() > 0) {
+          break;
+        }
+      }
+      if (errors.size() > 0) {
+        break;
+      }
+    }
+
+    ObjectNode result = mapper.createObjectNode();
+    result.put("success", errors.size() == 0);
+    result.put("dialectId", id());
+    result.set("errors", errors);
+    return result;
+  }
+
+  private static String buildCompileAlterSql(
+      String schemaName, String objectName, String kind, Boolean packageBody) {
+    String qualified = quoteOracleIdent(schemaName) + "." + quoteOracleIdent(objectName);
+    return switch (kind) {
+      case "procedure" -> "ALTER PROCEDURE " + qualified + " COMPILE";
+      case "function" -> "ALTER FUNCTION " + qualified + " COMPILE";
+      case "package" -> {
+        if (packageBody == null) {
+          yield "ALTER PACKAGE " + qualified + " COMPILE";
+        }
+        if (packageBody) {
+          yield "ALTER PACKAGE " + qualified + " COMPILE BODY";
+        }
+        yield "ALTER PACKAGE " + qualified + " COMPILE PACKAGE";
+      }
+      default -> throw new IllegalArgumentException("Unsupported compile kind: " + kind);
+    };
+  }
+
+  private static List<String> compileErrorTypes(String kind, Boolean packageBody) {
+    return switch (kind) {
+      case "procedure" -> List.of("PROCEDURE");
+      case "function" -> List.of("FUNCTION");
+      case "package" -> {
+        if (packageBody == null) {
+          yield List.of("PACKAGE", "PACKAGE BODY");
+        }
+        yield packageBody ? List.of("PACKAGE BODY") : List.of("PACKAGE");
+      }
+      default -> List.of();
+    };
+  }
+
+  private static void collectAllErrors(
+      Connection connection,
+      String schema,
+      String object,
+      String oracleType,
+      ArrayNode errors)
+      throws SQLException {
+    String sql =
+        "SELECT SEQUENCE, LINE, POSITION, TEXT, TYPE, ATTRIBUTE "
+            + "FROM ALL_ERRORS "
+            + "WHERE OWNER = ? AND NAME = ? AND TYPE = ? "
+            + "ORDER BY SEQUENCE, LINE, POSITION";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schema);
+      statement.setString(2, object);
+      statement.setString(3, oracleType);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          ObjectNode entry = errors.addObject();
+          entry.put("sequence", rs.getInt("SEQUENCE"));
+          int line = rs.getInt("LINE");
+          entry.put("line", line <= 0 ? 1 : line);
+          int position = rs.getInt("POSITION");
+          entry.put("column", position <= 0 ? 1 : position);
+          String text = rs.getString("TEXT");
+          entry.put("message", text == null ? "" : text.trim());
+          String type = rs.getString("TYPE");
+          if (type != null && !type.isBlank()) {
+            entry.put("type", type.trim());
+          }
+          String attribute = rs.getString("ATTRIBUTE");
+          if (attribute != null && !attribute.isBlank()) {
+            entry.put("attribute", attribute.trim());
+          }
+        }
+      }
+    }
+  }
+
+  private static String quoteOracleIdent(String value) {
+    return "\"" + value.replace("\"", "\"\"") + "\"";
   }
 
   private static String[] distinctCases(String value) {

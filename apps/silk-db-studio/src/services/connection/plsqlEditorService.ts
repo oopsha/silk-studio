@@ -7,6 +7,7 @@ import {
   buildPlsqlTabLabel,
   PLSQL_SOURCE_LOADING,
   plsqlEditorUri,
+  type PlsqlEditorRef,
 } from "./plsqlEditorConstants";
 
 export function isEditablePlsqlKind(kind: MetadataObjectKind): boolean {
@@ -20,7 +21,15 @@ export function supportsPlsqlSourceEdit(
   return driverId === "oracle" && isEditablePlsqlKind(kind);
 }
 
-export function openPlsqlObjectSource(ref: ExplorerObjectRef): void {
+export type OpenPlsqlSourceOptions = {
+  /** For packages: true opens BODY tab; false/omit opens SPEC. */
+  packageBody?: boolean;
+};
+
+export function openPlsqlObjectSource(
+  ref: ExplorerObjectRef,
+  options: OpenPlsqlSourceOptions = {},
+): void {
   const profile = ConnectionService.getProfile(ref.profileId);
   if (!profile) {
     throw new Error("Connection profile not found.");
@@ -37,17 +46,23 @@ export function openPlsqlObjectSource(ref: ExplorerObjectRef): void {
     throw new Error("Connect this profile before opening PL/SQL source.");
   }
 
-  const uri = plsqlEditorUri({
+  const packageBody =
+    ref.object.kind === "package" ? options.packageBody === true : undefined;
+
+  const editorRef: PlsqlEditorRef = {
     profileId: ref.profileId,
     schemaName: ref.schemaName,
     kind: ref.object.kind,
     objectName: ref.object.name,
-  });
+    packageBody,
+  };
 
+  const uri = plsqlEditorUri(editorRef);
   const label = buildPlsqlTabLabel(
     ref.schemaName,
     ref.object.name,
     ref.object.kind,
+    packageBody,
   );
 
   const tabId = EditorService.openEditor({

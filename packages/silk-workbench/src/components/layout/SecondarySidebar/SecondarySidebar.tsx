@@ -3,23 +3,19 @@ import { useConfiguration } from "../../../platform/configuration/useConfigurati
 import {
   AI_PROVIDER_LABELS,
 } from "../../../services/settings/aiSettingsConstants";
+import { useAiReadyState } from "../../../services/ai/useAiReadyState";
 import "./SecondarySidebar.css";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 
 function SecondarySidebar() {
   const configuration = useConfiguration();
-  const enabled = configuration["ai.enabled"];
+  const ready = useAiReadyState();
   const provider = configuration["ai.provider"];
   const model = configuration["ai.model"];
-  const hasApiKey = configuration["ai.apiKey"].trim().length > 0;
 
   let statusMessage = "AI assistant will appear here.";
-  if (!enabled) {
-    statusMessage = "AI assistant is disabled. Enable it in Settings.";
-  } else if (!hasApiKey) {
-    statusMessage = "Configure an API key in Settings to use AI Chat.";
-  } else if (model.trim().length === 0) {
-    statusMessage = "Choose a model in Settings to use AI Chat.";
+  if (!ready.ready) {
+    statusMessage = ready.message;
   } else {
     statusMessage = `${AI_PROVIDER_LABELS[provider]} · ${model}. Chat UI is coming in a later release.`;
   }

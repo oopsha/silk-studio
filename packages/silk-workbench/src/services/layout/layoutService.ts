@@ -15,11 +15,20 @@ export type LayoutDimensions = {
   auxiliaryBarWidth: number;
 };
 
+/** OS window geometry (logical pixels). Optional until first capture. */
+export type WindowLayoutState = {
+  windowX: number;
+  windowY: number;
+  windowWidth: number;
+  windowHeight: number;
+  windowMaximized: boolean;
+};
+
 export type LayoutState = LayoutVisibility &
   LayoutDimensions & {
     panelPosition: PanelPosition;
     panelMaximized: boolean;
-  };
+  } & Partial<WindowLayoutState>;
 
 type LayoutChangeListener = () => void;
 
@@ -41,6 +50,11 @@ export const LAYOUT_MIN = {
   auxiliaryBarWidth: 200,
 } as const;
 
+export const WINDOW_LAYOUT_MIN = {
+  width: 640,
+  height: 480,
+} as const;
+
 class LayoutServiceImpl {
   private sidebarVisible = LAYOUT_DEFAULTS.sidebar;
   private panelVisible = LAYOUT_DEFAULTS.panel;
@@ -51,6 +65,11 @@ class LayoutServiceImpl {
   private panelPosition: PanelPosition = LAYOUT_DEFAULTS.panelPosition;
   private panelMaximized = LAYOUT_DEFAULTS.panelMaximized;
   private panelSizeBeforeMaximize: number | null = null;
+  private windowX: number | null = null;
+  private windowY: number | null = null;
+  private windowWidth: number | null = null;
+  private windowHeight: number | null = null;
+  private windowMaximized = false;
   private readonly listeners = new Set<LayoutChangeListener>();
 
   constructor() {
@@ -59,7 +78,7 @@ class LayoutServiceImpl {
   }
 
   getState(): LayoutState {
-    return {
+    const state: LayoutState = {
       sidebar: this.sidebarVisible,
       panel: this.panelVisible,
       auxiliaryBar: this.auxiliaryBarVisible,
@@ -69,6 +88,19 @@ class LayoutServiceImpl {
       panelPosition: this.panelPosition,
       panelMaximized: this.panelMaximized,
     };
+    if (
+      this.windowX !== null &&
+      this.windowY !== null &&
+      this.windowWidth !== null &&
+      this.windowHeight !== null
+    ) {
+      state.windowX = this.windowX;
+      state.windowY = this.windowY;
+      state.windowWidth = this.windowWidth;
+      state.windowHeight = this.windowHeight;
+      state.windowMaximized = this.windowMaximized;
+    }
+    return state;
   }
 
   getVisibility(): LayoutVisibility {
@@ -81,12 +113,62 @@ class LayoutServiceImpl {
     return { sidebarWidth, panelSize, auxiliaryBarWidth };
   }
 
+  getWindowLayout(): WindowLayoutState | null {
+    if (
+      this.windowX === null ||
+      this.windowY === null ||
+      this.windowWidth === null ||
+      this.windowHeight === null
+    ) {
+      return null;
+    }
+    return {
+      windowX: this.windowX,
+      windowY: this.windowY,
+      windowWidth: this.windowWidth,
+      windowHeight: this.windowHeight,
+      windowMaximized: this.windowMaximized,
+    };
+  }
+
   getPanelPosition(): PanelPosition {
     return this.panelPosition;
   }
 
   isPanelMaximized(): boolean {
     return this.panelMaximized;
+  }
+
+  /**
+   * Persist OS window geometry (called from the desktop app on move/resize).
+   * Does not fire layout UI listeners unless values actually change.
+   */
+  setWindowLayout(next: WindowLayoutState): void {
+    const x = Math.round(next.windowX);
+    const y = Math.round(next.windowY);
+    const width = Math.max(WINDOW_LAYOUT_MIN.width, Math.round(next.windowWidth));
+    const height = Math.max(
+      WINDOW_LAYOUT_MIN.height,
+      Math.round(next.windowHeight),
+    );
+    const maximized = next.windowMaximized;
+
+    if (
+      this.windowX === x &&
+      this.windowY === y &&
+      this.windowWidth === width &&
+      this.windowHeight === height &&
+      this.windowMaximized === maximized
+    ) {
+      return;
+    }
+
+    this.windowX = x;
+    this.windowY = y;
+    this.windowWidth = width;
+    this.windowHeight = height;
+    this.windowMaximized = maximized;
+    saveLayoutState(this.getState());
   }
 
   toggleSidebar(): void {
@@ -233,6 +315,25 @@ class LayoutServiceImpl {
     }
     if (typeof stored.panelMaximized === "boolean") {
       this.panelMaximized = stored.panelMaximized;
+    }
+
+    if (
+      typeof stored.windowX === "number" &&
+      typeof stored.windowY === "number" &&
+      typeof stored.windowWidth === "number" &&
+      typeof stored.windowHeight === "number"
+    ) {
+      this.windowX = Math.round(stored.windowX);
+      this.windowY = Math.round(stored.windowY);
+      this.windowWidth = Math.max(
+        WINDOW_LAYOUT_MIN.width,
+        Math.round(stored.windowWidth),
+      );
+      this.windowHeight = Math.max(
+        WINDOW_LAYOUT_MIN.height,
+        Math.round(stored.windowHeight),
+      );
+      this.windowMaximized = stored.windowMaximized === true;
     }
 
     const minPanel =

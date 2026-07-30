@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { ConfigurationService } from "../../platform/configuration/configurationService";
 import type {
   AiProviderId,
@@ -7,7 +8,12 @@ import type {
   WordWrapMode,
 } from "../../platform/configuration/configurationDefaults";
 import { useConfiguration } from "../../platform/configuration/useConfiguration";
+import { AiSecretService } from "../../services/ai/aiSecretService";
+import { testConfiguredConnection } from "../../services/ai/aiProviderService";
+import { AiProviderError } from "../../services/ai/aiProviderTypes";
+import { useAiHasApiKey } from "../../services/ai/useAiReadyState";
 import {
+  AI_API_KEY_PLACEHOLDERS,
   AI_DEFAULT_MODEL,
   AI_MODEL_PRESETS,
   AI_PROVIDER_LABELS,
@@ -25,11 +31,12 @@ type SettingRowProps = {
   title: string;
   description?: string;
   children: ReactNode;
+  className?: string;
 };
 
-function SettingRow({ title, description, children }: SettingRowProps) {
+function SettingRow({ title, description, children, className }: SettingRowProps) {
   return (
-    <div className="settings-row">
+    <div className={`settings-row${className ? ` ${className}` : ""}`}>
       <div className="settings-row__meta">
         <div className="settings-row__title">{title}</div>
         {description ? (
@@ -367,15 +374,97 @@ function AiSettings() {
   const configuration = useConfiguration();
   const provider = configuration["ai.provider"];
   const modelOptions = AI_MODEL_PRESETS[provider];
+  const hasStoredKey = useAiHasApiKey(provider);
+  const [draftKey, setDraftKey] = useState("");
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [testBusy, setTestBusy] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusTone, setStatusTone] = useState<"info" | "error" | "success">(
+    "info",
+  );
+
+  useEffect(() => {
+    void AiSecretService.initialize().then(() =>
+      AiSecretService.refreshProvider(provider),
+    );
+    setDraftKey("");
+    setStatusMessage(null);
+  }, [provider]);
+
+  const keyPlaceholder = hasStoredKey
+    ? "Saved in OS keyring — enter a new key to replace"
+    : AI_API_KEY_PLACEHOLDERS[provider];
+
+  async function handleSaveKey(): Promise<void> {
+    const next = draftKey.trim();
+    if (!next) {
+      setStatusTone("error");
+      setStatusMessage("Enter an API key to save.");
+      return;
+    }
+    setKeyBusy(true);
+    setStatusMessage(null);
+    try {
+      await AiSecretService.setApiKey(provider, next);
+      setDraftKey("");
+      setStatusTone("success");
+      setStatusMessage("API key saved to the OS keyring.");
+    } catch (error) {
+      setStatusTone("error");
+      setStatusMessage(
+        error instanceof Error ? error.message : "Failed to save API key.",
+      );
+    } finally {
+      setKeyBusy(false);
+    }
+  }
+
+  async function handleClearKey(): Promise<void> {
+    setKeyBusy(true);
+    setStatusMessage(null);
+    try {
+      await AiSecretService.deleteApiKey(provider);
+      setDraftKey("");
+      setStatusTone("info");
+      setStatusMessage("API key removed from the OS keyring.");
+    } catch (error) {
+      setStatusTone("error");
+      setStatusMessage(
+        error instanceof Error ? error.message : "Failed to clear API key.",
+      );
+    } finally {
+      setKeyBusy(false);
+    }
+  }
+
+  async function handleTestConnection(): Promise<void> {
+    setTestBusy(true);
+    setStatusMessage(null);
+    try {
+      await testConfiguredConnection({
+        apiKey: draftKey.trim() || undefined,
+      });
+      setStatusTone("success");
+      setStatusMessage("Connection test succeeded.");
+    } catch (error) {
+      setStatusTone("error");
+      setStatusMessage(
+        error instanceof AiProviderError || error instanceof Error
+          ? error.message
+          : "Connection test failed.",
+      );
+    } finally {
+      setTestBusy(false);
+    }
+  }
 
   return (
     <section className="settings-section">
       <h2 className="settings-section__title">AI</h2>
       <p className="settings-placeholder settings-placeholder--intro">
-        AI 어시스턴트 본 기능은 roadmap 8번에서 구현됩니다. 여기서는 BYOK,
-        모델, 컨텍스트 범위 등 기본 설정만 저장합니다. API 키는 현재{" "}
-        <code>localStorage</code>에 저장되며, 이후 Tauri 보안 저장소로
-        이전됩니다.
+        BYOK(Bring Your Own Key)로 제공자 API를 직접 연결합니다. API 키는
+        configuration이 아니라 <strong>OS 자격 증명 저장소(키링)</strong>에
+        provider별로 보관됩니다. Chat UI는 이후 단계에서 연결됩니다.
       </p>
       <SettingRow title="Enable AI Assistant">
         <label className="settings-checkbox">
@@ -394,7 +483,7 @@ function AiSettings() {
       </SettingRow>
       <SettingRow
         title="Provider"
-        description="BYOK(Bring Your Own Key) 제공자를 선택합니다."
+        description="기본 제공자는 Google Gemini(AI Studio Free Tier)입니다."
       >
         <select
           className="settings-control"
@@ -448,20 +537,88 @@ function AiSettings() {
           </select>
         )}
       </SettingRow>
+      {provider === "custom" ? (
+        <SettingRow
+          title="Custom Base URL"
+          description="OpenAI-compatible Chat Completions 엔드포인트 (예: https://api.example.com/v1)."
+        >
+          <input
+            className="settings-control"
+            type="url"
+            autoComplete="off"
+            placeholder="https://api.openai.com/v1"
+            value={configuration["ai.customBaseUrl"]}
+            onChange={(event) =>
+              ConfigurationService.updateValue(
+                "ai.customBaseUrl",
+                event.target.value,
+              )
+            }
+          />
+        </SettingRow>
+      ) : null}
       <SettingRow
+        className="settings-row--ai-key"
         title="API Key"
-        description="제공자 API 키입니다. 비워 두면 AI Chat이 구성 대기 상태로 표시됩니다."
+        description={
+          provider === "gemini"
+            ? "Google AI Studio 키. Free Tier는 프로젝트 RPM/TPM/RPD 한도가 있으며, 빌링 미연결 시 초과분 자동 과금은 없습니다. 2026-06 이후 unrestricted 키는 거절될 수 있으니 AI Studio에서 새 키를 만들거나 Generative Language API로 제한하세요."
+            : "제공자 API 키입니다. 저장 시 OS 키링에만 기록되며 localStorage에는 남지 않습니다."
+        }
       >
-        <input
-          className="settings-control"
-          type="password"
-          autoComplete="off"
-          placeholder="sk-..."
-          value={configuration["ai.apiKey"]}
-          onChange={(event) =>
-            ConfigurationService.updateValue("ai.apiKey", event.target.value)
-          }
-        />
+        <div className="settings-ai-key">
+          <input
+            className="settings-control"
+            type="password"
+            autoComplete="off"
+            placeholder={keyPlaceholder}
+            value={draftKey}
+            onChange={(event) => setDraftKey(event.target.value)}
+          />
+          <div className="settings-ai-key__meta">
+            {hasStoredKey
+              ? "Key stored for this provider"
+              : "No key stored for this provider"}
+          </div>
+          <div className="settings-ai-key__actions">
+            <button
+              type="button"
+              className="settings-button"
+              disabled={keyBusy || draftKey.trim().length === 0}
+              onClick={() => void handleSaveKey()}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              className="settings-button"
+              disabled={keyBusy || !hasStoredKey}
+              onClick={() => void handleClearKey()}
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              className="settings-button"
+              disabled={
+                testBusy ||
+                (!draftKey.trim() && !hasStoredKey) ||
+                configuration["ai.model"].trim().length === 0
+              }
+              onClick={() => void handleTestConnection()}
+            >
+              {testBusy ? "Testing…" : "Test connection"}
+            </button>
+          </div>
+          {statusMessage ? (
+            <p
+              className={`settings-ai-key__status settings-ai-key__status--${statusTone}`}
+              role="status"
+            >
+              {statusMessage}
+            </p>
+          ) : null}
+        </div>
       </SettingRow>
       <SettingRow title="Context: Schema">
         <label className="settings-checkbox">

@@ -9,4 +9,5 @@ commands.allow = [
   "connection_columns",
   "connection_primary_keys",
   "connection_ddl",
+  "connection_compile",
 ]

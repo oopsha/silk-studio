@@ -193,6 +193,11 @@ public final class Main {
           response.put("ok", true);
           response.set("result", runtime.fetchObjectDdl(params));
         }
+        case "connection.compile" -> {
+          runtime.requireConnection();
+          response.put("ok", true);
+          response.set("result", runtime.compileObject(params));
+        }
         case "query.execute" -> {
           String sql = params.path("sql").asText("").trim();
           if (sql.isEmpty()) {
@@ -396,8 +401,13 @@ public final class Main {
       if (kind.isEmpty()) {
         throw new RuntimeException("Missing params.kind");
       }
+      Boolean packageBody = null;
+      if (params.hasNonNull("packageBody")) {
+        packageBody = params.path("packageBody").asBoolean();
+      }
 
-      String ddl = dialect.fetchObjectDdl(connection, schemaName, objectName, kind);
+      String ddl =
+          dialect.fetchObjectDdl(connection, schemaName, objectName, kind, packageBody);
       if (ddl == null || ddl.isBlank()) {
         throw new RuntimeException(
             "No DDL found for " + schemaName + "." + objectName + " (" + kind + ").");
@@ -407,6 +417,28 @@ public final class Main {
       result.put("ddl", ddl.trim());
       result.put("dialectId", dialect.id());
       return result;
+    }
+
+    ObjectNode compileObject(JsonNode params) throws SQLException {
+      requireConnection();
+      String schemaName = params.path("schema").asText("").trim();
+      String objectName = params.path("name").asText("").trim();
+      String kind = params.path("kind").asText("").trim().toLowerCase(java.util.Locale.ROOT);
+      if (schemaName.isEmpty()) {
+        throw new RuntimeException("Missing params.schema");
+      }
+      if (objectName.isEmpty()) {
+        throw new RuntimeException("Missing params.name");
+      }
+      if (kind.isEmpty()) {
+        throw new RuntimeException("Missing params.kind");
+      }
+      Boolean packageBody = null;
+      if (params.hasNonNull("packageBody")) {
+        packageBody = params.path("packageBody").asBoolean();
+      }
+      return dialect.compileObject(
+          connection, schemaName, objectName, kind, packageBody, MAPPER);
     }
 
     /**

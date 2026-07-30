@@ -1,7 +1,14 @@
 export type ColorThemeId = "dark-2026" | "dark-plus";
 export type LineNumbersMode = "on" | "off" | "relative";
 export type WordWrapMode = "off" | "on";
-export type AiProviderId = "openai" | "anthropic" | "custom";
+export type AiProviderId = "gemini" | "openai" | "anthropic" | "custom";
+
+export const AI_PROVIDER_IDS: readonly AiProviderId[] = [
+  "gemini",
+  "openai",
+  "anthropic",
+  "custom",
+] as const;
 
 export type WorkbenchConfiguration = {
   "window.commandCenter": boolean;
@@ -27,7 +34,7 @@ export type WorkbenchConfiguration = {
   "ai.enabled": boolean;
   "ai.provider": AiProviderId;
   "ai.model": string;
-  "ai.apiKey": string;
+  "ai.customBaseUrl": string;
   "ai.context.includeSchema": boolean;
   "ai.context.includeSelection": boolean;
   "ai.context.includeQueryHistory": boolean;
@@ -56,9 +63,9 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "database.readOnly": false,
   "database.explorer.preloadDefaultSchema": true,
   "ai.enabled": false,
-  "ai.provider": "openai",
-  "ai.model": "gpt-4o-mini",
-  "ai.apiKey": "",
+  "ai.provider": "gemini",
+  "ai.model": "gemini-3.5-flash",
+  "ai.customBaseUrl": "",
   "ai.context.includeSchema": true,
   "ai.context.includeSelection": true,
   "ai.context.includeQueryHistory": false,
