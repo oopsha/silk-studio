@@ -1,0 +1,32 @@
+.plsql-save-dialog__tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.plsql-save-dialog__tab {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--color-description);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.plsql-save-dialog__tab:hover:not(:disabled) {
+  background-color: var(--color-toolbar-hover-background);
+  color: var(--color-foreground);
+}
+
+.plsql-save-dialog__tab--active {
+  color: var(--color-foreground);
+  border-color: var(--color-border);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.plsql-save-dialog__tab:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

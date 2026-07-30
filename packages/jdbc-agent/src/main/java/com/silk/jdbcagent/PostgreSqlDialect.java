@@ -186,7 +186,11 @@ final class PostgreSqlDialect implements DbDialect {
 
   @Override
   public String fetchObjectDdl(
-      Connection connection, String schemaName, String objectName, String kind)
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody)
       throws SQLException {
     return switch (kind) {
       case "table" -> fetchPostgreSqlTableDdl(connection, schemaName, objectName);

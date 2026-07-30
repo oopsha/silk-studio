@@ -121,11 +121,51 @@ export type ConnectionDdlParams = {
   schema: string;
   name: string;
   kind: MetadataObjectKind;
+  /**
+   * When `kind === "package"`:
+   * - `true` → PACKAGE BODY (`DBMS_METADATA` type PACKAGE_BODY)
+   * - omit / `false` → PACKAGE (spec)
+   */
+  packageBody?: boolean;
 };
 
 export type ConnectionDdlResult = {
   ddl: string;
   dialectId: string;
+};
+
+/** Recompile a stored PL/SQL object (`connection.compile`). Oracle v1. */
+export type ConnectionCompileParams = {
+  schema: string;
+  name: string;
+  kind: MetadataObjectKind;
+  /**
+   * When `kind === "package"`:
+   * - `true` → PACKAGE BODY
+   * - `false` → PACKAGE (spec)
+   * - omit → compile both (Oracle `ALTER PACKAGE … COMPILE`)
+   */
+  packageBody?: boolean;
+};
+
+export type ConnectionCompileError = {
+  /** 1-based line from ALL_ERRORS.LINE */
+  line: number;
+  /** 1-based column from ALL_ERRORS.POSITION */
+  column: number;
+  message: string;
+  /** Oracle object type, e.g. PROCEDURE / PACKAGE BODY */
+  type?: string;
+  /** ERROR or WARNING */
+  attribute?: string;
+  sequence?: number;
+};
+
+export type ConnectionCompileResult = {
+  /** True when `errors` is empty after compile. */
+  success: boolean;
+  dialectId: string;
+  errors: ConnectionCompileError[];
 };
 
 export type AgentMethod =
@@ -138,6 +178,7 @@ export type AgentMethod =
   | "connection.columns"
   | "connection.primaryKeys"
   | "connection.ddl"
+  | "connection.compile"
   | "query.execute";
 
 export type AgentRequest<TParams = unknown> = {
@@ -290,5 +331,33 @@ export function isConnectionDdlResult(
   return (
     typeof record.ddl === "string" &&
     typeof record.dialectId === "string"
+  );
+}
+
+function isConnectionCompileError(
+  value: unknown,
+): value is ConnectionCompileError {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.line === "number" &&
+    typeof entry.column === "number" &&
+    typeof entry.message === "string" &&
+    (entry.type === undefined || typeof entry.type === "string") &&
+    (entry.attribute === undefined || typeof entry.attribute === "string") &&
+    (entry.sequence === undefined || typeof entry.sequence === "number")
+  );
+}
+
+export function isConnectionCompileResult(
+  value: unknown,
+): value is ConnectionCompileResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.success === "boolean" &&
+    typeof record.dialectId === "string" &&
+    Array.isArray(record.errors) &&
+    record.errors.every(isConnectionCompileError)
   );
 }

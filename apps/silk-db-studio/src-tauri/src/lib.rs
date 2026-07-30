@@ -1,4 +1,6 @@
+mod ai_http;
 mod secrets;
+mod window_layout;
 
 use serde_json::Value;
 use silk_db_agent_client::JdbcAgentClient;
@@ -161,11 +163,31 @@ fn connection_ddl(
     schema: String,
     name: String,
     kind: String,
+    package_body: Option<bool>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
-    state
-        .jdbc_agent
-        .fetch_object_ddl(schema.trim(), name.trim(), kind.trim())
+    state.jdbc_agent.fetch_object_ddl(
+        schema.trim(),
+        name.trim(),
+        kind.trim(),
+        package_body,
+    )
+}
+
+#[tauri::command]
+fn connection_compile(
+    schema: String,
+    name: String,
+    kind: String,
+    package_body: Option<bool>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    state.jdbc_agent.compile_object(
+        schema.trim(),
+        name.trim(),
+        kind.trim(),
+        package_body,
+    )
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -189,12 +211,23 @@ pub fn run() {
             connection_columns,
             connection_primary_keys,
             connection_ddl,
+            connection_compile,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_delete,
+            secrets::ai_secret_set,
+            secrets::ai_secret_get,
+            secrets::ai_secret_delete,
+            ai_http::ai_http_fetch,
+            window_layout::window_layout_save,
+            window_layout::window_layout_apply_and_show,
+            window_layout::window_layout_show,
+            window_layout::window_layout_file_exists,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
+                // Always restore (if possible) then show — never leave visible:false stuck.
+                window_layout::restore_main_window(app.handle(), &window);
                 configure_main_window(&window)?;
             }
 

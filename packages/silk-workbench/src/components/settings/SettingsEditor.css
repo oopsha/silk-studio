@@ -100,6 +100,10 @@
   border-bottom: 1px solid var(--color-border);
 }
 
+.settings-row--ai-key {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+}
+
 .settings-row__title {
   font-size: 13px;
   font-weight: 600;
@@ -147,4 +151,59 @@
 .settings-placeholder code {
   font-family: var(--font-family-monospace);
   font-size: 12px;
+}
+
+.settings-button {
+  padding: 5px 10px;
+  color: var(--color-foreground);
+  background-color: var(--color-input-background);
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.settings-button:hover:not(:disabled) {
+  background-color: var(--color-list-hover);
+}
+
+.settings-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.settings-ai-key {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-ai-key__meta {
+  color: var(--color-description);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.settings-ai-key__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settings-ai-key__status {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.settings-ai-key__status--info {
+  color: var(--color-description);
+}
+
+.settings-ai-key__status--success {
+  color: var(--color-foreground);
+}
+
+.settings-ai-key__status--error {
+  color: var(--vscode-errorForeground, #f48771);
 }

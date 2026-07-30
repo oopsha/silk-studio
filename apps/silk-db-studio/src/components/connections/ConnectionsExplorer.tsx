@@ -700,6 +700,7 @@ function ConnectionsExplorer() {
     if (
       item.commandId === EXPLORER_COMMANDS.openData ||
       item.commandId === EXPLORER_COMMANDS.openSource ||
+      item.commandId === EXPLORER_COMMANDS.openPackageBody ||
       item.commandId === EXPLORER_COMMANDS.viewDdl ||
       item.commandId === EXPLORER_COMMANDS.dropObject ||
       item.commandId === EXPLORER_COMMANDS.renameObject

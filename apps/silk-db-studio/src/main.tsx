@@ -13,6 +13,8 @@ import "./workbench/contributions/sqlLanguage.contribution";
 import "./workbench/contributions/sqlFormat.contribution";
 import "./workbench/contributions/queryHistory.contribution";
 import "./workbench/contributions/plsqlSave.contribution";
+import "./workbench/contributions/plsqlCompile.contribution";
+import "./workbench/contributions/plsqlSnapshot.contribution";
 import App from "./App";
 
 configureEditorHost({

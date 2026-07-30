@@ -47,6 +47,15 @@ CommandsRegistry.registerCommand(
 );
 
 CommandsRegistry.registerCommand(
+  EXPLORER_COMMANDS.openPackageBody,
+  async (...args: unknown[]) => {
+    const target = args[0] as ExplorerObjectRef | undefined;
+    if (!target) return;
+    openPlsqlObjectSource(target, { packageBody: true });
+  },
+);
+
+CommandsRegistry.registerCommand(
   EXPLORER_COMMANDS.copyName,
   async (...args: unknown[]) => {
     const target = args[0] as ExplorerObjectRef | undefined;
