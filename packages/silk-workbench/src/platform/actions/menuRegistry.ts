@@ -32,6 +32,24 @@ class MenuRegistryImpl {
     return [...entries].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }
 
+  /** First menu title wins per command id (for Command Palette labels). */
+  collectCommandTitles(): ReadonlyMap<string, string> {
+    const titles = new Map<string, string>();
+    for (const entries of this.menus.values()) {
+      for (const entry of entries) {
+        if (!("command" in entry)) continue;
+        const id = entry.command.id;
+        if (titles.has(id)) continue;
+        const raw =
+          typeof entry.command.title === "string"
+            ? entry.command.title
+            : entry.command.title.value;
+        titles.set(id, raw.replace(/\u2026$/, "").replace(/\.\.\.$/, "").trim());
+      }
+    }
+    return titles;
+  }
+
   onDidChangeMenu(listener: MenuChangeListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

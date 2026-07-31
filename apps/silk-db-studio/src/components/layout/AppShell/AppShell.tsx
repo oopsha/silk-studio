@@ -12,6 +12,9 @@ import { LayoutService } from "@silk-studio/workbench/services/layout/layoutServ
 import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayoutState.ts";
 import { useWorkbenchSashDrag } from "@silk-studio/workbench/services/layout/useWorkbenchSashDrag.ts";
 import SettingsEditor from "@silk-studio/workbench/components/settings/index.ts";
+import KeybindingsEditor from "@silk-studio/workbench/components/keybindings/index.ts";
+import DocumentationViewer from "@silk-studio/workbench/components/help/index.ts";
+import CommandPalette from "@silk-studio/workbench/components/commands/index.ts";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import ConnectionsExplorer from "../../connections/ConnectionsExplorer.tsx";
 import ConnectionEditor from "../../connections/ConnectionEditor.tsx";
@@ -32,6 +35,8 @@ import { isPlsqlEditorTab } from "../../../services/connection/plsqlEditorConsta
 import { EXPLORER_COMMANDS } from "../../../services/connection/explorerObjectActions.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { SettingsService } from "@silk-studio/workbench/services/settings/settingsService.ts";
+import { KeybindingsEditorService } from "@silk-studio/workbench/services/keybindings/keybindingsEditorService.ts";
+import { DocumentationService } from "@silk-studio/workbench/services/help/documentationService.ts";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
 import { useWorkbenchKeybindings } from "@silk-studio/workbench/services/keybinding/useWorkbenchKeybindings.ts";
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
@@ -131,6 +136,12 @@ function AppShell() {
           if (SettingsService.isSettingsTab(tab.uri)) {
             return <SettingsEditor />;
           }
+          if (KeybindingsEditorService.isKeybindingsTab(tab.uri)) {
+            return <KeybindingsEditor />;
+          }
+          if (DocumentationService.isDocumentationTab(tab.uri)) {
+            return <DocumentationViewer />;
+          }
           if (ConnectionEditorService.isConnectionEditorTab(tab.uri)) {
             return <ConnectionEditor />;
           }
@@ -204,7 +215,7 @@ function AppShell() {
   );
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-testid="app-shell">
       <TitleBar />
 
       <div className="app-shell__body">
@@ -301,6 +312,7 @@ function AppShell() {
         <StatusBar />
       </div>
       <ExplorerSearchQuickPick />
+      <CommandPalette />
       <ExplorerObjectMutationDialog />
       <AiSqlDiffDialog />
       <AiSqlExecuteDialog />

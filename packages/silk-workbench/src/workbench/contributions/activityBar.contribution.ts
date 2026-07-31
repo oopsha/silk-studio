@@ -10,9 +10,7 @@ function registerStubCommand(id: string): void {
 }
 
 const MANAGE_COMMANDS = [
-  "workbench.action.showCommands",
   "workbench.view.extensions",
-  "workbench.action.openGlobalKeybindings",
   "workbench.action.openSnippets",
   "workbench.action.tasks.manage",
   "workbench.userData.actions.manageSettings",

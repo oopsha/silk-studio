@@ -19,7 +19,7 @@ function Sidebar({
   const activeViewId = useActiveView();
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" aria-label="Primary Side Bar">
       <div className="sidebar__content">
         {activeViewId === "explorer" ? (
           <ExplorerView

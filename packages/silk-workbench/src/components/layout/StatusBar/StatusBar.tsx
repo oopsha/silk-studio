@@ -11,7 +11,7 @@ function StatusBar() {
   const progressMessage: string | null = null;
 
   return (
-    <footer className="status-bar">
+    <footer className="status-bar" role="contentinfo" aria-label="Status Bar">
       <div className="status-bar__left">
         <button type="button" className="status-bar__item">
           <Codicon name="source-control" />

@@ -13,10 +13,12 @@
 - 기능별 오류 문자열 — [`formatErrorMessage`](../apps/silk-db-studio/src/services/formatErrorMessage.ts) · [`reportError`](../apps/silk-db-studio/src/services/formatErrorMessage.ts) (진단 로그 연동)
 - AI 감사 로그(8-F) — 호출 메타만 (앱 진단 로그와 **별개**)
 - 키바인딩 레지스트리·메뉴 accelerator — [`packages/silk-workbench/src/platform/keybinding/`](../packages/silk-workbench/src/platform/keybinding/)
-- Help / About · Copy Diagnostics · Open Log Folder — **구현** (`silk.help.*`); Keyboard Shortcuts · Command Palette — **스텁**; **Check for Updates** — **구현** (`update.check` · GitHub Releases `latest.json`)
+- Help / About · Copy Diagnostics · Open Log Folder · Documentation — **구현** (`silk.help.*`); Keyboard Shortcuts · Command Palette — **구현**; **Check for Updates** — **구현** (`update.check` · GitHub Releases `latest.json`)
 - 앱 진단 로그 — `app_data_dir/logs/silk-db-studio.log` (로테이션·시크릿 마스킹)
 - 내부 작업 문서 — [`docs/roadmap.md`](./roadmap.md), 각 `*-work-breakdown.md`, [`docs/release.md`](./release.md)
-- **없음**: 단위/e2e 테스트 · 사용자 가이드 · 체계적 a11y 패스 · OS 코드서명/notarize 자동화(시크릿 슬롯·가이드만)
+- **없음**: 체계적 a11y 전수 감사 · OS 코드서명/notarize 자동화(시크릿 슬롯·가이드만)
+- 테스트 — Vitest 단위(`pnpm test`) · Playwright 웹 셸 스모크(`pnpm test:e2e`) · 수동 패키지 스모크 [`docs/smoke-checklist.md`](./smoke-checklist.md) · CI [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
+- 사용자 가이드 — [`docs/user-guide.md`](./user-guide.md) · 인앱 Help → Documentation
 
 ### v1 범위
 
@@ -148,7 +150,7 @@
 
 ## 9-D. 테스트 골격 · CI (lint/build)
 
-**상태:** 미구현
+**상태:** 완료
 
 **의존성:** 없음 (9-B/C와 병행 가능)
 
@@ -164,6 +166,13 @@
 - PR에 lint/typecheck/build(및 소수 단위 테스트) CI가 돈다
 - 로컬에서 `pnpm test`(또는 동등 스크립트)로 단위 테스트를 돌릴 수 있음
 
+### 구현 메모
+
+- 루트 `package.json` + `vitest.config.ts` — `pnpm test` / `typecheck` / `build:web` / `build:agent`
+- 단위 테스트: `sqlGuard`, `redactSecrets`, `aiAuditLogPricing`, `extractSqlFromMarkdown`, `db-protocol` 가드
+- CI: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) (PR · `main`)
+- Required check 후보: job name `install · agent · typecheck · build · test`
+
 ### 요청 문구 예
 
 > 단위 테스트 골격과 GitHub Actions CI를 넣어줘. install → jdbc-agent build → tsc/vite, 핵심 유틸 Vitest부터.
@@ -172,7 +181,7 @@
 
 ## 9-E. e2e(선택) · 플랫폼 매트릭스
 
-**상태:** 미구현
+**상태:** 완료
 
 **의존성:** **9-D**
 
@@ -186,6 +195,13 @@
 
 - CI에서 Mac·Win 중 최소 하나로 e2e 스모크가 통과하거나, 문서화된 수동 스모크 체크리스트가 있음
 
+### 구현 메모
+
+- Playwright 웹 셸 스모크: `e2e/smoke.spec.ts` + `playwright.config.ts` (`vite preview`)
+- 로컬: `pnpm build:web` → `pnpm test:e2e:install` → `pnpm test:e2e`
+- CI: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) job `e2e` — `macos-latest` · `windows-latest`
+- 패키지(Tauri) 수동 스모크: [`docs/smoke-checklist.md`](./smoke-checklist.md)
+
 ### 요청 문구 예
 
 > e2e 스모크와 macOS/Windows CI 매트릭스를 최소로 넣어줘. 메인 윈도우·Settings 오픈 정도면 돼.
@@ -194,7 +210,7 @@
 
 ## 9-F. Help · 단축키 · 접근성 · 사용자 문서
 
-**상태:** 미구현
+**상태:** 완료
 
 **의존성:** 9-A About와 겹치면 A 완료 후. 키바인딩 레지스트리(기존)
 
@@ -211,6 +227,14 @@
 
 - Help/Manage 스텁이 실제 UI·문서로 연결됨
 - 단축키를 앱에서 검색할 수 있고, 설치·사용 문서가 repo에 있음
+
+### 구현 메모
+
+- Command Palette: `workbench.action.showCommands` → `CommandPalette` (`Ctrl+Shift+P`)
+- Keyboard Shortcuts: `workbench.action.openGlobalKeybindings` → `KeybindingsEditor` (`Ctrl+K Ctrl+S`)
+- Help: Documentation · Command Palette · Keyboard Shortcuts · About · diagnostics
+- 사용자 가이드: [`docs/user-guide.md`](./user-guide.md) · 인앱 **Help → Documentation**
+- a11y: Activity/Side/Status landmarks · toast `aria-live` · palette dialog/listbox
 
 ### 요청 문구 예
 
@@ -269,5 +293,5 @@
 
 ## 다음 단계
 
-**9-A · 9-B · 9-C** 완료. 다음은 **9-D**(테스트·CI lint/build) 또는 **9-F**(Help·단축키·문서) 권장.  
+**9-A ~ 9-F** 완료 (제품화 요청 6건). 이후는 기능 로드맵·운영 보강.  
 Updater pubkey·`TAURI_SIGNING_PRIVATE_KEY`는 [`docs/release.md`](./release.md)에 따라 한 번 설정해야 릴리스/업데이트가 성립한다.

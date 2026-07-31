@@ -39,3 +39,9 @@ apps/silk-db-studio/src-tauri/resources/jre/**
 .env.*
 !.env.example
 
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
