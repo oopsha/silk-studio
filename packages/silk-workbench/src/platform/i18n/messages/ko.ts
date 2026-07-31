@@ -1,4 +1,4 @@
-import type { MessageSchema } from "./en";
+import type { MessageCatalog } from "./en";
 
 export const koMessages = {
   common: {
@@ -572,4 +572,4 @@ export const koMessages = {
       configureKey: "AI 채팅을 쓰려면 Settings에서 API 키를 구성하세요.",
     },
   },
-} as const satisfies MessageSchema;
+} as const satisfies MessageCatalog;
