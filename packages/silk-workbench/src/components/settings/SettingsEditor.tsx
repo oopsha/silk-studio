@@ -8,6 +8,8 @@ import type {
   WordWrapMode,
 } from "../../platform/configuration/configurationDefaults";
 import { useConfiguration } from "../../platform/configuration/useConfiguration";
+import { useI18n } from "../../platform/i18n/useI18n";
+import type { LocaleId } from "../../platform/i18n/locale";
 import { AiAuditLogService } from "../../services/ai/aiAuditLogService";
 import { formatEstimatedCostUsd } from "../../services/ai/aiAuditLogPricing";
 import type { AiAuditLogEntry } from "../../services/ai/aiAuditLogTypes";
@@ -26,12 +28,26 @@ import {
 } from "../../services/settings/aiSettingsConstants";
 import {
   SETTINGS_CATEGORY_AVAILABLE,
-  SETTINGS_CATEGORY_LABELS,
 } from "../../services/settings/settingsConstants";
+import type { SettingsCategory } from "../../services/settings/settingsConstants";
 import { SettingsService } from "../../services/settings/settingsService";
 import { useSettingsCategory } from "../../services/settings/useSettingsCategory";
 import "./SettingsEditor.css";
 
+const SETTINGS_CATEGORY_MESSAGE_KEYS = {
+  appearance: "settings.category.appearance",
+  editor: "settings.category.editor",
+  database: "settings.category.database",
+  queryResult: "settings.category.queryResult",
+  ai: "settings.category.ai",
+} as const satisfies Record<
+  SettingsCategory,
+  | "settings.category.appearance"
+  | "settings.category.editor"
+  | "settings.category.database"
+  | "settings.category.queryResult"
+  | "settings.category.ai"
+>;
 const AI_AUDIT_DISPLAY_LIMIT = 50;
 
 function formatAuditTime(at: number): string {
@@ -52,13 +68,14 @@ function formatTokenPair(entry: AiAuditLogEntry): string {
 }
 
 function AiAuditLogPanel() {
+  const { t } = useI18n();
   const entries = useAiAuditLog();
   const visible = entries.slice(0, AI_AUDIT_DISPLAY_LIMIT);
   const totalCost = AiAuditLogService.getTotalEstimatedCostUsd();
 
   function handleClear(): void {
     if (entries.length === 0) return;
-    if (!window.confirm("Clear all AI audit log entries?")) return;
+    if (!window.confirm(t("settings.ai.auditClearConfirm"))) return;
     AiAuditLogService.clear();
   }
 
@@ -78,13 +95,12 @@ function AiAuditLogPanel() {
     <div className="settings-ai-audit">
       <p className="settings-ai-audit__summary">
         {entries.length === 0
-          ? "No AI calls recorded yet."
-          : `${entries.length} call(s) · est. total ${formatEstimatedCostUsd(totalCost)} (approx.)`}
+          ? t("settings.ai.auditEmpty")
+          : t("settings.ai.auditSummary")
+              .replace("{n}", String(entries.length))
+              .replace("{cost}", formatEstimatedCostUsd(totalCost))}
       </p>
-      <p className="settings-ai-audit__note">
-        Stores time, provider, model, tokens, and rough cost locally. Prompts and
-        API keys are never logged. Prices are estimates only.
-      </p>
+      <p className="settings-ai-audit__note">{t("settings.ai.auditNote")}</p>
       <div className="settings-ai-audit__actions">
         <button
           type="button"
@@ -92,7 +108,7 @@ function AiAuditLogPanel() {
           disabled={entries.length === 0}
           onClick={handleExport}
         >
-          Export JSON
+          {t("settings.ai.auditExport")}
         </button>
         <button
           type="button"
@@ -100,7 +116,7 @@ function AiAuditLogPanel() {
           disabled={entries.length === 0}
           onClick={handleClear}
         >
-          Clear log
+          {t("settings.ai.auditClear")}
         </button>
       </div>
       {visible.length > 0 ? (
@@ -115,15 +131,21 @@ function AiAuditLogPanel() {
                 </span>
                 <span>{formatAuditTime(entry.at)}</span>
                 <span>
-                  {entry.kind === "test_connection" ? "Test" : "Chat"}
+                  {entry.kind === "test_connection"
+                    ? t("settings.ai.auditKindTest")
+                    : t("settings.ai.auditKindChat")}
                 </span>
               </div>
               <div className="settings-ai-audit__item-detail">
                 {AI_PROVIDER_LABELS[entry.provider]} · {entry.model || "(model)"}
               </div>
               <div className="settings-ai-audit__item-detail">
-                tokens in/out {formatTokenPair(entry)} · est.{" "}
-                {formatEstimatedCostUsd(entry.estimatedCostUsd)}
+                {t("settings.ai.auditTokensLine")
+                  .replace("{tokens}", formatTokenPair(entry))
+                  .replace(
+                    "{cost}",
+                    formatEstimatedCostUsd(entry.estimatedCostUsd),
+                  )}
                 {typeof entry.durationMs === "number"
                   ? ` · ${entry.durationMs}ms`
                   : ""}
@@ -135,8 +157,10 @@ function AiAuditLogPanel() {
       ) : null}
       {entries.length > AI_AUDIT_DISPLAY_LIMIT ? (
         <p className="settings-ai-audit__note">
-          Showing latest {AI_AUDIT_DISPLAY_LIMIT}. Export JSON for the full
-          ring buffer.
+          {t("settings.ai.auditShowingLatest").replace(
+            "{n}",
+            String(AI_AUDIT_DISPLAY_LIMIT),
+          )}
         </p>
       ) : null}
     </div>
@@ -166,13 +190,33 @@ function SettingRow({ title, description, children, className }: SettingRowProps
 
 function AppearanceSettings() {
   const configuration = useConfiguration();
+  const { t } = useI18n();
 
   return (
     <section className="settings-section">
-      <h2 className="settings-section__title">Appearance</h2>
+      <h2 className="settings-section__title">{t("settings.appearance.title")}</h2>
       <SettingRow
-        title="Color Theme"
-        description="워크벤치와 에디터에 적용할 색 테마입니다."
+        title={t("settings.appearance.locale")}
+        description={t("settings.appearance.localeDescription")}
+      >
+        <select
+          className="settings-control"
+          value={configuration["workbench.locale"]}
+          onChange={(event) =>
+            ConfigurationService.updateValue(
+              "workbench.locale",
+              event.target.value as LocaleId,
+            )
+          }
+          aria-label={t("settings.appearance.locale")}
+        >
+          <option value="en">{t("locale.en")}</option>
+          <option value="ko">{t("locale.ko")}</option>
+        </select>
+      </SettingRow>
+      <SettingRow
+        title={t("settings.appearance.colorTheme")}
+        description={t("settings.appearance.colorThemeDescription")}
       >
         <select
           className="settings-control"
@@ -189,8 +233,8 @@ function AppearanceSettings() {
         </select>
       </SettingRow>
       <SettingRow
-        title="UI Font Size"
-        description="사이드바, 메뉴, 패널 등 워크벤치 UI 글꼴 크기입니다."
+        title={t("settings.appearance.uiFontSize")}
+        description={t("settings.appearance.uiFontSizeDescription")}
       >
         <input
           className="settings-control settings-control--number"
@@ -212,11 +256,12 @@ function AppearanceSettings() {
 
 function EditorSettings() {
   const configuration = useConfiguration();
+  const { t } = useI18n();
 
   return (
     <section className="settings-section">
-      <h2 className="settings-section__title">Editor</h2>
-      <SettingRow title="Font Size">
+      <h2 className="settings-section__title">{t("settings.editor.title")}</h2>
+      <SettingRow title={t("settings.editor.fontSize")}>
         <input
           className="settings-control settings-control--number"
           type="number"
@@ -231,7 +276,7 @@ function EditorSettings() {
           }
         />
       </SettingRow>
-      <SettingRow title="Tab Size">
+      <SettingRow title={t("settings.editor.tabSize")}>
         <input
           className="settings-control settings-control--number"
           type="number"
@@ -246,7 +291,7 @@ function EditorSettings() {
           }
         />
       </SettingRow>
-      <SettingRow title="Insert Spaces">
+      <SettingRow title={t("settings.editor.insertSpaces")}>
         <label className="settings-checkbox">
           <input
             type="checkbox"
@@ -258,10 +303,10 @@ function EditorSettings() {
               )
             }
           />
-          <span>탭 키 입력 시 공백을 삽입합니다.</span>
+          <span>{t("settings.editor.insertSpacesHint")}</span>
         </label>
       </SettingRow>
-      <SettingRow title="Line Numbers">
+      <SettingRow title={t("settings.editor.lineNumbers")}>
         <select
           className="settings-control"
           value={configuration["editor.lineNumbers"]}
@@ -277,7 +322,7 @@ function EditorSettings() {
           <option value="relative">relative</option>
         </select>
       </SettingRow>
-      <SettingRow title="Minimap">
+      <SettingRow title={t("settings.editor.minimap")}>
         <label className="settings-checkbox">
           <input
             type="checkbox"
@@ -289,10 +334,10 @@ function EditorSettings() {
               )
             }
           />
-          <span>에디터 미니맵을 표시합니다.</span>
+          <span>{t("settings.editor.minimapHint")}</span>
         </label>
       </SettingRow>
-      <SettingRow title="Word Wrap">
+      <SettingRow title={t("settings.editor.wordWrap")}>
         <select
           className="settings-control"
           value={configuration["editor.wordWrap"]}
@@ -313,19 +358,20 @@ function EditorSettings() {
 
 function DatabaseSettings() {
   const configuration = useConfiguration();
+  const { t } = useI18n();
 
   return (
     <section className="settings-section">
-      <h2 className="settings-section__title">Database</h2>
+      <h2 className="settings-section__title">{t("settings.database.title")}</h2>
       <p className="settings-placeholder settings-placeholder--intro">
-        Connection profiles are managed in the Explorer{" "}
-        <strong>Connections</strong> view. This page only configures session
-        options for query execution.
+        {t("settings.database.intro")}
       </p>
-      <h3 className="settings-section__subtitle">Session Options</h3>
+      <h3 className="settings-section__subtitle">
+        {t("settings.database.sessionOptions")}
+      </h3>
       <SettingRow
-        title="Query Timeout"
-        description="쿼리 실행 제한 시간(초)입니다."
+        title={t("settings.database.queryTimeout")}
+        description={t("settings.database.queryTimeoutDescription")}
       >
         <input
           className="settings-control settings-control--number"
@@ -341,7 +387,7 @@ function DatabaseSettings() {
           }
         />
       </SettingRow>
-      <SettingRow title="Auto Commit">
+      <SettingRow title={t("settings.database.autoCommit")}>
         <label className="settings-checkbox">
           <input
             type="checkbox"
@@ -353,12 +399,12 @@ function DatabaseSettings() {
               )
             }
           />
-          <span>JDBC 연결의 auto commit을 사용합니다.</span>
+          <span>{t("settings.database.autoCommitHint")}</span>
         </label>
       </SettingRow>
       <SettingRow
-        title="Read Only"
-        description="활성화하면 INSERT/UPDATE/DELETE/DDL 등 쓰기 쿼리를 차단합니다."
+        title={t("settings.database.readOnly")}
+        description={t("settings.database.readOnlyDescription")}
       >
         <label className="settings-checkbox">
           <input
@@ -371,12 +417,12 @@ function DatabaseSettings() {
               )
             }
           />
-          <span>읽기 전용 보호를 사용합니다.</span>
+          <span>{t("settings.database.readOnlyHint")}</span>
         </label>
       </SettingRow>
       <SettingRow
-        title="Preload Default Schema"
-        description="연결 성공 후 기본 스키마 객체를 캐시에 미리 로드합니다. 탐색기 트리는 펼치지 않으며, SQL 자동완성·Quick Pick에 바로 쓰입니다."
+        title={t("settings.database.preloadDefaultSchema")}
+        description={t("settings.database.preloadDefaultSchemaDescription")}
       >
         <label className="settings-checkbox">
           <input
@@ -389,7 +435,7 @@ function DatabaseSettings() {
               )
             }
           />
-          <span>기본 스키마를 미리 로드합니다.</span>
+          <span>{t("settings.database.preloadDefaultSchemaHint")}</span>
         </label>
       </SettingRow>
     </section>
@@ -398,13 +444,16 @@ function DatabaseSettings() {
 
 function QueryResultSettings() {
   const configuration = useConfiguration();
+  const { t } = useI18n();
 
   return (
     <section className="settings-section">
-      <h2 className="settings-section__title">Query Result</h2>
+      <h2 className="settings-section__title">
+        {t("settings.queryResult.title")}
+      </h2>
       <SettingRow
-        title="Max Rows"
-        description="한 번에 조회할 최대 행 수입니다. 초과분은 잘리고 Truncated 배지로 표시됩니다. 다음 쿼리 실행부터 적용됩니다."
+        title={t("settings.queryResult.maxRows")}
+        description={t("settings.queryResult.maxRowsDescription")}
       >
         <input
           className="settings-control settings-control--number"
@@ -420,7 +469,7 @@ function QueryResultSettings() {
           }
         />
       </SettingRow>
-      <SettingRow title="Row Height">
+      <SettingRow title={t("settings.queryResult.rowHeight")}>
         <input
           className="settings-control settings-control--number"
           type="number"
@@ -435,7 +484,7 @@ function QueryResultSettings() {
           }
         />
       </SettingRow>
-      <SettingRow title="Font Size">
+      <SettingRow title={t("settings.queryResult.fontSize")}>
         <input
           className="settings-control settings-control--number"
           type="number"
@@ -451,8 +500,8 @@ function QueryResultSettings() {
         />
       </SettingRow>
       <SettingRow
-        title="NULL Display"
-        description="NULL 값을 결과 그리드에 표시할 문자열입니다."
+        title={t("settings.queryResult.nullDisplay")}
+        description={t("settings.queryResult.nullDisplayDescription")}
       >
         <input
           className="settings-control"
@@ -467,7 +516,7 @@ function QueryResultSettings() {
           }
         />
       </SettingRow>
-      <SettingRow title="Column Filters">
+      <SettingRow title={t("settings.queryResult.columnFilters")}>
         <label className="settings-checkbox">
           <input
             type="checkbox"
@@ -479,7 +528,7 @@ function QueryResultSettings() {
               )
             }
           />
-          <span>결과 그리드 컬럼 필터를 기본으로 사용합니다.</span>
+          <span>{t("settings.queryResult.columnFiltersHint")}</span>
         </label>
       </SettingRow>
     </section>
@@ -488,6 +537,7 @@ function QueryResultSettings() {
 
 function AiSettings() {
   const configuration = useConfiguration();
+  const { t } = useI18n();
   const provider = configuration["ai.provider"];
   const modelOptions = AI_MODEL_PRESETS[provider];
   const hasStoredKey = useAiHasApiKey(provider);
@@ -508,14 +558,14 @@ function AiSettings() {
   }, [provider]);
 
   const keyPlaceholder = hasStoredKey
-    ? "Saved in OS keyring — enter a new key to replace"
+    ? t("settings.ai.keyPlaceholderReplace")
     : AI_API_KEY_PLACEHOLDERS[provider];
 
   async function handleSaveKey(): Promise<void> {
     const next = draftKey.trim();
     if (!next) {
       setStatusTone("error");
-      setStatusMessage("Enter an API key to save.");
+      setStatusMessage(t("settings.ai.enterKeyToSave"));
       return;
     }
     setKeyBusy(true);
@@ -524,11 +574,11 @@ function AiSettings() {
       await AiSecretService.setApiKey(provider, next);
       setDraftKey("");
       setStatusTone("success");
-      setStatusMessage("API key saved to the OS keyring.");
+      setStatusMessage(t("settings.ai.keySaved"));
     } catch (error) {
       setStatusTone("error");
       setStatusMessage(
-        error instanceof Error ? error.message : "Failed to save API key.",
+        error instanceof Error ? error.message : t("settings.ai.saveFailed"),
       );
     } finally {
       setKeyBusy(false);
@@ -542,11 +592,11 @@ function AiSettings() {
       await AiSecretService.deleteApiKey(provider);
       setDraftKey("");
       setStatusTone("info");
-      setStatusMessage("API key removed from the OS keyring.");
+      setStatusMessage(t("settings.ai.keyRemoved"));
     } catch (error) {
       setStatusTone("error");
       setStatusMessage(
-        error instanceof Error ? error.message : "Failed to clear API key.",
+        error instanceof Error ? error.message : t("settings.ai.clearFailed"),
       );
     } finally {
       setKeyBusy(false);
@@ -561,38 +611,34 @@ function AiSettings() {
         apiKey: draftKey.trim() || undefined,
       });
       setStatusTone("success");
-      setStatusMessage("Connection test succeeded.");
+      setStatusMessage(t("settings.ai.testSucceeded"));
     } catch (error) {
       setStatusTone("error");
       setStatusMessage(
         error instanceof AiProviderError || error instanceof Error
           ? error.message
-          : "Connection test failed.",
+          : t("settings.ai.testFailed"),
       );
     } finally {
       setTestBusy(false);
     }
   }
 
+  const apiKeyDescription = shouldUseDevSecretStore()
+    ? t("settings.ai.apiKeyDescDev")
+    : provider === "gemini"
+      ? t("settings.ai.apiKeyDescGemini")
+      : t("settings.ai.apiKeyDescDefault");
+
   return (
     <section className="settings-section">
-      <h2 className="settings-section__title">AI</h2>
+      <h2 className="settings-section__title">{t("settings.ai.title")}</h2>
       <p className="settings-placeholder settings-placeholder--intro">
-        BYOK(Bring Your Own Key)로 제공자 API를 직접 연결합니다.{" "}
-        {shouldUseDevSecretStore() ? (
-          <>
-            <strong>개발 모드</strong>에서는 localStorage에 보관합니다. Keychain에
-            있던 키는 처음 한 번 암호를 허용하면 자동 이전되고, 이후에는 요청이
-            없습니다. 릴리즈 빌드에서는 OS 키링을 사용합니다.
-          </>
-        ) : (
-          <>
-            API 키는 configuration이 아니라{" "}
-            <strong>OS 자격 증명 저장소(키링)</strong>에 provider별로 보관됩니다.
-          </>
-        )}
+        {shouldUseDevSecretStore()
+          ? t("settings.ai.introDev")
+          : t("settings.ai.introRelease")}
       </p>
-      <SettingRow title="Enable AI Assistant">
+      <SettingRow title={t("settings.ai.enable")}>
         <label className="settings-checkbox">
           <input
             type="checkbox"
@@ -604,12 +650,12 @@ function AiSettings() {
               )
             }
           />
-          <span>AI Chat 패널과 어시스턴트 기능을 사용합니다.</span>
+          <span>{t("settings.ai.enableHint")}</span>
         </label>
       </SettingRow>
       <SettingRow
-        title="Provider"
-        description="기본 제공자는 Google Gemini(AI Studio Free Tier)입니다."
+        title={t("settings.ai.provider")}
+        description={t("settings.ai.providerDescription")}
       >
         <select
           className="settings-control"
@@ -634,8 +680,8 @@ function AiSettings() {
         </select>
       </SettingRow>
       <SettingRow
-        title="Model"
-        description="사용할 모델 ID입니다. Custom 제공자는 직접 입력합니다."
+        title={t("settings.ai.model")}
+        description={t("settings.ai.modelDescription")}
       >
         {provider === "custom" ? (
           <input
@@ -665,8 +711,8 @@ function AiSettings() {
       </SettingRow>
       {provider === "custom" ? (
         <SettingRow
-          title="Custom Base URL"
-          description="OpenAI-compatible Chat Completions 엔드포인트 (예: https://api.example.com/v1)."
+          title={t("settings.ai.customBaseUrl")}
+          description={t("settings.ai.customBaseUrlDescription")}
         >
           <input
             className="settings-control"
@@ -685,14 +731,8 @@ function AiSettings() {
       ) : null}
       <SettingRow
         className="settings-row--ai-key"
-        title="API Key"
-        description={
-          shouldUseDevSecretStore()
-            ? "개발 모드: API 키는 localStorage에 저장됩니다 (Keychain 우회)."
-            : provider === "gemini"
-              ? "Google AI Studio 키. Free Tier는 프로젝트 RPM/TPM/RPD 한도가 있으며, 빌링 미연결 시 초과분 자동 과금은 없습니다. 2026-06 이후 unrestricted 키는 거절될 수 있으니 AI Studio에서 새 키를 만들거나 Generative Language API로 제한하세요."
-              : "제공자 API 키입니다. 저장 시 OS 키링에만 기록되며 localStorage에는 남지 않습니다."
-        }
+        title={t("settings.ai.apiKey")}
+        description={apiKeyDescription}
       >
         <div className="settings-ai-key">
           <input
@@ -705,8 +745,8 @@ function AiSettings() {
           />
           <div className="settings-ai-key__meta">
             {hasStoredKey
-              ? "Key stored for this provider"
-              : "No key stored for this provider"}
+              ? t("settings.ai.keyStored")
+              : t("settings.ai.keyMissing")}
           </div>
           <div className="settings-ai-key__actions">
             <button
@@ -715,7 +755,7 @@ function AiSettings() {
               disabled={keyBusy || draftKey.trim().length === 0}
               onClick={() => void handleSaveKey()}
             >
-              Save
+              {t("common.save")}
             </button>
             <button
               type="button"
@@ -723,7 +763,7 @@ function AiSettings() {
               disabled={keyBusy || !hasStoredKey}
               onClick={() => void handleClearKey()}
             >
-              Clear
+              {t("common.clear")}
             </button>
             <button
               type="button"
@@ -735,7 +775,7 @@ function AiSettings() {
               }
               onClick={() => void handleTestConnection()}
             >
-              {testBusy ? "Testing…" : "Test connection"}
+              {testBusy ? t("common.testing") : t("settings.ai.testConnection")}
             </button>
           </div>
           {statusMessage ? (
@@ -748,7 +788,7 @@ function AiSettings() {
           ) : null}
         </div>
       </SettingRow>
-      <SettingRow title="Context: Schema">
+      <SettingRow title={t("settings.ai.contextSchema")}>
         <label className="settings-checkbox">
           <input
             type="checkbox"
@@ -760,10 +800,10 @@ function AiSettings() {
               )
             }
           />
-          <span>연결된 DB 스키마·객체 메타데이터를 컨텍스트에 포함합니다.</span>
+          <span>{t("settings.ai.contextSchema")}</span>
         </label>
       </SettingRow>
-      <SettingRow title="Context: Editor Selection">
+      <SettingRow title={t("settings.ai.contextSelection")}>
         <label className="settings-checkbox">
           <input
             type="checkbox"
@@ -775,10 +815,10 @@ function AiSettings() {
               )
             }
           />
-          <span>에디터에서 선택한 SQL 텍스트를 컨텍스트에 포함합니다.</span>
+          <span>{t("settings.ai.contextSelection")}</span>
         </label>
       </SettingRow>
-      <SettingRow title="Context: Query History">
+      <SettingRow title={t("settings.ai.contextHistory")}>
         <label className="settings-checkbox">
           <input
             type="checkbox"
@@ -790,12 +830,12 @@ function AiSettings() {
               )
             }
           />
-          <span>최근 실행한 쿼리 기록을 컨텍스트에 포함합니다.</span>
+          <span>{t("settings.ai.contextHistory")}</span>
         </label>
       </SettingRow>
       <SettingRow
-        title="Allow SQL Execution"
-        description="켜면 AI Chat에서 제안 SQL의 Execute…가 보입니다. 실행은 항상 확인 후에만 하며, 자동 실행은 없습니다. database.readOnly가 켜져 있으면 쓰기/DDL은 차단됩니다."
+        title={t("settings.ai.allowExecute")}
+        description={t("settings.ai.allowExecuteDescription")}
       >
         <label className="settings-checkbox">
           <input
@@ -808,13 +848,10 @@ function AiSettings() {
               )
             }
           />
-          <span>확인 후 AI 제안 SQL 실행을 허용합니다 (자동 실행 없음).</span>
+          <span>{t("settings.ai.allowExecuteHint")}</span>
         </label>
       </SettingRow>
-      <SettingRow
-        title="AI call log"
-        description="최근 AI 호출 감사 로그입니다. 프롬프트·API 키는 저장하지 않습니다."
-      >
+      <SettingRow title={t("settings.ai.auditLog")}>
         <AiAuditLogPanel />
       </SettingRow>
     </section>
@@ -823,11 +860,12 @@ function AiSettings() {
 
 function SettingsEditor() {
   const category = useSettingsCategory();
+  const { t } = useI18n();
 
   return (
     <main className="settings-editor" data-testid="settings-editor">
       <aside className="settings-editor__sidebar">
-        <div className="settings-editor__sidebar-title">Settings</div>
+        <div className="settings-editor__sidebar-title">{t("settings.title")}</div>
         <nav className="settings-editor__nav">
           {SettingsService.getCategories().map((item) => {
             const available = SETTINGS_CATEGORY_AVAILABLE[item];
@@ -841,9 +879,11 @@ function SettingsEditor() {
                 disabled={!available}
                 onClick={() => SettingsService.setActiveCategory(item)}
               >
-                {SETTINGS_CATEGORY_LABELS[item]}
+                {t(SETTINGS_CATEGORY_MESSAGE_KEYS[item])}
                 {!available ? (
-                  <span className="settings-editor__nav-badge">Soon</span>
+                  <span className="settings-editor__nav-badge">
+                    {t("settings.soon")}
+                  </span>
                 ) : null}
               </button>
             );

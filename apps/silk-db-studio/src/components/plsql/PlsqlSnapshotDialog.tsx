@@ -4,6 +4,7 @@ import type { Monaco } from "@monaco-editor/react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import {
   defineWorkbenchMonacoThemes,
   monacoThemeForColorTheme,
@@ -24,6 +25,7 @@ import "../connections/ExplorerObjectMutationDialog.css";
 import "./PlsqlSnapshotDialog.css";
 
 function PlsqlSnapshotDialog() {
+  const { t } = useI18n();
   const [request, setRequest] = useState(() =>
     PlsqlSnapshotDialogService.getRequest(),
   );
@@ -56,14 +58,14 @@ function PlsqlSnapshotDialog() {
 
   const title = useMemo(() => {
     if (!request) return "";
-    if (request.mode === "diff") return "Compare with Snapshot";
+    if (request.mode === "diff") return t("app.plsql.compareWithSnapshot");
     if (request.mode === "confirm") {
       return request.confirmKind === "reload"
-        ? "Reload from Database"
-        : "Restore Snapshot";
+        ? t("app.plsql.reloadFromDatabase")
+        : t("app.plsql.restoreSnapshot");
     }
-    return "PL/SQL Snapshot History";
-  }, [request]);
+    return t("app.plsql.snapshotDialogTitle");
+  }, [request, t]);
 
   if (!request) {
     return null;
@@ -94,7 +96,7 @@ function PlsqlSnapshotDialog() {
       PlsqlSnapshotDialogService.close();
     } catch (error) {
       setErrorMessage(
-        formatPlsqlSnapshotError(error, "Failed to apply snapshot action."),
+        formatPlsqlSnapshotError(error, t("app.plsql.snapshotApplyFailed")),
       );
       setBusy(false);
     }
@@ -128,7 +130,7 @@ function PlsqlSnapshotDialog() {
           <button
             type="button"
             className="explorer-mutation-dialog__close"
-            aria-label="Close"
+            aria-label={t("common.close")}
             disabled={busy}
             onClick={close}
           >
@@ -159,7 +161,9 @@ function PlsqlSnapshotDialog() {
                           {formatSnapshotTimestamp(entry.createdAt)}
                         </span>
                         <span className="plsql-snapshot-dialog__reason">
-                          {entry.reason === "save" ? "Save" : "Manual"}
+                          {entry.reason === "save"
+                            ? t("app.plsql.reasonSave")
+                            : t("app.plsql.reasonManual")}
                         </span>
                       </div>
                       <div className="plsql-snapshot-dialog__row-actions">
@@ -181,7 +185,7 @@ function PlsqlSnapshotDialog() {
                             openPlsqlRollbackConfirm(entry, request.tabId)
                           }
                         >
-                          Restore
+                          {t("app.plsql.restore")}
                         </button>
                       </div>
                     </li>
@@ -256,7 +260,7 @@ function PlsqlSnapshotDialog() {
               disabled={busy}
               onClick={close}
             >
-              Close
+              {t("common.close")}
             </button>
           ) : null}
 
@@ -268,7 +272,7 @@ function PlsqlSnapshotDialog() {
                 disabled={busy}
                 onClick={backToHistory}
               >
-                Back
+                {t("workbench.commands.back")}
               </button>
               <button
                 type="button"
@@ -280,7 +284,7 @@ function PlsqlSnapshotDialog() {
                   }
                 }}
               >
-                Restore this snapshot
+                {t("app.plsql.restoreSnapshot")}
               </button>
             </>
           ) : null}
@@ -299,7 +303,7 @@ function PlsqlSnapshotDialog() {
                   }
                 }}
               >
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 type="button"
@@ -312,10 +316,10 @@ function PlsqlSnapshotDialog() {
                 onClick={() => void handleConfirm()}
               >
                 {busy
-                  ? "Working…"
+                  ? t("common.working")
                   : request.confirmKind === "reload"
-                    ? "Reload"
-                    : "Restore"}
+                    ? t("app.plsql.reload")
+                    : t("app.plsql.restore")}
               </button>
             </>
           ) : null}

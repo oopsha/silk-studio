@@ -4,6 +4,7 @@ import {
   type ResolvedMenuSubmenu,
 } from "../../platform/actions/menuService";
 import { CommandService } from "../../platform/commands/commandService";
+import { I18nService } from "../../platform/i18n/i18nService";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
 import MenuDropdown from "./MenuDropdown";
@@ -37,6 +38,13 @@ function Menubar({ onMenuOpenChange, onDragRegionMouseDown }: MenubarProps) {
 
   useEffect(() => {
     return MenuService.onDidChangeMenu(() => {
+      setMenus(MenuService.getTopLevelMenus());
+    });
+  }, []);
+
+  useEffect(() => {
+    I18nService.start();
+    return I18nService.onDidChangeLocale(() => {
       setMenus(MenuService.getTopLevelMenus());
     });
   }, []);

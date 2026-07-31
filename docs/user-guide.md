@@ -29,6 +29,14 @@ Maintainer / signing notes: [`release.md`](./release.md).
 
 Open **Help → Keyboard Shortcuts** (or Manage → Keyboard Shortcuts) to search all registered bindings. Editing bindings in the UI is not in v1.
 
+## Language
+
+1. Open **Settings** (`Ctrl+,`) → **Appearance**.
+2. Set **Language** to **English** or **한국어**.
+3. The workbench UI (menus, Settings, explorer, query panel, dialogs, AI chat) updates immediately. The choice is saved with other settings and restored on next launch.
+
+First run without a saved preference uses the OS/`navigator` language (`ko*` → Korean, otherwise English). Help → Documentation remains English in v1.
+
 ## Diagnostics
 
 | Help menu | What it does |

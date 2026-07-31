@@ -1,4 +1,5 @@
 import type { MetadataObject, MetadataObjectKind } from "@silk-studio/db-protocol";
+import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import type { ConnectionDriverId } from "./connectionTypes";
 import {
   supportsDropObject,
@@ -80,29 +81,30 @@ export function buildObjectMenuItems(
   const canEditSource =
     driverId !== undefined && supportsPlsqlSourceEdit(driverId, kind);
   const isPackage = kind === "package";
+  const t = I18nService.t.bind(I18nService);
 
   return [
     {
       id: "openData",
-      label: "Open Data",
+      label: t("app.explorer.openData"),
       commandId: EXPLORER_COMMANDS.openData,
       enabled: isRelation,
     },
     {
       id: "editSource",
-      label: isPackage ? "Edit Spec" : "Edit",
+      label: isPackage ? t("app.explorer.editSpec") : t("common.edit"),
       commandId: EXPLORER_COMMANDS.openSource,
       enabled: canEditSource,
       stubMessage:
         driverId && !supportsPlsqlSourceEdit(driverId, kind)
-          ? "Edit is available for Oracle procedures, functions, and packages."
+          ? t("app.explorer.stubEditOracle")
           : undefined,
     },
     ...(isPackage
       ? [
           {
             id: "editPackageBody",
-            label: "Edit Body",
+            label: t("app.explorer.editBody"),
             commandId: EXPLORER_COMMANDS.openPackageBody,
             enabled: canEditSource,
           } satisfies ExplorerMenuItem,
@@ -110,38 +112,38 @@ export function buildObjectMenuItems(
       : []),
     {
       id: "viewDdl",
-      label: "View DDL",
+      label: t("app.explorer.viewDdl"),
       commandId: EXPLORER_COMMANDS.viewDdl,
       enabled: true,
     },
     {
       id: "copyName",
-      label: "Copy Name",
+      label: t("app.explorer.copyName"),
       commandId: EXPLORER_COMMANDS.copyName,
       enabled: true,
     },
     {
       id: "renameObject",
-      label: "Rename…",
+      label: t("app.explorer.renameEllipsis"),
       commandId: EXPLORER_COMMANDS.renameObject,
       enabled: canRename,
       separator: true,
       stubMessage: readOnly
-        ? "Read-only mode is enabled."
+        ? t("app.explorer.stubReadOnly")
         : driverId && !supportsRenameObject(kind, driverId)
-          ? "Rename is only supported on Oracle and PostgreSQL (tables/views) in v1."
+          ? t("app.explorer.stubRename")
           : undefined,
     },
     {
       id: "dropObject",
-      label: "Drop…",
+      label: t("app.explorer.dropEllipsis"),
       commandId: EXPLORER_COMMANDS.dropObject,
       enabled: canDrop,
       dangerous: true,
       stubMessage: readOnly
-        ? "Read-only mode is enabled."
+        ? t("app.explorer.stubReadOnly")
         : driverId && !supportsDropObject(kind, driverId)
-          ? "DROP is not supported for this object on this driver."
+          ? t("app.explorer.stubDrop")
           : undefined,
     },
   ];
@@ -151,7 +153,7 @@ export function buildSchemaMenuItems(): ExplorerMenuItem[] {
   return [
     {
       id: "refreshSchema",
-      label: "Refresh",
+      label: I18nService.t("common.refresh"),
       commandId: EXPLORER_COMMANDS.refreshSchema,
       enabled: true,
     },
@@ -162,7 +164,7 @@ export function buildGroupMenuItems(): ExplorerMenuItem[] {
   return [
     {
       id: "refreshGroup",
-      label: "Refresh",
+      label: I18nService.t("common.refresh"),
       commandId: EXPLORER_COMMANDS.refreshSchema,
       enabled: true,
     },

@@ -1,4 +1,5 @@
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import "./QueryResultUpdateDialog.css";
 
 type QueryResultUpdateDialogProps = {
@@ -22,6 +23,8 @@ function QueryResultUpdateDialog({
   onCancel,
   onConfirm,
 }: QueryResultUpdateDialogProps) {
+  const { t } = useI18n();
+
   return (
     <div
       className="query-result-update-dialog__backdrop"
@@ -39,11 +42,13 @@ function QueryResultUpdateDialog({
         aria-labelledby="query-result-update-dialog-title"
       >
         <header className="query-result-update-dialog__header">
-          <h2 id="query-result-update-dialog-title">Confirm UPDATE</h2>
+          <h2 id="query-result-update-dialog-title">
+            {t("app.query.confirmUpdateTitle")}
+          </h2>
           <button
             type="button"
             className="query-result-update-dialog__close"
-            aria-label="Close"
+            aria-label={t("common.close")}
             disabled={executing}
             onClick={onCancel}
           >
@@ -53,12 +58,13 @@ function QueryResultUpdateDialog({
 
         <div className="query-result-update-dialog__body">
           <p className="query-result-update-dialog__summary">
-            Save {dirtyCellCount} edited cell{dirtyCellCount === 1 ? "" : "s"} across{" "}
-            {dirtyRowCount} row{dirtyRowCount === 1 ? "" : "s"} on{" "}
-            <strong>{tableLabel}</strong>?
+            {t("app.query.confirmUpdateSummary")
+              .replace("{cells}", String(dirtyCellCount))
+              .replace("{rows}", String(dirtyRowCount))
+              .replace("{table}", tableLabel)}
           </p>
           <p className="query-result-update-dialog__hint">
-            Review the generated SQL below. Nothing is written until you confirm.
+            {t("app.query.confirmUpdateHint")}
           </p>
           <pre className="query-result-update-dialog__sql">
             {statements.join("\n\n")}
@@ -77,7 +83,7 @@ function QueryResultUpdateDialog({
             disabled={executing}
             onClick={onCancel}
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -85,7 +91,7 @@ function QueryResultUpdateDialog({
             disabled={executing || statements.length === 0}
             onClick={onConfirm}
           >
-            {executing ? "Executing…" : "Execute UPDATE"}
+            {executing ? t("common.executing") : t("app.query.executeUpdate")}
           </button>
         </footer>
       </div>

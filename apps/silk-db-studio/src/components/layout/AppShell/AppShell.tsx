@@ -1,4 +1,5 @@
 import "./AppShell.css";
+import { useEffect } from "react";
 import ActivityBar from "@silk-studio/workbench/components/layout/ActivityBar/index.ts";
 import Sidebar from "@silk-studio/workbench/components/layout/Sidebar/index.ts";
 import TabBar from "@silk-studio/editor/components/layout/TabBar/index.ts";
@@ -34,6 +35,8 @@ import { isDdlEditorTab } from "../../../services/connection/ddlEditorConstants.
 import { isPlsqlEditorTab } from "../../../services/connection/plsqlEditorConstants.ts";
 import { EXPLORER_COMMANDS } from "../../../services/connection/explorerObjectActions.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
+import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { SettingsService } from "@silk-studio/workbench/services/settings/settingsService.ts";
 import { KeybindingsEditorService } from "@silk-studio/workbench/services/keybindings/keybindingsEditorService.ts";
 import { DocumentationService } from "@silk-studio/workbench/services/help/documentationService.ts";
@@ -54,6 +57,10 @@ const tabBarCommands = {
 
 function AppShell() {
   useWorkbenchKeybindings();
+  useEffect(() => {
+    I18nService.start();
+  }, []);
+  const { t } = useI18n();
   const layout = useLayoutState();
   const configuration = useConfiguration();
   const connection = useConnectionState();
@@ -72,8 +79,8 @@ function AppShell() {
       <button
         type="button"
         className="accordion-panel__action"
-        title="New Connection"
-        aria-label="New Connection"
+        title={t("workbench.explorer.newConnection")}
+        aria-label={t("workbench.explorer.newConnection")}
         onClick={() => ConnectionEditorService.openNewConnection()}
       >
         <Codicon name="add" />
@@ -81,8 +88,8 @@ function AppShell() {
       <button
         type="button"
         className="accordion-panel__action"
-        title="Search Database Objects (Ctrl+Shift+O)"
-        aria-label="Search Database Objects"
+        title={t("workbench.explorer.searchObjectsTitle")}
+        aria-label={t("workbench.explorer.searchObjects")}
         disabled={!connection.connectedProfileId}
         onClick={() =>
           void CommandService.executeCommand(EXPLORER_COMMANDS.searchObjects)
@@ -93,8 +100,8 @@ function AppShell() {
       <button
         type="button"
         className="accordion-panel__action"
-        title="Collapse All"
-        aria-label="Collapse All"
+        title={t("common.collapseAll")}
+        aria-label={t("common.collapseAll")}
         disabled={!connection.connectedProfileId}
         onClick={() =>
           void CommandService.executeCommand(EXPLORER_COMMANDS.collapseAll)
@@ -105,8 +112,8 @@ function AppShell() {
       <button
         type="button"
         className="accordion-panel__action"
-        title="Refresh"
-        aria-label="Refresh"
+        title={t("common.refresh")}
+        aria-label={t("common.refresh")}
         disabled={!connection.connectedProfileId}
         onClick={() =>
           void CommandService.executeCommand(EXPLORER_COMMANDS.refresh)
@@ -231,7 +238,7 @@ function AppShell() {
                     style={{ width: layout.sidebarWidth }}
                   >
                     <Sidebar
-                      connectionsTitle="CONNECTIONS"
+                      connectionsTitle={t("workbench.sidebar.connections")}
                       connectionsActions={connectionsActions}
                       renderConnections={() => <ConnectionsExplorer />}
                       renderHistory={() => <QueryHistoryView />}

@@ -1,5 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
+import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { bridgeListPrimaryKeys } from "../connection/connectionPrimaryKeysBridge";
 import { ConnectionService } from "../connection/connectionService";
 import { getConnectionDriver } from "../connection/connectionTypes";
@@ -72,21 +73,21 @@ export async function resolveUpdateEligibility(
   if (!isTauri()) {
     return {
       eligible: false,
-      reason: "Cell edits can only be saved in the desktop app.",
+      reason: tKey("app.query.saveDesktopOnly"),
     };
   }
 
   if (options?.relationKind === "view") {
     return {
       eligible: false,
-      reason: "Views are read-only. Open Data on a table to save cell edits.",
+      reason: tKey("app.query.saveViewsReadonly"),
     };
   }
 
   if (!ConnectionService.isConnected()) {
     return {
       eligible: false,
-      reason: "Connect a database profile before saving changes.",
+      reason: tKey("app.query.saveNeedConnect"),
     };
   }
 
@@ -94,7 +95,7 @@ export async function resolveUpdateEligibility(
   if (readOnly) {
     return {
       eligible: false,
-      reason: "Read-only mode is enabled. UPDATE statements are blocked.",
+      reason: tKey("app.query.saveReadOnlyUpdate"),
     };
   }
 
@@ -102,8 +103,7 @@ export async function resolveUpdateEligibility(
   if (!tableRef) {
     return {
       eligible: false,
-      reason:
-        "Only simple SELECT results from a single table can be saved. Joins, unions, and subqueries are not supported.",
+      reason: tKey("app.query.saveSimpleSelectOnly"),
     };
   }
 
@@ -226,23 +226,23 @@ export function getSaveBlockedReason(
   options?: { relationKind?: "table" | "view" },
 ): string | null {
   if (dirtyCount === 0) {
-    return "Edit a cell to mark rows as changed.";
+    return tKey("app.query.saveNoEdits");
   }
 
   if (!isTauri()) {
-    return "Saving is available in the desktop app only.";
+    return tKey("app.query.saveDesktopShort");
   }
 
   if (options?.relationKind === "view") {
-    return "Views are read-only.";
+    return tKey("app.query.saveViewsShort");
   }
 
   if (ConfigurationService.getValue("database.readOnly")) {
-    return "Read-only mode is enabled.";
+    return tKey("app.query.saveReadOnlyShort");
   }
 
   if (!parseSingleTableFromSelect(sql)) {
-    return "Only simple single-table SELECT results can be saved.";
+    return tKey("app.query.saveSimpleSelectShort");
   }
 
   return null;

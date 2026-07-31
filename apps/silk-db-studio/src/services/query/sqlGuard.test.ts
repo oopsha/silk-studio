@@ -27,7 +27,7 @@ describe("assertReadOnlyQueryAllowed", () => {
 
   it("blocks write SQL when readOnly is true", () => {
     expect(() => assertReadOnlyQueryAllowed("DELETE FROM t", true)).toThrow(
-      /Read-only mode/i,
+      /Read-only mode|읽기 전용/,
     );
   });
 

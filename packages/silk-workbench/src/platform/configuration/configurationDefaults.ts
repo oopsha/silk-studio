@@ -2,6 +2,7 @@ export type ColorThemeId = "dark-2026" | "dark-plus";
 export type LineNumbersMode = "on" | "off" | "relative";
 export type WordWrapMode = "off" | "on";
 export type AiProviderId = "gemini" | "openai" | "anthropic" | "custom";
+export type LocaleId = "en" | "ko";
 
 export const AI_PROVIDER_IDS: readonly AiProviderId[] = [
   "gemini",
@@ -16,6 +17,7 @@ export type WorkbenchConfiguration = {
   "workbench.layoutControl.enabled": boolean;
   "workbench.colorTheme": ColorThemeId;
   "workbench.fontSize": number;
+  "workbench.locale": LocaleId;
   "editor.fontSize": number;
   "editor.tabSize": number;
   "editor.insertSpaces": boolean;
@@ -47,6 +49,7 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "workbench.layoutControl.enabled": true,
   "workbench.colorTheme": "dark-2026",
   "workbench.fontSize": 13,
+  "workbench.locale": "en",
   "editor.fontSize": 14,
   "editor.tabSize": 4,
   "editor.insertSpaces": true,

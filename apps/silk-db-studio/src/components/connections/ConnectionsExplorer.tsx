@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import type {
@@ -94,6 +95,7 @@ function ProfileTree({
   onFlash: (message: string) => void;
   menuOptions: ExplorerMenuOptions;
 }) {
+  const { t } = useI18n();
   const tree = useConnectionTree(isConnected ? profile.id : null);
   const [expanded, setExpanded] = useState<ExpandedMap>({});
   const [busy, setBusy] = useState(false);
@@ -206,7 +208,7 @@ function ProfileTree({
     try {
       await CommandService.executeCommand(commandId, ref);
     } catch (error) {
-      onFlash(formatErrorMessage(error, "Action failed."));
+      onFlash(formatErrorMessage(error, t("app.explorer.actionFailed")));
     }
   }
 
@@ -251,7 +253,7 @@ function ProfileTree({
           <button
             type="button"
             className="connections-explorer__twistie"
-            aria-label={schemaExpanded ? "Collapse" : "Expand"}
+            aria-label={schemaExpanded ? t("common.collapse") : t("common.expand")}
             onClick={() => {
               const next = !schemaExpanded;
               setExpandedValue(schemaKey, next);
@@ -279,7 +281,7 @@ function ProfileTree({
             }`}
             title={
               isDefaultSchema
-                ? "Default schema for this connection"
+                ? t("app.explorer.defaultSchemaTitle")
                 : undefined
             }
           >
@@ -290,7 +292,7 @@ function ProfileTree({
             <button
               type="button"
               className="connections-explorer__icon-button"
-              title={`Refresh ${schema.name}`}
+              title={t("app.explorer.refreshNamed").replace("{name}", schema.name)}
               disabled={busy || !isConnected}
               onClick={(event) => {
                 event.stopPropagation();
@@ -316,16 +318,16 @@ function ProfileTree({
                   disabled={busy}
                   onClick={() => void refreshSchema(schema.name, catalogName)}
                 >
-                  Retry
+                  {t("app.explorer.retry")}
                 </button>
               </div>
             ) : schema.status === "idle" ? (
               <div className="connections-explorer__empty">
-                Expand to load objects.
+                {t("app.explorer.expandToLoadObjects")}
               </div>
             ) : entry.groups.length === 0 && filterActive ? (
               <div className="connections-explorer__empty">
-                No matching objects.
+                {t("app.explorer.noMatchingObjects")}
               </div>
             ) : (
               sortMetadataGroups(entry.groups.map((item) => item.group)).map(
@@ -390,7 +392,7 @@ function ProfileTree({
         <button
           type="button"
           className="connections-explorer__twistie"
-          aria-label={profileExpanded ? "Collapse" : "Expand"}
+          aria-label={profileExpanded ? t("common.collapse") : t("common.expand")}
           onClick={() => {
             const next = !profileExpanded;
             setExpandedValue(`profile:${profile.id}`, next);
@@ -431,7 +433,7 @@ function ProfileTree({
             <button
               type="button"
               className="connections-explorer__icon-button"
-              title="Disconnect"
+              title={t("common.disconnect")}
               disabled={busy}
               onClick={() =>
                 void run(async () => {
@@ -445,7 +447,7 @@ function ProfileTree({
             <button
               type="button"
               className="connections-explorer__icon-button"
-              title="Connect"
+              title={t("common.connect")}
               disabled={busy}
               onClick={() =>
                 void run(async () => {
@@ -459,15 +461,15 @@ function ProfileTree({
           <button
             type="button"
             className="connections-explorer__icon-button"
-            title="Refresh connection"
+            title={t("app.explorer.refreshConnection")}
             disabled={busy || !isConnected}
             onClick={() =>
               void run(async () => {
                 await ConnectionTreeService.loadSchemas(profile.id, true);
                 onFlash(
                   tree.catalogs.length > 0
-                    ? "Databases refreshed"
-                    : "Schemas refreshed",
+                    ? t("app.explorer.databasesRefreshed")
+                    : t("app.explorer.schemasRefreshed"),
                 );
               })
             }
@@ -477,7 +479,7 @@ function ProfileTree({
           <button
             type="button"
             className="connections-explorer__icon-button"
-            title="Edit"
+            title={t("common.edit")}
             disabled={busy}
             onClick={() => ConnectionEditorService.openConnection(profile.id)}
           >
@@ -486,7 +488,7 @@ function ProfileTree({
           <button
             type="button"
             className="connections-explorer__icon-button"
-            title="Duplicate"
+            title={t("common.duplicate")}
             disabled={busy}
             onClick={() =>
               void run(async () => {
@@ -502,7 +504,7 @@ function ProfileTree({
           <button
             type="button"
             className="connections-explorer__icon-button"
-            title="Delete"
+            title={t("common.delete")}
             disabled={busy}
             onClick={() =>
               void run(async () => {
@@ -527,7 +529,7 @@ function ProfileTree({
                 void run(() => ConnectionTreeService.loadSchemas(profile.id, true))
               }
             >
-              Retry
+              {t("app.explorer.retry")}
             </button>
           ) : null}
         </div>
@@ -537,11 +539,11 @@ function ProfileTree({
         <div className="connections-explorer__children">
           {!isConnected ? (
             <div className="connections-explorer__empty">
-              Connect to browse schemas and objects.
+              {t("app.explorer.connectToBrowse")}
             </div>
           ) : tree.status === "loading" ? (
             <div className="connections-explorer__empty">
-              {useCatalogs ? "Loading databases…" : "Loading schemas…"}
+              {useCatalogs ? t("app.explorer.loadingDatabases") : t("app.explorer.loadingSchemas")}
             </div>
           ) : useCatalogs ? (
             tree.catalogs.length === 0 ? (
@@ -574,7 +576,7 @@ function ProfileTree({
                       <button
                         type="button"
                         className="connections-explorer__twistie"
-                        aria-label={catalogExpanded ? "Collapse" : "Expand"}
+                        aria-label={catalogExpanded ? t("common.collapse") : t("common.expand")}
                         onClick={() => {
                           const next = !catalogExpanded;
                           setExpandedValue(catalogKey, next);
@@ -606,7 +608,7 @@ function ProfileTree({
                         }`}
                         title={
                           isCurrent
-                            ? "Current database for this session"
+                            ? t("app.explorer.currentDatabaseTitle")
                             : undefined
                         }
                       >
@@ -617,7 +619,7 @@ function ProfileTree({
                         <button
                           type="button"
                           className="connections-explorer__icon-button"
-                          title={`Refresh ${catalog.name}`}
+                          title={t("app.explorer.refreshNamed").replace("{name}", catalog.name)}
                           disabled={busy || !isConnected}
                           onClick={(event) => {
                             event.stopPropagation();
@@ -643,17 +645,17 @@ function ProfileTree({
                               disabled={busy}
                               onClick={() => void refreshCatalog(catalog.name)}
                             >
-                              Retry
+                              {t("app.explorer.retry")}
                             </button>
                           </div>
                         ) : catalog.status === "idle" ? (
                           <div className="connections-explorer__empty">
-                            Expand to load schemas.
+                            {t("app.explorer.expandToLoadSchemas")}
                           </div>
                         ) : entry.schemas.every((schema) => !schema.visible) &&
                           filterActive ? (
                           <div className="connections-explorer__empty">
-                            No matching schemas.
+                            {t("app.explorer.noMatchingSchemas")}
                           </div>
                         ) : (
                           entry.schemas.map((schemaEntry) =>
@@ -667,7 +669,9 @@ function ProfileTree({
               })
             )
           ) : tree.schemas.length === 0 ? (
-            <div className="connections-explorer__empty">No schemas found.</div>
+            <div className="connections-explorer__empty">
+              {t("app.explorer.noSchemasFound")}
+            </div>
           ) : filteredSchemas.every((entry) => !entry.visible) ? (
             <div className="connections-explorer__empty">
               No matches for “{filter.trim()}”.
@@ -714,6 +718,7 @@ function ObjectGroup({
   onRefresh: () => void;
   onObjectAction: (object: MetadataObject) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="connections-explorer__node">
       <div
@@ -731,7 +736,7 @@ function ObjectGroup({
         <button
           type="button"
           className="connections-explorer__twistie"
-          aria-label={expanded ? "Collapse" : "Expand"}
+          aria-label={expanded ? t("common.collapse") : t("common.expand")}
           onClick={onToggle}
         >
           <Codicon name={expanded ? "chevron-down" : "chevron-right"} />
@@ -746,7 +751,7 @@ function ObjectGroup({
           <button
             type="button"
             className="connections-explorer__icon-button"
-            title={`Refresh ${title}`}
+            title={t("app.explorer.refreshNamed").replace("{name}", title)}
             disabled={busy}
             onClick={(event) => {
               event.stopPropagation();
@@ -760,7 +765,9 @@ function ObjectGroup({
       {expanded ? (
         <div className="connections-explorer__children">
           {items.length === 0 ? (
-            <div className="connections-explorer__empty">None</div>
+            <div className="connections-explorer__empty">
+              {t("app.explorer.none")}
+            </div>
           ) : (
             items.map((item) => {
               const key = objectSelectionKey(profileId, schemaName, item.name);
@@ -816,6 +823,7 @@ function ObjectGroup({
 }
 
 function ConnectionsExplorer() {
+  const { t } = useI18n();
   const connection = useConnectionState();
   const configuration = useConfiguration();
   const readOnly = configuration["database.readOnly"];
@@ -855,7 +863,7 @@ function ConnectionsExplorer() {
 
     if (item.commandId === EXPLORER_COMMANDS.copyName) {
       await CommandService.executeCommand(item.commandId, payload);
-      flash("Name copied");
+      flash(t("app.explorer.nameCopied"));
       return;
     }
 
@@ -871,7 +879,7 @@ function ConnectionsExplorer() {
             : "schema";
         flash(`Refreshed ${schemaName}`);
       } catch (error) {
-        flash(formatErrorMessage(error, "Refresh failed."));
+        flash(formatErrorMessage(error, t("app.explorer.refreshFailed")));
       }
       return;
     }
@@ -887,7 +895,7 @@ function ConnectionsExplorer() {
       try {
         await CommandService.executeCommand(item.commandId, payload);
       } catch (error) {
-        flash(formatErrorMessage(error, "Action failed."));
+        flash(formatErrorMessage(error, t("app.explorer.actionFailed")));
       }
       return;
     }
@@ -905,17 +913,17 @@ function ConnectionsExplorer() {
           <input
             type="search"
             className="connections-explorer__filter-input"
-            placeholder="Filter schemas & objects…"
+            placeholder={t("app.explorer.filterPlaceholder")}
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            aria-label="Filter schemas and objects"
+            aria-label={t("app.explorer.filterAria")}
           />
           {filter ? (
             <button
               type="button"
               className="connections-explorer__icon-button"
-              title="Clear filter"
-              aria-label="Clear filter"
+              title={t("app.explorer.clearFilter")}
+              aria-label={t("app.explorer.clearFilter")}
               onClick={() => setFilter("")}
             >
               <Codicon name="clear-all" />
@@ -924,8 +932,8 @@ function ConnectionsExplorer() {
           <button
             type="button"
             className="connections-explorer__icon-button"
-            title="Search Database Objects (Ctrl+Shift+O)"
-            aria-label="Search Database Objects"
+            title={t("workbench.explorer.searchObjectsTitle")}
+            aria-label={t("workbench.explorer.searchObjects")}
             disabled={!connection.connectedProfileId}
             onClick={() =>
               void CommandService.executeCommand(EXPLORER_COMMANDS.searchObjects)

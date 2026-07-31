@@ -6,6 +6,7 @@ import {
 import { applyWorkbenchConfiguration } from "./applyConfiguration";
 import { loadConfiguration, saveConfiguration } from "./configurationStorage";
 import { resolveAiModelForProvider } from "../../services/settings/aiSettingsConstants";
+import { detectDefaultLocale, isLocaleId } from "../i18n/locale";
 
 type ConfigurationChangeListener = () => void;
 
@@ -46,13 +47,25 @@ class ConfigurationServiceImpl {
 
   private restoreFromStorage(): void {
     const stored = loadConfiguration();
-    if (!stored) return;
+    if (!stored) {
+      this.values = {
+        ...CONFIGURATION_DEFAULTS,
+        "workbench.locale": detectDefaultLocale(),
+      };
+      return;
+    }
 
     this.values = { ...CONFIGURATION_DEFAULTS };
     for (const key of Object.keys(CONFIGURATION_DEFAULTS) as ConfigurationKey[]) {
       if (stored[key] !== undefined) {
         (this.values as WorkbenchConfiguration)[key] = stored[key] as never;
       }
+    }
+
+    if (stored["workbench.locale"] === undefined) {
+      this.values["workbench.locale"] = detectDefaultLocale();
+    } else if (!isLocaleId(this.values["workbench.locale"])) {
+      this.values["workbench.locale"] = detectDefaultLocale();
     }
 
     if (

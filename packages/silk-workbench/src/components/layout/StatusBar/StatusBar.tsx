@@ -2,8 +2,10 @@ import "./StatusBar.css";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import { useEditorCursorPosition } from "@silk-studio/editor/services/editor/useEditorCursorPosition.ts";
+import { useI18n } from "../../../platform/i18n/useI18n";
 
 function StatusBar() {
+  const { t } = useI18n();
   const activeTab = useActiveEditor();
   const cursorPosition = useEditorCursorPosition();
 
@@ -11,7 +13,11 @@ function StatusBar() {
   const progressMessage: string | null = null;
 
   return (
-    <footer className="status-bar" role="contentinfo" aria-label="Status Bar">
+    <footer
+      className="status-bar"
+      role="contentinfo"
+      aria-label={t("workbench.statusBar.ariaLabel")}
+    >
       <div className="status-bar__left">
         <button type="button" className="status-bar__item">
           <Codicon name="source-control" />
@@ -36,12 +42,14 @@ function StatusBar() {
       <div className="status-bar__right">
         <button type="button" className="status-bar__item">
           <span>
-            Ln {cursorPosition.line}, Col {cursorPosition.column}
+            {t("workbench.statusBar.lineCol")
+              .replace("{line}", String(cursorPosition.line))
+              .replace("{column}", String(cursorPosition.column))}
           </span>
         </button>
 
         <button type="button" className="status-bar__item">
-          <span>Spaces: 4</span>
+          <span>{t("workbench.statusBar.spaces").replace("{n}", "4")}</span>
         </button>
 
         <button type="button" className="status-bar__item">

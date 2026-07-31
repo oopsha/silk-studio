@@ -1,6 +1,7 @@
 import "./Panel.css";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayoutState.ts";
 import { QueryExecutionService } from "../../../services/query/queryExecutionService";
 import { truncateSqlLabel } from "../../../services/query/queryResultTab";
@@ -8,6 +9,7 @@ import { useQueryExecutionState } from "../../../services/query/useQueryExecutio
 import QueryResultGrid from "./QueryResultGrid";
 
 function Panel() {
+  const { t } = useI18n();
   const queryState = useQueryExecutionState();
   const layout = useLayoutState();
   const isRunning = queryState.status === "running";
@@ -23,20 +25,28 @@ function Panel() {
       ? activeTab.result
       : null;
 
+  const movePanelLabel =
+    layout.panelPosition === "bottom"
+      ? t("workbench.commands.movePanelRight")
+      : t("workbench.commands.movePanelBottom");
+  const maximizeLabel = layout.panelMaximized
+    ? t("workbench.commands.restorePanel")
+    : t("workbench.commands.maximizePanel");
+
   return (
     <section className="panel">
       <header className="panel__header">
-        <span className="panel__title">Query Result</span>
+        <span className="panel__title">{t("workbench.panel.queryResult")}</span>
         <div className="panel__actions">
           <span className={`panel__status panel__status--${queryState.status}`}>
-            {toStatusLabel(queryState.status, queryState.output)}
+            {toStatusLabel(queryState.status, queryState.output, t)}
           </span>
           {isRunning ? (
             <button
               type="button"
               className="panel__action"
-              title="Cancel Query"
-              aria-label="Cancel Query"
+              title={t("workbench.panel.cancelQuery")}
+              aria-label={t("workbench.panel.cancelQuery")}
               onClick={() =>
                 void CommandService.executeCommand("silk.query.cancel")
               }
@@ -48,8 +58,8 @@ function Panel() {
             <button
               type="button"
               className="panel__action"
-              title="Close Result"
-              aria-label="Close Result"
+              title={t("workbench.panel.closeResult")}
+              aria-label={t("workbench.panel.closeResult")}
               onClick={() =>
                 QueryExecutionService.closeTab(queryState.activeTabId!)
               }
@@ -61,8 +71,8 @@ function Panel() {
             <button
               type="button"
               className="panel__action"
-              title="Close All Result Tabs"
-              aria-label="Close All Result Tabs"
+              title={t("workbench.panel.closeAllResults")}
+              aria-label={t("workbench.panel.closeAllResults")}
               onClick={() => QueryExecutionService.closeAllTabs()}
             >
               <Codicon name="close-all" />
@@ -71,16 +81,8 @@ function Panel() {
           <button
             type="button"
             className="panel__action"
-            title={
-              layout.panelPosition === "bottom"
-                ? "Move Panel Right"
-                : "Move Panel To Bottom"
-            }
-            aria-label={
-              layout.panelPosition === "bottom"
-                ? "Move Panel Right"
-                : "Move Panel To Bottom"
-            }
+            title={movePanelLabel}
+            aria-label={movePanelLabel}
             onClick={() =>
               void CommandService.executeCommand(
                 layout.panelPosition === "bottom"
@@ -100,12 +102,8 @@ function Panel() {
           <button
             type="button"
             className="panel__action"
-            title={
-              layout.panelMaximized ? "Restore Panel Size" : "Maximize Panel Size"
-            }
-            aria-label={
-              layout.panelMaximized ? "Restore Panel Size" : "Maximize Panel Size"
-            }
+            title={maximizeLabel}
+            aria-label={maximizeLabel}
             onClick={() =>
               void CommandService.executeCommand(
                 "workbench.action.toggleMaximizedPanel",
@@ -122,7 +120,11 @@ function Panel() {
       </header>
 
       {queryState.tabs.length > 1 ? (
-        <div className="panel__tabs" role="tablist" aria-label="Query results">
+        <div
+          className="panel__tabs"
+          role="tablist"
+          aria-label={t("workbench.panel.queryResultsAria")}
+        >
           {queryState.tabs.map((tab) => {
             const isActive = tab.id === queryState.activeTabId;
             return (
@@ -145,8 +147,8 @@ function Panel() {
                 <button
                   type="button"
                   className="panel__tab-close"
-                  title="Close"
-                  aria-label={`Close ${tab.title}`}
+                  title={t("workbench.panel.close")}
+                  aria-label={`${t("workbench.panel.close")} ${tab.title}`}
                   onClick={(event) => {
                     event.stopPropagation();
                     QueryExecutionService.closeTab(tab.id);
@@ -192,18 +194,24 @@ function Panel() {
 function toStatusLabel(
   status: "idle" | "running" | "success" | "error" | "cancelled",
   output: string,
+  t: (key:
+    | "workbench.panel.statusIdle"
+    | "workbench.panel.statusRunning"
+    | "workbench.panel.statusSuccess"
+    | "workbench.panel.statusError"
+    | "workbench.panel.statusCancelled") => string,
 ): string {
   switch (status) {
     case "running":
-      return "Running";
+      return t("workbench.panel.statusRunning");
     case "success":
-      return output || "Success";
+      return output || t("workbench.panel.statusSuccess");
     case "error":
-      return "Error";
+      return t("workbench.panel.statusError");
     case "cancelled":
-      return "Cancelled";
+      return t("workbench.panel.statusCancelled");
     default:
-      return "Idle";
+      return t("workbench.panel.statusIdle");
   }
 }
 

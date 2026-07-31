@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { CommandService } from "../../../../../platform/commands/commandService";
+import { useI18n } from "../../../../../platform/i18n/useI18n";
+import type { MessageKey } from "../../../../../platform/i18n/translate";
 import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
 import { codiconForLanguage } from "@silk-studio/editor/services/editor/languageFromPath.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
@@ -35,25 +37,41 @@ const SECTION_ORDER: ExplorerSectionId[] = [
   "timeline",
 ];
 
-const OPEN_EDITORS_ACTIONS = [
+const OPEN_EDITORS_ACTION_DEFS = [
   {
     icon: "new-file",
-    label: "New Untitled Text File",
+    labelKey: "workbench.sidebar.newUntitled" as const,
     command: "silk.file.newTextFile",
   },
-  { icon: "save-all", label: "Save All", command: "silk.file.saveAll" },
-  { icon: "close-all", label: "Close All", command: "silk.file.closeAll" },
-] as const;
+  {
+    icon: "save-all",
+    labelKey: "workbench.sidebar.saveAll" as const,
+    command: "silk.file.saveAll",
+  },
+  {
+    icon: "close-all",
+    labelKey: "workbench.sidebar.closeAll" as const,
+    command: "silk.file.closeAll",
+  },
+];
 
-const VIEW_MENU_ITEMS: {
+const VIEW_MENU_DEFS: {
   id: ExplorerSectionId;
-  label: string;
+  labelKey: MessageKey;
   canToggle: boolean;
 }[] = [
-  { id: "openEditors", label: "Open Editors", canToggle: true },
-  { id: "workspace", label: "Connections", canToggle: false },
-  { id: "outline", label: "Outline", canToggle: true },
-  { id: "timeline", label: "Timeline", canToggle: true },
+  {
+    id: "openEditors",
+    labelKey: "workbench.sidebar.openEditors",
+    canToggle: true,
+  },
+  {
+    id: "workspace",
+    labelKey: "workbench.sidebar.connections",
+    canToggle: false,
+  },
+  { id: "outline", labelKey: "workbench.sidebar.outline", canToggle: true },
+  { id: "timeline", labelKey: "workbench.sidebar.timeline", canToggle: true },
 ];
 
 function buildSegments(
@@ -122,10 +140,15 @@ function OpenEditorsList({
 }: {
   activeTabId: string | null;
 }) {
+  const { t } = useI18n();
   const tabs = useEditorTabs();
 
   if (tabs.length === 0) {
-    return <div className="accordion-panel__empty">No open editors</div>;
+    return (
+      <div className="accordion-panel__empty">
+        {t("workbench.sidebar.noOpenEditors")}
+      </div>
+    );
   }
 
   return (
@@ -156,9 +179,12 @@ function OpenEditorsList({
 
 function ExplorerView({
   renderConnections,
-  connectionsTitle = "CONNECTIONS",
+  connectionsTitle,
   connectionsActions,
 }: ExplorerViewProps) {
+  const { t, locale } = useI18n();
+  const resolvedConnectionsTitle =
+    connectionsTitle ?? t("workbench.sidebar.connections");
   const viewsMenuButtonRef = useRef<HTMLButtonElement>(null);
   const activeTab = useActiveEditor();
   const [viewsMenuOpen, setViewsMenuOpen] = useState(false);
@@ -205,13 +231,16 @@ function ExplorerView({
 
   const viewsMenuItems = useMemo<ViewsVisibilityItem[]>(
     () =>
-      VIEW_MENU_ITEMS.map((item) => ({
+      VIEW_MENU_DEFS.map((item) => ({
         id: item.id,
-        label: item.label,
+        label:
+          item.id === "workspace"
+            ? resolvedConnectionsTitle
+            : t(item.labelKey),
         canToggle: item.canToggle,
         visible: visible[item.id],
       })),
-    [visible],
+    [visible, t, locale, resolvedConnectionsTitle],
   );
 
   function toggleSection(sectionId: ExplorerSectionId) {
@@ -223,7 +252,7 @@ function ExplorerView({
 
   function toggleSectionVisibility(sectionId: string) {
     const id = sectionId as ExplorerSectionId;
-    const menuItem = VIEW_MENU_ITEMS.find((item) => item.id === id);
+    const menuItem = VIEW_MENU_DEFS.find((item) => item.id === id);
     if (!menuItem?.canToggle) return;
 
     setVisible((current) => ({
@@ -232,15 +261,21 @@ function ExplorerView({
     }));
   }
 
-  const openEditorsActions = renderSectionActions(OPEN_EDITORS_ACTIONS);
+  const openEditorsActions = renderSectionActions(
+    OPEN_EDITORS_ACTION_DEFS.map((action) => ({
+      icon: action.icon,
+      label: t(action.labelKey),
+      command: action.command,
+    })),
+  );
   const WORKSPACE_ACTIONS_NODE = connectionsActions;
 
   function sectionTitle(id: ExplorerSectionId) {
     const titles: Record<ExplorerSectionId, string> = {
-      openEditors: "Open Editors",
-      workspace: connectionsTitle,
-      outline: "Outline",
-      timeline: "Timeline",
+      openEditors: t("workbench.sidebar.openEditors"),
+      workspace: resolvedConnectionsTitle,
+      outline: t("workbench.sidebar.outline"),
+      timeline: t("workbench.sidebar.timeline"),
     };
     return titles[id];
   }
@@ -250,7 +285,7 @@ function ExplorerView({
       case "workspace":
         return (
           <AccordionPanel
-            title={connectionsTitle}
+            title={resolvedConnectionsTitle}
             expanded
             variant="fill"
             onToggle={() => toggleSection("workspace")}
@@ -259,14 +294,16 @@ function ExplorerView({
             {renderConnections ? (
               renderConnections()
             ) : (
-              <div className="accordion-panel__empty">No connections</div>
+              <div className="accordion-panel__empty">
+                {t("workbench.sidebar.noConnections")}
+              </div>
             )}
           </AccordionPanel>
         );
       case "outline":
         return (
           <AccordionPanel
-            title="Outline"
+            title={t("workbench.sidebar.outline")}
             expanded
             variant="fill"
             onToggle={() => toggleSection("outline")}
@@ -275,14 +312,14 @@ function ExplorerView({
             }
           >
             <div className="accordion-panel__empty">
-              The active editor cannot provide outline information.
+              {t("workbench.sidebar.outlineEmpty")}
             </div>
           </AccordionPanel>
         );
       case "timeline":
         return (
           <AccordionPanel
-            title="Timeline"
+            title={t("workbench.sidebar.timeline")}
             expanded
             variant="fill"
             onToggle={() => toggleSection("timeline")}
@@ -291,7 +328,7 @@ function ExplorerView({
             }
           >
             <div className="accordion-panel__empty">
-              Local History will track changes to files opened in the editor.
+              {t("workbench.sidebar.timelineEmpty")}
             </div>
           </AccordionPanel>
         );
@@ -319,7 +356,7 @@ function ExplorerView({
           className="explorer-view__segment explorer-view__segment--fixed"
         >
           <AccordionPanel
-            title="Open Editors"
+            title={t("workbench.sidebar.openEditors")}
             expanded={segment.expanded}
             variant="fixed"
             onToggle={() => toggleSection("openEditors")}

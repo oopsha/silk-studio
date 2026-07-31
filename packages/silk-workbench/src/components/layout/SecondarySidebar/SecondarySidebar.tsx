@@ -8,6 +8,7 @@ import {
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { CommandService } from "../../../platform/commands/commandService";
 import { useConfiguration } from "../../../platform/configuration/useConfiguration";
+import { useI18n } from "../../../platform/i18n/useI18n";
 import { AI_PROVIDER_LABELS } from "../../../services/settings/aiSettingsConstants";
 import { AiChatService } from "../../../services/ai/aiChatService";
 import type { AiChatUiMessage } from "../../../services/ai/aiChatTypes";
@@ -23,6 +24,7 @@ function previewSql(sql: string): string {
 }
 
 function ProposedSqlActions({ message }: { message: AiChatUiMessage }) {
+  const { t } = useI18n();
   if (message.role !== "assistant" || message.status !== "done") {
     return null;
   }
@@ -46,11 +48,11 @@ function ProposedSqlActions({ message }: { message: AiChatUiMessage }) {
                   className="secondary-sidebar__proposal-badge"
                   title={
                     risk.readOnly
-                      ? "Write/DDL detected; read-only mode will block execution later"
-                      : "Write/DDL detected — review before inserting"
+                      ? t("app.ai.writeBadgeReadonly")
+                      : t("app.ai.writeBadgeReview")
                   }
                 >
-                  Write
+                  {t("app.ai.writeBadge")}
                 </span>
               ) : null}
             </div>
@@ -61,20 +63,20 @@ function ProposedSqlActions({ message }: { message: AiChatUiMessage }) {
               <button
                 type="button"
                 className="secondary-sidebar__proposal-button"
-                title="Review Diff, then Insert or Open in New Tab"
+                title={t("app.ai.reviewTitle")}
                 onClick={() => AiSqlProposalHost.reviewProposedSql(sql)}
               >
                 <Codicon name="diff" />
-                Review…
+                {t("app.ai.review")}
               </button>
               <button
                 type="button"
                 className="secondary-sidebar__proposal-button"
-                title="Copy SQL"
+                title={t("app.ai.copySql")}
                 onClick={() => void AiSqlProposalHost.copyProposedSql(sql)}
               >
                 <Codicon name="copy" />
-                Copy
+                {t("common.copy")}
               </button>
               {risk.allowExecute ? (
                 <button
@@ -82,14 +84,14 @@ function ProposedSqlActions({ message }: { message: AiChatUiMessage }) {
                   className="secondary-sidebar__proposal-button secondary-sidebar__proposal-button--execute"
                   title={
                     risk.readOnly && risk.isWrite
-                      ? "Blocked by database.readOnly (write/DDL)"
-                      : "Confirm, then execute against the connected database"
+                      ? t("app.ai.executeBlockedReadonly")
+                      : t("app.ai.executeConfirmTitle")
                   }
                   disabled={risk.readOnly && risk.isWrite}
                   onClick={() => void AiSqlProposalHost.executeProposedSql(sql)}
                 >
                   <Codicon name="play" />
-                  Execute…
+                  {t("app.ai.executeEllipsis")}
                 </button>
               ) : null}
             </div>
@@ -101,6 +103,7 @@ function ProposedSqlActions({ message }: { message: AiChatUiMessage }) {
 }
 
 function SecondarySidebar() {
+  const { t } = useI18n();
   const configuration = useConfiguration();
   const ready = useAiReadyState();
   const chat = useAiChat();
@@ -141,18 +144,21 @@ function SecondarySidebar() {
   }
 
   return (
-    <aside className="secondary-sidebar" aria-label="AI Chat">
+    <aside
+      className="secondary-sidebar"
+      aria-label={t("workbench.secondarySidebar.aiChat")}
+    >
       <header className="secondary-sidebar__header">
         <span className="secondary-sidebar__title">
           <Codicon name="comment-discussion" />
-          AI Chat
+          {t("workbench.secondarySidebar.aiChat")}
         </span>
         <div className="secondary-sidebar__header-actions">
           <button
             type="button"
             className="secondary-sidebar__icon-button"
-            title="New chat"
-            aria-label="New chat"
+            title={t("workbench.secondarySidebar.newChat")}
+            aria-label={t("workbench.secondarySidebar.newChat")}
             disabled={chat.streaming || chat.messages.length === 0}
             onClick={() => AiChatService.clearSession()}
           >
@@ -161,8 +167,8 @@ function SecondarySidebar() {
           <button
             type="button"
             className="secondary-sidebar__icon-button"
-            title="Open AI Settings"
-            aria-label="Open AI Settings"
+            title={t("workbench.secondarySidebar.openAiSettings")}
+            aria-label={t("workbench.secondarySidebar.openAiSettings")}
             onClick={() =>
               void CommandService.executeCommand(
                 "workbench.action.openAiSettings",
@@ -183,10 +189,7 @@ function SecondarySidebar() {
       <div ref={listRef} className="secondary-sidebar__messages" role="log">
         {chat.messages.length === 0 ? (
           <div className="secondary-sidebar__empty">
-            <p>
-              Ask a question about SQL or your database. Multi-turn chat uses
-              your configured provider and model.
-            </p>
+            <p>{t("app.ai.emptyHint")}</p>
             {!ready.ready ? (
               <button
                 type="button"
@@ -197,7 +200,7 @@ function SecondarySidebar() {
                   )
                 }
               >
-                Open AI Settings
+                {t("workbench.secondarySidebar.openAiSettings")}
               </button>
             ) : null}
           </div>
@@ -212,12 +215,12 @@ function SecondarySidebar() {
               }`}
             >
               <div className="secondary-sidebar__message-role">
-                {message.role === "user" ? "You" : "Assistant"}
+                {message.role === "user" ? t("app.ai.you") : t("app.ai.assistant")}
                 {message.status === "streaming" ? " · …" : ""}
               </div>
               <div className="secondary-sidebar__message-body">
                 {message.content ||
-                  (message.status === "streaming" ? "Thinking…" : "")}
+                  (message.status === "streaming" ? t("app.ai.thinking") : "")}
               </div>
               <ProposedSqlActions message={message} />
             </div>
@@ -238,8 +241,8 @@ function SecondarySidebar() {
           rows={3}
           placeholder={
             ready.ready
-              ? "Ask anything… (Enter to send, Shift+Enter for newline)"
-              : "Configure AI in Settings to chat"
+              ? t("app.ai.placeholderReady")
+              : t("app.ai.placeholderDisabled")
           }
           value={draft}
           disabled={!ready.ready || chat.streaming}
@@ -253,7 +256,7 @@ function SecondarySidebar() {
               className="secondary-sidebar__send-button"
               onClick={() => AiChatService.cancel()}
             >
-              Stop
+              {t("app.ai.stop")}
             </button>
           ) : (
             <button
@@ -261,7 +264,7 @@ function SecondarySidebar() {
               className="secondary-sidebar__send-button"
               disabled={!canSend}
             >
-              Send
+              {t("app.ai.send")}
             </button>
           )}
         </div>

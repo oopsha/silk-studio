@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { MenuRegistry } from "../../platform/actions/menuRegistry";
+import { useI18n } from "../../platform/i18n/useI18n";
 import { KeybindingsRegistry } from "../../platform/keybinding/keybindingRegistry";
 import "./KeybindingsEditor.css";
 
@@ -33,12 +34,13 @@ function buildRows(): KeybindingRow[] {
 }
 
 function KeybindingsEditor() {
+  const { t, locale } = useI18n();
   const [filter, setFilter] = useState("");
   const [rows, setRows] = useState(buildRows);
 
   useEffect(() => {
     setRows(buildRows());
-  }, []);
+  }, [locale]);
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -55,22 +57,26 @@ function KeybindingsEditor() {
     <main
       className="keybindings-editor"
       data-testid="keybindings-editor"
-      aria-label="Keyboard Shortcuts"
+      aria-label={t("workbench.commands.keyboardShortcuts")}
     >
       <header className="keybindings-editor__header">
-        <h1 className="keybindings-editor__title">Keyboard Shortcuts</h1>
+        <h1 className="keybindings-editor__title">
+          {t("workbench.commands.keyboardShortcuts")}
+        </h1>
         <p className="keybindings-editor__hint">
-          Read-only list of registered bindings. Search by command or key.
+          {t("workbench.keybindings.hint")}
         </p>
         <label className="keybindings-editor__search">
-          <span className="visually-hidden">Search keyboard shortcuts</span>
+          <span className="visually-hidden">
+            {t("workbench.keybindings.searchAria")}
+          </span>
           <input
             type="search"
             value={filter}
             spellCheck={false}
             autoComplete="off"
-            placeholder="Search shortcuts…"
-            aria-label="Search keyboard shortcuts"
+            placeholder={t("workbench.keybindings.searchPlaceholder")}
+            aria-label={t("workbench.keybindings.searchAria")}
             onChange={(event) => setFilter(event.target.value)}
           />
         </label>
@@ -79,17 +85,17 @@ function KeybindingsEditor() {
       <div
         className="keybindings-editor__list"
         role="table"
-        aria-label="Registered keyboard shortcuts"
+        aria-label={t("workbench.keybindings.listAria")}
         aria-rowcount={filtered.length}
       >
         <div className="keybindings-editor__row keybindings-editor__row--head" role="row">
-          <div role="columnheader">Command</div>
-          <div role="columnheader">Keybinding</div>
-          <div role="columnheader">Command ID</div>
+          <div role="columnheader">{t("workbench.keybindings.command")}</div>
+          <div role="columnheader">{t("workbench.keybindings.keybinding")}</div>
+          <div role="columnheader">{t("workbench.keybindings.commandId")}</div>
         </div>
         {filtered.length === 0 ? (
           <div className="keybindings-editor__empty" role="status">
-            No matching shortcuts
+            {t("workbench.keybindings.empty")}
           </div>
         ) : (
           filtered.map((row) => (
