@@ -16,7 +16,6 @@ const MANAGE_COMMANDS = [
   "workbench.action.openSnippets",
   "workbench.action.tasks.manage",
   "workbench.userData.actions.manageSettings",
-  "update.check",
   "workbench.profiles.actions.createTemporaryProfile",
   "workbench.profiles.actions.switchProfile",
   "workbench.action.selectIconTheme",

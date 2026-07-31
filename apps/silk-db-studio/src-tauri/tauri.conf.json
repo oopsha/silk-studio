@@ -27,6 +27,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",
@@ -39,5 +40,16 @@
       "resources/jdbc-agent",
       "resources/jre"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgxQTVCOTQzMjZGMzY4OEEKUldTS2FQTW1RN21sZ2ZydXltc01NdytyTmJQejdSUERJdllDMHFHWGpQaTFtOXBEUFE5T2x2Qm8K",
+      "endpoints": [
+        "https://github.com/oopsha/silk-studio/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

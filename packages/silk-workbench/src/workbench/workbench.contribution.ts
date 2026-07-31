@@ -10,5 +10,6 @@ import "./contributions/layoutActions.contribution";
 import "./contributions/settingsActions.contribution";
 import "./contributions/terminalActions.contribution";
 import "./contributions/helpActions.contribution";
+import "./contributions/updateActions.contribution";
 import "./contributions/activityBar.contribution";
 import "./contributions/aiChat.contribution";

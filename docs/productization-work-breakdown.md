@@ -13,10 +13,10 @@
 - 기능별 오류 문자열 — [`formatErrorMessage`](../apps/silk-db-studio/src/services/formatErrorMessage.ts) · [`reportError`](../apps/silk-db-studio/src/services/formatErrorMessage.ts) (진단 로그 연동)
 - AI 감사 로그(8-F) — 호출 메타만 (앱 진단 로그와 **별개**)
 - 키바인딩 레지스트리·메뉴 accelerator — [`packages/silk-workbench/src/platform/keybinding/`](../packages/silk-workbench/src/platform/keybinding/)
-- Help / About · Copy Diagnostics · Open Log Folder — **구현** (`silk.help.*`); Keyboard Shortcuts · Command Palette · Check for Updates — **스텁**
+- Help / About · Copy Diagnostics · Open Log Folder — **구현** (`silk.help.*`); Keyboard Shortcuts · Command Palette — **스텁**; **Check for Updates** — **구현** (`update.check` · GitHub Releases `latest.json`)
 - 앱 진단 로그 — `app_data_dir/logs/silk-db-studio.log` (로테이션·시크릿 마스킹)
-- 내부 작업 문서 — [`docs/roadmap.md`](./roadmap.md), 각 `*-work-breakdown.md`
-- **없음**: `tauri-plugin-updater` · GitHub Releases · 단위/e2e 테스트 · 사용자 가이드 · 체계적 a11y 패스
+- 내부 작업 문서 — [`docs/roadmap.md`](./roadmap.md), 각 `*-work-breakdown.md`, [`docs/release.md`](./release.md)
+- **없음**: 단위/e2e 테스트 · 사용자 가이드 · 체계적 a11y 패스 · OS 코드서명/notarize 자동화(시크릿 슬롯·가이드만)
 
 ### v1 범위
 
@@ -114,7 +114,7 @@
 
 ## 9-C. 자동 업데이트 · 배포 · GitHub Releases
 
-**상태:** 미구현
+**상태:** 완료
 
 **의존성:** **9-B** 권장 (업데이트 산출물에 agent/JRE 포함). 서명·시크릿 준비
 
@@ -130,6 +130,15 @@
 
 - 태그(또는 수동) 릴리스로 설치 패키지가 올라가고
 - 앱에서 업데이트 확인이 동작함 (서명 환경이 갖춰진 경우)
+
+### 구현 메모
+
+- 플러그인: `tauri-plugin-updater` · `tauri-plugin-process` · capabilities `updater:default` / `process:default`
+- 엔드포인트: `https://github.com/oopsha/silk-studio/releases/latest/download/latest.json`
+- UI: [`updateService.ts`](../packages/silk-workbench/src/services/updates/updateService.ts) · `update.check`
+- CI: [`.github/workflows/release.yml`](../.github/workflows/release.yml) (`tauri-action`, `includeUpdaterJson`)
+- 가이드: [`docs/release.md`](./release.md) · `.env.example` 시크릿 슬롯
+- `plugins.updater.pubkey`는 `tauri signer generate` 후 `tauri.conf.json`에 붙여 넣기 (플레이스홀더 `REPLACE_AFTER_tauri_signer_generate`)
 
 ### 요청 문구 예
 
@@ -248,7 +257,7 @@
 |------|-----------|
 | 오류 메시지 | `formatErrorMessage` / `reportError`, AI/쿼리/연결 화면별 표시 |
 | Help · 진단 | `helpActions.contribution.ts`, `services/diagnostics/*`, About/AppToast |
-| Updates 스텁 | `activityBar.contribution.ts` (`update.check`) |
+| Updates | `update.check` · [`updateService.ts`](../packages/silk-workbench/src/services/updates/updateService.ts) · [`docs/release.md`](./release.md) |
 | 키바인딩 | `platform/keybinding`, 메뉴 `accelerator` |
 | Agent 런치 | `crates/silk-db-agent-client`, `runtime_paths.rs`, `scripts/prepare-runtime-resources.mjs` |
 | Agent 빌드 | `packages/jdbc-agent` (`gradlew`, `THIRD_PARTY_NOTICES.md`) |
@@ -260,5 +269,5 @@
 
 ## 다음 단계
 
-**9-A · 9-B** 완료. 다음은 **9-C**(Tauri updater · GitHub Releases) 또는 **9-D**(테스트·CI) 권장.  
-(로드맵 8번 AI 본편·8-F는 [`ai-assistant-work-breakdown.md`](./ai-assistant-work-breakdown.md) 기준 완료)
+**9-A · 9-B · 9-C** 완료. 다음은 **9-D**(테스트·CI lint/build) 또는 **9-F**(Help·단축키·문서) 권장.  
+Updater pubkey·`TAURI_SIGNING_PRIVATE_KEY`는 [`docs/release.md`](./release.md)에 따라 한 번 설정해야 릴리스/업데이트가 성립한다.

@@ -30,6 +30,8 @@
     "allow-secret-commands",
     "allow-ai-http-commands",
     "allow-window-layout-commands",
-    "allow-app-log-commands"
+    "allow-app-log-commands",
+    "updater:default",
+    "process:default"
   ]
 }
