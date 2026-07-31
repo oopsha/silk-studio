@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { AiSqlExecuteDialogService } from "../../services/ai/aiSqlExecuteDialogService";
 import "../connections/ExplorerObjectMutationDialog.css";
 import "./AiSqlExecuteDialog.css";
 
 function AiSqlExecuteDialog() {
+  const { t } = useI18n();
   const [request, setRequest] = useState(() =>
     AiSqlExecuteDialogService.getRequest(),
   );
@@ -46,11 +48,13 @@ function AiSqlExecuteDialog() {
         aria-labelledby="ai-sql-execute-dialog-title"
       >
         <header className="explorer-mutation-dialog__header">
-          <h2 id="ai-sql-execute-dialog-title">Execute proposed SQL?</h2>
+          <h2 id="ai-sql-execute-dialog-title">
+            {t("app.ai.executeDialogTitle")}
+          </h2>
           <button
             type="button"
             className="explorer-mutation-dialog__close"
-            aria-label="Close"
+            aria-label={t("common.close")}
             onClick={close}
           >
             <Codicon name="close" />
@@ -59,8 +63,7 @@ function AiSqlExecuteDialog() {
 
         <div className="explorer-mutation-dialog__body">
           <p className="explorer-mutation-dialog__summary">
-            Run this SQL against the connected database. Nothing runs until you
-            confirm.
+            {t("app.ai.executeDialogSummary")}
           </p>
           <pre className="explorer-mutation-dialog__sql">{request.sql}</pre>
 
@@ -85,9 +88,7 @@ function AiSqlExecuteDialog() {
                 checked={writeAck}
                 onChange={(event) => setWriteAck(event.target.checked)}
               />
-              <span>
-                I understand this may modify or drop data / schema objects.
-              </span>
+              <span>{t("app.ai.writeAck")}</span>
             </label>
           ) : null}
         </div>
@@ -98,7 +99,7 @@ function AiSqlExecuteDialog() {
             className="explorer-mutation-dialog__button"
             onClick={close}
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -110,7 +111,7 @@ function AiSqlExecuteDialog() {
             disabled={!canConfirm}
             onClick={() => AiSqlExecuteDialogService.close(true)}
           >
-            {request.isWrite ? "Execute write SQL" : "Execute"}
+            {request.isWrite ? t("app.ai.executeWrite") : t("common.execute")}
           </button>
         </footer>
       </div>

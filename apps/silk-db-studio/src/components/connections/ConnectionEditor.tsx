@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
+import { shouldUseDevSecretStore } from "@silk-studio/workbench/services/secrets/devSecretStore.ts";
 import { ConnectionEditorService } from "../../services/connection/connectionEditorService";
 import { ConnectionService } from "../../services/connection/connectionService";
 import { ConnectionTreeService } from "../../services/connection/connectionTreeService";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { useConnectionState } from "../../services/connection/useConnectionState";
-import { useConnectionTree, getExplorerSchemas } from "../../services/connection/useConnectionTree";
+import {
+  useConnectionTree,
+  getExplorerSchemas,
+} from "../../services/connection/useConnectionTree";
 import type {
   ConnectionDriverId,
   ConnectionProfileInput,
@@ -17,7 +22,6 @@ import {
   getConnectionDriver,
 } from "../../services/connection/connectionTypes";
 import { showSystemObjectsHint } from "../../services/connection/systemNamespaces";
-import { shouldUseDevSecretStore } from "@silk-studio/workbench/services/secrets/devSecretStore.ts";
 import "./ConnectionEditor.css";
 
 const EMPTY_FORM: ConnectionProfileInput = {
@@ -32,6 +36,7 @@ const EMPTY_FORM: ConnectionProfileInput = {
 };
 
 function ConnectionEditor() {
+  const { t } = useI18n();
   const activeTab = useActiveEditor();
   const profileId = ConnectionEditorService.getProfileIdFromUri(activeTab?.uri);
   const connection = useConnectionState();
@@ -72,7 +77,7 @@ function ConnectionEditor() {
 
       const profile = ConnectionService.getProfile(id);
       if (!profile) {
-        setError("Connection profile not found.");
+        setError(t("app.connection.notFound"));
         setForm(EMPTY_FORM);
         return;
       }
@@ -97,12 +102,14 @@ function ConnectionEditor() {
     return () => {
       cancelled = true;
     };
-  }, [profileId]);
+  }, [profileId, t]);
 
   if (!profileId) {
     return (
       <main className="connection-editor">
-        <p className="connection-editor__error">Invalid connection editor.</p>
+        <p className="connection-editor__error">
+          {t("app.connection.invalidEditor")}
+        </p>
       </main>
     );
   }
@@ -124,12 +131,14 @@ function ConnectionEditor() {
     <main className="connection-editor">
       <header className="connection-editor__header">
         <h2 className="connection-editor__title">
-          {profileId === "new" ? "New Connection" : "Edit Connection"}
+          {profileId === "new"
+            ? t("app.connection.newTitle")
+            : t("app.connection.editTitle")}
         </h2>
         <p className="connection-editor__intro">
           {shouldUseDevSecretStore()
-            ? "개발 모드: 비밀번호는 localStorage에 보관합니다. Keychain에만 있던 값은 처음 한 번 암호를 허용하면 자동으로 이전되며, 이후에는 암호 창이 뜨지 않습니다."
-            : "비밀번호는 Windows Credential Manager / macOS Keychain 등 OS 보안 저장소에 보관됩니다. Database/Schema 적용 방식은 드라이버마다 다릅니다."}
+            ? t("app.connection.introDev")
+            : t("app.connection.introRelease")}
         </p>
       </header>
 
@@ -151,7 +160,7 @@ function ConnectionEditor() {
           void run(async () => {
             if (profileId === "new") {
               const created = await ConnectionService.createProfile(form);
-              setMessage("Connection profile created.");
+              setMessage(t("app.connection.created"));
               if (activeTab) {
                 EditorService.closeTab(activeTab.id);
               }
@@ -159,23 +168,23 @@ function ConnectionEditor() {
               return;
             }
             await ConnectionService.updateProfile(profileId, form);
-            setMessage("Connection profile saved.");
+            setMessage(t("app.connection.saved"));
           });
         }}
       >
         <label className="connection-editor__field">
-          <span>Name</span>
+          <span>{t("app.connection.name")}</span>
           <input
             className="connection-editor__input"
             value={form.name}
             onChange={(event) =>
               setForm((current) => ({ ...current, name: event.target.value }))
             }
-            placeholder="Local Oracle"
+            placeholder={t("app.connection.namePlaceholder")}
           />
         </label>
         <label className="connection-editor__field">
-          <span>Driver</span>
+          <span>{t("app.connection.driver")}</span>
           <select
             className="connection-editor__input"
             value={form.driverId}
@@ -208,7 +217,7 @@ function ConnectionEditor() {
           </select>
         </label>
         <label className="connection-editor__field">
-          <span>JDBC URL</span>
+          <span>{t("app.connection.jdbcUrl")}</span>
           <input
             className="connection-editor__input"
             value={form.url}
@@ -218,7 +227,7 @@ function ConnectionEditor() {
           />
         </label>
         <label className="connection-editor__field">
-          <span>User</span>
+          <span>{t("app.connection.user")}</span>
           <input
             className="connection-editor__input"
             value={form.user}
@@ -228,7 +237,7 @@ function ConnectionEditor() {
           />
         </label>
         <label className="connection-editor__field">
-          <span>Password</span>
+          <span>{t("app.connection.password")}</span>
           <input
             className="connection-editor__input"
             type="password"
@@ -254,7 +263,7 @@ function ConnectionEditor() {
                   catalog: event.target.value,
                 }))
               }
-              placeholder="Leave empty to use login's default database"
+              placeholder={t("app.connection.catalogPlaceholder")}
               spellCheck={false}
             />
             {driver.catalogHint ? (
@@ -276,7 +285,7 @@ function ConnectionEditor() {
                     defaultSchema: event.target.value,
                   }))
                 }
-                placeholder="Leave empty to use login user"
+                placeholder={t("app.connection.schemaPlaceholder")}
                 spellCheck={false}
               />
               <datalist id="connection-editor-schemas">
@@ -290,8 +299,8 @@ function ConnectionEditor() {
                 disabled={busy || !isEditingConnectedProfile}
                 title={
                   isEditingConnectedProfile
-                    ? "Refresh schema list from the active connection"
-                    : "Connect this profile to load schemas"
+                    ? t("app.connection.loadSchemasTitle")
+                    : t("app.connection.loadSchemasNeedConnect")
                 }
                 onClick={() =>
                   void run(async () => {
@@ -299,19 +308,20 @@ function ConnectionEditor() {
                       return;
                     }
                     await ConnectionTreeService.loadSchemas(profileId, true);
-                    setMessage("Schema list refreshed.");
+                    setMessage(t("app.connection.schemasRefreshed"));
                   })
                 }
               >
-                Load schemas
+                {t("app.connection.loadSchemas")}
               </button>
             </div>
             <span className="connection-editor__hint">{driver.schemaHint}</span>
           </label>
         ) : (
           <p className="connection-editor__hint">
-            {driver.label} has no separate schema concept — the {driver.catalogLabel} field
-            above is also the browsable namespace shown in the Explorer.
+            {t("app.connection.noSchemaConcept")
+              .replace("{driver}", driver.label)
+              .replace("{catalog}", driver.catalogLabel)}
           </p>
         )}
         <label className="connection-editor__field connection-editor__field--checkbox">
@@ -326,7 +336,7 @@ function ConnectionEditor() {
                 }))
               }
             />
-            <span>Show system objects</span>
+            <span>{t("app.connection.showSystemObjects")}</span>
           </span>
           <span className="connection-editor__hint">
             {showSystemObjectsHint(form.driverId)}
@@ -338,7 +348,7 @@ function ConnectionEditor() {
             className="connection-editor__button connection-editor__button--primary"
             disabled={busy}
           >
-            Save
+            {t("common.save")}
           </button>
           <button
             type="button"
@@ -347,11 +357,11 @@ function ConnectionEditor() {
             onClick={() =>
               void run(async () => {
                 await ConnectionService.testCredentials(form);
-                setMessage("Connection test passed.");
+                setMessage(t("app.connection.testPassed"));
               })
             }
           >
-            Test
+            {t("common.test")}
           </button>
           {profileId !== "new" ? (
             <button
@@ -361,11 +371,11 @@ function ConnectionEditor() {
               onClick={() =>
                 void run(async () => {
                   await ConnectionService.connect(profileId);
-                  setMessage("Connected.");
+                  setMessage(t("app.connection.connected"));
                 })
               }
             >
-              Connect
+              {t("common.connect")}
             </button>
           ) : null}
         </div>

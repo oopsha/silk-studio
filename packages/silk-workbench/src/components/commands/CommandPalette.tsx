@@ -15,12 +15,14 @@ import {
   type CommandPaletteItem,
 } from "../../services/commands/commandCatalog";
 import { CommandPaletteService } from "../../services/commands/commandPaletteService";
+import { useI18n } from "../../platform/i18n/useI18n";
 import "../layout/TitleBar/OpenEditorsQuickPick/OpenEditorsQuickPick.css";
 import "./CommandPalette.css";
 
 const QUICK_PICK_WIDTH = 520;
 
 function CommandPalette() {
+  const { t, locale } = useI18n();
   const [open, setOpen] = useState(() => CommandPaletteService.isOpen());
   const [filter, setFilter] = useState("");
   const [focusedIndex, setFocusedIndex] = useState(0);
@@ -44,7 +46,7 @@ function CommandPalette() {
   const items = useMemo(() => {
     if (!open) return [] as CommandPaletteItem[];
     return filterCommandPaletteItems(listCommandPaletteItems(), filter);
-  }, [open, filter]);
+  }, [open, filter, locale]);
 
   useEffect(() => {
     setFocusedIndex((current) =>
@@ -143,7 +145,7 @@ function CommandPalette() {
       className="quick-input-widget command-palette"
       role="dialog"
       aria-modal="true"
-      aria-label="Command Palette"
+      aria-label={t("workbench.commandPalette.ariaLabel")}
       data-testid="command-palette"
       style={
         position
@@ -165,8 +167,8 @@ function CommandPalette() {
             value={filter}
             spellCheck={false}
             autoComplete="off"
-            placeholder="Type a command name or id…"
-            aria-label="Filter commands"
+            placeholder={t("workbench.commandPalette.placeholder")}
+            aria-label={t("workbench.commandPalette.placeholder")}
             aria-controls="command-palette-list"
             onChange={(event) => setFilter(event.target.value)}
             onKeyDown={handleInputKeyDown}
@@ -178,10 +180,12 @@ function CommandPalette() {
         id="command-palette-list"
         className="quick-input-list"
         role="listbox"
-        aria-label="Commands"
+        aria-label={t("workbench.commandPalette.ariaLabel")}
       >
         {items.length === 0 ? (
-          <div className="quick-input-list__empty">No matching commands</div>
+          <div className="quick-input-list__empty">
+            {t("workbench.commandPalette.empty")}
+          </div>
         ) : (
           items.map((item, index) => {
             const isFocused = index === focusedIndex;
@@ -210,7 +214,12 @@ function CommandPalette() {
       </div>
 
       <div className="command-palette__status" role="status" aria-live="polite">
-        {items.length} command{items.length === 1 ? "" : "s"}
+        {items.length === 1
+          ? t("workbench.commandPalette.statusOne")
+          : t("workbench.commandPalette.statusMany").replace(
+              "{n}",
+              String(items.length),
+            )}
       </div>
     </div>,
     document.body,

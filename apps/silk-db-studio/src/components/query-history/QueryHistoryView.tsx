@@ -1,5 +1,7 @@
 import { useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { QueryFavoritesService } from "../../services/query/queryFavoritesService";
 import { QueryHistoryService } from "../../services/query/queryHistoryService";
 import type {
@@ -58,13 +60,17 @@ function promptFavoriteName(sql: string, initial?: string): string | null {
   const suggested =
     initial?.trim() ||
     sql.split(/\r?\n/, 1)[0]?.trim().slice(0, 48) ||
-    "Favorite query";
-  const name = window.prompt("Favorite name", suggested);
+    I18nService.t("app.query.favoriteDefaultName");
+  const name = window.prompt(
+    I18nService.t("app.query.favoriteNamePrompt"),
+    suggested,
+  );
   if (name === null) return null;
   return name.trim() || suggested;
 }
 
 function HistoryItem({ entry }: { entry: QueryHistoryEntry }) {
+  const { t } = useI18n();
   return (
     <div className={`query-history__item query-history__item--${entry.status}`}>
       <div className="query-history__item-main">
@@ -86,32 +92,32 @@ function HistoryItem({ entry }: { entry: QueryHistoryEntry }) {
       <div className="query-history__item-actions">
         <button
           type="button"
-          title="Run"
-          aria-label="Run"
+          title={t("common.run")}
+          aria-label={t("common.run")}
           onClick={() => void reexecuteSql(entry.sql)}
         >
           <Codicon name="play" />
         </button>
         <button
           type="button"
-          title="Open in Editor"
-          aria-label="Open in Editor"
+          title={t("app.query.openInEditor")}
+          aria-label={t("app.query.openInEditor")}
           onClick={() => openSqlInEditor(entry.sql)}
         >
           <Codicon name="file-code" />
         </button>
         <button
           type="button"
-          title="Insert into Editor"
-          aria-label="Insert into Editor"
+          title={t("app.query.insertIntoEditor")}
+          aria-label={t("app.query.insertIntoEditor")}
           onClick={() => insertSqlIntoActiveEditor(entry.sql)}
         >
           <Codicon name="add" />
         </button>
         <button
           type="button"
-          title="Add to Favorites"
-          aria-label="Add to Favorites"
+          title={t("app.query.addToFavorites")}
+          aria-label={t("app.query.addToFavorites")}
           onClick={() => {
             const name = promptFavoriteName(entry.sql);
             if (name === null) return;
@@ -122,8 +128,8 @@ function HistoryItem({ entry }: { entry: QueryHistoryEntry }) {
         </button>
         <button
           type="button"
-          title="Delete"
-          aria-label="Delete"
+          title={t("common.delete")}
+          aria-label={t("common.delete")}
           onClick={() => QueryHistoryService.remove(entry.id)}
         >
           <Codicon name="trash" />
@@ -134,6 +140,7 @@ function HistoryItem({ entry }: { entry: QueryHistoryEntry }) {
 }
 
 function FavoriteItem({ favorite }: { favorite: QueryFavorite }) {
+  const { t } = useI18n();
   return (
     <div className="query-history__item">
       <div className="query-history__item-main">
@@ -149,32 +156,32 @@ function FavoriteItem({ favorite }: { favorite: QueryFavorite }) {
       <div className="query-history__item-actions">
         <button
           type="button"
-          title="Run"
-          aria-label="Run"
+          title={t("common.run")}
+          aria-label={t("common.run")}
           onClick={() => void reexecuteSql(favorite.sql)}
         >
           <Codicon name="play" />
         </button>
         <button
           type="button"
-          title="Open in Editor"
-          aria-label="Open in Editor"
+          title={t("app.query.openInEditor")}
+          aria-label={t("app.query.openInEditor")}
           onClick={() => openSqlInEditor(favorite.sql, favorite.name)}
         >
           <Codicon name="file-code" />
         </button>
         <button
           type="button"
-          title="Insert into Editor"
-          aria-label="Insert into Editor"
+          title={t("app.query.insertIntoEditor")}
+          aria-label={t("app.query.insertIntoEditor")}
           onClick={() => insertSqlIntoActiveEditor(favorite.sql)}
         >
           <Codicon name="add" />
         </button>
         <button
           type="button"
-          title="Rename"
-          aria-label="Rename"
+          title={t("common.rename")}
+          aria-label={t("common.rename")}
           onClick={() => {
             const name = promptFavoriteName(favorite.sql, favorite.name);
             if (name === null) return;
@@ -185,8 +192,8 @@ function FavoriteItem({ favorite }: { favorite: QueryFavorite }) {
         </button>
         <button
           type="button"
-          title="Delete"
-          aria-label="Delete"
+          title={t("common.delete")}
+          aria-label={t("common.delete")}
           onClick={() => QueryFavoritesService.remove(favorite.id)}
         >
           <Codicon name="trash" />
@@ -197,6 +204,7 @@ function FavoriteItem({ favorite }: { favorite: QueryFavorite }) {
 }
 
 function QueryHistoryView() {
+  const { t } = useI18n();
   const history = useQueryHistory();
   const favorites = useQueryFavorites();
   const [tab, setTab] = useState<TabId>("history");
@@ -211,7 +219,7 @@ function QueryHistoryView() {
           className={`query-history__tab${tab === "history" ? " query-history__tab--active" : ""}`}
           onClick={() => setTab("history")}
         >
-          History
+          {t("app.query.historyTab")}
         </button>
         <button
           type="button"
@@ -220,19 +228,19 @@ function QueryHistoryView() {
           className={`query-history__tab${tab === "favorites" ? " query-history__tab--active" : ""}`}
           onClick={() => setTab("favorites")}
         >
-          Favorites
+          {t("app.query.favoritesTab")}
         </button>
         {tab === "history" ? (
           <button
             type="button"
             className="query-history__clear"
-            title="Clear History"
-            aria-label="Clear History"
+            title={t("app.query.clearHistory")}
+            aria-label={t("app.query.clearHistory")}
             disabled={history.length === 0}
             onClick={() => {
               if (
                 history.length > 0 &&
-                window.confirm("Clear all query history?")
+                window.confirm(t("app.query.clearHistoryConfirm"))
               ) {
                 QueryHistoryService.clear();
               }
@@ -247,14 +255,14 @@ function QueryHistoryView() {
         {tab === "history" ? (
           history.length === 0 ? (
             <div className="query-history__empty">
-              Run a SQL statement to build history.
+              {t("app.query.historyEmpty")}
             </div>
           ) : (
             history.map((entry) => <HistoryItem key={entry.id} entry={entry} />)
           )
         ) : favorites.length === 0 ? (
           <div className="query-history__empty">
-            Star a history item or save SQL as a favorite.
+            {t("app.query.favoritesEmpty")}
           </div>
         ) : (
           favorites.map((favorite) => (

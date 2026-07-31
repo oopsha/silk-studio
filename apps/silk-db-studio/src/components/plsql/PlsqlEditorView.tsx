@@ -5,6 +5,7 @@ import type { editor } from "monaco-editor";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import {
@@ -37,6 +38,7 @@ type LoadState =
   | { status: "error"; message: string };
 
 function PlsqlEditorView() {
+  const { t } = useI18n();
   const activeTab = useActiveEditor();
   const ref = parsePlsqlEditorUri(activeTab?.uri);
   const configuration = useConfiguration();
@@ -54,7 +56,7 @@ function PlsqlEditorView() {
 
   useEffect(() => {
     if (!ref || !activeTab) {
-      setLoadState({ status: "error", message: "Invalid PL/SQL editor tab." });
+      setLoadState({ status: "error", message: t("app.plsql.invalidTab") });
       return;
     }
 
@@ -80,8 +82,8 @@ function PlsqlEditorView() {
       })
       .catch((error) => {
         if (cancelled) return;
-        const message = formatErrorMessage(error, "Failed to load source.");
-        const fallback = `-- Failed to load source\n-- ${message}\n`;
+        const message = formatErrorMessage(error, t("app.plsql.loadFailed"));
+        const fallback = `-- ${t("app.plsql.loadFailed")}\n-- ${message}\n`;
         EditorService.setTabContentBaseline(activeTab.id, fallback);
         setLoadState({ status: "error", message });
       });
@@ -96,6 +98,7 @@ function PlsqlEditorView() {
     ref?.kind,
     ref?.packageBody,
     activeTab?.id,
+    t,
   ]);
 
   useEffect(() => {
@@ -129,10 +132,10 @@ function PlsqlEditorView() {
 
   const banner =
     readOnly
-      ? "Read-only — PL/SQL source (editing disabled)"
+      ? t("app.plsql.sourceReadOnly")
       : loadState.status === "loading"
-        ? "Loading PL/SQL source…"
-        : "PL/SQL source";
+        ? t("app.plsql.sourceLoading")
+        : t("app.plsql.sourceLabel");
 
   const saveBlockedReason = getPlsqlSaveBlockedReason(activeTab?.id);
   const canSave = !readOnly && saveBlockedReason === null;
@@ -175,36 +178,34 @@ function PlsqlEditorView() {
             type="button"
             className="plsql-editor-view__action"
             disabled={!canSnapshot}
-            title={snapshotBlockedReason ?? "Local snapshot history"}
+            title={snapshotBlockedReason ?? t("app.plsql.snapshotHistory")}
             onClick={() => {
               void CommandService.executeCommand("silk.plsql.snapshot.history");
             }}
           >
-            History
+            {t("app.plsql.actionHistory")}
           </button>
           <button
             type="button"
             className="plsql-editor-view__action"
             disabled={!canSnapshot}
-            title={snapshotBlockedReason ?? "Take a local snapshot"}
+            title={snapshotBlockedReason ?? t("app.plsql.takeSnapshot")}
             onClick={() => {
               void CommandService.executeCommand("silk.plsql.snapshot.take");
             }}
           >
-            Snapshot
+            {t("app.plsql.actionSnapshot")}
           </button>
           <button
             type="button"
             className="plsql-editor-view__action"
             disabled={!canSnapshot}
-            title={
-              snapshotBlockedReason ?? "Reload source from database"
-            }
+            title={snapshotBlockedReason ?? t("app.plsql.reloadFromDb")}
             onClick={() => {
               void CommandService.executeCommand("silk.plsql.reloadFromDb");
             }}
           >
-            Reload
+            {t("app.plsql.actionReload")}
           </button>
           <button
             type="button"
@@ -212,14 +213,14 @@ function PlsqlEditorView() {
             disabled={!canCompile}
             title={
               readOnly
-                ? "Read-only mode is enabled"
-                : compileBlockedReason ?? "Compile (Ctrl+Shift+F9)"
+                ? t("app.plsql.readOnlyEnabled")
+                : compileBlockedReason ?? t("app.plsql.compileTitle")
             }
             onClick={() => {
               void CommandService.executeCommand("silk.plsql.compile");
             }}
           >
-            Compile
+            {t("app.plsql.actionCompile")}
           </button>
           <button
             type="button"
@@ -227,14 +228,14 @@ function PlsqlEditorView() {
             disabled={!canSave}
             title={
               readOnly
-                ? "Read-only mode is enabled"
-                : saveBlockedReason ?? "Save to database (Ctrl+S)"
+                ? t("app.plsql.readOnlyEnabled")
+                : saveBlockedReason ?? t("app.plsql.saveTitle")
             }
             onClick={() => {
               void CommandService.executeCommand("silk.file.save");
             }}
           >
-            Save
+            {t("app.plsql.actionSave")}
           </button>
         </div>
       </div>

@@ -4,6 +4,7 @@ import {
   type QueryResultPayload,
 } from "@silk-studio/db-protocol";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
+import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { formatErrorMessage, reportError } from "../formatErrorMessage";
 import { ConnectionService } from "../connection/connectionService";
 import { resolveActiveDriverId } from "../sql/sqlDialect";
@@ -49,7 +50,7 @@ export type QueryExecuteOptions = {
   /** Override SQL stored in history (e.g. original statement for Explain). */
   historySql?: string;
   skipHistory?: boolean;
-  /** Explorer Open Data — table results may be editable; views are read-only. */
+  /** Explorer Open Data ??table results may be editable; views are read-only. */
   relationKind?: "table" | "view";
   /** Override the result tab label (e.g. schema.object from the explorer). */
   tabTitle?: string;
@@ -59,12 +60,16 @@ type QueryExecutionListener = () => void;
 
 const INITIAL_STATE: QueryExecutionState = {
   status: "idle",
-  output: "Run a SQL statement to see results.",
+  output: "",
   result: null,
   lastSql: "",
   tabs: [],
   activeTabId: null,
 };
+
+function idleOutput(): string {
+  return tKey("app.query.idleOutput");
+}
 
 class QueryExecutionServiceImpl {
   private state: QueryExecutionState = INITIAL_STATE;
@@ -77,6 +82,9 @@ class QueryExecutionServiceImpl {
   private runTabOrdinal = 0;
 
   getState(): QueryExecutionState {
+    if (this.state.status === "idle" && this.state.tabs.length === 0) {
+      return { ...this.state, output: idleOutput() };
+    }
     return this.state;
   }
 
@@ -105,7 +113,7 @@ class QueryExecutionServiceImpl {
     if (tabs.length === 0) {
       this.setState({
         status: "idle",
-        output: "Run a SQL statement to see results.",
+        output: idleOutput(),
         result: null,
         lastSql: this.state.lastSql,
         tabs: [],
@@ -140,7 +148,7 @@ class QueryExecutionServiceImpl {
       output:
         this.state.status === "running"
           ? this.state.output
-          : "Run a SQL statement to see results.",
+          : idleOutput(),
       result: null,
       lastSql: this.state.lastSql,
       tabs: [],
@@ -215,7 +223,7 @@ class QueryExecutionServiceImpl {
     if (!statement) {
       this.patchRunStatus({
         status: "error",
-        output: "Query is empty. Write SQL in the editor and run again.",
+        output: tKey("app.query.emptyQuery"),
         lastSql: sql,
       });
       return;
@@ -229,7 +237,7 @@ class QueryExecutionServiceImpl {
 
   /**
    * Run one or more statements sequentially. Each statement becomes its own tab
-   * for this run only — a new execute replaces all prior result tabs.
+   * for this run only ??a new execute replaces all prior result tabs.
    */
   async executeStatements(
     statements: Array<{ sql: string; range?: SqlSourceRange }>,
@@ -245,7 +253,7 @@ class QueryExecutionServiceImpl {
     if (prepared.length === 0) {
       this.patchRunStatus({
         status: "error",
-        output: "Query is empty. Write SQL in the editor and run again.",
+        output: tKey("app.query.emptyQuery"),
       });
       return;
     }
@@ -257,7 +265,11 @@ class QueryExecutionServiceImpl {
     const total = prepared.length;
     this.beginRun(
       prepared[0].sql,
-      total === 1 ? "Executing query..." : `Executing 1/${total}...`,
+      total === 1
+        ? tKey("app.query.executing")
+        : tKey("app.query.executingProgress")
+            .replace("{current}", "1")
+            .replace("{total}", String(total)),
     );
 
     try {
@@ -347,7 +359,7 @@ class QueryExecutionServiceImpl {
           const message = reportError(
             error,
             "query.execute",
-            "Failed to execute query.",
+            tKey("app.query.executeFailed"),
           );
           this.commitTab({
             sql: item.sql,
@@ -383,7 +395,7 @@ class QueryExecutionServiceImpl {
     if (!statement) {
       this.patchRunStatus({
         status: "error",
-        output: "Query is empty. Write SQL in the editor and explain again.",
+        output: tKey("app.query.emptyExplain"),
         lastSql: sql,
       });
       return;
@@ -394,7 +406,7 @@ class QueryExecutionServiceImpl {
     if (plan.steps.length === 0) {
       this.patchRunStatus({
         status: "error",
-        output: "Nothing to explain.",
+        output: tKey("app.query.nothingToExplain"),
         lastSql: statement,
       });
       return;
@@ -415,7 +427,7 @@ class QueryExecutionServiceImpl {
       plan.steps.find((step) => step.kind === "teardown")?.sql ?? null;
     let captured: QueryResultPayload | null = null;
     let capturedMessage = "";
-    /** SQL Server SHOWPLAN was turned on — must restore even on failure. */
+    /** SQL Server SHOWPLAN was turned on ??must restore even on failure. */
     let showplanArmed = false;
 
     try {
@@ -542,7 +554,7 @@ class QueryExecutionServiceImpl {
     this.cancelRequested = true;
     this.patchRunStatus({
       status: "running",
-      output: "Cancelling query...",
+      output: tKey("app.query.cancelling"),
     });
 
     if (!isTauri()) {
@@ -550,7 +562,7 @@ class QueryExecutionServiceImpl {
       this.setState({
         ...this.state,
         status: "cancelled",
-        output: "Query cancelled.",
+        output: tKey("app.query.cancelled"),
       });
       return;
     }
@@ -558,7 +570,7 @@ class QueryExecutionServiceImpl {
     try {
       await invoke("query_cancel");
     } catch (error) {
-      // Cancel RPC failed — still mark cancelled when the execute promise settles.
+      // Cancel RPC failed ??still mark cancelled when the execute promise settles.
       console.warn("[silk.query.cancel] bridge cancel failed", error);
     }
   }
@@ -646,7 +658,7 @@ class QueryExecutionServiceImpl {
 
     if (!ConnectionService.isConnected()) {
       throw new Error(
-        "No active database connection. Connect a profile in the Connections explorer.",
+        tKey("app.query.noConnection"),
       );
     }
   }
@@ -688,7 +700,7 @@ class QueryExecutionServiceImpl {
     const message = reportError(
       error,
       "query.execute",
-      "Failed to execute query.",
+      tKey("app.query.executeFailed"),
     );
     this.setState({
       ...this.state,
@@ -714,14 +726,14 @@ class QueryExecutionServiceImpl {
     this.setState({
       ...this.state,
       status: "cancelled",
-      output: "Query cancelled.",
+      output: tKey("app.query.cancelled"),
       lastSql: statement,
     });
     this.recordHistory(
       options?.historySql ?? statement,
       "cancelled",
       startedAt,
-      "Query cancelled.",
+      tKey("app.query.cancelled"),
       options,
     );
   }

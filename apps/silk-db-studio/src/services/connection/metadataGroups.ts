@@ -1,4 +1,6 @@
 import type { MetadataGroupId } from "@silk-studio/db-protocol";
+import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
+import type { MessageKey } from "@silk-studio/workbench/platform/i18n/translate.ts";
 
 /**
  * Display metadata for an Explorer object group. The jdbc-agent only decides *which* group ids
@@ -11,12 +13,15 @@ export type MetadataGroupDefinition = {
   icon: string;
 };
 
-const METADATA_GROUP_DEFINITIONS: Record<MetadataGroupId, MetadataGroupDefinition> = {
-  tables: { id: "tables", title: "Tables", icon: "table" },
-  views: { id: "views", title: "Views", icon: "symbol-interface" },
-  packages: { id: "packages", title: "Packages", icon: "package" },
-  procedures: { id: "procedures", title: "Procedures", icon: "symbol-method" },
-  functions: { id: "functions", title: "Functions", icon: "symbol-function" },
+const METADATA_GROUP_KEYS: Record<
+  MetadataGroupId,
+  { titleKey: MessageKey; icon: string }
+> = {
+  tables: { titleKey: "app.groups.tables", icon: "table" },
+  views: { titleKey: "app.groups.views", icon: "symbol-interface" },
+  packages: { titleKey: "app.groups.packages", icon: "package" },
+  procedures: { titleKey: "app.groups.procedures", icon: "symbol-method" },
+  functions: { titleKey: "app.groups.functions", icon: "symbol-function" },
 };
 
 /** Controls the order groups render in the Explorer, independent of jdbc-agent response order. */
@@ -31,13 +36,15 @@ export const METADATA_GROUP_ORDER: MetadataGroupId[] = [
 export function getMetadataGroupDefinition(
   id: MetadataGroupId,
 ): MetadataGroupDefinition {
-  return (
-    METADATA_GROUP_DEFINITIONS[id] ?? {
-      id,
-      title: id,
-      icon: "symbol-misc",
-    }
-  );
+  const def = METADATA_GROUP_KEYS[id];
+  if (!def) {
+    return { id, title: id, icon: "symbol-misc" };
+  }
+  return {
+    id,
+    title: I18nService.t(def.titleKey),
+    icon: def.icon,
+  };
 }
 
 /** Sorts groups per `METADATA_GROUP_ORDER`; unknown ids sort last, in their original order. */

@@ -1,4 +1,5 @@
 import type { MenuId } from "./menuId";
+import { localizeUiLabel } from "../i18n/localizeUiLabel";
 
 export type LocalizedString =
   | string
@@ -46,7 +47,8 @@ export function isSubmenuItem(item: IMenuItem | ISubmenuItem): item is ISubmenuI
 }
 
 export function getLocalizedValue(title: string | ICommandActionTitle): string {
-  return typeof title === "string" ? title : title.value;
+  const raw = typeof title === "string" ? title : title.value;
+  return localizeUiLabel(raw);
 }
 
 export function getMnemonicTitle(
@@ -78,7 +80,13 @@ export function resolveMenuLabel(title: string | ICommandActionTitle): {
 } {
   const mnemonicTitle = getMnemonicTitle(title);
   if (mnemonicTitle) {
-    return parseMnemonic(mnemonicTitle);
+    const parsed = parseMnemonic(mnemonicTitle);
+    const localized = localizeUiLabel(parsed.label);
+    if (localized === parsed.label) {
+      return parsed;
+    }
+    // Non-English labels drop Latin mnemonics (still clickable by mouse).
+    return { label: localized };
   }
   return { label: getLocalizedValue(title) };
 }

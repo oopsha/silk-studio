@@ -4,6 +4,7 @@ import type { Monaco } from "@monaco-editor/react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import {
   defineWorkbenchMonacoThemes,
   monacoThemeForColorTheme,
@@ -17,6 +18,7 @@ import "./AiSqlDiffDialog.css";
 type ReviewView = "diff" | "sql";
 
 function AiSqlDiffDialog() {
+  const { t } = useI18n();
   const [request, setRequest] = useState(() =>
     AiSqlDiffDialogService.getRequest(),
   );
@@ -63,11 +65,11 @@ function AiSqlDiffDialog() {
         aria-labelledby="ai-sql-diff-dialog-title"
       >
         <header className="explorer-mutation-dialog__header">
-          <h2 id="ai-sql-diff-dialog-title">Review proposed SQL</h2>
+          <h2 id="ai-sql-diff-dialog-title">{t("app.ai.reviewDialogTitle")}</h2>
           <button
             type="button"
             className="explorer-mutation-dialog__close"
-            aria-label="Close"
+            aria-label={t("common.close")}
             onClick={close}
           >
             <Codicon name="close" />
@@ -76,8 +78,7 @@ function AiSqlDiffDialog() {
 
         <div className="explorer-mutation-dialog__body plsql-snapshot-dialog__body">
           <p className="explorer-mutation-dialog__summary">
-            Confirm before changing the editor. Nothing is executed against the
-            database.
+            {t("app.ai.reviewDialogSummary")}
           </p>
 
           <div className="ai-sql-diff-dialog__tabs" role="tablist">
@@ -90,7 +91,7 @@ function AiSqlDiffDialog() {
               }`}
               onClick={() => setView("diff")}
             >
-              Diff
+              {t("app.ai.diffTab")}
             </button>
             <button
               type="button"
@@ -101,14 +102,14 @@ function AiSqlDiffDialog() {
               }`}
               onClick={() => setView("sql")}
             >
-              SQL
+              {t("app.ai.sqlTab")}
             </button>
           </div>
 
           {view === "diff" ? (
             <>
               <p className="explorer-mutation-dialog__hint">
-                Left: {request.originalLabel} · Right: proposed SQL
+                {t("app.ai.diffHint").replace("{label}", request.originalLabel)}
               </p>
               <div className="plsql-snapshot-dialog__diff">
                 <DiffEditor
@@ -133,7 +134,7 @@ function AiSqlDiffDialog() {
           ) : (
             <>
               <p className="explorer-mutation-dialog__hint">
-                Proposed SQL only. Editor is unchanged until you confirm.
+                {t("app.ai.sqlOnlyHint")}
               </p>
               <pre className="explorer-mutation-dialog__sql">{request.sql}</pre>
             </>
@@ -154,21 +155,21 @@ function AiSqlDiffDialog() {
             className="explorer-mutation-dialog__button"
             onClick={close}
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
             className="explorer-mutation-dialog__button"
             onClick={() => AiSqlDiffDialogService.close("newTab")}
           >
-            Open in New Tab
+            {t("app.ai.openInNewTab")}
           </button>
           <button
             type="button"
             className="explorer-mutation-dialog__button explorer-mutation-dialog__button--primary"
             onClick={() => AiSqlDiffDialogService.close("insert")}
           >
-            Insert into Editor
+            {t("app.ai.insertIntoEditor")}
           </button>
         </footer>
       </div>

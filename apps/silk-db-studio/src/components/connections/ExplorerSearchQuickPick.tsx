@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { ConnectionService } from "../../services/connection/connectionService";
 import { ConnectionTreeService } from "../../services/connection/connectionTreeService";
 import {
@@ -31,6 +32,7 @@ import "./ExplorerSearchQuickPick.css";
 const QUICK_PICK_WIDTH = 520;
 
 function ExplorerSearchQuickPick() {
+  const { t } = useI18n();
   const [open, setOpen] = useState(() => ExplorerSearchQuickPickService.isOpen());
   const [filter, setFilter] = useState("");
   const [focusedIndex, setFocusedIndex] = useState(0);
@@ -136,7 +138,7 @@ function ExplorerSearchQuickPick() {
           );
           setStatusMessage(`Loaded ${pick.schemaName}. Continue typing to filter.`);
         } catch (error) {
-          setStatusMessage(formatErrorMessage(error, "Failed to load schema."));
+          setStatusMessage(formatErrorMessage(error, t("app.explorer.searchLoadFailed")));
         } finally {
           setBusySchema(null);
           inputRef.current?.focus();
@@ -208,21 +210,21 @@ function ExplorerSearchQuickPick() {
 
   const connected = Boolean(profileId) && ConnectionService.isConnected();
   const emptyHint = !connected
-    ? "Connect a database profile first."
+    ? t("app.explorer.searchNeedConnect")
     : tree.status === "loading"
-      ? "Loading schemas…"
+      ? t("app.explorer.loadingSchemas")
       : explorerSchemas.length === 0
-        ? "No schemas loaded."
+        ? t("app.explorer.searchNoSchemas")
         : filter.trim()
-          ? "No matching objects. Type a schema name to load it."
-          : "Type to filter loaded objects, or a schema name to load.";
+          ? t("app.explorer.searchNoMatch")
+          : t("app.explorer.searchHint");
 
   return createPortal(
     <div
       ref={rootRef}
       className="quick-input-widget explorer-search-quick-pick"
       role="dialog"
-      aria-label="Search Database Objects"
+      aria-label={t("app.explorer.searchTitle")}
       style={
         position
           ? {
@@ -243,8 +245,8 @@ function ExplorerSearchQuickPick() {
             value={filter}
             spellCheck={false}
             autoComplete="off"
-            placeholder="Search tables, views, procedures…"
-            aria-label="Search database objects"
+            placeholder={t("app.explorer.searchPlaceholder")}
+            aria-label={t("app.explorer.searchAria")}
             onChange={(event) => setFilter(event.target.value)}
             onKeyDown={handleInputKeyDown}
           />

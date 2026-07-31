@@ -1,5 +1,6 @@
 import { ConfigurationService } from "../../platform/configuration/configurationService";
 import type { AiProviderId } from "../../platform/configuration/configurationDefaults";
+import { I18nService } from "../../platform/i18n/i18nService";
 import { AiAuditLogService } from "./aiAuditLogService";
 import { AiSecretService } from "./aiSecretService";
 import {
@@ -42,7 +43,7 @@ export function getAiReadyState(): AiReadyState {
     return {
       ready: false,
       reason: "disabled",
-      message: "AI assistant is disabled. Enable it in Settings.",
+      message: I18nService.t("app.ai.disabled"),
     };
   }
 
@@ -52,7 +53,7 @@ export function getAiReadyState(): AiReadyState {
     return {
       ready: false,
       reason: "missing_model",
-      message: "Choose a model in Settings to use AI Chat.",
+      message: I18nService.t("app.ai.chooseModel"),
     };
   }
 
@@ -62,7 +63,7 @@ export function getAiReadyState(): AiReadyState {
       return {
         ready: false,
         reason: "missing_base_url",
-        message: "Set a Custom base URL in Settings.",
+        message: I18nService.t("app.ai.setCustomUrl"),
       };
     }
   }
@@ -71,7 +72,7 @@ export function getAiReadyState(): AiReadyState {
     return {
       ready: false,
       reason: "missing_key",
-      message: "Configure an API key in Settings to use AI Chat.",
+      message: I18nService.t("app.ai.configureKey"),
     };
   }
 

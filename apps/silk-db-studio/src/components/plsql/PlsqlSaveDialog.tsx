@@ -4,6 +4,7 @@ import type { Monaco } from "@monaco-editor/react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import {
   defineWorkbenchMonacoThemes,
   monacoThemeForColorTheme,
@@ -21,6 +22,7 @@ import "./PlsqlSaveDialog.css";
 type SaveView = "diff" | "sql";
 
 function PlsqlSaveDialog() {
+  const { t } = useI18n();
   const [request, setRequest] = useState(() =>
     PlsqlSaveDialogService.getRequest(),
   );
@@ -57,7 +59,7 @@ function PlsqlSaveDialog() {
       PlsqlSaveDialogService.close(true);
     } catch (error) {
       setErrorMessage(
-        formatPlsqlSaveError(error, "Failed to save PL/SQL object."),
+        formatPlsqlSaveError(error, t("app.plsql.saveFailed")),
       );
       setExecuting(false);
     }
@@ -87,11 +89,11 @@ function PlsqlSaveDialog() {
         aria-labelledby="plsql-save-dialog-title"
       >
         <header className="explorer-mutation-dialog__header">
-          <h2 id="plsql-save-dialog-title">Save PL/SQL to Database</h2>
+          <h2 id="plsql-save-dialog-title">{t("app.plsql.saveDialogTitle")}</h2>
           <button
             type="button"
             className="explorer-mutation-dialog__close"
-            aria-label="Close"
+            aria-label={t("common.close")}
             disabled={executing}
             onClick={close}
           >
@@ -101,8 +103,10 @@ function PlsqlSaveDialog() {
 
         <div className="explorer-mutation-dialog__body plsql-snapshot-dialog__body">
           <p className="explorer-mutation-dialog__summary">
-            Apply <strong>{request.objectLabel}</strong> with{" "}
-            <strong>CREATE OR REPLACE</strong>?
+            {t("app.plsql.saveDialogSummary").replace(
+              "{label}",
+              request.objectLabel,
+            )}
           </p>
 
           <div className="plsql-save-dialog__tabs" role="tablist">
@@ -116,7 +120,7 @@ function PlsqlSaveDialog() {
               disabled={executing}
               onClick={() => setView("diff")}
             >
-              Diff vs Database
+              {t("app.plsql.diffVsDatabase")}
             </button>
             <button
               type="button"
@@ -128,7 +132,7 @@ function PlsqlSaveDialog() {
               disabled={executing}
               onClick={() => setView("sql")}
             >
-              SQL
+              {t("app.plsql.sqlTab")}
             </button>
           </div>
 
@@ -207,7 +211,7 @@ function PlsqlSaveDialog() {
             disabled={executing}
             onClick={close}
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -215,7 +219,9 @@ function PlsqlSaveDialog() {
             disabled={executing}
             onClick={() => void handleConfirm()}
           >
-            {executing ? "Saving…" : "Execute CREATE OR REPLACE"}
+            {executing
+              ? t("app.plsql.saving")
+              : t("app.plsql.executeCreateOrReplace")}
           </button>
         </footer>
       </div>

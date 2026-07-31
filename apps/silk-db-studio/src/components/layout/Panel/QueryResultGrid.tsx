@@ -12,6 +12,7 @@ import {
 import { AgGridReact } from "ag-grid-react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import type { ColorThemeId } from "@silk-studio/workbench/platform/configuration/configurationDefaults.ts";
 import {
   toQueryResultRows,
@@ -71,7 +72,13 @@ type QueryResultGridProps = {
   relationKind?: "table" | "view";
 };
 
-function QueryResultGrid({ tabId, sql, result, relationKind }: QueryResultGridProps) {
+function QueryResultGrid({
+  tabId,
+  sql,
+  result,
+  relationKind,
+}: QueryResultGridProps) {
+  const { t } = useI18n();
   const configuration = useConfiguration();
   const nullDisplay = configuration["queryResult.nullDisplay"];
   const filterEnabled = configuration["queryResult.filterEnabled"];
@@ -277,51 +284,51 @@ function QueryResultGrid({ tabId, sql, result, relationKind }: QueryResultGridPr
   const handleCopySelection = async () => {
     try {
       const ok = await QueryResultGridService.copy("selection");
-      flashMessage(ok ? "Copied selection" : "Nothing to copy");
+      flashMessage(ok ? t("app.query.copiedSelection") : t("app.query.nothingToCopy"));
     } catch (error) {
       console.warn("[query-result] copy selection failed", error);
-      flashMessage("Copy failed");
+      flashMessage(t("app.query.copyFailed"));
     }
   };
 
   const handleCopyRows = async () => {
     try {
       const ok = await QueryResultGridService.copy("rows");
-      flashMessage(ok ? "Copied rows" : "Select a row first");
+      flashMessage(ok ? t("app.query.copiedRows") : t("app.query.selectRowFirst"));
     } catch (error) {
       console.warn("[query-result] copy rows failed", error);
-      flashMessage("Copy failed");
+      flashMessage(t("app.query.copyFailed"));
     }
   };
 
   const handleCopyAll = async () => {
     try {
       const ok = await QueryResultGridService.copy("all");
-      flashMessage(ok ? "Copied filtered rows" : "Nothing to copy");
+      flashMessage(ok ? t("app.query.copiedFiltered") : t("app.query.nothingToCopy"));
     } catch (error) {
       console.warn("[query-result] copy all failed", error);
-      flashMessage("Copy failed");
+      flashMessage(t("app.query.copyFailed"));
     }
   };
 
   const handleExportCsv = async () => {
     try {
       const ok = await QueryResultGridService.exportCsv();
-      flashMessage(ok ? "CSV exported (filtered)" : "Export cancelled");
+      flashMessage(ok ? t("app.query.csvExported") : t("app.query.exportCancelled"));
     } catch (error) {
       console.warn("[query-result] csv export failed", error);
-      flashMessage("Export failed");
+      flashMessage(t("app.query.exportFailed"));
     }
   };
 
   const handleClearFilters = () => {
     QueryResultGridService.clearFiltersAndSort();
-    flashMessage("Filters and sort cleared");
+    flashMessage(t("app.query.filtersCleared"));
   };
 
   const handleResetColumnLayout = () => {
     const ok = QueryResultGridService.resetColumnLayout();
-    flashMessage(ok ? "Column layout reset" : "Nothing to reset");
+    flashMessage(ok ? t("app.query.layoutReset") : t("app.query.nothingToReset"));
   };
 
   const persistLayout = () => {
@@ -355,7 +362,7 @@ function QueryResultGrid({ tabId, sql, result, relationKind }: QueryResultGridPr
       setPreview(nextPreview);
     } catch (error) {
       console.warn("[query-result] update preview failed", error);
-      flashMessage("Failed to build UPDATE preview");
+      flashMessage(t("app.query.updatePreviewFailed"));
     } finally {
       setOpeningPreview(false);
     }
@@ -392,40 +399,61 @@ function QueryResultGrid({ tabId, sql, result, relationKind }: QueryResultGridPr
       <div className="query-result-grid__toolbar">
         <div
           className="query-result-grid__status"
-          title={statusTitle(snapshot, truncated, maxRows, saveBlockedReason)}
+          title={statusTitle(
+            snapshot,
+            truncated,
+            maxRows,
+            saveBlockedReason,
+            t,
+          )}
         >
-          <span>{formatRowStatus(snapshot)}</span>
+          <span>{formatRowStatus(snapshot, t)}</span>
           {dirtyCount > 0 ? (
             <span
               className="query-result-grid__badge query-result-grid__badge--dirty"
-              title={`${dirtyCount} edited cell${dirtyCount === 1 ? "" : "s"} not saved`}
+              title={t("app.query.dirtyCellsTitle").replace(
+                "{n}",
+                String(dirtyCount),
+              )}
             >
-              {dirtyCount} unsaved
+              {t("app.query.badgeUnsaved").replace("{n}", String(dirtyCount))}
             </span>
           ) : null}
           {truncated ? (
             <span
               className="query-result-grid__badge query-result-grid__badge--warn"
-              title={`Result limited to ${maxRows.toLocaleString()} rows (Settings → Query Result → Max Rows). More rows may exist.`}
+              title={t("app.query.truncatedTitle").replace(
+                "{n}",
+                maxRows.toLocaleString(),
+              )}
             >
-              Truncated at {maxRows.toLocaleString()}
+              {t("app.query.badgeTruncated").replace(
+                "{n}",
+                maxRows.toLocaleString(),
+              )}
             </span>
           ) : null}
           {snapshot.filterActive ? (
-            <span className="query-result-grid__badge">Filtered</span>
+            <span className="query-result-grid__badge">
+              {t("app.query.badgeFiltered")}
+            </span>
           ) : null}
           {snapshot.sortActive ? (
-            <span className="query-result-grid__badge">Sorted</span>
+            <span className="query-result-grid__badge">
+              {t("app.query.badgeSorted")}
+            </span>
           ) : null}
           {snapshot.hasCustomLayout ? (
-            <span className="query-result-grid__badge">Layout saved</span>
+            <span className="query-result-grid__badge">
+              {t("app.query.badgeLayout")}
+            </span>
           ) : null}
           {saveBlockedReason ? (
             <span
               className="query-result-grid__badge query-result-grid__badge--blocked"
               title={saveBlockedReason}
             >
-              Save blocked
+              {t("app.query.badgeSaveBlocked")}
             </span>
           ) : null}
           {actionMessage ? (
@@ -438,9 +466,9 @@ function QueryResultGrid({ tabId, sql, result, relationKind }: QueryResultGridPr
             className="query-result-grid__action query-result-grid__action--save"
             title={
               saveHint ??
-              "Preview and execute UPDATE statements for edited cells"
+              t("app.query.saveChangesTitle")
             }
-            aria-label="Save changes"
+            aria-label={t("app.query.saveChanges")}
             disabled={!canAttemptSave || openingPreview}
             onClick={() => void handleOpenSavePreview()}
           >
@@ -449,8 +477,8 @@ function QueryResultGrid({ tabId, sql, result, relationKind }: QueryResultGridPr
           <button
             type="button"
             className="query-result-grid__action"
-            title="Copy selection (cells, or rows)"
-            aria-label="Copy selection"
+            title={t("app.query.copySelectionTitle")}
+            aria-label={t("app.query.copySelection")}
             onClick={() => void handleCopySelection()}
           >
             <Codicon name="copy" />
@@ -458,8 +486,8 @@ function QueryResultGrid({ tabId, sql, result, relationKind }: QueryResultGridPr
           <button
             type="button"
             className="query-result-grid__action"
-            title="Copy selected rows"
-            aria-label="Copy selected rows"
+            title={t("app.query.copyRowsTitle")}
+            aria-label={t("app.query.copySelectedRows")}
             onClick={() => void handleCopyRows()}
           >
             <Codicon name="list-selection" />
@@ -467,8 +495,8 @@ function QueryResultGrid({ tabId, sql, result, relationKind }: QueryResultGridPr
           <button
             type="button"
             className="query-result-grid__action"
-            title="Copy all filtered rows (TSV)"
-            aria-label="Copy all filtered rows"
+            title={t("app.query.copyFilteredTitle")}
+            aria-label={t("app.query.copyAllFiltered")}
             onClick={() => void handleCopyAll()}
           >
             <Codicon name="clippy" />
@@ -476,8 +504,8 @@ function QueryResultGrid({ tabId, sql, result, relationKind }: QueryResultGridPr
           <button
             type="button"
             className="query-result-grid__action"
-            title="Export CSV (filtered rows)"
-            aria-label="Export CSV"
+            title={t("app.query.exportCsvTitle")}
+            aria-label={t("app.query.exportCsv")}
             onClick={() => void handleExportCsv()}
           >
             <Codicon name="export" />
@@ -485,8 +513,8 @@ function QueryResultGrid({ tabId, sql, result, relationKind }: QueryResultGridPr
           <button
             type="button"
             className="query-result-grid__action"
-            title="Clear filters and sort"
-            aria-label="Clear filters and sort"
+            title={t("app.query.clearFiltersTitle")}
+            aria-label={t("app.query.clearFiltersTitle")}
             disabled={!snapshot.filterActive && !snapshot.sortActive}
             onClick={handleClearFilters}
           >
@@ -495,8 +523,8 @@ function QueryResultGrid({ tabId, sql, result, relationKind }: QueryResultGridPr
           <button
             type="button"
             className="query-result-grid__action"
-            title="Reset column layout (width, order, visibility)"
-            aria-label="Reset column layout"
+            title={t("app.query.resetLayoutTitle")}
+            aria-label={t("app.query.resetLayout")}
             disabled={!snapshot.hasCustomLayout}
             onClick={handleResetColumnLayout}
           >
@@ -558,15 +586,29 @@ function QueryResultGrid({ tabId, sql, result, relationKind }: QueryResultGridPr
   );
 }
 
-function formatRowStatus(snapshot: {
-  totalRows: number;
-  displayedRows: number;
-  filterActive: boolean;
-}): string {
+function formatRowStatus(
+  snapshot: {
+    totalRows: number;
+    displayedRows: number;
+    filterActive: boolean;
+  },
+  t: (key:
+    | "app.query.rowsOf"
+    | "app.query.rowsCount"
+    | "app.query.rowCountOne") => string,
+): string {
   if (snapshot.filterActive && snapshot.displayedRows !== snapshot.totalRows) {
-    return `${snapshot.displayedRows.toLocaleString()} of ${snapshot.totalRows.toLocaleString()} rows`;
+    return t("app.query.rowsOf")
+      .replace("{shown}", snapshot.displayedRows.toLocaleString())
+      .replace("{total}", snapshot.totalRows.toLocaleString());
   }
-  return `${snapshot.displayedRows.toLocaleString()} row${snapshot.displayedRows === 1 ? "" : "s"}`;
+  if (snapshot.displayedRows === 1) {
+    return t("app.query.rowCountOne");
+  }
+  return t("app.query.rowsCount").replace(
+    "{n}",
+    snapshot.displayedRows.toLocaleString(),
+  );
 }
 
 function statusTitle(
@@ -580,22 +622,33 @@ function statusTitle(
   truncated: boolean,
   maxRows: number,
   saveBlockedReason: string | null,
+  t: (key:
+    | "app.query.statusDisplayed"
+    | "app.query.statusTotal"
+    | "app.query.statusTruncated"
+    | "app.query.statusFilterActive"
+    | "app.query.statusSortActive"
+    | "app.query.statusLayoutSaved"
+    | "app.query.statusHintFilter"
+    | "app.query.statusHintEdit") => string,
 ): string {
   const parts = [
-    `${snapshot.displayedRows} displayed`,
-    `${snapshot.totalRows} total`,
+    t("app.query.statusDisplayed").replace("{n}", String(snapshot.displayedRows)),
+    t("app.query.statusTotal").replace("{n}", String(snapshot.totalRows)),
   ];
   if (truncated) {
-    parts.push(`truncated at maxRows=${maxRows}`);
+    parts.push(
+      t("app.query.statusTruncated").replace("{n}", String(maxRows)),
+    );
   }
   if (saveBlockedReason) {
     parts.push(saveBlockedReason);
   }
-  if (snapshot.filterActive) parts.push("filter active");
-  if (snapshot.sortActive) parts.push("sort active");
-  if (snapshot.hasCustomLayout) parts.push("column layout saved");
-  parts.push("Copy/CSV use the filtered & sorted view");
-  parts.push("Edited cells require preview + confirm before UPDATE");
+  if (snapshot.filterActive) parts.push(t("app.query.statusFilterActive"));
+  if (snapshot.sortActive) parts.push(t("app.query.statusSortActive"));
+  if (snapshot.hasCustomLayout) parts.push(t("app.query.statusLayoutSaved"));
+  parts.push(t("app.query.statusHintFilter"));
+  parts.push(t("app.query.statusHintEdit"));
   return parts.join(" · ");
 }
 

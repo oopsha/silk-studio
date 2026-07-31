@@ -1,3 +1,5 @@
+import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
+
 const WRITE_SQL_PATTERN =
   /^\s*(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|call|exec|execute)\b/i;
 
@@ -8,8 +10,6 @@ export function isWriteSql(sql: string): boolean {
 export function assertReadOnlyQueryAllowed(sql: string, readOnly: boolean): void {
   if (!readOnly) return;
   if (isWriteSql(sql)) {
-    throw new Error(
-      "Read-only mode is enabled. Write statements (INSERT, UPDATE, DELETE, DDL, etc.) are blocked.",
-    );
+    throw new Error(tKey("app.query.readOnlyBlocked"));
   }
 }

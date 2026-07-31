@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { ExplorerObjectMutationDialogService } from "../../services/connection/explorerObjectMutationDialogService";
 import {
   executeExplorerMutation,
@@ -11,6 +12,7 @@ import { formatQualifiedName } from "../../services/connection/explorerObjectAct
 import "./ExplorerObjectMutationDialog.css";
 
 function ExplorerObjectMutationDialog() {
+  const { t } = useI18n();
   const [request, setRequest] = useState(() =>
     ExplorerObjectMutationDialogService.getRequest(),
   );
@@ -50,9 +52,9 @@ function ExplorerObjectMutationDialog() {
       }
       return previewRenameSql(request.ref, request.driverId, newName);
     } catch (error) {
-      return `-- ${formatMutationError(error, "Invalid rename.")}`;
+      return `-- ${formatMutationError(error, t("app.explorer.invalidRename"))}`;
     }
-  }, [request, newName]);
+  }, [request, newName, t]);
 
   const previewError = useMemo(() => {
     if (!request || request.mode !== "rename" || !newName.trim()) {
@@ -62,9 +64,9 @@ function ExplorerObjectMutationDialog() {
       previewRenameSql(request.ref, request.driverId, newName);
       return null;
     } catch (error) {
-      return formatMutationError(error, "Invalid rename.");
+      return formatMutationError(error, t("app.explorer.invalidRename"));
     }
-  }, [request, newName]);
+  }, [request, newName, t]);
 
   if (!request) {
     return null;
@@ -96,7 +98,7 @@ function ExplorerObjectMutationDialog() {
       );
       ExplorerObjectMutationDialogService.close();
     } catch (error) {
-      setErrorMessage(formatMutationError(error, "Failed to execute statement."));
+      setErrorMessage(formatMutationError(error, t("app.explorer.executeFailed")));
       setExecuting(false);
     }
   }
@@ -119,12 +121,14 @@ function ExplorerObjectMutationDialog() {
       >
         <header className="explorer-mutation-dialog__header">
           <h2 id="explorer-mutation-dialog-title">
-            {isDrop ? "Confirm DROP" : "Rename Object"}
+            {isDrop
+              ? t("app.explorer.confirmDrop")
+              : t("app.explorer.renameObject")}
           </h2>
           <button
             type="button"
             className="explorer-mutation-dialog__close"
-            aria-label="Close"
+            aria-label={t("common.close")}
             disabled={executing}
             onClick={close}
           >
@@ -135,17 +139,19 @@ function ExplorerObjectMutationDialog() {
         <div className="explorer-mutation-dialog__body">
           {isDrop ? (
             <p className="explorer-mutation-dialog__summary">
-              Permanently drop <strong>{qualifiedLabel}</strong>? This cannot be
-              undone.
+              {t("app.explorer.dropSummary").replace("{name}", qualifiedLabel)}
             </p>
           ) : (
             <>
               <p className="explorer-mutation-dialog__summary">
-                Rename <strong>{qualifiedLabel}</strong>
+                {t("app.explorer.renameSummary").replace(
+                  "{name}",
+                  qualifiedLabel,
+                )}
               </p>
               <label className="explorer-mutation-dialog__field">
                 <span className="explorer-mutation-dialog__field-label">
-                  New name
+                  {t("app.explorer.newName")}
                 </span>
                 <input
                   ref={renameInputRef}
@@ -168,7 +174,7 @@ function ExplorerObjectMutationDialog() {
           )}
 
           <p className="explorer-mutation-dialog__hint">
-            Review the generated SQL below. Nothing is written until you confirm.
+            {t("app.explorer.mutationHint")}
           </p>
           <pre className="explorer-mutation-dialog__sql">{previewSql}</pre>
           {previewError && request.mode === "rename" ? (
@@ -190,7 +196,7 @@ function ExplorerObjectMutationDialog() {
             disabled={executing}
             onClick={close}
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -203,10 +209,10 @@ function ExplorerObjectMutationDialog() {
             onClick={() => void handleConfirm()}
           >
             {executing
-              ? "Executing…"
+              ? t("common.executing")
               : isDrop
-                ? "Execute DROP"
-                : "Execute RENAME"}
+                ? t("app.explorer.executeDrop")
+                : t("app.explorer.executeRename")}
           </button>
         </footer>
       </div>

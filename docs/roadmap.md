@@ -1,7 +1,8 @@
 # Roadmap
 
 1. 레이아웃 기반 — 사이드바/패널/AI Chat 표시·숨김, sash 크기 조절, 상태 저장/복원, 패널 이동·최대화
-2. 환경 설정 — Appearance / Editor / Database / Query Result / AI 설정
+2. 환경 설정 — Appearance / Editor / Database / Query Result / AI 설정  
+   - UI 언어(en/ko): [`ui-locale-work-breakdown.md`](./ui-locale-work-breakdown.md)
 3. DB 연결 관리 — 연결 CRUD·복제, 비밀번호 안전 저장, 재연결, 드라이버/스키마 선택
 4. SQL 편집 경험 — 문법·포맷·자동완성, 문장/선택 실행, 취소, 히스토리·즐겨찾기, 실행 계획·오류 위치  
    - IntelliSense 고도화: [`sql-intellisense-work-breakdown.md`](./sql-intellisense-work-breakdown.md)

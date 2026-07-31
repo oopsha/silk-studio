@@ -3,6 +3,7 @@ import { Editor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import {
   defineWorkbenchMonacoThemes,
@@ -22,6 +23,7 @@ type LoadState =
   | { status: "ready"; ddl: string };
 
 function DdlEditorView() {
+  const { t } = useI18n();
   const activeTab = useActiveEditor();
   const ref = parseDdlEditorUri(activeTab?.uri);
   const configuration = useConfiguration();
@@ -29,7 +31,7 @@ function DdlEditorView() {
 
   useEffect(() => {
     if (!ref) {
-      setLoadState({ status: "error", message: "Invalid DDL editor tab." });
+      setLoadState({ status: "error", message: t("app.ddl.invalidTab") });
       return;
     }
 
@@ -44,7 +46,7 @@ function DdlEditorView() {
       })
       .catch((error) => {
         if (cancelled) return;
-        const message = formatErrorMessage(error, "Failed to load DDL.");
+        const message = formatErrorMessage(error, t("app.ddl.loadFailed"));
         setLoadState({ status: "error", message });
       });
 
@@ -57,6 +59,7 @@ function DdlEditorView() {
     ref?.objectName,
     ref?.kind,
     activeTab?.id,
+    t,
   ]);
 
   const profile = ref ? ConnectionService.getProfile(ref.profileId) : undefined;
@@ -74,12 +77,12 @@ function DdlEditorView() {
       ? loadState.ddl
       : loadState.status === "error"
         ? `-- ${loadState.message}\n`
-        : "-- Loading DDL...\n";
+        : `-- ${t("app.ddl.loading")}\n`;
 
   return (
     <div className="ddl-editor-view">
       <div className="ddl-editor-view__banner" role="status">
-        Read-only DDL preview
+        {t("app.ddl.banner")}
         {ref ? ` · ${ref.schemaName}.${ref.objectName}` : ""}
       </div>
       <div className="ddl-editor-view__body">
