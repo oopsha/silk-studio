@@ -2,5 +2,14 @@ packages:
   - "apps/*"
   - "packages/*"
 
+# pnpm 11 supply-chain defaults (explicit for CI/local parity).
+# Age gate is 1 day; Playwright is excluded so lockfile bumps of the e2e
+# stack are not blocked for 24h (test-only, not shipped in the app).
+minimumReleaseAge: 1440
+minimumReleaseAgeExclude:
+  - playwright
+  - playwright-core
+  - "@playwright/test"
+
 allowBuilds:
   esbuild: true
