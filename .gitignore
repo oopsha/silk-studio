@@ -32,3 +32,10 @@ apps/silk-db-studio/src-tauri/resources/jdbc-agent/**
 apps/silk-db-studio/src-tauri/resources/jre/**
 !apps/silk-db-studio/src-tauri/resources/jre/.gitkeep
 
+# Updater signing private keys (never commit)
+.secrets/
+*.key
+.env
+.env.*
+!.env.example
+

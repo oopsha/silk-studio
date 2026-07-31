@@ -185,6 +185,8 @@ pub fn run() {
         .manage(app_log::AppLogState::new())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_system_symbols::init())
         .plugin(tauri_plugin_window_controls::init())
         .invoke_handler(tauri::generate_handler![
