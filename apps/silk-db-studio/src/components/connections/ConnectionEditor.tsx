@@ -6,7 +6,7 @@ import { ConnectionService } from "../../services/connection/connectionService";
 import { ConnectionTreeService } from "../../services/connection/connectionTreeService";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { useConnectionState } from "../../services/connection/useConnectionState";
-import { useConnectionTree } from "../../services/connection/useConnectionTree";
+import { useConnectionTree, getExplorerSchemas } from "../../services/connection/useConnectionTree";
 import type {
   ConnectionDriverId,
   ConnectionProfileInput,
@@ -16,6 +16,7 @@ import {
   DEFAULT_ORACLE_URL,
   getConnectionDriver,
 } from "../../services/connection/connectionTypes";
+import { showSystemObjectsHint } from "../../services/connection/systemNamespaces";
 import { shouldUseDevSecretStore } from "@silk-studio/workbench/services/secrets/devSecretStore.ts";
 import "./ConnectionEditor.css";
 
@@ -27,6 +28,7 @@ const EMPTY_FORM: ConnectionProfileInput = {
   password: "",
   catalog: "",
   defaultSchema: "",
+  showSystemObjects: false,
 };
 
 function ConnectionEditor() {
@@ -47,13 +49,13 @@ function ConnectionEditor() {
   const driver = getConnectionDriver(form.driverId);
 
   const schemaOptions = useMemo(() => {
-    const names = tree.schemas.map((schema) => schema.name);
+    const names = getExplorerSchemas(tree).map((schema) => schema.name);
     const selected = form.defaultSchema.trim();
     if (selected && !names.some((name) => name === selected)) {
       return [selected, ...names];
     }
     return names;
-  }, [form.defaultSchema, tree.schemas]);
+  }, [form.defaultSchema, tree]);
 
   useEffect(() => {
     if (!profileId) return;
@@ -83,6 +85,7 @@ function ConnectionEditor() {
         password: "",
         catalog: profile.catalog,
         defaultSchema: profile.defaultSchema,
+        showSystemObjects: profile.showSystemObjects,
       });
       const password = await ConnectionService.getPassword(id);
       if (!cancelled) {
@@ -311,6 +314,24 @@ function ConnectionEditor() {
             above is also the browsable namespace shown in the Explorer.
           </p>
         )}
+        <label className="connection-editor__field connection-editor__field--checkbox">
+          <span className="connection-editor__checkbox-row">
+            <input
+              type="checkbox"
+              checked={form.showSystemObjects}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  showSystemObjects: event.target.checked,
+                }))
+              }
+            />
+            <span>Show system objects</span>
+          </span>
+          <span className="connection-editor__hint">
+            {showSystemObjectsHint(form.driverId)}
+          </span>
+        </label>
         <div className="connection-editor__actions">
           <button
             type="submit"

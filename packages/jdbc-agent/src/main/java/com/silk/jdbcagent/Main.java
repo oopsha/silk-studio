@@ -316,6 +316,29 @@ public final class Main {
     ObjectNode listMetadata(JsonNode params) throws SQLException {
       requireConnection();
       String schemaFilter = params.path("schema").asText("").trim();
+      String catalogFilter = params.path("catalog").asText("").trim();
+
+      // SQL Server (and similar): top-level request returns catalog/database names only.
+      if (dialect.usesCatalogExplorer()
+          && schemaFilter.isEmpty()
+          && catalogFilter.isEmpty()) {
+        ArrayNode catalogs = MAPPER.createArrayNode();
+        for (String catalogName : dialect.listCatalogNames(connection)) {
+          catalogs.addObject().put("name", catalogName);
+        }
+        ObjectNode result = MAPPER.createObjectNode();
+        result.set("schemas", MAPPER.createArrayNode());
+        result.set("catalogs", catalogs);
+        String current = connection.getCatalog();
+        if (current != null && !current.isBlank()) {
+          result.put("currentCatalog", current);
+        }
+        return result;
+      }
+
+      if (!catalogFilter.isEmpty()) {
+        connection.setCatalog(catalogFilter);
+      }
 
       List<String> schemaNames = dialect.listSchemaNames(connection);
       if (!schemaFilter.isEmpty()) {
@@ -345,6 +368,10 @@ public final class Main {
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("schemas", schemas);
+      String current = connection.getCatalog();
+      if (current != null && !current.isBlank()) {
+        result.put("currentCatalog", current);
+      }
       return result;
     }
 

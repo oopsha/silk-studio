@@ -23,6 +23,11 @@ export type ConnectionProfile = {
    * SQL Server: Explorer highlight only. MySQL/MariaDB: kept in sync with `catalog`.
    */
   defaultSchema: string;
+  /**
+   * When false (default), Explorer hides vendor system databases/schemas
+   * (e.g. SQL Server master/tempdb, MySQL mysql/sys, PG pg_catalog, Oracle SYS).
+   */
+  showSystemObjects: boolean;
   createdAt: number;
   updatedAt: number;
 };
@@ -35,6 +40,7 @@ export type ConnectionProfileInput = {
   password: string;
   catalog: string;
   defaultSchema: string;
+  showSystemObjects: boolean;
 };
 
 export type ConnectionStatus =

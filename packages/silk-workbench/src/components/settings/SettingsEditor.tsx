@@ -376,7 +376,7 @@ function DatabaseSettings() {
       </SettingRow>
       <SettingRow
         title="Preload Default Schema"
-        description="연결 성공 후 기본 스키마 객체를 자동으로 로드합니다. Quick Pick 검색에 바로 쓰입니다."
+        description="연결 성공 후 기본 스키마 객체를 캐시에 미리 로드합니다. 탐색기 트리는 펼치지 않으며, SQL 자동완성·Quick Pick에 바로 쓰입니다."
       >
         <label className="settings-checkbox">
           <input

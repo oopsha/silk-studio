@@ -112,12 +112,21 @@ impl JdbcAgentClient {
         self.send_request("connection.test", params)
     }
 
-    pub fn list_metadata(&self, schema: Option<&str>) -> Result<Value, String> {
+    pub fn list_metadata(
+        &self,
+        schema: Option<&str>,
+        catalog: Option<&str>,
+    ) -> Result<Value, String> {
         self.ensure_connection()?;
         let mut params = json!({});
         if let Some(schema) = schema {
             if !schema.trim().is_empty() {
                 params["schema"] = json!(schema.trim());
+            }
+        }
+        if let Some(catalog) = catalog {
+            if !catalog.trim().is_empty() {
+                params["catalog"] = json!(catalog.trim());
             }
         }
         self.send_request("connection.metadata", params)

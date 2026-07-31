@@ -2,18 +2,33 @@ import type { MetadataColumn, MetadataObject } from "@silk-studio/db-protocol";
 import { bridgeListColumns } from "../connection/connectionBridge";
 import { ConnectionService } from "../connection/connectionService";
 import { ConnectionTreeService } from "../connection/connectionTreeService";
+import { getExplorerSchemas } from "../connection/useConnectionTree";
+import {
+  COLUMN_CACHE_TTL_MS,
+  SCHEMA_LOAD_BUDGET_MS,
+} from "./sqlCompletionRanking";
 
-const columnCache = new Map<string, MetadataColumn[]>();
+type ColumnCacheEntry = {
+  columns: MetadataColumn[];
+  expiresAt: number;
+};
+
+const columnCache = new Map<string, ColumnCacheEntry>();
 /** Remember empty JDBC results so we do not retry the same miss every keystroke. */
-const columnMissCache = new Set<string>();
+const columnMissCache = new Map<string, number>();
+/** Deduplicate in-flight JDBC column fetches. */
+const columnInflight = new Map<string, Promise<MetadataColumn[]>>();
 
 function columnCacheKey(schema: string, table: string): string {
-  return `${schema.toLowerCase()}\0${table.toLowerCase()}`;
+  const profileId =
+    ConnectionService.getState().connectedProfileId ?? "_none_";
+  return `${profileId}\0${schema.toLowerCase()}\0${table.toLowerCase()}`;
 }
 
 export function clearSqlCompletionCaches(): void {
   columnCache.clear();
   columnMissCache.clear();
+  columnInflight.clear();
 }
 
 export function getConnectedProfileIdForCompletion(): string | null {
@@ -58,6 +73,7 @@ export async function ensureSchemasLoaded(profileId: string): Promise<void> {
     if (cache.status === "loading") {
       await waitUntil(
         () => ConnectionTreeService.getCache(profileId).status !== "loading",
+        SCHEMA_LOAD_BUDGET_MS * 4,
       );
     }
     return;
@@ -69,38 +85,54 @@ export async function ensureSchemasLoaded(profileId: string): Promise<void> {
   }
 }
 
+/**
+ * Ensure schema objects are loading / loaded without blocking Suggest for long.
+ * Returns true when objects are available now.
+ */
 export async function ensureSchemaObjectsLoaded(
   profileId: string,
   schemaName: string,
-): Promise<void> {
+  options?: { budgetMs?: number },
+): Promise<boolean> {
+  const budgetMs = options?.budgetMs ?? SCHEMA_LOAD_BUDGET_MS;
   await ensureSchemasLoaded(profileId);
   const cache = ConnectionTreeService.getCache(profileId);
-  const schema = cache.schemas.find(
+  const schemas = getExplorerSchemas(cache);
+  const schema = schemas.find(
     (item) => item.name.toLowerCase() === schemaName.toLowerCase(),
   );
   if (!schema) {
     // Schema may not be in the explorer list yet (e.g. user-as-schema). Still allow JDBC.
-    return;
+    return true;
   }
-  if (schema.status === "loaded") return;
-  if (schema.status === "loading") {
-    await waitUntil(() => {
-      const next = ConnectionTreeService.getCache(profileId).schemas.find(
-        (item) => item.name.toLowerCase() === schemaName.toLowerCase(),
-      );
-      return next?.status !== "loading";
+  if (schema.status === "loaded") return true;
+
+  if (schema.status !== "loading") {
+    void ConnectionTreeService.loadSchemaObjects(
+      profileId,
+      schema.name,
+      false,
+      cache.currentCatalog ?? undefined,
+    ).catch(() => {
+      // ignore — next keystroke may retry via status
     });
-    return;
   }
-  try {
-    await ConnectionTreeService.loadSchemaObjects(profileId, schema.name);
-  } catch {
-    // ignore
-  }
+
+  const ready = await waitUntil(() => {
+    const next = getExplorerSchemas(
+      ConnectionTreeService.getCache(profileId),
+    ).find((item) => item.name.toLowerCase() === schemaName.toLowerCase());
+    return next?.status === "loaded" || next?.status === "error";
+  }, budgetMs);
+
+  const latest = getExplorerSchemas(
+    ConnectionTreeService.getCache(profileId),
+  ).find((item) => item.name.toLowerCase() === schemaName.toLowerCase());
+  return latest?.status === "loaded" || ready;
 }
 
 export function listSchemaNames(profileId: string): string[] {
-  return ConnectionTreeService.getCache(profileId).schemas.map(
+  return getExplorerSchemas(ConnectionTreeService.getCache(profileId)).map(
     (schema) => schema.name,
   );
 }
@@ -109,9 +141,9 @@ export function listTablesAndViews(
   profileId: string,
   schemaName: string,
 ): MetadataObject[] {
-  const schema = ConnectionTreeService.getCache(profileId).schemas.find(
-    (item) => item.name.toLowerCase() === schemaName.toLowerCase(),
-  );
+  const schema = getExplorerSchemas(
+    ConnectionTreeService.getCache(profileId),
+  ).find((item) => item.name.toLowerCase() === schemaName.toLowerCase());
   if (!schema || schema.status !== "loaded") return [];
   const result: MetadataObject[] = [];
   for (const group of schema.groups) {
@@ -135,9 +167,9 @@ export function findTableInSchemas(
   tableName: string,
   preferredSchema?: string | null,
 ): { schema: string; table: string } | null {
-  const caches = ConnectionTreeService.getCache(profileId).schemas.filter(
-    (schema) => schema.status === "loaded",
-  );
+  const caches = getExplorerSchemas(
+    ConnectionTreeService.getCache(profileId),
+  ).filter((schema) => schema.status === "loaded");
   const ordered = preferredSchema
     ? [
         ...caches.filter(
@@ -174,21 +206,27 @@ export async function resolveColumnsForTable(
   tableName: string,
 ): Promise<MetadataColumn[]> {
   const candidates = schemaCandidatesForCompletion();
-  for (const schema of candidates) {
-    await ensureSchemaObjectsLoaded(profileId, schema);
-  }
-
   const preferred = candidates[0] ?? null;
-  const found = findTableInSchemas(profileId, tableName, preferred);
-  if (found) {
-    return listColumnsCached(found.schema, found.table);
+
+  // Prefer default schema first (avoid N sequential loads on every keystroke).
+  if (preferred) {
+    await ensureSchemaObjectsLoaded(profileId, preferred);
+    const found = findTableInSchemas(profileId, tableName, preferred);
+    if (found) {
+      return listColumnsCached(found.schema, found.table);
+    }
+    const columns = await listColumnsCached(preferred, tableName);
+    if (columns.length > 0) return columns;
   }
 
-  for (const schema of candidates) {
-    const columns = await listColumnsCached(schema, tableName);
-    if (columns.length > 0) {
-      return columns;
+  for (const schema of candidates.slice(1)) {
+    await ensureSchemaObjectsLoaded(profileId, schema);
+    const found = findTableInSchemas(profileId, tableName, schema);
+    if (found) {
+      return listColumnsCached(found.schema, found.table);
     }
+    const columns = await listColumnsCached(schema, tableName);
+    if (columns.length > 0) return columns;
   }
 
   return [];
@@ -199,40 +237,75 @@ export async function listColumnsCached(
   table: string,
 ): Promise<MetadataColumn[]> {
   const key = columnCacheKey(schema, table);
+  const now = Date.now();
   const cached = columnCache.get(key);
-  if (cached) return cached;
-  if (columnMissCache.has(key)) return [];
-
-  try {
-    const result = await bridgeListColumns(schema, table);
-    if (result.columns.length === 0) {
-      columnMissCache.add(key);
-      return [];
-    }
-    columnCache.set(key, result.columns);
-    return result.columns;
-  } catch (error) {
-    console.warn(
-      `[sql-completion] columns failed for ${schema}.${table}`,
-      error,
-    );
-    columnMissCache.add(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.columns;
+  }
+  const missUntil = columnMissCache.get(key);
+  if (missUntil !== undefined && missUntil > now) {
     return [];
   }
+
+  const inflight = columnInflight.get(key);
+  if (inflight) return inflight;
+
+  const request = (async (): Promise<MetadataColumn[]> => {
+    try {
+      const result = await bridgeListColumns(schema, table);
+      if (result.columns.length === 0) {
+        columnMissCache.set(key, now + COLUMN_CACHE_TTL_MS);
+        return [];
+      }
+      columnCache.set(key, {
+        columns: result.columns,
+        expiresAt: now + COLUMN_CACHE_TTL_MS,
+      });
+      columnMissCache.delete(key);
+      return result.columns;
+    } catch (error) {
+      console.warn(
+        `[sql-completion] columns failed for ${schema}.${table}`,
+        error,
+      );
+      columnMissCache.set(key, now + COLUMN_CACHE_TTL_MS);
+      return [];
+    } finally {
+      columnInflight.delete(key);
+    }
+  })();
+
+  columnInflight.set(key, request);
+  return request;
 }
 
-function waitUntil(predicate: () => boolean, timeoutMs = 8000): Promise<void> {
+function waitUntil(
+  predicate: () => boolean,
+  timeoutMs = 8000,
+): Promise<boolean> {
   return new Promise((resolve) => {
+    if (predicate()) {
+      resolve(true);
+      return;
+    }
     const started = Date.now();
+    let settled = false;
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(value);
+    };
     const unsubscribe = ConnectionTreeService.onDidChange(() => {
-      if (predicate() || Date.now() - started > timeoutMs) {
-        unsubscribe();
-        resolve();
+      if (predicate()) {
+        finish(true);
+      } else if (Date.now() - started > timeoutMs) {
+        finish(false);
       }
     });
-    if (predicate()) {
-      unsubscribe();
-      resolve();
-    }
+    const timer = setTimeout(() => {
+      finish(predicate());
+    }, timeoutMs);
   });
 }

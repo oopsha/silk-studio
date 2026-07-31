@@ -21,6 +21,7 @@ export type StoredConnectionProfile = {
   user: string;
   catalog?: string;
   defaultSchema?: string;
+  showSystemObjects?: boolean;
   createdAt: number;
   updatedAt: number;
 };
@@ -48,6 +49,7 @@ export function saveConnectionProfiles(profiles: ConnectionProfile[]): void {
     user: profile.user,
     catalog: profile.catalog,
     defaultSchema: profile.defaultSchema,
+    showSystemObjects: profile.showSystemObjects,
     createdAt: profile.createdAt,
     updatedAt: profile.updatedAt,
   }));
@@ -125,6 +127,7 @@ function normalizeStoredProfile(value: unknown): ConnectionProfile | null {
     catalog: typeof record.catalog === "string" ? record.catalog : "",
     defaultSchema:
       typeof record.defaultSchema === "string" ? record.defaultSchema : "",
+    showSystemObjects: record.showSystemObjects === true,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };

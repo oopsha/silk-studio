@@ -4,6 +4,8 @@ import { ConnectionTreeService } from "../connection/connectionTreeService";
 import { getConnectionDriver } from "../connection/connectionTypes";
 import { QueryHistoryService } from "../query/queryHistoryService";
 
+import { getExplorerSchemas } from "../connection/useConnectionTree";
+
 const MAX_SCHEMAS = 30;
 const MAX_OBJECTS_PER_GROUP = 40;
 
@@ -18,7 +20,8 @@ function buildSchemaSummaryText(maxChars: number): string | null {
   if (!connected) return null;
 
   const cache = ConnectionTreeService.getCache(connected.id);
-  if (cache.status === "idle" && cache.schemas.length === 0) {
+  const explorerSchemas = getExplorerSchemas(cache);
+  if (cache.status === "idle" && explorerSchemas.length === 0) {
     return null;
   }
 
@@ -26,9 +29,12 @@ function buildSchemaSummaryText(maxChars: number): string | null {
   if (cache.status === "error" && cache.errorMessage) {
     lines.push(`Explorer metadata error: ${cache.errorMessage}`);
   }
+  if (cache.currentCatalog) {
+    lines.push(`Current database: ${cache.currentCatalog}`);
+  }
 
   const defaultSchema = connected.defaultSchema.trim().toLowerCase();
-  const schemas = [...cache.schemas].sort((a, b) => {
+  const schemas = [...explorerSchemas].sort((a, b) => {
     const aDefault = a.name.toLowerCase() === defaultSchema ? 0 : 1;
     const bDefault = b.name.toLowerCase() === defaultSchema ? 0 : 1;
     if (aDefault !== bDefault) return aDefault - bDefault;

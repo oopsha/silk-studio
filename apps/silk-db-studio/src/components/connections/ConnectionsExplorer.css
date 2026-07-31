@@ -158,6 +158,10 @@
   font-weight: 700;
 }
 
+.connections-explorer__label--current-catalog {
+  font-weight: 700;
+}
+
 .connections-explorer__status {
   width: 10px;
   color: var(--color-description);

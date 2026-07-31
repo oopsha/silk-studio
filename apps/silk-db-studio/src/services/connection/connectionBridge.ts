@@ -44,12 +44,14 @@ export async function bridgeTestConnection(
 
 export async function bridgeListMetadata(
   schema?: string,
+  catalog?: string,
 ): Promise<ConnectionMetadataResult> {
   if (!isTauri()) {
     throw new Error("Database metadata is available in the desktop app only.");
   }
   const payload = await invoke<unknown>("connection_metadata", {
     schema: schema?.trim() ? schema.trim() : null,
+    catalog: catalog?.trim() ? catalog.trim() : null,
   });
   if (!isConnectionMetadataResult(payload)) {
     throw new Error("Invalid connection metadata payload from desktop bridge.");

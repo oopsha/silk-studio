@@ -124,9 +124,12 @@ fn connection_test(
 #[tauri::command]
 fn connection_metadata(
     schema: Option<String>,
+    catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
-    state.jdbc_agent.list_metadata(schema.as_deref())
+    state
+        .jdbc_agent
+        .list_metadata(schema.as_deref(), catalog.as_deref())
 }
 
 #[tauri::command]

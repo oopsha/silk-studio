@@ -35,6 +35,22 @@ interface DbDialect {
   List<String> listSchemaNames(Connection connection) throws SQLException;
 
   /**
+   * When {@code true}, Explorer shows a Databases (catalog) level above schemas (SQL Server).
+   * Dialects that fold catalogs into the schema list (MySQL) or have no catalogs (Oracle) return
+   * {@code false}.
+   */
+  default boolean usesCatalogExplorer() {
+    return false;
+  }
+
+  /**
+   * Lists catalog/database names for {@link #usesCatalogExplorer()} dialects. Default: empty.
+   */
+  default List<String> listCatalogNames(Connection connection) throws SQLException {
+    return List.of();
+  }
+
+  /**
    * Populates {@code objects} with the tables/views/procedures/functions/packages visible under
    * {@code schemaName}. Only kinds the database actually supports need to be emitted (must be a
    * subset of {@link #supportedGroups()}).
