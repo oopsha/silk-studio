@@ -1,5 +1,9 @@
 import { isLocaleId, type LocaleId } from "./locale";
-import { enMessages, type MessageSchema } from "./messages/en";
+import {
+  enMessages,
+  type MessageCatalog,
+  type MessageSchema,
+} from "./messages/en";
 import { koMessages } from "./messages/ko";
 
 type NestedKeyOf<T, Prefix extends string = ""> = T extends string
@@ -13,13 +17,13 @@ type NestedKeyOf<T, Prefix extends string = ""> = T extends string
 
 export type MessageKey = NestedKeyOf<MessageSchema>;
 
-const CATALOG: Record<LocaleId, MessageSchema> = {
+const CATALOG: Record<LocaleId, MessageCatalog> = {
   en: enMessages,
   ko: koMessages,
 };
 
 export function lookupMessage(
-  tree: MessageSchema,
+  tree: MessageCatalog,
   key: string,
 ): string | undefined {
   const parts = key.split(".");
@@ -44,6 +48,6 @@ export function translate(
   );
 }
 
-export function messagesForLocale(locale: LocaleId): MessageSchema {
+export function messagesForLocale(locale: LocaleId): MessageCatalog {
   return CATALOG[isLocaleId(locale) ? locale : "en"];
 }

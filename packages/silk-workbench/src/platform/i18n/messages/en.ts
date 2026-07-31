@@ -580,3 +580,12 @@ export const enMessages = {
 } as const satisfies MessageTree;
 
 export type MessageSchema = typeof enMessages;
+
+/** Same keys as MessageSchema; leaf values are plain strings (any locale). */
+export type MessageCatalog = {
+  readonly [K in keyof MessageSchema]: DeepStringLeaves<MessageSchema[K]>;
+};
+
+type DeepStringLeaves<T> = T extends string
+  ? string
+  : { readonly [K in keyof T]: DeepStringLeaves<T[K]> };

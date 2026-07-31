@@ -543,7 +543,6 @@ function lexicalSuggestions(
   if (bucketsIncludes(buckets, "statement_start_keywords")) {
     items.push(
       ...wordSuggestions(
-        monaco,
         range,
         statementStartKeywordsForDriver(driverId),
         partial,
@@ -556,7 +555,6 @@ function lexicalSuggestions(
   if (bucketsIncludes(buckets, "from_keywords")) {
     items.push(
       ...wordSuggestions(
-        monaco,
         range,
         fromClauseKeywordsForDriver(driverId),
         partial,
@@ -569,7 +567,6 @@ function lexicalSuggestions(
   if (bucketsIncludes(buckets, "select_list_keywords")) {
     items.push(
       ...wordSuggestions(
-        monaco,
         range,
         selectListKeywords(),
         partial,
@@ -582,7 +579,6 @@ function lexicalSuggestions(
   if (bucketsIncludes(buckets, "expression_keywords")) {
     items.push(
       ...wordSuggestions(
-        monaco,
         range,
         expressionKeywordsForDriver(driverId),
         partial,
@@ -633,7 +629,6 @@ function functionSuggestions(
 }
 
 function wordSuggestions(
-  monaco: Monaco,
   range: IRange,
   words: string[],
   partial: string,

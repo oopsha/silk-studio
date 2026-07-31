@@ -26,6 +26,7 @@ dist-ssr
 .gradle
 **/jdbc-agent/build
 target
+target-release-build/
 
 # Bundled runtime (staged by scripts/prepare-runtime-resources.mjs)
 apps/silk-db-studio/src-tauri/resources/jdbc-agent/**
