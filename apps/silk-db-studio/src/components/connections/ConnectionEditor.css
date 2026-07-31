@@ -62,6 +62,22 @@
   color: var(--color-description);
 }
 
+.connection-editor__field--checkbox {
+  margin-top: 4px;
+}
+
+.connection-editor__checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-foreground);
+  font-size: 13px;
+}
+
+.connection-editor__checkbox-row input {
+  margin: 0;
+}
+
 .connection-editor__input {
   padding: 6px 8px;
   color: var(--color-input-foreground);

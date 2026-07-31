@@ -24,7 +24,6 @@ import { defaultUrlForDriver, getConnectionDriver } from "./connectionTypes";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { reportError } from "../formatErrorMessage";
 import { ConnectionTreeService } from "./connectionTreeService";
-import { ExplorerUiService } from "./explorerUiService";
 
 type ConnectionListener = () => void;
 
@@ -92,6 +91,7 @@ class ConnectionServiceImpl {
       password: "",
       catalog: input.catalog.trim(),
       defaultSchema: resolveDefaultSchema(input),
+      showSystemObjects: input.showSystemObjects === true,
       createdAt: now,
       updatedAt: now,
     };
@@ -118,6 +118,7 @@ class ConnectionServiceImpl {
         password: "",
         catalog: input.catalog.trim(),
         defaultSchema: resolveDefaultSchema(input),
+        showSystemObjects: input.showSystemObjects === true,
         updatedAt: Date.now(),
       };
     });
@@ -152,6 +153,7 @@ class ConnectionServiceImpl {
       password,
       catalog: source.catalog,
       defaultSchema: source.defaultSchema,
+      showSystemObjects: source.showSystemObjects,
     });
   }
 
@@ -215,6 +217,10 @@ class ConnectionServiceImpl {
 
       ConnectionTreeService.invalidate();
       ConnectionTreeService.setConnectedProfileId(profileId);
+      ConnectionTreeService.setExplorerFilter(profileId, {
+        driverId: profile.driverId,
+        showSystemObjects: profile.showSystemObjects,
+      });
       this.setState({
         ...this.state,
         connectedProfileId: profileId,
@@ -250,20 +256,40 @@ class ConnectionServiceImpl {
     }
 
     const profile = this.getProfile(profileId);
-    const schemaName = profile?.defaultSchema.trim();
-    if (!schemaName) {
-      return;
-    }
+    const cache = ConnectionTreeService.getCache(profileId);
 
     try {
-      await ConnectionTreeService.loadSchemaObjects(profileId, schemaName);
-      if (this.state.connectedProfileId === profileId) {
-        ExplorerUiService.requestExpandSchema(profileId, schemaName);
+      if (cache.catalogs.length > 0) {
+        const catalogName =
+          cache.currentCatalog?.trim() ||
+          profile?.catalog.trim() ||
+          cache.catalogs[0]?.name;
+        if (!catalogName) return;
+        await ConnectionTreeService.loadCatalogSchemas(profileId, catalogName);
+        if (this.state.connectedProfileId !== profileId) return;
+
+        const schemaName = profile?.defaultSchema.trim();
+        if (schemaName) {
+          await ConnectionTreeService.loadSchemaObjects(
+            profileId,
+            schemaName,
+            false,
+            catalogName,
+          );
+        }
+        return;
       }
+
+      const schemaName = profile?.defaultSchema.trim();
+      if (!schemaName) {
+        return;
+      }
+
+      await ConnectionTreeService.loadSchemaObjects(profileId, schemaName);
     } catch (error) {
       console.warn(
         "[silk.connection] failed to preload default schema",
-        schemaName,
+        profile?.defaultSchema.trim() || profile?.catalog.trim(),
         error,
       );
     }
@@ -299,6 +325,7 @@ class ConnectionServiceImpl {
       password,
       catalog: profile.catalog,
       defaultSchema: profile.defaultSchema,
+      showSystemObjects: profile.showSystemObjects,
     });
   }
 

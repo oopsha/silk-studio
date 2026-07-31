@@ -58,6 +58,31 @@ final class SqlServerDialect implements DbDialect {
   }
 
   @Override
+  public boolean usesCatalogExplorer() {
+    return true;
+  }
+
+  @Override
+  public List<String> listCatalogNames(Connection connection) throws SQLException {
+    Set<String> names = new LinkedHashSet<>();
+    try (ResultSet catalogs = connection.getMetaData().getCatalogs()) {
+      while (catalogs.next()) {
+        String name = catalogs.getString("TABLE_CAT");
+        if (name != null && !name.isBlank()) {
+          names.add(name);
+        }
+      }
+    }
+    if (names.isEmpty()) {
+      String current = connection.getCatalog();
+      if (current != null && !current.isBlank()) {
+        names.add(current);
+      }
+    }
+    return new ArrayList<>(names);
+  }
+
+  @Override
   public List<String> listSchemaNames(Connection connection) throws SQLException {
     String catalog = connection.getCatalog();
     Set<String> names = new LinkedHashSet<>();

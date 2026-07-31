@@ -42,3 +42,23 @@ Toasts use a polite live region so screen readers hear success/error messages.
 ## Smoke check (packaged build)
 
 After installing a release build, use [`smoke-checklist.md`](./smoke-checklist.md) (launch + Settings). No database connection is required for that smoke.
+
+## SQL IntelliSense
+
+Connect to a database, open a SQL editor tab, then use **Ctrl+Space** or type after `.` to open suggestions. Behavior depends on **where the cursor is** in the statement and on the **active connection dialect** (Oracle, SQL Server, MySQL/MariaDB, PostgreSQL).
+
+| When | What you should see |
+| --- | --- |
+| Empty editor / after `;` | Statement starters only (`SELECT`, `WITH`, `INSERT`, …) — **not** functions like `ABS` |
+| After `SELECT ` | Columns (when `FROM` is known) and dialect functions (e.g. Oracle `TO_CHAR`) |
+| After `FROM ` / `JOIN ` | Schemas, tables, CTEs — not expression functions |
+| `FROM emp e` then `e.` | Columns of `emp` |
+| `WITH c AS (SELECT id FROM t) … c.` | CTE columns such as `id` |
+| Cursor inside a nested `(SELECT … FROM dept d WHERE d.` | Inner `dept` only — outer `FROM emp` should not leak |
+| Accept a function like `NVL` / `ISNULL` | Snippet with placeholders; `(` may show argument hints |
+
+Tips:
+
+- Suggestions are capped and prefer the **default schema** so large catalogs stay responsive.
+- Switching or disconnecting a connection clears cached column metadata for completion.
+- More detail for contributors: [`sql-intellisense-work-breakdown.md`](./sql-intellisense-work-breakdown.md).

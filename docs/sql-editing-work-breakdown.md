@@ -61,7 +61,8 @@
 
 ## 4-C. 자동완성 (키워드 + 스키마 객체)
 
-**상태:** 구현 완료 (검증은 앱에서 확인)
+**상태:** 구현 완료 (검증은 앱에서 확인)  
+**후속(완성도 높은 IntelliSense):** [`sql-intellisense-work-breakdown.md`](./sql-intellisense-work-breakdown.md) (I-A~F)
 
 **의존성:** 메타데이터 트리(이미 있음) 활용 → 4-A/B 이후 권장
 

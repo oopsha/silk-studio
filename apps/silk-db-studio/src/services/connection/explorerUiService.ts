@@ -3,6 +3,7 @@ type ExplorerUiListener = () => void;
 export type ExplorerExpandSchemaRequest = {
   profileId: string;
   schemaName: string;
+  catalogName?: string;
 };
 
 /**
@@ -27,8 +28,12 @@ class ExplorerUiServiceImpl {
     this.fireDidChange();
   }
 
-  requestExpandSchema(profileId: string, schemaName: string): void {
-    this.expandRequest = { profileId, schemaName };
+  requestExpandSchema(
+    profileId: string,
+    schemaName: string,
+    catalogName?: string,
+  ): void {
+    this.expandRequest = { profileId, schemaName, catalogName };
     this.fireDidChange();
   }
 

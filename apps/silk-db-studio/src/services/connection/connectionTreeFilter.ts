@@ -1,5 +1,8 @@
 import type { MetadataGroup, MetadataObject } from "@silk-studio/db-protocol";
-import type { SchemaTreeNode } from "./connectionTreeService";
+import type {
+  CatalogTreeNode,
+  SchemaTreeNode,
+} from "./connectionTreeService";
 
 export function matchesTreeFilter(name: string, filter: string): boolean {
   const needle = filter.trim().toLowerCase();
@@ -17,6 +20,13 @@ export type FilteredSchemaView = {
     group: MetadataGroup;
     objects: MetadataObject[];
   }>;
+};
+
+export type FilteredCatalogView = {
+  catalog: CatalogTreeNode;
+  visible: boolean;
+  catalogNameMatched: boolean;
+  schemas: FilteredSchemaView[];
 };
 
 /**
@@ -78,6 +88,43 @@ export function filterSchemaTree(
       visible: groups.length > 0,
       schemaNameMatched: false,
       groups,
+    };
+  });
+}
+
+export function filterCatalogTree(
+  catalogs: CatalogTreeNode[],
+  filter: string,
+): FilteredCatalogView[] {
+  const needle = filter.trim();
+  return catalogs.map((catalog) => {
+    const catalogNameMatched = matchesTreeFilter(catalog.name, needle);
+    const schemas = filterSchemaTree(catalog.schemas, filter);
+    const anySchemaVisible = schemas.some((entry) => entry.visible);
+
+    if (!needle) {
+      return {
+        catalog,
+        visible: true,
+        catalogNameMatched: false,
+        schemas,
+      };
+    }
+
+    if (catalogNameMatched) {
+      return {
+        catalog,
+        visible: true,
+        catalogNameMatched: true,
+        schemas: filterSchemaTree(catalog.schemas, ""),
+      };
+    }
+
+    return {
+      catalog,
+      visible: anySchemaVisible,
+      catalogNameMatched: false,
+      schemas,
     };
   });
 }

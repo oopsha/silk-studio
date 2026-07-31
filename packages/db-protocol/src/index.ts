@@ -77,13 +77,27 @@ export type MetadataSchema = {
   groups: MetadataGroup[];
 };
 
+/** Catalog/database entry for dialects with a Databases explorer level (SQL Server). */
+export type MetadataCatalog = {
+  name: string;
+};
+
 export type ConnectionMetadataParams = {
-  /** When omitted, return all schemas with nested objects. */
+  /** When set, return that schema with nested objects. */
   schema?: string;
+  /**
+   * When set (SQL Server catalog explorer), scopes schema/object listing to this database
+   * and switches the session catalog (`USE`).
+   */
+  catalog?: string;
 };
 
 export type ConnectionMetadataResult = {
   schemas: MetadataSchema[];
+  /** Present when listing catalogs (no schema/catalog filter) on catalog-explorer dialects. */
+  catalogs?: MetadataCatalog[];
+  /** Session catalog after the metadata call (when available). */
+  currentCatalog?: string;
 };
 
 /** Column metadata for SQL autocomplete (`connection.columns`). */
@@ -273,7 +287,7 @@ export function isConnectionMetadataResult(
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
   if (!Array.isArray(record.schemas)) return false;
-  return record.schemas.every((schema) => {
+  const schemasOk = record.schemas.every((schema) => {
     if (!schema || typeof schema !== "object") return false;
     const item = schema as Record<string, unknown>;
     return (
@@ -281,6 +295,16 @@ export function isConnectionMetadataResult(
       Array.isArray(item.groups) &&
       item.groups.every(isMetadataGroup)
     );
+  });
+  if (!schemasOk) return false;
+  if (record.currentCatalog !== undefined && typeof record.currentCatalog !== "string") {
+    return false;
+  }
+  if (record.catalogs === undefined) return true;
+  if (!Array.isArray(record.catalogs)) return false;
+  return record.catalogs.every((catalog) => {
+    if (!catalog || typeof catalog !== "object") return false;
+    return typeof (catalog as Record<string, unknown>).name === "string";
   });
 }
 

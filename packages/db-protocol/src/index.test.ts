@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isConnectionDdlResult,
+  isConnectionMetadataResult,
   isQueryResultPayload,
 } from "./index";
 
@@ -44,5 +45,26 @@ describe("isConnectionDdlResult", () => {
 
   it("rejects missing fields", () => {
     expect(isConnectionDdlResult({ ddl: "x" })).toBe(false);
+  });
+});
+
+describe("isConnectionMetadataResult", () => {
+  it("accepts catalog explorer payloads", () => {
+    expect(
+      isConnectionMetadataResult({
+        schemas: [],
+        catalogs: [{ name: "PSM" }, { name: "ACM" }],
+        currentCatalog: "PSM",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects malformed catalogs", () => {
+    expect(
+      isConnectionMetadataResult({
+        schemas: [],
+        catalogs: [{ id: "PSM" }],
+      }),
+    ).toBe(false);
   });
 });

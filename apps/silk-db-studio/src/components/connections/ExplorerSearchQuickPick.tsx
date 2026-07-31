@@ -24,7 +24,7 @@ import {
 } from "../../services/connection/explorerObjectActions";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { useConnectionState } from "../../services/connection/useConnectionState";
-import { useConnectionTree } from "../../services/connection/useConnectionTree";
+import { useConnectionTree, getExplorerSchemas } from "../../services/connection/useConnectionTree";
 import "@silk-studio/workbench/components/layout/TitleBar/OpenEditorsQuickPick/OpenEditorsQuickPick.css";
 import "./ExplorerSearchQuickPick.css";
 
@@ -58,10 +58,15 @@ function ExplorerSearchQuickPick() {
     });
   }, []);
 
+  const explorerSchemas = useMemo(
+    () => getExplorerSchemas(tree),
+    [tree],
+  );
+
   const picks = useMemo(() => {
     if (!profileId || !open) return [] as ExplorerSearchPick[];
-    return buildExplorerSearchPicks(profileId, tree.schemas, filter);
-  }, [profileId, tree.schemas, filter, open]);
+    return buildExplorerSearchPicks(profileId, explorerSchemas, filter);
+  }, [profileId, explorerSchemas, filter, open]);
 
   useEffect(() => {
     setFocusedIndex((current) =>
@@ -127,6 +132,7 @@ function ExplorerSearchQuickPick() {
             pick.profileId,
             pick.schemaName,
             true,
+            tree.currentCatalog ?? undefined,
           );
           setStatusMessage(`Loaded ${pick.schemaName}. Continue typing to filter.`);
         } catch (error) {
@@ -165,7 +171,7 @@ function ExplorerSearchQuickPick() {
         console.error("[silk.explorer.search]", error);
       }
     },
-    [close],
+    [close, tree],
   );
 
   const handleInputKeyDown = (
@@ -205,7 +211,7 @@ function ExplorerSearchQuickPick() {
     ? "Connect a database profile first."
     : tree.status === "loading"
       ? "Loading schemas…"
-      : tree.schemas.length === 0
+      : explorerSchemas.length === 0
         ? "No schemas loaded."
         : filter.trim()
           ? "No matching objects. Type a schema name to load it."

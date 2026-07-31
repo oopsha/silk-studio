@@ -10,7 +10,11 @@ import type {
 import { ConnectionEditorService } from "../../services/connection/connectionEditorService";
 import { ConnectionService } from "../../services/connection/connectionService";
 import { ConnectionTreeService } from "../../services/connection/connectionTreeService";
-import { filterSchemaTree } from "../../services/connection/connectionTreeFilter";
+import {
+  filterCatalogTree,
+  filterSchemaTree,
+  type FilteredSchemaView,
+} from "../../services/connection/connectionTreeFilter";
 import {
   buildGroupMenuItems,
   buildObjectMenuItems,
@@ -33,6 +37,7 @@ import { useConnectionTree } from "../../services/connection/useConnectionTree";
 import type { ConnectionProfile } from "../../services/connection/connectionTypes";
 import ExplorerContextMenu from "./ExplorerContextMenu";
 import "./ConnectionsExplorer.css";
+
 
 type ExpandedMap = Record<string, boolean>;
 
@@ -113,9 +118,15 @@ function ProfileTree({
 
       const expand = ExplorerUiService.getExpandRequest();
       if (expand && expand.profileId === profile.id && isConnected) {
+        const schemaKey = expand.catalogName
+          ? `schema:${profile.id}:${expand.catalogName}:${expand.schemaName}`
+          : `schema:${profile.id}:${expand.schemaName}`;
         setExpanded({
           [`profile:${profile.id}`]: true,
-          [`schema:${expand.schemaName}`]: true,
+          ...(expand.catalogName
+            ? { [`catalog:${profile.id}:${expand.catalogName}`]: true }
+            : {}),
+          [schemaKey]: true,
         });
         ExplorerUiService.clearExpandRequest();
       }
@@ -148,17 +159,39 @@ function ProfileTree({
     }
   }
 
-  const filtered = useMemo(
+  const useCatalogs = tree.catalogs.length > 0;
+  const filteredSchemas = useMemo(
     () => filterSchemaTree(tree.schemas, filter),
     [tree.schemas, filter],
   );
+  const filteredCatalogs = useMemo(
+    () => filterCatalogTree(tree.catalogs, filter),
+    [tree.catalogs, filter],
+  );
 
-  const profileExpanded = expanded[`profile:${profile.id}`] ?? isConnected;
-
-  async function refreshSchema(schemaName: string) {
+  async function refreshSchema(schemaName: string, catalogName?: string) {
     await run(async () => {
-      await ConnectionTreeService.refreshSchemaObjects(profile.id, schemaName);
-      onFlash(`Refreshed ${schemaName}`);
+      await ConnectionTreeService.refreshSchemaObjects(
+        profile.id,
+        schemaName,
+        catalogName,
+      );
+      onFlash(
+        catalogName
+          ? `Refreshed ${catalogName}.${schemaName}`
+          : `Refreshed ${schemaName}`,
+      );
+    });
+  }
+
+  async function refreshCatalog(catalogName: string) {
+    await run(async () => {
+      await ConnectionTreeService.loadCatalogSchemas(
+        profile.id,
+        catalogName,
+        true,
+      );
+      onFlash(`Refreshed ${catalogName}`);
     });
   }
 
@@ -175,6 +208,176 @@ function ProfileTree({
     } catch (error) {
       onFlash(formatErrorMessage(error, "Action failed."));
     }
+  }
+
+  const profileExpanded = expanded[`profile:${profile.id}`] ?? false;
+
+  function renderSchemaEntry(
+    entry: FilteredSchemaView,
+    catalogName?: string,
+  ) {
+    if (!entry.visible) return null;
+    const { schema } = entry;
+    const schemaKey = catalogName
+      ? `schema:${profile.id}:${catalogName}:${schema.name}`
+      : `schema:${profile.id}:${schema.name}`;
+    const forceExpand = filterActive && entry.visible;
+    const schemaExpanded = expanded[schemaKey] ?? (forceExpand ? true : false);
+    const isDefaultSchema =
+      profile.defaultSchema.trim().length > 0 &&
+      schema.name.toLowerCase() === profile.defaultSchema.trim().toLowerCase();
+
+    return (
+      <div
+        key={catalogName ? `${catalogName}:${schema.name}` : schema.name}
+        className="connections-explorer__node"
+      >
+        <div
+          className="connections-explorer__row"
+          onContextMenu={(event) => {
+            event.preventDefault();
+            onOpenContextMenu({
+              x: event.clientX,
+              y: event.clientY,
+              items: buildSchemaMenuItems(),
+              payload: {
+                profileId: profile.id,
+                schemaName: schema.name,
+                catalogName,
+              },
+            });
+          }}
+        >
+          <button
+            type="button"
+            className="connections-explorer__twistie"
+            aria-label={schemaExpanded ? "Collapse" : "Expand"}
+            onClick={() => {
+              const next = !schemaExpanded;
+              setExpandedValue(schemaKey, next);
+              if (next && schema.status === "idle") {
+                void run(() =>
+                  ConnectionTreeService.loadSchemaObjects(
+                    profile.id,
+                    schema.name,
+                    false,
+                    catalogName,
+                  ),
+                );
+              }
+            }}
+          >
+            <Codicon
+              name={schemaExpanded ? "chevron-down" : "chevron-right"}
+            />
+          </button>
+          <span
+            className={`connections-explorer__label${
+              isDefaultSchema
+                ? " connections-explorer__label--default-schema"
+                : ""
+            }`}
+            title={
+              isDefaultSchema
+                ? "Default schema for this connection"
+                : undefined
+            }
+          >
+            <Codicon name="symbol-namespace" />
+            <span>{schema.name}</span>
+          </span>
+          <div className="connections-explorer__row-actions">
+            <button
+              type="button"
+              className="connections-explorer__icon-button"
+              title={`Refresh ${schema.name}`}
+              disabled={busy || !isConnected}
+              onClick={(event) => {
+                event.stopPropagation();
+                void refreshSchema(schema.name, catalogName);
+              }}
+            >
+              <Codicon name="refresh" />
+            </button>
+          </div>
+        </div>
+        {schemaExpanded ? (
+          <div className="connections-explorer__children">
+            {schema.status === "loading" ? (
+              <div className="connections-explorer__empty">
+                Loading objects…
+              </div>
+            ) : schema.status === "error" ? (
+              <div className="connections-explorer__error">
+                <span>{schema.errorMessage}</span>
+                <button
+                  type="button"
+                  className="connections-explorer__link-button"
+                  disabled={busy}
+                  onClick={() => void refreshSchema(schema.name, catalogName)}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : schema.status === "idle" ? (
+              <div className="connections-explorer__empty">
+                Expand to load objects.
+              </div>
+            ) : entry.groups.length === 0 && filterActive ? (
+              <div className="connections-explorer__empty">
+                No matching objects.
+              </div>
+            ) : (
+              sortMetadataGroups(entry.groups.map((item) => item.group)).map(
+                (group) => {
+                  const definition = getMetadataGroupDefinition(group.id);
+                  const filteredObjects =
+                    entry.groups.find((item) => item.group.id === group.id)
+                      ?.objects ?? group.objects;
+                  const groupKey = catalogName
+                    ? `group:${definition.id}:${profile.id}:${catalogName}:${schema.name}`
+                    : `group:${definition.id}:${profile.id}:${schema.name}`;
+                  const defaultExpanded = definition.id === "tables";
+                  const groupForceExpand =
+                    filterActive && filteredObjects.length > 0;
+                  return (
+                    <ObjectGroup
+                      key={definition.id}
+                      profileId={profile.id}
+                      schemaName={schema.name}
+                      menuOptions={menuOptions}
+                      groupId={definition.id}
+                      title={definition.title}
+                      icon={definition.icon}
+                      items={filteredObjects}
+                      expanded={
+                        expanded[groupKey] ??
+                        (groupForceExpand || defaultExpanded)
+                      }
+                      selectedKey={selectedKey}
+                      busy={busy}
+                      onToggle={() => toggle(groupKey, defaultExpanded)}
+                      onSelectObject={onSelectObject}
+                      onOpenContextMenu={onOpenContextMenu}
+                      onRefresh={() =>
+                        void refreshSchema(schema.name, catalogName)
+                      }
+                      onObjectAction={(object) =>
+                        void handleObjectAction({
+                          profileId: profile.id,
+                          schemaName: schema.name,
+                          object,
+                        })
+                      }
+                    />
+                  );
+                },
+              )
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   return (
@@ -261,7 +464,11 @@ function ProfileTree({
             onClick={() =>
               void run(async () => {
                 await ConnectionTreeService.loadSchemas(profile.id, true);
-                onFlash("Schemas refreshed");
+                onFlash(
+                  tree.catalogs.length > 0
+                    ? "Databases refreshed"
+                    : "Schemas refreshed",
+                );
               })
             }
           >
@@ -333,168 +540,140 @@ function ProfileTree({
               Connect to browse schemas and objects.
             </div>
           ) : tree.status === "loading" ? (
-            <div className="connections-explorer__empty">Loading schemas…</div>
+            <div className="connections-explorer__empty">
+              {useCatalogs ? "Loading databases…" : "Loading schemas…"}
+            </div>
+          ) : useCatalogs ? (
+            tree.catalogs.length === 0 ? (
+              <div className="connections-explorer__empty">
+                No databases found.
+              </div>
+            ) : filteredCatalogs.every((entry) => !entry.visible) ? (
+              <div className="connections-explorer__empty">
+                No matches for “{filter.trim()}”.
+              </div>
+            ) : (
+              filteredCatalogs.map((entry) => {
+                if (!entry.visible) return null;
+                const { catalog } = entry;
+                const catalogKey = `catalog:${profile.id}:${catalog.name}`;
+                const forceExpand = filterActive && entry.visible;
+                const catalogExpanded =
+                  expanded[catalogKey] ?? (forceExpand ? true : false);
+                const isCurrent =
+                  tree.currentCatalog != null &&
+                  catalog.name.toLowerCase() ===
+                    tree.currentCatalog.toLowerCase();
+
+                return (
+                  <div
+                    key={catalog.name}
+                    className="connections-explorer__node"
+                  >
+                    <div className="connections-explorer__row">
+                      <button
+                        type="button"
+                        className="connections-explorer__twistie"
+                        aria-label={catalogExpanded ? "Collapse" : "Expand"}
+                        onClick={() => {
+                          const next = !catalogExpanded;
+                          setExpandedValue(catalogKey, next);
+                          if (
+                            next &&
+                            (catalog.status === "idle" ||
+                              catalog.status === "error")
+                          ) {
+                            void run(() =>
+                              ConnectionTreeService.loadCatalogSchemas(
+                                profile.id,
+                                catalog.name,
+                              ),
+                            );
+                          }
+                        }}
+                      >
+                        <Codicon
+                          name={
+                            catalogExpanded ? "chevron-down" : "chevron-right"
+                          }
+                        />
+                      </button>
+                      <span
+                        className={`connections-explorer__label${
+                          isCurrent
+                            ? " connections-explorer__label--current-catalog"
+                            : ""
+                        }`}
+                        title={
+                          isCurrent
+                            ? "Current database for this session"
+                            : undefined
+                        }
+                      >
+                        <Codicon name="database" />
+                        <span>{catalog.name}</span>
+                      </span>
+                      <div className="connections-explorer__row-actions">
+                        <button
+                          type="button"
+                          className="connections-explorer__icon-button"
+                          title={`Refresh ${catalog.name}`}
+                          disabled={busy || !isConnected}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void refreshCatalog(catalog.name);
+                          }}
+                        >
+                          <Codicon name="refresh" />
+                        </button>
+                      </div>
+                    </div>
+                    {catalogExpanded ? (
+                      <div className="connections-explorer__children">
+                        {catalog.status === "loading" ? (
+                          <div className="connections-explorer__empty">
+                            Loading schemas…
+                          </div>
+                        ) : catalog.status === "error" ? (
+                          <div className="connections-explorer__error">
+                            <span>{catalog.errorMessage}</span>
+                            <button
+                              type="button"
+                              className="connections-explorer__link-button"
+                              disabled={busy}
+                              onClick={() => void refreshCatalog(catalog.name)}
+                            >
+                              Retry
+                            </button>
+                          </div>
+                        ) : catalog.status === "idle" ? (
+                          <div className="connections-explorer__empty">
+                            Expand to load schemas.
+                          </div>
+                        ) : entry.schemas.every((schema) => !schema.visible) &&
+                          filterActive ? (
+                          <div className="connections-explorer__empty">
+                            No matching schemas.
+                          </div>
+                        ) : (
+                          entry.schemas.map((schemaEntry) =>
+                            renderSchemaEntry(schemaEntry, catalog.name),
+                          )
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })
+            )
           ) : tree.schemas.length === 0 ? (
             <div className="connections-explorer__empty">No schemas found.</div>
-          ) : filtered.every((entry) => !entry.visible) ? (
+          ) : filteredSchemas.every((entry) => !entry.visible) ? (
             <div className="connections-explorer__empty">
               No matches for “{filter.trim()}”.
             </div>
           ) : (
-            filtered.map((entry) => {
-              if (!entry.visible) return null;
-              const { schema } = entry;
-              const schemaKey = `schema:${profile.id}:${schema.name}`;
-              const forceExpand = filterActive && entry.visible;
-              const schemaExpanded =
-                expanded[schemaKey] ?? (forceExpand ? true : false);
-              const isDefaultSchema =
-                profile.defaultSchema.trim().length > 0 &&
-                schema.name.toLowerCase() ===
-                  profile.defaultSchema.trim().toLowerCase();
-
-              return (
-                <div key={schema.name} className="connections-explorer__node">
-                  <div
-                    className="connections-explorer__row"
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      onOpenContextMenu({
-                        x: event.clientX,
-                        y: event.clientY,
-                        items: buildSchemaMenuItems(),
-                        payload: {
-                          profileId: profile.id,
-                          schemaName: schema.name,
-                        },
-                      });
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="connections-explorer__twistie"
-                      aria-label={schemaExpanded ? "Collapse" : "Expand"}
-                      onClick={() => {
-                        const next = !schemaExpanded;
-                        setExpandedValue(schemaKey, next);
-                        if (next && schema.status === "idle") {
-                          void run(() =>
-                            ConnectionTreeService.loadSchemaObjects(
-                              profile.id,
-                              schema.name,
-                            ),
-                          );
-                        }
-                      }}
-                    >
-                      <Codicon
-                        name={schemaExpanded ? "chevron-down" : "chevron-right"}
-                      />
-                    </button>
-                    <span
-                      className={`connections-explorer__label${
-                        isDefaultSchema
-                          ? " connections-explorer__label--default-schema"
-                          : ""
-                      }`}
-                      title={
-                        isDefaultSchema
-                          ? "Default schema for this connection"
-                          : undefined
-                      }
-                    >
-                      <Codicon name="symbol-namespace" />
-                      <span>{schema.name}</span>
-                    </span>
-                    <div className="connections-explorer__row-actions">
-                      <button
-                        type="button"
-                        className="connections-explorer__icon-button"
-                        title={`Refresh ${schema.name}`}
-                        disabled={busy || !isConnected}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void refreshSchema(schema.name);
-                        }}
-                      >
-                        <Codicon name="refresh" />
-                      </button>
-                    </div>
-                  </div>
-                  {schemaExpanded ? (
-                    <div className="connections-explorer__children">
-                      {schema.status === "loading" ? (
-                        <div className="connections-explorer__empty">
-                          Loading objects…
-                        </div>
-                      ) : schema.status === "error" ? (
-                        <div className="connections-explorer__error">
-                          <span>{schema.errorMessage}</span>
-                          <button
-                            type="button"
-                            className="connections-explorer__link-button"
-                            disabled={busy}
-                            onClick={() => void refreshSchema(schema.name)}
-                          >
-                            Retry
-                          </button>
-                        </div>
-                      ) : schema.status === "idle" ? (
-                        <div className="connections-explorer__empty">
-                          Expand to load objects.
-                        </div>
-                      ) : entry.groups.length === 0 && filterActive ? (
-                        <div className="connections-explorer__empty">
-                          No matching objects.
-                        </div>
-                      ) : (
-                        sortMetadataGroups(
-                          entry.groups.map((item) => item.group),
-                        ).map((group) => {
-                          const definition = getMetadataGroupDefinition(group.id);
-                          const filteredObjects =
-                            entry.groups.find((item) => item.group.id === group.id)
-                              ?.objects ?? group.objects;
-                          const groupKey = `group:${definition.id}:${profile.id}:${schema.name}`;
-                          const defaultExpanded = definition.id === "tables";
-                          const groupForceExpand =
-                            filterActive && filteredObjects.length > 0;
-                          return (
-                            <ObjectGroup
-                              key={definition.id}
-                              profileId={profile.id}
-                              schemaName={schema.name}
-                              menuOptions={menuOptions}
-                              groupId={definition.id}
-                              title={definition.title}
-                              icon={definition.icon}
-                              items={filteredObjects}
-                              expanded={
-                                expanded[groupKey] ??
-                                (groupForceExpand || defaultExpanded)
-                              }
-                              selectedKey={selectedKey}
-                              busy={busy}
-                              onToggle={() => toggle(groupKey, defaultExpanded)}
-                              onSelectObject={onSelectObject}
-                              onOpenContextMenu={onOpenContextMenu}
-                              onRefresh={() => void refreshSchema(schema.name)}
-                              onObjectAction={(object) =>
-                                void handleObjectAction({
-                                  profileId: profile.id,
-                                  schemaName: schema.name,
-                                  object,
-                                })
-                              }
-                            />
-                          );
-                        })
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })
+            filteredSchemas.map((entry) => renderSchemaEntry(entry))
           )}
         </div>
       ) : null}
