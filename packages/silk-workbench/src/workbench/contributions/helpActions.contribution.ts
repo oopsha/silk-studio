@@ -7,6 +7,7 @@ import {
   copyDiagnostics,
   openLogFolder,
 } from "../../services/diagnostics/diagnosticsService";
+import { DocumentationService } from "../../services/help/documentationService";
 import { AppNotificationService } from "../../services/notifications/appNotificationService";
 
 CommandsRegistry.registerCommand("silk.help.about", () => {
@@ -34,6 +35,46 @@ CommandsRegistry.registerCommand("silk.help.openLogFolder", async () => {
     void AppLogService.error(message, "silk.help.openLogFolder");
     AppNotificationService.show(message, "error");
   }
+});
+
+CommandsRegistry.registerCommand("silk.help.openDocumentation", () => {
+  DocumentationService.openDocumentation();
+});
+
+MenuRegistry.appendMenuItem(MenuId.MenubarHelpMenu, {
+  command: {
+    id: "workbench.action.showCommands",
+    title: {
+      value: "Command Palette...",
+      mnemonicTitle: "&&Command Palette...",
+    },
+  },
+  group: "1_help",
+  order: 1,
+});
+
+MenuRegistry.appendMenuItem(MenuId.MenubarHelpMenu, {
+  command: {
+    id: "workbench.action.openGlobalKeybindings",
+    title: {
+      value: "Keyboard Shortcuts",
+      mnemonicTitle: "&&Keyboard Shortcuts",
+    },
+  },
+  group: "1_help",
+  order: 2,
+});
+
+MenuRegistry.appendMenuItem(MenuId.MenubarHelpMenu, {
+  command: {
+    id: "silk.help.openDocumentation",
+    title: {
+      value: "Documentation",
+      mnemonicTitle: "&&Documentation",
+    },
+  },
+  group: "1_help",
+  order: 3,
 });
 
 MenuRegistry.appendMenuItem(MenuId.MenubarHelpMenu, {

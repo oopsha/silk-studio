@@ -53,6 +53,13 @@ class KeybindingRegistryImpl {
     return this.bindings.get(commandId)?.[0];
   }
 
+  getKeybindings(): ReadonlyArray<{ commandId: string; labels: readonly string[] }> {
+    return [...this.bindings.entries()].map(([commandId, labels]) => ({
+      commandId,
+      labels: [...labels],
+    }));
+  }
+
   handleKeyboardEvent(event: KeyboardEvent): boolean {
     if (shouldIgnoreTarget(event.target)) {
       return false;

@@ -1,0 +1,97 @@
+# CI for PRs and main — unit/build on Linux; e2e smoke on macOS + Windows
+# Branch protection can require "ci" and/or "e2e" jobs.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: install · agent · typecheck · build · test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Java (jdbc-agent)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build jdbc-agent
+        working-directory: packages/jdbc-agent
+        run: chmod +x gradlew && ./gradlew build --quiet
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Vite build (web)
+        run: pnpm build:web
+
+      - name: Unit tests (Vitest)
+        run: pnpm test
+
+  e2e:
+    name: e2e smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Vite build (web)
+        run: pnpm build:web
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium
+        # --with-deps is Linux-oriented; Mac/Win matrix only needs the browser binary.
+
+      - name: Install Playwright OS deps (Linux only)
+        if: runner.os == 'Linux'
+        run: pnpm exec playwright install-deps chromium
+
+      - name: E2E smoke (shell + Settings)
+        run: pnpm test:e2e
+        env:
+          CI: true

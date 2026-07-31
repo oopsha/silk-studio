@@ -34,7 +34,7 @@ function ActivityBar() {
   }
 
   return (
-    <aside className="activity-bar">
+    <aside className="activity-bar" data-testid="activity-bar" aria-label="Activity Bar">
       <div className="activity-bar__content">
         <div className="activity-bar__composite-bar" role="tablist">
           {ACTIVITY_VIEWS.map((view) => {

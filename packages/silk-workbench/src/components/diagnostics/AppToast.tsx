@@ -25,6 +25,7 @@ function AppToast() {
       className={`app-toast app-toast--${notification.severity}`}
       role="status"
       aria-live="polite"
+      aria-atomic="true"
     >
       <span className="app-toast__message">{notification.message}</span>
       <button

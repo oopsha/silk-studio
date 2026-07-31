@@ -825,7 +825,7 @@ function SettingsEditor() {
   const category = useSettingsCategory();
 
   return (
-    <main className="settings-editor">
+    <main className="settings-editor" data-testid="settings-editor">
       <aside className="settings-editor__sidebar">
         <div className="settings-editor__sidebar-title">Settings</div>
         <nav className="settings-editor__nav">

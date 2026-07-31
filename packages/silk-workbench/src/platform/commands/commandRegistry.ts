@@ -26,6 +26,10 @@ class CommandRegistryImpl {
     return this.commands.get(id);
   }
 
+  getCommands(): readonly ICommand[] {
+    return [...this.commands.values()];
+  }
+
   onDidRegisterCommand(listener: CommandChangeListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
