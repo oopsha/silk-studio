@@ -22,7 +22,10 @@ jdbc-agent <- silk-db-agent-client <- silk-db-studio (Tauri)
 
 ## 개발
 
+요구 사항: **Node.js 22+**, **pnpm 11** (`package.json#packageManager` — Corepack 권장).
+
 ```powershell
+corepack enable
 pnpm install
 cd packages/jdbc-agent
 .\gradlew.bat build
