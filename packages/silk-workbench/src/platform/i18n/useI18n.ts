@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { I18nService, type MessageKey } from "./i18nService";
 import type { LocaleId } from "./locale";
 
@@ -16,8 +16,10 @@ export function useI18n(): {
     });
   }, []);
 
+  const t = useCallback((key: MessageKey) => I18nService.t(key), [locale]);
+
   return {
     locale,
-    t: (key) => I18nService.t(key),
+    t,
   };
 }

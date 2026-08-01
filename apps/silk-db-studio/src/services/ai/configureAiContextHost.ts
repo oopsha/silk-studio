@@ -1,7 +1,10 @@
 import { configureAiContextHost } from "@silk-studio/workbench/services/ai/aiContextHost.ts";
 import { ConnectionService } from "../connection/connectionService";
 import { ConnectionTreeService } from "../connection/connectionTreeService";
-import { getConnectionDriver } from "../connection/connectionTypes";
+import {
+  effectiveDefaultSchema,
+  getConnectionDriver,
+} from "../connection/connectionTypes";
 import { QueryHistoryService } from "../query/queryHistoryService";
 
 import { getExplorerSchemas } from "../connection/useConnectionTree";
@@ -33,10 +36,10 @@ function buildSchemaSummaryText(maxChars: number): string | null {
     lines.push(`Current database: ${cache.currentCatalog}`);
   }
 
-  const defaultSchema = connected.defaultSchema.trim().toLowerCase();
+  const defaultSchema = effectiveDefaultSchema(connected).trim().toLowerCase();
   const schemas = [...explorerSchemas].sort((a, b) => {
-    const aDefault = a.name.toLowerCase() === defaultSchema ? 0 : 1;
-    const bDefault = b.name.toLowerCase() === defaultSchema ? 0 : 1;
+    const aDefault = defaultSchema && a.name.toLowerCase() === defaultSchema ? 0 : 1;
+    const bDefault = defaultSchema && b.name.toLowerCase() === defaultSchema ? 0 : 1;
     if (aDefault !== bDefault) return aDefault - bDefault;
     return a.name.localeCompare(b.name);
   });
@@ -44,7 +47,9 @@ function buildSchemaSummaryText(maxChars: number): string | null {
   const listed = schemas.slice(0, MAX_SCHEMAS);
   for (const schema of listed) {
     const marker =
-      schema.name.toLowerCase() === defaultSchema ? " (default)" : "";
+      defaultSchema && schema.name.toLowerCase() === defaultSchema
+        ? " (default)"
+        : "";
     lines.push(`Schema ${schema.name}${marker} [${schema.status}]`);
 
     if (schema.status !== "loaded" || schema.groups.length === 0) {
@@ -109,7 +114,7 @@ export function configureDbStudioAiContextHost(): void {
         driverId: profile.driverId,
         dialectLabel: driver.label,
         catalog: profile.catalog,
-        defaultSchema: profile.defaultSchema,
+        defaultSchema: effectiveDefaultSchema(profile),
       };
     },
     getSchemaSummaryText: buildSchemaSummaryText,

@@ -2,6 +2,7 @@ import type { MetadataColumn, MetadataObject } from "@silk-studio/db-protocol";
 import { bridgeListColumns } from "../connection/connectionBridge";
 import { ConnectionService } from "../connection/connectionService";
 import { ConnectionTreeService } from "../connection/connectionTreeService";
+import { effectiveDefaultSchema } from "../connection/connectionTypes";
 import { getExplorerSchemas } from "../connection/useConnectionTree";
 import {
   COLUMN_CACHE_TTL_MS,
@@ -59,9 +60,9 @@ export function schemaCandidatesForCompletion(): string[] {
     result.push(trimmed);
   };
 
-  add(profile.defaultSchema);
+  add(effectiveDefaultSchema(profile));
   add(profile.catalog);
-  // Oracle (and often SQL Server/PG) treat the login user as a default schema namespace.
+  // Keep login user as a fallback candidate for dialects where user ≈ schema.
   add(profile.user);
 
   return result;

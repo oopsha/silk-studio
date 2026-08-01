@@ -20,7 +20,7 @@ import type {
   ConnectionProfileInput,
   ConnectionState,
 } from "./connectionTypes";
-import { defaultUrlForDriver, getConnectionDriver } from "./connectionTypes";
+import { defaultUrlForDriver, effectiveDefaultSchema, getConnectionDriver } from "./connectionTypes";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { reportError } from "../formatErrorMessage";
 import { ConnectionTreeService } from "./connectionTreeService";
@@ -211,6 +211,7 @@ class ConnectionServiceImpl {
         url: profile.url,
         user: profile.user,
         password,
+        // Explicit Default Schema only — empty Oracle means session login schema (no ALTER).
         schema: profile.defaultSchema.trim() || undefined,
         catalog: profile.catalog.trim() || undefined,
       });
@@ -268,7 +269,9 @@ class ConnectionServiceImpl {
         await ConnectionTreeService.loadCatalogSchemas(profileId, catalogName);
         if (this.state.connectedProfileId !== profileId) return;
 
-        const schemaName = profile?.defaultSchema.trim();
+        const schemaName = profile
+          ? effectiveDefaultSchema(profile)
+          : "";
         if (schemaName) {
           await ConnectionTreeService.loadSchemaObjects(
             profileId,
@@ -280,7 +283,7 @@ class ConnectionServiceImpl {
         return;
       }
 
-      const schemaName = profile?.defaultSchema.trim();
+      const schemaName = profile ? effectiveDefaultSchema(profile) : "";
       if (!schemaName) {
         return;
       }
@@ -289,7 +292,7 @@ class ConnectionServiceImpl {
     } catch (error) {
       console.warn(
         "[silk.connection] failed to preload default schema",
-        profile?.defaultSchema.trim() || profile?.catalog.trim(),
+        profile ? effectiveDefaultSchema(profile) : "",
         error,
       );
     }
