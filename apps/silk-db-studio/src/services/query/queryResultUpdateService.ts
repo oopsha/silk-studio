@@ -3,7 +3,10 @@ import { ConfigurationService } from "@silk-studio/workbench/platform/configurat
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { bridgeListPrimaryKeys } from "../connection/connectionPrimaryKeysBridge";
 import { ConnectionService } from "../connection/connectionService";
-import { getConnectionDriver } from "../connection/connectionTypes";
+import {
+  effectiveDefaultSchema,
+  getConnectionDriver,
+} from "../connection/connectionTypes";
 import type { ConnectionDriverId } from "../connection/connectionTypes";
 import { formatErrorMessage } from "../formatErrorMessage";
 import { resolveActiveDriverId } from "../sql/sqlDialect";
@@ -49,10 +52,10 @@ function resolveExplicitSchemaName(
 
   const driver = getConnectionDriver(driverId);
   if (!driver.showSchemaField) {
-    return profile.catalog.trim() || profile.defaultSchema.trim();
+    return effectiveDefaultSchema(profile);
   }
 
-  return profile.defaultSchema.trim() || profile.catalog.trim();
+  return effectiveDefaultSchema(profile) || profile.catalog.trim();
 }
 
 function resolveResultColumn(

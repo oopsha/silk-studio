@@ -167,6 +167,30 @@ export function getConnectionDriver(
   );
 }
 
+/**
+ * Effective default schema for Explorer highlight, preload, AI context, and connect.
+ * Keeps the stored `defaultSchema` as entered (empty means "use login default").
+ * Oracle: empty → login user (CURRENT_SCHEMA default).
+ * Drivers without a schema field: catalog is the browsable namespace.
+ */
+export function effectiveDefaultSchema(
+  profile: Pick<
+    ConnectionProfile,
+    "driverId" | "defaultSchema" | "user" | "catalog"
+  >,
+): string {
+  const driver = getConnectionDriver(profile.driverId);
+  if (!driver.showSchemaField) {
+    return profile.catalog.trim() || profile.defaultSchema.trim();
+  }
+  const explicit = profile.defaultSchema.trim();
+  if (explicit) return explicit;
+  if (profile.driverId === "oracle") {
+    return profile.user.trim();
+  }
+  return "";
+}
+
 export function defaultUrlForDriver(driverId: ConnectionDriverId): string {
   return getConnectionDriver(driverId).defaultUrl;
 }

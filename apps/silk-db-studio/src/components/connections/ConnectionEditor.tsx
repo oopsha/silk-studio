@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
+import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import { shouldUseDevSecretStore } from "@silk-studio/workbench/services/secrets/devSecretStore.ts";
 import { ConnectionEditorService } from "../../services/connection/connectionEditorService";
 import { ConnectionService } from "../../services/connection/connectionService";
@@ -77,7 +78,7 @@ function ConnectionEditor() {
 
       const profile = ConnectionService.getProfile(id);
       if (!profile) {
-        setError(t("app.connection.notFound"));
+        setError(I18nService.t("app.connection.notFound"));
         setForm(EMPTY_FORM);
         return;
       }
@@ -102,7 +103,7 @@ function ConnectionEditor() {
     return () => {
       cancelled = true;
     };
-  }, [profileId, t]);
+  }, [profileId]);
 
   if (!profileId) {
     return (

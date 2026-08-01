@@ -36,6 +36,7 @@ import {
 import { useConnectionState } from "../../services/connection/useConnectionState";
 import { useConnectionTree } from "../../services/connection/useConnectionTree";
 import type { ConnectionProfile } from "../../services/connection/connectionTypes";
+import { effectiveDefaultSchema } from "../../services/connection/connectionTypes";
 import ExplorerContextMenu from "./ExplorerContextMenu";
 import "./ConnectionsExplorer.css";
 
@@ -225,9 +226,10 @@ function ProfileTree({
       : `schema:${profile.id}:${schema.name}`;
     const forceExpand = filterActive && entry.visible;
     const schemaExpanded = expanded[schemaKey] ?? (forceExpand ? true : false);
+    const effective = effectiveDefaultSchema(profile);
     const isDefaultSchema =
-      profile.defaultSchema.trim().length > 0 &&
-      schema.name.toLowerCase() === profile.defaultSchema.trim().toLowerCase();
+      effective.length > 0 &&
+      schema.name.toLowerCase() === effective.toLowerCase();
 
     return (
       <div
