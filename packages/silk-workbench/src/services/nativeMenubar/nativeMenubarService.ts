@@ -79,10 +79,37 @@ async function buildGroupItems(
   return items;
 }
 
+/**
+ * Map workbench edit/selection commands to OS predefined menu items.
+ *
+ * Custom MenuItem + accelerator for Cmd+V (etc.) steals the key from the webview and
+ * runs our no-op JS handlers — breaking paste in INPUT/TEXTAREA. Predefined items let
+ * the OS deliver cut/copy/paste/undo/redo/selectAll to the focused native control.
+ */
+const PREDEFINED_EDIT_COMMANDS: Record<
+  string,
+  Extract<PredefinedMenuItemOptions["item"], string>
+> = {
+  "silk.edit.undo": "Undo",
+  "silk.edit.redo": "Redo",
+  "silk.edit.cut": "Cut",
+  "silk.edit.copy": "Copy",
+  "silk.edit.paste": "Paste",
+  "silk.selection.selectAll": "SelectAll",
+};
+
 async function buildEntry(
   entry: ResolvedMenuEntry,
 ): Promise<NativeMenuChild | null> {
   if (entry.type === "command") {
+    const predefined = PREDEFINED_EDIT_COMMANDS[entry.id];
+    if (predefined) {
+      return PredefinedMenuItem.new({
+        item: predefined,
+        text: entry.label,
+      });
+    }
+
     return MenuItem.new({
       id: entry.id,
       text: entry.label,

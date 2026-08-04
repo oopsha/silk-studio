@@ -6,28 +6,34 @@ import { KeybindingsRegistry } from "../../platform/keybinding/keybindingRegistr
 // Monaco (editor) and AG Grid (query result grid) implement their own native undo/redo and
 // clipboard handling — the global keybinding registry lets Ctrl+Z/Y/X/C/V pass through
 // untouched while focus is inside those widgets (see `NATIVE_CLIPBOARD_COMMANDS` in
-// keybindingRegistry.ts). The handlers below therefore only run for plain, read-only text
-// surfaces elsewhere in the workbench (error messages, labels, etc.) and via the Edit menu.
+// keybindingRegistry.ts). On macOS the native menubar maps these to PredefinedMenuItem
+// so the OS handles accelerators. The handlers below cover HTML Edit menu clicks and
+// read-only selection copy elsewhere in the workbench.
 
 CommandsRegistry.registerCommand("silk.edit.undo", () => {
-  // No generic document model to undo outside of Monaco/native inputs (handled natively).
+  document.execCommand("undo");
 });
 
 CommandsRegistry.registerCommand("silk.edit.redo", () => {
-  // No generic document model to redo outside of Monaco/native inputs (handled natively).
+  document.execCommand("redo");
 });
 
 CommandsRegistry.registerCommand("silk.edit.cut", () => {
-  // Nothing to remove from read-only text — fall back to copying the current selection.
+  if (document.execCommand("cut")) {
+    return;
+  }
   void copyCurrentSelectionToClipboard();
 });
 
 CommandsRegistry.registerCommand("silk.edit.copy", () => {
+  if (document.execCommand("copy")) {
+    return;
+  }
   void copyCurrentSelectionToClipboard();
 });
 
 CommandsRegistry.registerCommand("silk.edit.paste", () => {
-  // No focused native input/textarea/contenteditable — there's nowhere to paste into.
+  void pasteIntoFocusedEditable();
 });
 
 async function copyCurrentSelectionToClipboard(): Promise<void> {
@@ -40,6 +46,39 @@ async function copyCurrentSelectionToClipboard(): Promise<void> {
   } catch (error) {
     console.warn("[silk.edit.copy] clipboard write failed", error);
   }
+}
+
+async function pasteIntoFocusedEditable(): Promise<void> {
+  if (document.execCommand("paste")) {
+    return;
+  }
+
+  const active = document.activeElement;
+  if (
+    !(active instanceof HTMLInputElement) &&
+    !(active instanceof HTMLTextAreaElement)
+  ) {
+    return;
+  }
+
+  let text: string;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch (error) {
+    console.warn("[silk.edit.paste] clipboard read failed", error);
+    return;
+  }
+  if (!text) {
+    return;
+  }
+
+  const start = active.selectionStart ?? active.value.length;
+  const end = active.selectionEnd ?? active.value.length;
+  const value = active.value;
+  active.value = value.slice(0, start) + text + value.slice(end);
+  const caret = start + text.length;
+  active.setSelectionRange(caret, caret);
+  active.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 MenuRegistry.appendMenuItem(MenuId.MenubarEditMenu, {
