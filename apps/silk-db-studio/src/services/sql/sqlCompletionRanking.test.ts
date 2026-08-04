@@ -7,11 +7,17 @@ import {
 import { wantsBucket } from "./sqlCompletionPolicy";
 
 describe("sqlCompletionRanking", () => {
-  it("ranks columns above functions in select_list / where", () => {
+  it("ranks columns above functions and routines in select_list / where", () => {
     expect(bucketSortPrefix("select_list", "columns") < bucketSortPrefix("select_list", "functions")).toBe(
       true,
     );
+    expect(bucketSortPrefix("select_list", "functions") < bucketSortPrefix("select_list", "routines")).toBe(
+      true,
+    );
     expect(bucketSortPrefix("where", "columns") < bucketSortPrefix("where", "functions")).toBe(
+      true,
+    );
+    expect(bucketSortPrefix("where", "functions") < bucketSortPrefix("where", "routines")).toBe(
       true,
     );
   });

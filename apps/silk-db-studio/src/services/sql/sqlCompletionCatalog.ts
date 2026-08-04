@@ -1,6 +1,11 @@
-import type { MetadataColumn, MetadataObject } from "@silk-studio/db-protocol";
-import { bridgeListColumns } from "../connection/connectionBridge";
+import type {
+  MetadataColumn,
+  MetadataObject,
+  MetadataPackageMember,
+} from "@silk-studio/db-protocol";
+import { bridgeListColumns, bridgeListPackageMembers } from "../connection/connectionBridge";
 import { ConnectionService } from "../connection/connectionService";
+import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import { ConnectionTreeService } from "../connection/connectionTreeService";
 import { effectiveDefaultSchema } from "../connection/connectionTypes";
 import { getExplorerSchemas } from "../connection/useConnectionTree";
@@ -14,25 +19,49 @@ type ColumnCacheEntry = {
   expiresAt: number;
 };
 
+type PackageMemberCacheEntry = {
+  members: MetadataPackageMember[];
+  expiresAt: number;
+};
+
 const columnCache = new Map<string, ColumnCacheEntry>();
 /** Remember empty JDBC results so we do not retry the same miss every keystroke. */
 const columnMissCache = new Map<string, number>();
 /** Deduplicate in-flight JDBC column fetches. */
 const columnInflight = new Map<string, Promise<MetadataColumn[]>>();
 
+const packageMemberCache = new Map<string, PackageMemberCacheEntry>();
+const packageMemberMissCache = new Map<string, number>();
+const packageMemberInflight = new Map<
+  string,
+  Promise<MetadataPackageMember[]>
+>();
+
 function columnCacheKey(schema: string, table: string): string {
-  const profileId =
-    ConnectionService.getState().connectedProfileId ?? "_none_";
+  const profileId = getConnectedProfileIdForCompletion() ?? "_none_";
   return `${profileId}\0${schema.toLowerCase()}\0${table.toLowerCase()}`;
+}
+
+function packageMemberCacheKey(schema: string, packageName: string): string {
+  const profileId = getConnectedProfileIdForCompletion() ?? "_none_";
+  return `${profileId}\0pkg\0${schema.toLowerCase()}\0${packageName.toLowerCase()}`;
 }
 
 export function clearSqlCompletionCaches(): void {
   columnCache.clear();
   columnMissCache.clear();
   columnInflight.clear();
+  packageMemberCache.clear();
+  packageMemberMissCache.clear();
+  packageMemberInflight.clear();
 }
 
 export function getConnectedProfileIdForCompletion(): string | null {
+  const bindingId =
+    EditorConnectionBindingService.getActiveBinding().profileId?.trim() || null;
+  if (bindingId && ConnectionService.isConnected(bindingId)) {
+    return bindingId;
+  }
   return ConnectionService.getState().connectedProfileId;
 }
 
@@ -47,9 +76,13 @@ export function getDefaultSchemaForCompletion(): string | null {
 
 /** Distinct schema/catalog names to try when resolving `table.` → columns. */
 export function schemaCandidatesForCompletion(): string[] {
-  const profile = ConnectionService.getConnectedProfile();
+  const profileId = getConnectedProfileIdForCompletion();
+  const profile = profileId
+    ? ConnectionService.getProfile(profileId)
+    : ConnectionService.getConnectedProfile();
   if (!profile) return [];
 
+  const binding = EditorConnectionBindingService.getActiveBinding();
   const result: string[] = [];
   const add = (value: string | undefined | null) => {
     const trimmed = value?.trim();
@@ -60,6 +93,10 @@ export function schemaCandidatesForCompletion(): string[] {
     result.push(trimmed);
   };
 
+  if (binding.profileId === profile.id) {
+    add(binding.schema);
+    add(binding.catalog);
+  }
   add(effectiveDefaultSchema(profile));
   add(profile.catalog);
   // Keep login user as a fallback candidate for dialects where user ≈ schema.
@@ -154,6 +191,69 @@ export function listTablesAndViews(
   return result;
 }
 
+/** DB procedures, packages, and user-defined functions for expression clauses. */
+export function listRoutines(
+  profileId: string,
+  schemaName: string,
+): MetadataObject[] {
+  const schema = getExplorerSchemas(
+    ConnectionTreeService.getCache(profileId),
+  ).find((item) => item.name.toLowerCase() === schemaName.toLowerCase());
+  if (!schema || schema.status !== "loaded") return [];
+  const result: MetadataObject[] = [];
+  const seen = new Set<string>();
+  for (const group of schema.groups) {
+    if (
+      group.id !== "procedures" &&
+      group.id !== "packages" &&
+      group.id !== "functions"
+    ) {
+      continue;
+    }
+    for (const object of group.objects) {
+      const key = `${object.kind}\0${object.name.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(object);
+    }
+  }
+  return result;
+}
+
+export function findPackageInSchemas(
+  profileId: string,
+  packageName: string,
+  preferredSchema?: string | null,
+): { schema: string; packageName: string } | null {
+  const caches = getExplorerSchemas(
+    ConnectionTreeService.getCache(profileId),
+  ).filter((schema) => schema.status === "loaded");
+  const ordered = preferredSchema
+    ? [
+        ...caches.filter(
+          (schema) =>
+            schema.name.toLowerCase() === preferredSchema.toLowerCase(),
+        ),
+        ...caches.filter(
+          (schema) =>
+            schema.name.toLowerCase() !== preferredSchema.toLowerCase(),
+        ),
+      ]
+    : caches;
+
+  for (const schema of ordered) {
+    const group = schema.groups.find((item) => item.id === "packages");
+    if (!group) continue;
+    const match = group.objects.find(
+      (object) => object.name.toLowerCase() === packageName.toLowerCase(),
+    );
+    if (match) {
+      return { schema: schema.name, packageName: match.name };
+    }
+  }
+  return null;
+}
+
 export function findSchemaName(
   profileId: string,
   name: string,
@@ -237,6 +337,10 @@ export async function listColumnsCached(
   schema: string,
   table: string,
 ): Promise<MetadataColumn[]> {
+  const profileId = getConnectedProfileIdForCompletion();
+  if (!profileId) {
+    return [];
+  }
   const key = columnCacheKey(schema, table);
   const now = Date.now();
   const cached = columnCache.get(key);
@@ -253,7 +357,7 @@ export async function listColumnsCached(
 
   const request = (async (): Promise<MetadataColumn[]> => {
     try {
-      const result = await bridgeListColumns(schema, table);
+      const result = await bridgeListColumns(profileId, schema, table);
       if (result.columns.length === 0) {
         columnMissCache.set(key, now + COLUMN_CACHE_TTL_MS);
         return [];
@@ -277,6 +381,61 @@ export async function listColumnsCached(
   })();
 
   columnInflight.set(key, request);
+  return request;
+}
+
+export async function listPackageMembersCached(
+  schema: string,
+  packageName: string,
+): Promise<MetadataPackageMember[]> {
+  const profileId = getConnectedProfileIdForCompletion();
+  if (!profileId) {
+    return [];
+  }
+  const key = packageMemberCacheKey(schema, packageName);
+  const now = Date.now();
+  const cached = packageMemberCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.members;
+  }
+  const missUntil = packageMemberMissCache.get(key);
+  if (missUntil !== undefined && missUntil > now) {
+    return [];
+  }
+
+  const inflight = packageMemberInflight.get(key);
+  if (inflight) return inflight;
+
+  const request = (async (): Promise<MetadataPackageMember[]> => {
+    try {
+      const result = await bridgeListPackageMembers(
+        profileId,
+        schema,
+        packageName,
+      );
+      if (result.members.length === 0) {
+        packageMemberMissCache.set(key, now + COLUMN_CACHE_TTL_MS);
+        return [];
+      }
+      packageMemberCache.set(key, {
+        members: result.members,
+        expiresAt: now + COLUMN_CACHE_TTL_MS,
+      });
+      packageMemberMissCache.delete(key);
+      return result.members;
+    } catch (error) {
+      console.warn(
+        `[sql-completion] package members failed for ${schema}.${packageName}`,
+        error,
+      );
+      packageMemberMissCache.set(key, now + COLUMN_CACHE_TTL_MS);
+      return [];
+    } finally {
+      packageMemberInflight.delete(key);
+    }
+  })();
+
+  packageMemberInflight.set(key, request);
   return request;
 }
 

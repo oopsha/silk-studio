@@ -7,6 +7,10 @@ export type EditorTab = {
   isDirty: boolean;
   isPreview: boolean;
   isPinned: boolean;
+  /** Optional muted suffix (e.g. connection name). */
+  description?: string;
+  /** Hover tooltip; falls back to uri/label when omitted. */
+  tooltip?: string;
 };
 
 export type OpenEditorInput = {

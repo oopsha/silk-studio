@@ -12,6 +12,7 @@ import "@silk-studio/ui/global.css";
 import "@silk-studio/workbench/workbench/workbench.contribution";
 import "./workbench/contributions/queryActions.contribution";
 import "./workbench/contributions/queryResultActions.contribution";
+import "./workbench/contributions/connectionTarget.contribution";
 import "./workbench/contributions/explorerObjectActions.contribution";
 import "./workbench/contributions/sqlLanguage.contribution";
 import "./workbench/contributions/sqlFormat.contribution";
@@ -26,6 +27,7 @@ configureEditorHost({
   updateWindowTitle: (activeEditor) =>
     WindowTitleService.updateFromEditor(activeEditor),
 });
+WindowTitleService.setWorkspaceName("silk-db-studio");
 configureDbStudioAiContextHost();
 configureDbStudioAiSqlProposalHost();
 configureDbStudioDiagnosticsHost();

@@ -26,10 +26,28 @@ import {
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { useConnectionState } from "../../services/connection/useConnectionState";
 import { useConnectionTree, getExplorerSchemas } from "../../services/connection/useConnectionTree";
+import { EditorConnectionBindingService } from "../../services/connection/editorConnectionBindingService";
+import {
+  placeOverSilkEditor,
+  TITLEBAR_QUICK_PICK_CLASS,
+} from "../../services/connection/titlebarQuickPickPlacement";
 import "@silk-studio/workbench/components/layout/TitleBar/OpenEditorsQuickPick/OpenEditorsQuickPick.css";
 import "./ExplorerSearchQuickPick.css";
 
-const QUICK_PICK_WIDTH = 520;
+function resolveSearchProfileId(
+  connectedProfileId: string | null,
+  connectedProfileIds: string[],
+): string | null {
+  const bindingId =
+    EditorConnectionBindingService.getActiveBinding().profileId?.trim() || null;
+  if (bindingId && connectedProfileIds.includes(bindingId)) {
+    return bindingId;
+  }
+  if (connectedProfileId && connectedProfileIds.includes(connectedProfileId)) {
+    return connectedProfileId;
+  }
+  return connectedProfileIds[0] ?? null;
+}
 
 function ExplorerSearchQuickPick() {
   const { t } = useI18n();
@@ -38,20 +56,22 @@ function ExplorerSearchQuickPick() {
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [busySchema, setBusySchema] = useState<string | null>(null);
+  const [placed, setPlaced] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(
-    null,
-  );
 
   const connection = useConnectionState();
-  const profileId = connection.connectedProfileId;
+  const profileId = resolveSearchProfileId(
+    connection.connectedProfileId,
+    connection.connectedProfileIds,
+  );
   const tree = useConnectionTree(profileId);
 
   useEffect(() => {
     return ExplorerSearchQuickPickService.onDidChange(() => {
       const next = ExplorerSearchQuickPickService.isOpen();
       setOpen(next);
+      setPlaced(false);
       if (next) {
         setFilter("");
         setFocusedIndex(0);
@@ -80,26 +100,34 @@ function ExplorerSearchQuickPick() {
     ExplorerSearchQuickPickService.hide();
   }, []);
 
-  const updatePosition = useCallback(() => {
-    const width = QUICK_PICK_WIDTH;
-    const left = Math.max(12, Math.round((window.innerWidth - width) / 2));
-    const top = Math.max(48, Math.round(window.innerHeight * 0.12));
-    setPosition({ top, left });
-  }, []);
-
   useLayoutEffect(() => {
-    if (!open) return;
-    updatePosition();
-  }, [open, updatePosition, picks.length]);
+    if (!open) {
+      document.documentElement.classList.remove(TITLEBAR_QUICK_PICK_CLASS);
+      return;
+    }
 
-  useEffect(() => {
-    if (!open) return;
+    const el = rootRef.current;
+    if (!el) return;
+
+    const place = () => {
+      if (placeOverSilkEditor(el)) setPlaced(true);
+    };
+
+    // Measure while silk-editor is visible, then hide it (Open Editors pattern).
+    place();
+    document.documentElement.classList.add(TITLEBAR_QUICK_PICK_CLASS);
+    place();
+
     function handleResize() {
-      updatePosition();
+      place();
     }
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [open, updatePosition]);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      document.documentElement.classList.remove(TITLEBAR_QUICK_PICK_CLASS);
+    };
+  }, [open, filter, focusedIndex, picks.length, statusMessage]);
 
   useEffect(() => {
     if (!open) return;
@@ -173,7 +201,7 @@ function ExplorerSearchQuickPick() {
         console.error("[silk.explorer.search]", error);
       }
     },
-    [close, tree],
+    [close, tree, t],
   );
 
   const handleInputKeyDown = (
@@ -208,7 +236,8 @@ function ExplorerSearchQuickPick() {
     return null;
   }
 
-  const connected = Boolean(profileId) && ConnectionService.isConnected();
+  const connected =
+    Boolean(profileId) && ConnectionService.isConnected(profileId ?? undefined);
   const emptyHint = !connected
     ? t("app.explorer.searchNeedConnect")
     : tree.status === "loading"
@@ -224,17 +253,13 @@ function ExplorerSearchQuickPick() {
       ref={rootRef}
       className="quick-input-widget explorer-search-quick-pick"
       role="dialog"
+      aria-modal="true"
       aria-label={t("app.explorer.searchTitle")}
-      style={
-        position
-          ? {
-              top: position.top,
-              left: position.left,
-              width: QUICK_PICK_WIDTH,
-              position: "fixed",
-            }
-          : { visibility: "hidden", position: "fixed" }
-      }
+      style={{
+        position: "fixed",
+        opacity: placed ? 1 : 0,
+        pointerEvents: placed ? "auto" : "none",
+      }}
     >
       <div className="quick-input-header">
         <div className="quick-input-filter">
@@ -278,7 +303,9 @@ function ExplorerSearchQuickPick() {
                   <span className="quick-input-list-icon" aria-hidden>
                     <Codicon name={loading ? "loading" : pick.icon} />
                   </span>
-                  <span className="quick-input-list-label">{pick.label}</span>
+                  <span className="quick-input-list-label explorer-search-quick-pick__label">
+                    {pick.label}
+                  </span>
                   <span className="explorer-search-quick-pick__description">
                     {pick.description}
                   </span>

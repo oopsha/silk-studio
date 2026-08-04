@@ -6,6 +6,7 @@ import {
 } from "@silk-studio/db-protocol";
 
 export async function bridgeFetchObjectDdl(
+  connectionId: string,
   schema: string,
   name: string,
   kind: MetadataObjectKind,
@@ -14,7 +15,12 @@ export async function bridgeFetchObjectDdl(
   if (!isTauri()) {
     throw new Error("DDL metadata is available in the desktop app only.");
   }
+  const id = connectionId.trim();
+  if (!id) {
+    throw new Error("connectionId is required.");
+  }
   const payload = await invoke<unknown>("connection_ddl", {
+    connectionId: id,
     schema: schema.trim(),
     name: name.trim(),
     kind,

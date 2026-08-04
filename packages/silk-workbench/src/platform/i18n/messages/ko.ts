@@ -61,6 +61,9 @@ export const koMessages = {
       lineNumbers: "줄 번호",
       minimap: "미니맵",
       minimapHint: "에디터 미니맵을 표시합니다.",
+      stickyScroll: "스티키 스크롤",
+      stickyScrollHint:
+        "편집기 위쪽에서 스크롤하는 동안 중첩된 현재 범위를 표시합니다 (BEGIN, IF, …).",
       wordWrap: "자동 줄 바꿈",
     },
     database: {
@@ -80,6 +83,15 @@ export const koMessages = {
       preloadDefaultSchemaDescription:
         "연결 성공 후 기본 스키마 객체를 캐시에 미리 로드합니다. 탐색기 트리는 펼치지 않으며, SQL 자동완성·Quick Pick에 바로 쓰입니다.",
       preloadDefaultSchemaHint: "기본 스키마를 미리 로드합니다.",
+      sqlParameters: "SQL 파라미터",
+      anonymousParameters: "익명 SQL 파라미터",
+      anonymousParametersDescription:
+        "켜면 쿼리 실행 전에 ? 플레이스홀더 값을 입력받습니다.",
+      anonymousParametersHint: "? 파라미터 입력 사용",
+      namedParameters: "네임드 SQL 파라미터",
+      namedParametersDescription:
+        "켜면 쿼리 실행 전에 :name 플레이스홀더 값을 입력받습니다.",
+      namedParametersHint: ":name 파라미터 입력 사용",
     },
     queryResult: {
       title: "쿼리 결과",
@@ -329,6 +341,19 @@ export const koMessages = {
       testPassed: "연결 테스트에 성공했습니다.",
       connected: "연결되었습니다.",
     },
+    connectionTarget: {
+      noConnection: "연결 없음",
+      disconnected: "연결 끊김 · {name}",
+      ariaLabel: "쿼리 대상: {label}",
+      pickerTitle: "이 에디터의 연결 선택",
+      pickerPlaceholder: "연결된 프로필 필터…",
+      pickerEmpty: "연결된 프로필이 없습니다. Connections 탐색기에서 연결하세요.",
+      pickerNoMatch: "일치하는 연결된 프로필이 없습니다.",
+      clearBinding: "바인딩 해제 (연결 없음)",
+      applyToAllNamed: "모든 SQL 탭 → {name}",
+      selectTargetTitle: "쿼리 대상 선택…",
+      connectedBadge: "연결됨",
+    },
     explorer: {
       filterPlaceholder: "스키마·개체 필터…",
       filterAria: "스키마 및 개체 필터",
@@ -457,7 +482,18 @@ export const koMessages = {
       cancelled: "쿼리가 취소되었습니다.",
       noConnection:
         "활성 데이터베이스 연결이 없습니다. Connections 탐색기에서 프로필에 연결하세요.",
+      noConnectionTarget:
+        "이 에디터에 선택된 연결이 없습니다. 상태바에서 연결된 프로필을 고르세요.",
+      connectionDisconnected:
+        "연결 \"{name}\"이(가) 끊어져 있습니다. Connections 탐색기에서 다시 연결하세요.",
       executeFailed: "쿼리 실행에 실패했습니다.",
+      parametersTitle: "쿼리 파라미터",
+      parametersSummary:
+        "이 문의 플레이스홀더 값을 입력하세요. 비우면 빈 문자열이고, NULL을 선택하면 SQL NULL입니다.",
+      parametersName: "파라미터",
+      parametersValue: "값",
+      parametersNull: "NULL",
+      parametersCancelled: "쿼리가 취소되었습니다 — 파라미터 입력을 닫았습니다.",
       readOnlyBlocked:
         "읽기 전용 모드가 켜져 있습니다. 쓰기 문(INSERT, UPDATE, DELETE, DDL 등)은 차단됩니다.",
       saveDesktopOnly: "셀 편집 저장은 데스크톱 앱에서만 가능합니다.",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Editor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
@@ -7,6 +7,10 @@ import { CommandService } from "@silk-studio/workbench/platform/commands/command
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import {
+  monacoModelPathForTab,
+  scheduleRestoreViewState,
+} from "@silk-studio/editor/services/editor/monacoModelPath.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import {
   defineWorkbenchMonacoThemes,
@@ -47,6 +51,7 @@ function PlsqlEditorView() {
   const [compileState, setCompileState] = useState<PlsqlCompileState>(() =>
     PlsqlCompileStateService.getState(),
   );
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
   useEffect(() => {
     return PlsqlCompileStateService.onDidChange(() => {
@@ -69,6 +74,7 @@ function PlsqlEditorView() {
     setLoadState({ status: "loading" });
 
     void bridgeFetchObjectDdl(
+      ref.profileId,
       ref.schemaName,
       ref.objectName,
       ref.kind,
@@ -101,9 +107,30 @@ function PlsqlEditorView() {
     t,
   ]);
 
+  useLayoutEffect(() => {
+    const tabId = activeTab?.id;
+    return () => {
+      const instance = editorRef.current;
+      if (instance && tabId) {
+        EditorService.saveViewState(tabId, instance.saveViewState());
+      }
+    };
+  }, [activeTab?.id]);
+
+  // After tab switch, controlled `value` sync can reset scroll — restore after that.
+  useEffect(() => {
+    const instance = editorRef.current;
+    const tabId = activeTab?.id;
+    if (!instance || !tabId) return;
+    scheduleRestoreViewState(instance, () =>
+      EditorService.getViewState(tabId),
+    );
+  }, [activeTab?.id]);
+
   useEffect(() => {
     return () => {
       EditorService.setActiveTextEditor(null);
+      editorRef.current = null;
     };
   }, [activeTab?.id]);
 
@@ -113,7 +140,14 @@ function PlsqlEditorView() {
   };
 
   const handleMount = useCallback((instance: editor.IStandaloneCodeEditor) => {
+    editorRef.current = instance;
     EditorService.setActiveTextEditor(instance);
+    const tabId = EditorService.getActiveTabId();
+    if (tabId) {
+      scheduleRestoreViewState(instance, () =>
+        EditorService.getViewState(tabId),
+      );
+    }
   }, []);
 
   const handleChange = useCallback(
@@ -268,11 +302,13 @@ function PlsqlEditorView() {
       ) : null}
       <div className="plsql-editor-view__body">
         <Editor
-          key={activeTab?.id}
           height="100%"
+          path={activeTab ? monacoModelPathForTab(activeTab) : undefined}
           language="plsql"
           value={content}
           theme={monacoThemeForColorTheme(configuration["workbench.colorTheme"])}
+          keepCurrentModel
+          saveViewState
           beforeMount={handleBeforeMount}
           onMount={handleMount}
           onChange={handleChange}
@@ -285,6 +321,9 @@ function PlsqlEditorView() {
             lineNumbers: configuration["editor.lineNumbers"],
             renderLineHighlight: "line",
             minimap: { enabled: configuration["editor.minimap.enabled"] },
+            stickyScroll: {
+              enabled: configuration["editor.stickyScroll.enabled"],
+            },
             wordWrap: configuration["editor.wordWrap"],
             scrollBeyondLastLine: false,
             automaticLayout: true,

@@ -42,6 +42,18 @@ class QueryResultDirtyServiceImpl {
     }
   }
 
+  removeTabs(tabIds: Iterable<string>): void {
+    let changed = false;
+    for (const tabId of tabIds) {
+      if (this.stores.delete(tabId)) {
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.emit();
+    }
+  }
+
   clearTab(tabId: string): void {
     const store = this.stores.get(tabId);
     if (!store || store.dirtyByRow.size === 0) {

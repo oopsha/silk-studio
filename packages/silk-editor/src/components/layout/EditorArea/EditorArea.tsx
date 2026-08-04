@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { Editor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import type { IDisposable, editor } from "monaco-editor";
@@ -7,6 +7,10 @@ import { EditorService } from "../../../services/editor/editorService";
 import { EditorStatusService } from "../../../services/editor/editorStatusService";
 import { useActiveEditor } from "../../../services/editor/useActiveEditor";
 import type { EditorTab } from "../../../services/editor/editorTypes";
+import {
+  monacoModelPathForTab,
+  scheduleRestoreViewState,
+} from "../../../services/editor/monacoModelPath";
 import {
   defineWorkbenchMonacoThemes,
   monacoThemeForColorTheme,
@@ -21,6 +25,7 @@ export type EditorConfigurationOptions = {
   insertSpaces: boolean;
   lineNumbers: "on" | "off" | "relative";
   minimapEnabled: boolean;
+  stickyScrollEnabled: boolean;
   wordWrap: "off" | "on";
 };
 
@@ -54,6 +59,14 @@ function EditorArea({
     (instance: editor.IStandaloneCodeEditor, monaco: Monaco) => {
       editorRef.current = instance;
       EditorService.setActiveTextEditor(instance);
+
+      const tabId = EditorService.getActiveTabId();
+      if (tabId) {
+        scheduleRestoreViewState(instance, () =>
+          EditorService.getViewState(tabId),
+        );
+      }
+
       cursorListenerRef.current?.dispose();
 
       const position = instance.getPosition();
@@ -85,6 +98,26 @@ function EditorArea({
     }
   }, [activeTab]);
 
+  useLayoutEffect(() => {
+    const tabId = activeTab?.id;
+    return () => {
+      const instance = editorRef.current;
+      if (instance && tabId) {
+        EditorService.saveViewState(tabId, instance.saveViewState());
+      }
+    };
+  }, [activeTab?.id]);
+
+  // After tab switch, controlled `value` sync can reset scroll — restore after that.
+  useEffect(() => {
+    const instance = editorRef.current;
+    const tabId = activeTab?.id;
+    if (!instance || !tabId) return;
+    scheduleRestoreViewState(instance, () =>
+      EditorService.getViewState(tabId),
+    );
+  }, [activeTab?.id]);
+
   useEffect(() => {
     const instance = editorRef.current;
     if (!instance) return;
@@ -95,6 +128,7 @@ function EditorArea({
       insertSpaces: configuration.insertSpaces,
       lineNumbers: configuration.lineNumbers,
       minimap: { enabled: configuration.minimapEnabled },
+      stickyScroll: { enabled: configuration.stickyScrollEnabled },
       wordWrap: configuration.wordWrap,
     });
   }, [configuration]);
@@ -131,11 +165,13 @@ function EditorArea({
   return (
     <main className="editor-area">
       <Editor
-        key={activeTab.id}
         height="100%"
+        path={monacoModelPathForTab(activeTab)}
         language={activeTab.languageId}
         value={activeTab.content}
         theme={monacoThemeForColorTheme(configuration.colorTheme)}
+        keepCurrentModel
+        saveViewState
         beforeMount={handleEditorWillMount}
         onMount={handleMount}
         onChange={handleChange}
@@ -147,6 +183,7 @@ function EditorArea({
           lineNumbers: configuration.lineNumbers,
           renderLineHighlight: "line",
           minimap: { enabled: configuration.minimapEnabled },
+          stickyScroll: { enabled: configuration.stickyScrollEnabled },
           wordWrap: configuration.wordWrap,
           suggestOnTriggerCharacters: true,
           quickSuggestions: { other: true, comments: false, strings: false },

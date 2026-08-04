@@ -7,6 +7,7 @@ export type SqlCompletionBucket =
   | "select_list_keywords"
   | "expression_keywords"
   | "functions"
+  | "routines"
   | "schemas"
   | "tables"
   | "columns";
@@ -29,6 +30,7 @@ export function completionBucketsForClause(
       return [
         "columns",
         "functions",
+        "routines",
         "select_list_keywords",
         "expression_keywords",
       ];
@@ -39,7 +41,7 @@ export function completionBucketsForClause(
     case "order_by":
     case "set":
     case "values":
-      return ["columns", "functions", "expression_keywords"];
+      return ["columns", "functions", "routines", "expression_keywords"];
     case "unknown":
       return [
         "statement_start_keywords",
@@ -47,6 +49,7 @@ export function completionBucketsForClause(
         "schemas",
         "columns",
         "functions",
+        "routines",
         "expression_keywords",
       ];
   }

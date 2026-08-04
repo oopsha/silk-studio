@@ -20,7 +20,12 @@ import type {
   ConnectionProfileInput,
   ConnectionState,
 } from "./connectionTypes";
-import { defaultUrlForDriver, effectiveDefaultSchema, getConnectionDriver } from "./connectionTypes";
+import {
+  defaultUrlForDriver,
+  effectiveDefaultSchema,
+  getConnectionDriver,
+  isProfileConnected,
+} from "./connectionTypes";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { reportError } from "../formatErrorMessage";
 import { ConnectionTreeService } from "./connectionTreeService";
@@ -30,6 +35,7 @@ type ConnectionListener = () => void;
 const INITIAL_STATE: ConnectionState = {
   profiles: loadConnectionProfiles(),
   activeProfileId: loadActiveProfileId(),
+  connectedProfileIds: [],
   connectedProfileId: null,
   status: "disconnected",
   errorMessage: null,
@@ -53,13 +59,27 @@ class ConnectionServiceImpl {
     return this.getProfile(this.state.activeProfileId);
   }
 
+  /** Most recently connected profile (if still connected). */
   getConnectedProfile(): ConnectionProfile | undefined {
     if (!this.state.connectedProfileId) return undefined;
+    if (!isProfileConnected(this.state, this.state.connectedProfileId)) {
+      return undefined;
+    }
     return this.getProfile(this.state.connectedProfileId);
   }
 
-  isConnected(): boolean {
-    return this.state.status === "connected";
+  getConnectedProfiles(): ConnectionProfile[] {
+    return this.state.connectedProfileIds
+      .map((id) => this.getProfile(id))
+      .filter((profile): profile is ConnectionProfile => Boolean(profile));
+  }
+
+  /** True if any session is open, or if {@code profileId} is open when provided. */
+  isConnected(profileId?: string): boolean {
+    if (profileId) {
+      return isProfileConnected(this.state, profileId);
+    }
+    return this.state.connectedProfileIds.length > 0;
   }
 
   async initialize(): Promise<void> {
@@ -131,7 +151,7 @@ class ConnectionServiceImpl {
     await secretSet(profileId, input.password);
     this.persistProfiles(profiles);
 
-    if (this.state.connectedProfileId === profileId) {
+    if (this.isConnected(profileId)) {
       await this.connect(profileId);
     }
 
@@ -169,8 +189,8 @@ class ConnectionServiceImpl {
       this.setActiveProfile(profiles[0]?.id ?? null);
     }
 
-    if (this.state.connectedProfileId === profileId) {
-      await this.disconnect();
+    if (this.isConnected(profileId)) {
+      await this.disconnect(profileId);
     }
   }
 
@@ -199,15 +219,8 @@ class ConnectionServiceImpl {
     });
 
     try {
-      if (
-        this.state.connectedProfileId &&
-        this.state.connectedProfileId !== profileId
-      ) {
-        await bridgeDisconnect();
-      }
-
       const password = await this.getPassword(profileId);
-      await bridgeConnect({
+      await bridgeConnect(profileId, {
         url: profile.url,
         user: profile.user,
         password,
@@ -216,14 +229,22 @@ class ConnectionServiceImpl {
         catalog: profile.catalog.trim() || undefined,
       });
 
-      ConnectionTreeService.invalidate();
-      ConnectionTreeService.setConnectedProfileId(profileId);
+      ConnectionTreeService.invalidate(profileId);
+      ConnectionTreeService.addConnectedProfile(profileId);
       ConnectionTreeService.setExplorerFilter(profileId, {
         driverId: profile.driverId,
         showSystemObjects: profile.showSystemObjects,
       });
+
+      const connectedProfileIds = this.state.connectedProfileIds.includes(
+        profileId,
+      )
+        ? this.state.connectedProfileIds
+        : [...this.state.connectedProfileIds, profileId];
+
       this.setState({
         ...this.state,
+        connectedProfileIds,
         connectedProfileId: profileId,
         status: "connected",
         errorMessage: null,
@@ -233,11 +254,14 @@ class ConnectionServiceImpl {
       );
     } catch (error) {
       const message = reportError(error, "connection.connect", "Failed to connect.");
-      ConnectionTreeService.setConnectedProfileId(null);
+      const stillConnected = this.state.connectedProfileIds.filter(
+        (id) => id !== profileId,
+      );
       this.setState({
         ...this.state,
-        connectedProfileId: null,
-        status: "error",
+        connectedProfileIds: stillConnected,
+        connectedProfileId: stillConnected[stillConnected.length - 1] ?? null,
+        status: stillConnected.length > 0 ? "connected" : "error",
         errorMessage: message,
       });
       if (!options.silent) {
@@ -252,7 +276,7 @@ class ConnectionServiceImpl {
     ) {
       return;
     }
-    if (this.state.connectedProfileId !== profileId) {
+    if (!this.isConnected(profileId)) {
       return;
     }
 
@@ -267,11 +291,9 @@ class ConnectionServiceImpl {
           cache.catalogs[0]?.name;
         if (!catalogName) return;
         await ConnectionTreeService.loadCatalogSchemas(profileId, catalogName);
-        if (this.state.connectedProfileId !== profileId) return;
+        if (!this.isConnected(profileId)) return;
 
-        const schemaName = profile
-          ? effectiveDefaultSchema(profile)
-          : "";
+        const schemaName = profile ? effectiveDefaultSchema(profile) : "";
         if (schemaName) {
           await ConnectionTreeService.loadSchemaObjects(
             profileId,
@@ -298,16 +320,45 @@ class ConnectionServiceImpl {
     }
   }
 
-  async disconnect(): Promise<void> {
-    try {
-      await bridgeDisconnect();
-    } finally {
-      ConnectionTreeService.invalidate();
-      ConnectionTreeService.setConnectedProfileId(null);
+  /**
+   * Disconnect one profile, or the most recent connected profile when omitted.
+   * Other open sessions stay connected.
+   */
+  async disconnect(profileId?: string): Promise<void> {
+    const targetId =
+      profileId ??
+      this.state.connectedProfileId ??
+      this.state.connectedProfileIds[
+        this.state.connectedProfileIds.length - 1
+      ] ??
+      null;
+    if (!targetId) {
       this.setState({
         ...this.state,
+        connectedProfileIds: [],
         connectedProfileId: null,
         status: "disconnected",
+        errorMessage: null,
+      });
+      return;
+    }
+
+    try {
+      if (this.isConnected(targetId)) {
+        await bridgeDisconnect(targetId);
+      }
+    } finally {
+      ConnectionTreeService.removeConnectedProfile(targetId);
+      ConnectionTreeService.invalidate(targetId);
+      const connectedProfileIds = this.state.connectedProfileIds.filter(
+        (id) => id !== targetId,
+      );
+      this.setState({
+        ...this.state,
+        connectedProfileIds,
+        connectedProfileId:
+          connectedProfileIds[connectedProfileIds.length - 1] ?? null,
+        status: connectedProfileIds.length > 0 ? "connected" : "disconnected",
         errorMessage: null,
       });
     }

@@ -7,6 +7,7 @@ export const MAX_SCHEMA_SUGGESTIONS = 40;
 export const MAX_TABLE_SUGGESTIONS = 80;
 export const MAX_COLUMN_SUGGESTIONS = 150;
 export const MAX_FUNCTION_SUGGESTIONS = 60;
+export const MAX_ROUTINE_SUGGESTIONS = 80;
 export const MAX_TOTAL_SUGGESTIONS = 200;
 
 /** How long column JDBC results stay warm (connection switch still clears). */

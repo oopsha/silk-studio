@@ -85,13 +85,21 @@ describe("completion policy + keywords split", () => {
   it("offers functions and columns in select_list", () => {
     expect(wantsBucket("select_list", "functions")).toBe(true);
     expect(wantsBucket("select_list", "columns")).toBe(true);
+    expect(wantsBucket("select_list", "routines")).toBe(true);
     expect(wantsBucket("select_list", "tables")).toBe(false);
+  });
+
+  it("offers routines in where, not tables", () => {
+    expect(wantsBucket("where", "routines")).toBe(true);
+    expect(wantsBucket("where", "functions")).toBe(true);
+    expect(wantsBucket("where", "tables")).toBe(false);
   });
 
   it("offers tables in from, not functions", () => {
     expect(wantsBucket("from", "tables")).toBe(true);
     expect(wantsBucket("from", "schemas")).toBe(true);
     expect(wantsBucket("from", "functions")).toBe(false);
+    expect(wantsBucket("from", "routines")).toBe(false);
     expect(wantsBucket("from", "columns")).toBe(false);
   });
 

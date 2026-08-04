@@ -3,7 +3,7 @@ import type { EditorTab } from "@silk-studio/editor/services/editor/editorTypes.
 type WindowTitleChangeListener = () => void;
 
 class WindowTitleServiceImpl {
-  private workspaceName = "silk-editor";
+  private workspaceName = "silk-db-studio";
   private activeEditor: EditorTab | undefined;
   private readonly listeners = new Set<WindowTitleChangeListener>();
 

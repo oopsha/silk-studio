@@ -32,11 +32,7 @@ export function getPlsqlCompileBlockedReason(tabId?: string): string | null {
   if (ConfigurationService.getValue("database.readOnly")) {
     return "Read-only mode is enabled. PL/SQL Compile is blocked.";
   }
-  if (!ConnectionService.isConnected()) {
-    return "Connect a database profile before compiling.";
-  }
-  const { connectedProfileId } = ConnectionService.getState();
-  if (connectedProfileId !== ref.profileId) {
+  if (!ConnectionService.isConnected(ref.profileId)) {
     return "Connect this profile before compiling.";
   }
   const profile = ConnectionService.getProfile(ref.profileId);
@@ -74,6 +70,7 @@ export async function compileActivePlsqlObject(tabId?: string): Promise<void> {
 
   try {
     const result = await bridgeCompileObject(
+      ref.profileId,
       ref.schemaName,
       ref.objectName,
       ref.kind,

@@ -3,7 +3,10 @@ import type { ConnectionDriverId } from "./connectionTypes";
 import { ConnectionService } from "./connectionService";
 import type { ExplorerObjectRef } from "./explorerObjectActions";
 import { formatTableReference } from "../query/sqlLiteral";
-import { QueryExecutionService } from "../query/queryExecutionService";
+import {
+  buildOpenDataOwnerId,
+  QueryExecutionService,
+} from "../query/queryExecutionService";
 
 export function buildOpenDataSql(
   schemaName: string,
@@ -24,8 +27,7 @@ export async function openTableData(ref: ExplorerObjectRef): Promise<void> {
     throw new Error("Connection profile not found.");
   }
 
-  const { connectedProfileId } = ConnectionService.getState();
-  if (connectedProfileId !== ref.profileId || !ConnectionService.isConnected()) {
+  if (!ConnectionService.isConnected(ref.profileId)) {
     await ConnectionService.connect(ref.profileId);
   }
 
@@ -40,5 +42,11 @@ export async function openTableData(ref: ExplorerObjectRef): Promise<void> {
   await QueryExecutionService.execute(sql, {
     relationKind: ref.object.kind,
     tabTitle,
+    connectionId: ref.profileId,
+    ownerId: buildOpenDataOwnerId(
+      ref.profileId,
+      ref.schemaName,
+      ref.object.name,
+    ),
   });
 }

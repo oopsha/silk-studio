@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -94,6 +95,95 @@ final class OracleDialect implements DbDialect {
         }
         if (columns.size() > 0) {
           return;
+        }
+      }
+    }
+  }
+
+  @Override
+  public void collectPackageMembers(
+      Connection connection, String schemaName, String packageName, ArrayNode members)
+      throws SQLException {
+    String[] schemas = distinctCases(schemaName);
+    String[] packages = distinctCases(packageName);
+    for (String schema : schemas) {
+      for (String pkg : packages) {
+        appendPackageMembersFromAllProcedures(connection, schema, pkg, members);
+        if (members.size() > 0) {
+          return;
+        }
+      }
+    }
+    // JDBC fallback when ALL_PROCEDURES yields nothing (permissions / older catalogs).
+    DatabaseMetaData metadata = connection.getMetaData();
+    for (String schema : schemas) {
+      for (String pkg : packages) {
+        try (ResultSet procedures = metadata.getProcedures(null, schema, "%")) {
+          Set<String> seen = new LinkedHashSet<>();
+          while (procedures.next()) {
+            String catalog = procedures.getString("PROCEDURE_CAT");
+            if (catalog == null || !catalog.equalsIgnoreCase(pkg)) {
+              continue;
+            }
+            String name = procedures.getString("PROCEDURE_NAME");
+            if (name == null || name.isBlank() || !seen.add(name.toUpperCase(Locale.ROOT))) {
+              continue;
+            }
+            ObjectNode member = members.addObject();
+            member.put("name", name);
+            member.put("kind", "procedure");
+          }
+        }
+        if (members.size() > 0) {
+          return;
+        }
+      }
+    }
+  }
+
+  /**
+   * Lists package body members via ALL_PROCEDURES; functions are those with a return argument
+   * (ALL_ARGUMENTS.POSITION = 0).
+   */
+  private static void appendPackageMembersFromAllProcedures(
+      Connection connection, String schemaName, String packageName, ArrayNode members)
+      throws SQLException {
+    String sql =
+        "SELECT p.PROCEDURE_NAME AS name, "
+            + "CASE WHEN EXISTS ("
+            + "  SELECT 1 FROM ALL_ARGUMENTS a "
+            + "  WHERE a.OWNER = p.OWNER "
+            + "    AND a.PACKAGE_NAME = p.OBJECT_NAME "
+            + "    AND a.OBJECT_NAME = p.PROCEDURE_NAME "
+            + "    AND NVL(a.OVERLOAD, '0') = NVL(p.OVERLOAD, '0') "
+            + "    AND a.POSITION = 0"
+            + ") THEN 'function' ELSE 'procedure' END AS kind "
+            + "FROM ALL_PROCEDURES p "
+            + "WHERE p.OWNER = ? "
+            + "  AND p.OBJECT_NAME = ? "
+            + "  AND p.OBJECT_TYPE = 'PACKAGE' "
+            + "  AND p.PROCEDURE_NAME IS NOT NULL "
+            + "ORDER BY p.PROCEDURE_NAME, p.OVERLOAD NULLS FIRST";
+    Set<String> seen = new LinkedHashSet<>();
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, packageName);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          String name = rs.getString("name");
+          if (name == null || name.isBlank()) {
+            continue;
+          }
+          String key = name.toUpperCase(Locale.ROOT);
+          if (!seen.add(key)) {
+            continue;
+          }
+          String kind = rs.getString("kind");
+          ObjectNode member = members.addObject();
+          member.put("name", name);
+          member.put(
+              "kind",
+              "function".equalsIgnoreCase(kind) ? "function" : "procedure");
         }
       }
     }

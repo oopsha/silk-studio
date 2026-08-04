@@ -52,10 +52,23 @@ export type ConnectionStatus =
 export type ConnectionState = {
   profiles: ConnectionProfile[];
   activeProfileId: string | null;
+  /** All currently open JDBC sessions (profile ids = agent connectionIds). */
+  connectedProfileIds: string[];
+  /**
+   * Most recently connected profile. Convenience for callers not yet multi-aware;
+   * prefer {@link connectedProfileIds} / `isProfileConnected` when checking a specific profile.
+   */
   connectedProfileId: string | null;
   status: ConnectionStatus;
   errorMessage: string | null;
 };
+
+export function isProfileConnected(
+  state: Pick<ConnectionState, "connectedProfileIds">,
+  profileId: string,
+): boolean {
+  return state.connectedProfileIds.includes(profileId);
+}
 
 export const DEFAULT_ORACLE_URL =
   "jdbc:oracle:thin:@localhost:1521/FREEPDB1";

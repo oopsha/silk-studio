@@ -21,9 +21,6 @@ function assertMutationsAllowed(): void {
       "Read-only mode is enabled. DROP and RENAME are blocked.",
     );
   }
-  if (!ConnectionService.isConnected()) {
-    throw new Error("Connect a database profile before modifying objects.");
-  }
 }
 
 function resolveDriverId(ref: ExplorerObjectRef) {
@@ -31,8 +28,7 @@ function resolveDriverId(ref: ExplorerObjectRef) {
   if (!profile) {
     throw new Error("Connection profile not found.");
   }
-  const { connectedProfileId } = ConnectionService.getState();
-  if (connectedProfileId !== ref.profileId || !ConnectionService.isConnected()) {
+  if (!ConnectionService.isConnected(ref.profileId)) {
     throw new Error("Connect this profile before modifying objects.");
   }
   return profile.driverId;
@@ -88,7 +84,9 @@ export async function executeExplorerMutation(
       : buildRenameObjectSql(ctx, newName ?? "");
 
   assertReadOnlyQueryAllowed(sql, ConfigurationService.getValue("database.readOnly"));
-  await QueryExecutionService.executeWriteStatement(sql);
+  await QueryExecutionService.executeWriteStatement(sql, {
+    connectionId: ref.profileId,
+  });
   await ConnectionTreeService.invalidateAndRefreshSchema(
     ref.profileId,
     ref.schemaName,

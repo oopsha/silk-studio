@@ -417,7 +417,7 @@ function ProfileTree({
           onDoubleClick={() =>
             void run(async () => {
               if (isConnected) {
-                await ConnectionService.disconnect();
+                await ConnectionService.disconnect(profile.id);
               } else {
                 await ConnectionService.connect(profile.id);
               }
@@ -439,7 +439,7 @@ function ProfileTree({
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  await ConnectionService.disconnect();
+                  await ConnectionService.disconnect(profile.id);
                 })
               }
             >
@@ -936,7 +936,7 @@ function ConnectionsExplorer() {
             className="connections-explorer__icon-button"
             title={t("workbench.explorer.searchObjectsTitle")}
             aria-label={t("workbench.explorer.searchObjects")}
-            disabled={!connection.connectedProfileId}
+            disabled={connection.connectedProfileIds.length === 0}
             onClick={() =>
               void CommandService.executeCommand(EXPLORER_COMMANDS.searchObjects)
             }
@@ -962,7 +962,7 @@ function ConnectionsExplorer() {
               key={profile.id}
               profile={profile}
               isActive={connection.activeProfileId === profile.id}
-              isConnected={connection.connectedProfileId === profile.id}
+              isConnected={connection.connectedProfileIds.includes(profile.id)}
               filter={filter}
               selectedKey={selectedKey}
               onSelectObject={setSelectedKey}
@@ -972,7 +972,7 @@ function ConnectionsExplorer() {
                 driverId: profile.driverId,
                 readOnly,
                 canMutate:
-                  connection.connectedProfileId === profile.id &&
+                  connection.connectedProfileIds.includes(profile.id) &&
                   connection.status === "connected" &&
                   !readOnly,
               }}

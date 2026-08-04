@@ -24,11 +24,7 @@ function assertSaveAllowed(ref: PlsqlEditorRef): void {
       "Read-only mode is enabled. PL/SQL Save (CREATE OR REPLACE) is blocked.",
     );
   }
-  if (!ConnectionService.isConnected()) {
-    throw new Error("Connect a database profile before saving PL/SQL.");
-  }
-  const { connectedProfileId } = ConnectionService.getState();
-  if (connectedProfileId !== ref.profileId) {
+  if (!ConnectionService.isConnected(ref.profileId)) {
     throw new Error("Connect this profile before saving PL/SQL.");
   }
 }
@@ -47,11 +43,7 @@ export function getPlsqlSaveBlockedReason(tabId?: string): string | null {
   if (ConfigurationService.getValue("database.readOnly")) {
     return "Read-only mode is enabled. PL/SQL Save is blocked.";
   }
-  if (!ConnectionService.isConnected()) {
-    return "Connect a database profile before saving PL/SQL.";
-  }
-  const { connectedProfileId } = ConnectionService.getState();
-  if (connectedProfileId !== ref.profileId) {
+  if (!ConnectionService.isConnected(ref.profileId)) {
     return "Connect this profile before saving PL/SQL.";
   }
   if (!isPlsqlSourceLoaded(tab.content)) {
@@ -110,6 +102,7 @@ export async function openPlsqlSaveDialog(tabId?: string): Promise<boolean> {
   });
 
   void bridgeFetchObjectDdl(
+    ref.profileId,
     ref.schemaName,
     ref.objectName,
     ref.kind,
@@ -152,7 +145,9 @@ export async function executePlsqlSave(
     ConfigurationService.getValue("database.readOnly"),
   );
 
-  await QueryExecutionService.executeWriteStatement(sql);
+  await QueryExecutionService.executeWriteStatement(sql, {
+    connectionId: ref.profileId,
+  });
   await ConnectionTreeService.invalidateAndRefreshSchema(
     ref.profileId,
     ref.schemaName,

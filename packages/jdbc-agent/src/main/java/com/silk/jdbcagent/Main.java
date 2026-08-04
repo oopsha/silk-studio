@@ -11,13 +11,17 @@ import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -54,8 +58,12 @@ public final class Main {
 
     String sql = args[1];
     try (AgentRuntime runtime = new AgentRuntime()) {
-      runtime.openConnection(MAPPER.createObjectNode());
-      System.out.println(MAPPER.writeValueAsString(runtime.executeQuery(sql)));
+      ObjectNode openParams = MAPPER.createObjectNode();
+      openParams.put("connectionId", "cli");
+      String connectionId = runtime.openConnection(openParams);
+      ObjectNode execParams = MAPPER.createObjectNode();
+      execParams.put("connectionId", connectionId);
+      System.out.println(MAPPER.writeValueAsString(runtime.executeQuery(sql, execParams)));
     } catch (SQLException error) {
       System.err.println(formatSqlError(error));
       System.exit(1);
@@ -155,13 +163,14 @@ public final class Main {
           result.put("message", "pong");
         }
         case "connection.open" -> {
-          runtime.openConnection(params);
+          String connectionId = runtime.openConnection(params);
           response.put("ok", true);
           ObjectNode result = response.putObject("result");
           result.put("connected", true);
+          result.put("connectionId", connectionId);
         }
         case "connection.close" -> {
-          runtime.closeConnection();
+          runtime.closeConnection(requireConnectionId(params));
           response.put("ok", true);
           ObjectNode result = response.putObject("result");
           result.put("connected", false);
@@ -174,27 +183,26 @@ public final class Main {
           result.put("message", "Connection successful.");
         }
         case "connection.metadata" -> {
-          runtime.requireConnection();
           response.put("ok", true);
           response.set("result", runtime.listMetadata(params));
         }
         case "connection.columns" -> {
-          runtime.requireConnection();
           response.put("ok", true);
           response.set("result", runtime.listColumns(params));
         }
+        case "connection.packageMembers" -> {
+          response.put("ok", true);
+          response.set("result", runtime.listPackageMembers(params));
+        }
         case "connection.primaryKeys" -> {
-          runtime.requireConnection();
           response.put("ok", true);
           response.set("result", runtime.listPrimaryKeys(params));
         }
         case "connection.ddl" -> {
-          runtime.requireConnection();
           response.put("ok", true);
           response.set("result", runtime.fetchObjectDdl(params));
         }
         case "connection.compile" -> {
-          runtime.requireConnection();
           response.put("ok", true);
           response.set("result", runtime.compileObject(params));
         }
@@ -203,12 +211,11 @@ public final class Main {
           if (sql.isEmpty()) {
             throw new RuntimeException("Missing params.sql");
           }
-          runtime.requireConnection();
           response.put("ok", true);
           response.set("result", runtime.executeQuery(sql, params));
         }
         case "query.cancel" -> {
-          boolean cancelled = runtime.cancelActiveQuery();
+          boolean cancelled = runtime.cancelActiveQuery(requireConnectionId(params));
           response.put("ok", true);
           ObjectNode result = response.putObject("result");
           result.put("cancelled", cancelled);
@@ -238,55 +245,138 @@ public final class Main {
     return response;
   }
 
+  private static String requireConnectionId(JsonNode params) {
+    String connectionId = params.path("connectionId").asText("").trim();
+    if (connectionId.isEmpty()) {
+      throw new RuntimeException("Missing params.connectionId");
+    }
+    return connectionId;
+  }
+
+  /** One live JDBC session keyed by {@code connectionId}. */
+  private static final class Session {
+    final String id;
+    Connection connection;
+    DbDialect dialect;
+    /** In-flight statement for cancel; visible across threads. */
+    volatile Statement activeStatement;
+
+    Session(String id) {
+      this.id = id;
+    }
+
+    void closeQuietly() {
+      Statement statement = activeStatement;
+      activeStatement = null;
+      if (statement != null) {
+        try {
+          statement.cancel();
+        } catch (SQLException ignored) {
+        }
+        try {
+          statement.close();
+        } catch (SQLException ignored) {
+        }
+      }
+      Connection conn = connection;
+      connection = null;
+      if (conn != null) {
+        try {
+          if (!conn.isClosed()) {
+            conn.close();
+          }
+        } catch (SQLException ignored) {
+        }
+      }
+    }
+  }
+
   private static final class AgentRuntime implements AutoCloseable {
-    private String url;
-    private String user;
-    private String password;
+    private final Map<String, Session> sessions = new ConcurrentHashMap<>();
     private final int timeoutSeconds = intEnv("SILK_DB_QUERY_TIMEOUT_SEC", 30);
     private final int maxRows = intEnv("SILK_DB_MAX_ROWS", 200);
-    private Connection connection;
-    /** Resolved from the JDBC URL on {@link #openConnection}; see {@link DbDialects#forUrl}. */
-    private DbDialect dialect;
-    /** In-flight statement for {@link #cancelActiveQuery}; visible across threads. */
-    private volatile Statement activeStatement;
 
-    void openConnection(JsonNode params) throws SQLException {
-      applyCredentials(params);
-      ensureCredentials();
-      dialect = DbDialects.forUrl(url);
-
-      if (connection != null && !connection.isClosed()) {
-        connection.close();
-        connection = null;
+    /**
+     * Opens (or replaces) a session. Client may supply {@code connectionId}; otherwise a UUID is
+     * generated. Returns the id used.
+     */
+    String openConnection(JsonNode params) throws SQLException {
+      String connectionId = params.path("connectionId").asText("").trim();
+      if (connectionId.isEmpty()) {
+        connectionId = UUID.randomUUID().toString();
       }
 
-      connection = DriverManager.getConnection(url, user, password);
+      String url = resolveCredential(params, "url", "SILK_DB_URL");
+      String user = resolveCredential(params, "user", "SILK_DB_USER");
+      String password = resolvePassword(params);
+      if (url == null || url.isBlank()) {
+        throw new RuntimeException(
+            "Missing JDBC URL. Provide connection.open params.url or SILK_DB_URL.");
+      }
+      if (user == null || user.isBlank()) {
+        throw new RuntimeException(
+            "Missing JDBC user. Provide connection.open params.user or SILK_DB_USER.");
+      }
+      if (password == null) {
+        password = "";
+      }
+
+      Session previous = sessions.remove(connectionId);
+      if (previous != null) {
+        previous.closeQuietly();
+      }
+
+      DbDialect dialect = DbDialects.forUrl(url);
+      Connection connection = DriverManager.getConnection(url, user, password);
       dialect.afterConnect(connection, params);
+
+      Session session = new Session(connectionId);
+      session.connection = connection;
+      session.dialect = dialect;
+      sessions.put(connectionId, session);
+      return connectionId;
     }
 
-    void requireConnection() throws SQLException {
-      if (connection == null || connection.isClosed()) {
+    Session requireSession(JsonNode params) throws SQLException {
+      return requireSession(requireConnectionId(params));
+    }
+
+    Session requireSession(String connectionId) throws SQLException {
+      Session session = sessions.get(connectionId);
+      if (session == null
+          || session.connection == null
+          || session.connection.isClosed()) {
+        sessions.remove(connectionId);
         throw new SQLException(
-            "Connection is not open. Connect a database profile in the Connections explorer.");
+            "Connection is not open ("
+                + connectionId
+                + "). Connect a database profile in the Connections explorer.");
       }
+      return session;
     }
 
-    void closeConnection() throws SQLException {
-      if (connection == null) {
-        return;
-      }
-      try {
-        if (!connection.isClosed()) {
-          connection.close();
-        }
-      } finally {
-        connection = null;
+    void closeConnection(String connectionId) {
+      Session session = sessions.remove(connectionId);
+      if (session != null) {
+        session.closeQuietly();
       }
     }
 
     void testConnection(JsonNode params) throws SQLException {
-      applyCredentials(params);
-      ensureCredentials();
+      String url = resolveCredential(params, "url", "SILK_DB_URL");
+      String user = resolveCredential(params, "user", "SILK_DB_USER");
+      String password = resolvePassword(params);
+      if (url == null || url.isBlank()) {
+        throw new RuntimeException(
+            "Missing JDBC URL. Provide connection.test params.url or SILK_DB_URL.");
+      }
+      if (user == null || user.isBlank()) {
+        throw new RuntimeException(
+            "Missing JDBC user. Provide connection.test params.user or SILK_DB_USER.");
+      }
+      if (password == null) {
+        password = "";
+      }
       DbDialect testDialect = DbDialects.forUrl(url);
 
       try (Connection testConnection = DriverManager.getConnection(url, user, password)) {
@@ -297,24 +387,22 @@ public final class Main {
       }
     }
 
-    void applyConnectionSettings(JsonNode params) throws SQLException {
-      if (connection == null || connection.isClosed()) {
+    void applyConnectionSettings(Session session, JsonNode params) throws SQLException {
+      if (session.connection == null || session.connection.isClosed()) {
         return;
       }
       if (params.has("autoCommit")) {
-        connection.setAutoCommit(params.path("autoCommit").asBoolean(true));
+        session.connection.setAutoCommit(params.path("autoCommit").asBoolean(true));
       }
       if (params.has("readOnly")) {
-        connection.setReadOnly(params.path("readOnly").asBoolean(false));
+        session.connection.setReadOnly(params.path("readOnly").asBoolean(false));
       }
-    }
-
-    ObjectNode executeQuery(String sql) throws SQLException {
-      return executeQuery(sql, MAPPER.createObjectNode());
     }
 
     ObjectNode listMetadata(JsonNode params) throws SQLException {
-      requireConnection();
+      Session session = requireSession(params);
+      Connection connection = session.connection;
+      DbDialect dialect = session.dialect;
       String schemaFilter = params.path("schema").asText("").trim();
       String catalogFilter = params.path("catalog").asText("").trim();
 
@@ -376,7 +464,7 @@ public final class Main {
     }
 
     ObjectNode listColumns(JsonNode params) throws SQLException {
-      requireConnection();
+      Session session = requireSession(params);
       String schemaName = params.path("schema").asText("").trim();
       String tableName = params.path("table").asText("").trim();
       if (schemaName.isEmpty()) {
@@ -387,15 +475,36 @@ public final class Main {
       }
 
       ArrayNode columns = MAPPER.createArrayNode();
-      dialect.collectTableColumns(connection, schemaName, tableName, columns);
+      session.dialect.collectTableColumns(
+          session.connection, schemaName, tableName, columns);
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("columns", columns);
       return result;
     }
 
+    ObjectNode listPackageMembers(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      String schemaName = params.path("schema").asText("").trim();
+      String packageName = params.path("package").asText("").trim();
+      if (schemaName.isEmpty()) {
+        throw new RuntimeException("Missing params.schema");
+      }
+      if (packageName.isEmpty()) {
+        throw new RuntimeException("Missing params.package");
+      }
+
+      ArrayNode members = MAPPER.createArrayNode();
+      session.dialect.collectPackageMembers(
+          session.connection, schemaName, packageName, members);
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.set("members", members);
+      return result;
+    }
+
     ObjectNode listPrimaryKeys(JsonNode params) throws SQLException {
-      requireConnection();
+      Session session = requireSession(params);
       String schemaName = params.path("schema").asText("").trim();
       String tableName = params.path("table").asText("").trim();
       if (tableName.isEmpty()) {
@@ -404,7 +513,8 @@ public final class Main {
 
       ArrayNode keys = MAPPER.createArrayNode();
       String resolvedSchema =
-          dialect.collectPrimaryKeys(connection, schemaName, tableName, keys);
+          session.dialect.collectPrimaryKeys(
+              session.connection, schemaName, tableName, keys);
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("keys", keys);
@@ -415,7 +525,7 @@ public final class Main {
     }
 
     ObjectNode fetchObjectDdl(JsonNode params) throws SQLException {
-      requireConnection();
+      Session session = requireSession(params);
       String schemaName = params.path("schema").asText("").trim();
       String objectName = params.path("name").asText("").trim();
       String kind = params.path("kind").asText("").trim().toLowerCase(java.util.Locale.ROOT);
@@ -434,7 +544,8 @@ public final class Main {
       }
 
       String ddl =
-          dialect.fetchObjectDdl(connection, schemaName, objectName, kind, packageBody);
+          session.dialect.fetchObjectDdl(
+              session.connection, schemaName, objectName, kind, packageBody);
       if (ddl == null || ddl.isBlank()) {
         throw new RuntimeException(
             "No DDL found for " + schemaName + "." + objectName + " (" + kind + ").");
@@ -442,12 +553,12 @@ public final class Main {
 
       ObjectNode result = MAPPER.createObjectNode();
       result.put("ddl", ddl.trim());
-      result.put("dialectId", dialect.id());
+      result.put("dialectId", session.dialect.id());
       return result;
     }
 
     ObjectNode compileObject(JsonNode params) throws SQLException {
-      requireConnection();
+      Session session = requireSession(params);
       String schemaName = params.path("schema").asText("").trim();
       String objectName = params.path("name").asText("").trim();
       String kind = params.path("kind").asText("").trim().toLowerCase(java.util.Locale.ROOT);
@@ -464,8 +575,8 @@ public final class Main {
       if (params.hasNonNull("packageBody")) {
         packageBody = params.path("packageBody").asBoolean();
       }
-      return dialect.compileObject(
-          connection, schemaName, objectName, kind, packageBody, MAPPER);
+      return session.dialect.compileObject(
+          session.connection, schemaName, objectName, kind, packageBody, MAPPER);
     }
 
     /**
@@ -500,9 +611,7 @@ public final class Main {
     }
 
     ObjectNode executeQuery(String sql, JsonNode params) throws SQLException {
-      if (connection == null || connection.isClosed()) {
-        throw new SQLException("Connection is not open.");
-      }
+      Session session = requireSession(params);
 
       boolean readOnly = params.path("readOnly").asBoolean(false);
       if (readOnly && isWriteSql(sql)) {
@@ -510,7 +619,7 @@ public final class Main {
             "Read-only mode is enabled. Write statements are blocked.");
       }
 
-      applyConnectionSettings(params);
+      applyConnectionSettings(session, params);
 
       int maxRowsOverride = params.path("maxRows").asInt(-1);
       int effectiveMaxRows = maxRowsOverride > 0 ? maxRowsOverride : maxRows;
@@ -518,14 +627,35 @@ public final class Main {
       int timeoutOverride = params.path("queryTimeoutSec").asInt(-1);
       int effectiveTimeout = timeoutOverride > 0 ? timeoutOverride : timeoutSeconds;
 
-      Statement statement = connection.createStatement();
-      activeStatement = statement;
+      JsonNode bindsNode = params.path("binds");
+      boolean useBinds = bindsNode.isArray() && bindsNode.size() > 0;
+
+      Statement statement =
+          useBinds
+              ? session.connection.prepareStatement(sql)
+              : session.connection.createStatement();
+      session.activeStatement = statement;
       try {
         statement.setQueryTimeout(effectiveTimeout);
         // Fetch one extra row so we can tell whether the result was truncated.
         statement.setMaxRows(effectiveMaxRows + 1);
 
-        boolean hasResultSet = statement.execute(sql);
+        boolean hasResultSet;
+        if (useBinds) {
+          PreparedStatement prepared = (PreparedStatement) statement;
+          for (int i = 0; i < bindsNode.size(); i++) {
+            JsonNode bind = bindsNode.get(i);
+            if (bind == null || bind.isNull()) {
+              prepared.setNull(i + 1, Types.VARCHAR);
+            } else {
+              prepared.setString(i + 1, bind.asText());
+            }
+          }
+          hasResultSet = prepared.execute();
+        } else {
+          hasResultSet = statement.execute(sql);
+        }
+
         if (hasResultSet) {
           try (ResultSet rs = statement.getResultSet()) {
             return formatResultSet(rs, effectiveMaxRows);
@@ -543,7 +673,9 @@ public final class Main {
         result.put("message", "OK. " + updated + " row(s) affected.");
         return result;
       } finally {
-        activeStatement = null;
+        if (session.activeStatement == statement) {
+          session.activeStatement = null;
+        }
         try {
           statement.close();
         } catch (SQLException ignored) {
@@ -552,11 +684,15 @@ public final class Main {
     }
 
     /**
-     * Best-effort cancel of the in-flight {@link #executeQuery}. Must be callable from another
-     * thread while {@code statement.execute} is blocked (JDBC {@link Statement#cancel()}).
+     * Best-effort cancel of the in-flight query for {@code connectionId}. Must be callable from
+     * another thread while {@code statement.execute} is blocked.
      */
-    boolean cancelActiveQuery() {
-      Statement statement = activeStatement;
+    boolean cancelActiveQuery(String connectionId) {
+      Session session = sessions.get(connectionId);
+      if (session == null) {
+        return false;
+      }
+      Statement statement = session.activeStatement;
       if (statement == null) {
         return false;
       }
@@ -568,50 +704,27 @@ public final class Main {
       }
     }
 
-    private void applyCredentials(JsonNode params) {
-      if (params.hasNonNull("url")) {
-        url = params.path("url").asText("").trim();
-      } else if (url == null || url.isBlank()) {
-        url = optionalEnv("SILK_DB_URL");
+    private static String resolveCredential(JsonNode params, String field, String envKey) {
+      if (params.hasNonNull(field)) {
+        return params.path(field).asText("").trim();
       }
+      return optionalEnv(envKey);
+    }
 
-      if (params.hasNonNull("user")) {
-        user = params.path("user").asText("").trim();
-      } else if (user == null || user.isBlank()) {
-        user = optionalEnv("SILK_DB_USER");
-      }
-
+    private static String resolvePassword(JsonNode params) {
       if (params.has("password")) {
-        password = params.path("password").asText("");
-      } else if (password == null) {
-        password = optionalEnv("SILK_DB_PASSWORD");
+        return params.path("password").asText("");
       }
-    }
-
-    private void ensureCredentials() {
-      if (url == null || url.isBlank()) {
-        throw new RuntimeException(
-            "Missing JDBC URL. Provide connection.open params.url or SILK_DB_URL.");
-      }
-      if (user == null || user.isBlank()) {
-        throw new RuntimeException(
-            "Missing JDBC user. Provide connection.open params.user or SILK_DB_USER.");
-      }
-      if (password == null) {
-        password = "";
-      }
-    }
-
-    boolean isConnected() throws SQLException {
-      return connection != null && !connection.isClosed();
+      return optionalEnv("SILK_DB_PASSWORD");
     }
 
     @Override
     public void close() {
-      if (connection == null) return;
-      try {
-        connection.close();
-      } catch (SQLException ignored) {
+      for (String id : List.copyOf(sessions.keySet())) {
+        Session session = sessions.remove(id);
+        if (session != null) {
+          session.closeQuietly();
+        }
       }
     }
   }

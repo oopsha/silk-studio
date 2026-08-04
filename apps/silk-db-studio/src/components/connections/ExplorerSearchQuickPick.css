@@ -1,3 +1,7 @@
+.explorer-search-quick-pick .quick-input-list {
+  overflow-x: hidden;
+}
+
 .explorer-search-quick-pick__hint {
   padding: 0 12px 4px;
   color: var(--color-description);
@@ -5,15 +9,19 @@
   line-height: 16px;
 }
 
+.explorer-search-quick-pick__label {
+  min-width: 0;
+}
+
 .explorer-search-quick-pick__description {
-  flex-shrink: 0;
-  margin-left: 12px;
-  max-width: 55%;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  margin-left: 8px;
   overflow: hidden;
-  color: var(--color-description);
-  font-size: 12px;
-  text-overflow: ellipsis;
+  opacity: 0.7;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .quick-input-list-row--focused .explorer-search-quick-pick__description {

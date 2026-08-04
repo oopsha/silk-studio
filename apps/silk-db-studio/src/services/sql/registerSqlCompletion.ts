@@ -2,6 +2,7 @@ import type { Monaco } from "@monaco-editor/react";
 import type { languages, Position, editor, IRange } from "monaco-editor";
 import type { MetadataColumn } from "@silk-studio/db-protocol";
 import { ConnectionService } from "../connection/connectionService";
+import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import {
   detectSqlClause,
   extractCurrentStatement,
@@ -11,11 +12,14 @@ import {
   clearSqlCompletionCaches,
   ensureSchemaObjectsLoaded,
   ensureSchemasLoaded,
+  findPackageInSchemas,
   findSchemaName,
   findTableInSchemas,
   getConnectedProfileIdForCompletion,
   getDefaultSchemaForCompletion,
   listColumnsCached,
+  listPackageMembersCached,
+  listRoutines,
   listSchemaNames,
   listTablesAndViews,
   resolveColumnsForTable,
@@ -23,6 +27,7 @@ import {
 } from "./sqlCompletionCatalog";
 import {
   completionBucketsForClause,
+  wantsBucket,
   type SqlCompletionBucket,
 } from "./sqlCompletionPolicy";
 import { parseSqlCompletionContext } from "./sqlCompletionContext";
@@ -36,6 +41,7 @@ import {
   matchSortSuffix,
   MAX_COLUMN_SUGGESTIONS,
   MAX_FUNCTION_SUGGESTIONS,
+  MAX_ROUTINE_SUGGESTIONS,
   MAX_SCHEMA_SUGGESTIONS,
   MAX_TABLE_SUGGESTIONS,
   MAX_TOTAL_SUGGESTIONS,
@@ -144,7 +150,15 @@ export function registerSqlCompletion(monaco: Monaco): void {
   }
 
   ConnectionService.onDidChange(() => {
-    const profileId = ConnectionService.getState().connectedProfileId;
+    const profileId = getConnectedProfileIdForCompletion();
+    if (profileId !== lastConnectedProfileId) {
+      lastConnectedProfileId = profileId;
+      clearSqlCompletionCaches();
+      completionEpoch += 1;
+    }
+  });
+  EditorConnectionBindingService.onDidChange(() => {
+    const profileId = getConnectedProfileIdForCompletion();
     if (profileId !== lastConnectedProfileId) {
       lastConnectedProfileId = profileId;
       clearSqlCompletionCaches();
@@ -280,6 +294,34 @@ async function buildSuggestions(
     }
   }
 
+  if (bucketsIncludes(buckets, "routines")) {
+    const preferred = schemaCandidates[0];
+    const schemasToScan = preferred
+      ? [
+          preferred,
+          ...schemaCandidates.slice(1).filter(
+            (schema) => listRoutines(profileId, schema).length > 0,
+          ),
+        ]
+      : schemaCandidates.slice(0, 1);
+
+    if (preferred) {
+      await ensureSchemaObjectsLoaded(profileId, preferred);
+    }
+    for (const schema of schemasToScan) {
+      suggestions.push(
+        ...routineSuggestions(
+          monaco,
+          range,
+          profileId,
+          schema,
+          partial,
+          clause,
+        ),
+      );
+    }
+  }
+
   if (bucketsIncludes(buckets, "columns")) {
     suggestions.push(
       ...(await scopedColumnSuggestions(
@@ -339,6 +381,32 @@ async function dottedSuggestions(
       await ensureSchemaObjectsLoaded(profileId, schemaMatch);
       const alsoTable = findTableInSchemas(profileId, head, defaultSchema);
       if (!alsoTable) {
+        const items: languages.CompletionItem[] = [];
+        if (wantsBucket(clause, "tables")) {
+          items.push(
+            ...tableSuggestions(
+              monaco,
+              range,
+              profileId,
+              schemaMatch,
+              partial,
+              clause,
+            ),
+          );
+        }
+        if (wantsBucket(clause, "routines")) {
+          items.push(
+            ...routineSuggestions(
+              monaco,
+              range,
+              profileId,
+              schemaMatch,
+              partial,
+              clause,
+            ),
+          );
+        }
+        if (items.length > 0) return items;
         return tableSuggestions(
           monaco,
           range,
@@ -366,17 +434,59 @@ async function dottedSuggestions(
     if (schemaCandidates[0]) {
       await ensureSchemaObjectsLoaded(profileId, schemaCandidates[0]);
     }
+
+    if (wantsBucket(clause, "routines")) {
+      const pkg = findPackageInSchemas(profileId, head, defaultSchema);
+      if (pkg) {
+        const members = await listPackageMembersCached(
+          pkg.schema,
+          pkg.packageName,
+        );
+        if (members.length > 0) {
+          return packageMemberSuggestions(
+            monaco,
+            range,
+            members,
+            pkg.packageName,
+            partial,
+            clause,
+          );
+        }
+      }
+    }
+
     const columns = await resolveColumnsForTable(profileId, head);
     return columnSuggestions(monaco, range, columns, partial, clause);
   }
 
   const schemaName = findSchemaName(profileId, qualifiers[0]) ?? qualifiers[0];
-  const tableName = qualifiers[1];
+  const second = qualifiers[1];
   await ensureSchemaObjectsLoaded(profileId, schemaName);
+
+  if (wantsBucket(clause, "routines")) {
+    const pkg = findPackageInSchemas(profileId, second, schemaName);
+    if (pkg && pkg.schema.toLowerCase() === schemaName.toLowerCase()) {
+      const members = await listPackageMembersCached(
+        pkg.schema,
+        pkg.packageName,
+      );
+      if (members.length > 0) {
+        return packageMemberSuggestions(
+          monaco,
+          range,
+          members,
+          pkg.packageName,
+          partial,
+          clause,
+        );
+      }
+    }
+  }
+
   const resolved =
-    findTableInSchemas(profileId, tableName, schemaName) ?? {
+    findTableInSchemas(profileId, second, schemaName) ?? {
       schema: schemaName,
-      table: tableName,
+      table: second,
     };
   const columns = await listColumnsCached(resolved.schema, resolved.table);
   return columnSuggestions(monaco, range, columns, partial, clause);
@@ -703,6 +813,72 @@ function tableSuggestions(
         sortText: `${sortPrefix}_${matchSortSuffix(object.name, partial)}`,
       })),
     MAX_TABLE_SUGGESTIONS,
+  );
+}
+
+function routineSuggestions(
+  monaco: Monaco,
+  range: IRange,
+  profileId: string,
+  schemaName: string,
+  partial: string,
+  clause: SqlClause,
+): languages.CompletionItem[] {
+  const needle = partial.toLowerCase();
+  const sortPrefix = bucketSortPrefix(clause, "routines");
+  return capSuggestions(
+    listRoutines(profileId, schemaName)
+      .filter(
+        (object) => !needle || object.name.toLowerCase().startsWith(needle),
+      )
+      .map((object) => {
+        const isPackage = object.kind === "package";
+        return {
+          label: object.name,
+          kind: isPackage
+            ? monaco.languages.CompletionItemKind.Module
+            : monaco.languages.CompletionItemKind.Method,
+          insertText: isPackage ? object.name : `${object.name}($0)`,
+          insertTextRules: isPackage
+            ? undefined
+            : monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+          range,
+          filterText: object.name,
+          detail: `${object.kind} · ${schemaName}`,
+          sortText: `${sortPrefix}_${matchSortSuffix(object.name, partial)}`,
+        };
+      }),
+    MAX_ROUTINE_SUGGESTIONS,
+  );
+}
+
+function packageMemberSuggestions(
+  monaco: Monaco,
+  range: IRange,
+  members: { name: string; kind: "procedure" | "function" }[],
+  packageName: string,
+  partial: string,
+  clause: SqlClause,
+): languages.CompletionItem[] {
+  const needle = partial.toLowerCase();
+  const sortPrefix = bucketSortPrefix(clause, "routines");
+  return capSuggestions(
+    members
+      .filter(
+        (member) => !needle || member.name.toLowerCase().startsWith(needle),
+      )
+      .map((member) => ({
+        label: member.name,
+        kind: monaco.languages.CompletionItemKind.Method,
+        insertText: `${member.name}($0)`,
+        insertTextRules:
+          monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+        range,
+        filterText: member.name,
+        detail: `${member.kind} · ${packageName}`,
+        sortText: `${sortPrefix}_${matchSortSuffix(member.name, partial)}`,
+      })),
+    MAX_ROUTINE_SUGGESTIONS,
   );
 }
 

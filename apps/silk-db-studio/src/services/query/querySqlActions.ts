@@ -1,17 +1,19 @@
 import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
 import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
+import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import { resolveActiveMonacoLanguageId } from "../sql/sqlDialect";
 import { QueryExecutionService } from "./queryExecutionService";
 
 /** Open SQL in a new untitled editor tab. */
 export function openSqlInEditor(sql: string, label?: string): void {
   const content = sql.endsWith("\n") ? sql : `${sql}\n`;
-  EditorService.openEditor({
+  const tabId = EditorService.openEditor({
     label: label?.trim() || `Query-${Date.now().toString().slice(-6)}`,
     languageId: resolveActiveMonacoLanguageId(),
     content,
     preview: false,
   });
+  EditorConnectionBindingService.ensureBinding(tabId);
 }
 
 /** Insert SQL at the active editor cursor (or replace selection). */
