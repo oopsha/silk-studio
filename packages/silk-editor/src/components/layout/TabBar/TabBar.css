@@ -98,6 +98,18 @@
   text-overflow: ellipsis;
 }
 
+.tab-bar__tab-description {
+  flex: 0 1 auto;
+  max-width: 72px;
+  margin-left: 6px;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: var(--tab-bar-height);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.55;
+}
+
 .tab-bar__tab-actions {
   display: flex;
   flex: 0 0 auto;

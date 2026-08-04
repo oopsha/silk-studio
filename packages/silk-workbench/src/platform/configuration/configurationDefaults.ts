@@ -23,6 +23,7 @@ export type WorkbenchConfiguration = {
   "editor.insertSpaces": boolean;
   "editor.lineNumbers": LineNumbersMode;
   "editor.minimap.enabled": boolean;
+  "editor.stickyScroll.enabled": boolean;
   "editor.wordWrap": WordWrapMode;
   "queryResult.rowHeight": number;
   "queryResult.fontSize": number;
@@ -33,6 +34,10 @@ export type WorkbenchConfiguration = {
   "database.autoCommit": boolean;
   "database.readOnly": boolean;
   "database.explorer.preloadDefaultSchema": boolean;
+  /** Prompt for `?` (or configured mark) placeholders before execute. */
+  "sql.parameters.anonymousEnabled": boolean;
+  /** Prompt for `:name` (or configured prefix) placeholders before execute. */
+  "sql.parameters.namedEnabled": boolean;
   "ai.enabled": boolean;
   "ai.provider": AiProviderId;
   "ai.model": string;
@@ -55,6 +60,7 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "editor.insertSpaces": true,
   "editor.lineNumbers": "on",
   "editor.minimap.enabled": true,
+  "editor.stickyScroll.enabled": false,
   "editor.wordWrap": "off",
   "queryResult.rowHeight": 26,
   "queryResult.fontSize": 12,
@@ -65,6 +71,8 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "database.autoCommit": true,
   "database.readOnly": false,
   "database.explorer.preloadDefaultSchema": true,
+  "sql.parameters.anonymousEnabled": false,
+  "sql.parameters.namedEnabled": true,
   "ai.enabled": false,
   "ai.provider": "gemini",
   "ai.model": "gemini-3.5-flash",

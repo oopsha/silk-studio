@@ -64,6 +64,9 @@ export const enMessages = {
       lineNumbers: "Line Numbers",
       minimap: "Minimap",
       minimapHint: "Show the editor minimap.",
+      stickyScroll: "Sticky Scroll",
+      stickyScrollHint:
+        "Shows the nested current scopes during the scroll at the top of the editor (BEGIN, IF, …).",
       wordWrap: "Word Wrap",
     },
     database: {
@@ -83,6 +86,15 @@ export const enMessages = {
       preloadDefaultSchemaDescription:
         "After connect, preload default schema objects into cache for SQL autocomplete and Quick Pick without expanding the explorer tree.",
       preloadDefaultSchemaHint: "Preload the default schema.",
+      sqlParameters: "SQL Parameters",
+      anonymousParameters: "Anonymous SQL Parameters",
+      anonymousParametersDescription:
+        "When enabled, prompts for values of ? placeholders before running a query.",
+      anonymousParametersHint: "Enable ? parameter prompts.",
+      namedParameters: "Named SQL Parameters",
+      namedParametersDescription:
+        "When enabled, prompts for values of :name placeholders before running a query.",
+      namedParametersHint: "Enable :name parameter prompts.",
     },
     queryResult: {
       title: "Query Result",
@@ -330,6 +342,19 @@ export const enMessages = {
       testPassed: "Connection test passed.",
       connected: "Connected.",
     },
+    connectionTarget: {
+      noConnection: "No connection",
+      disconnected: "Disconnected · {name}",
+      ariaLabel: "Query target: {label}",
+      pickerTitle: "Select connection for this editor",
+      pickerPlaceholder: "Filter connected profiles…",
+      pickerEmpty: "No connected profiles. Connect one in the Connections explorer.",
+      pickerNoMatch: "No matching connected profiles.",
+      clearBinding: "Clear binding (No connection)",
+      applyToAllNamed: "All SQL tabs → {name}",
+      selectTargetTitle: "Select Query Target…",
+      connectedBadge: "Connected",
+    },
     explorer: {
       filterPlaceholder: "Filter schemas & objects…",
       filterAria: "Filter schemas and objects",
@@ -458,7 +483,18 @@ export const enMessages = {
       cancelled: "Query cancelled.",
       noConnection:
         "No active database connection. Connect a profile in the Connections explorer.",
+      noConnectionTarget:
+        "No connection selected for this editor. Use the status bar to pick a connected profile.",
+      connectionDisconnected:
+        "Connection \"{name}\" is disconnected. Reconnect it in the Connections explorer.",
       executeFailed: "Failed to execute query.",
+      parametersTitle: "Query Parameters",
+      parametersSummary:
+        "Enter values for the placeholders in this statement. Leave blank for an empty string, or check NULL.",
+      parametersName: "Parameter",
+      parametersValue: "Value",
+      parametersNull: "NULL",
+      parametersCancelled: "Query cancelled — parameter input dismissed.",
       readOnlyBlocked:
         "Read-only mode is enabled. Write statements (INSERT, UPDATE, DELETE, DDL, etc.) are blocked.",
       saveDesktopOnly: "Cell edits can only be saved in the desktop app.",

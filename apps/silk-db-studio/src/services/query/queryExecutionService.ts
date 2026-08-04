@@ -3,10 +3,12 @@ import {
   isQueryResultPayload,
   type QueryResultPayload,
 } from "@silk-studio/db-protocol";
+import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { formatErrorMessage, reportError } from "../formatErrorMessage";
 import { ConnectionService } from "../connection/connectionService";
+import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import { resolveActiveDriverId } from "../sql/sqlDialect";
 import { QueryHistoryService } from "./queryHistoryService";
 import type { QueryHistoryStatus } from "./queryHistoryTypes";
@@ -25,6 +27,17 @@ import {
   type QueryResultTabStatus,
 } from "./queryResultTab";
 import { QueryResultDirtyService } from "./queryResultDirtyService";
+import { SqlParameterDialogService } from "./sqlParameterDialogService";
+import {
+  bindSqlParameters,
+  collectSqlParameterFields,
+  detectSqlParameterOccurrences,
+  type BoundSql,
+} from "./sqlParameters";
+import {
+  ensureExecutionConnection,
+  resolveExecutionConnectionId,
+} from "./resolveExecutionConnection";
 
 export type QueryExecutionStatus =
   | "idle"
@@ -50,13 +63,30 @@ export type QueryExecuteOptions = {
   /** Override SQL stored in history (e.g. original statement for Explain). */
   historySql?: string;
   skipHistory?: boolean;
-  /** Explorer Open Data ??table results may be editable; views are read-only. */
+  /** Explorer Open Data — table results may be editable; views are read-only. */
   relationKind?: "table" | "view";
   /** Override the result tab label (e.g. schema.object from the explorer). */
   tabTitle?: string;
+  /**
+   * JDBC session key (profile id). When omitted, uses the active editor tab
+   * connection binding (MC-D).
+   */
+  connectionId?: string;
+  /**
+   * Result-session owner (usually an editor tab id). Open Data uses a synthetic
+   * key. When omitted, uses the active editor tab (MC-E).
+   */
+  ownerId?: string;
 };
 
 type QueryExecutionListener = () => void;
+
+type SessionRuntime = {
+  runGeneration: number;
+  cancelRequested: boolean;
+  runTabOrdinal: number;
+  activeRunConnectionId: string | null;
+};
 
 const INITIAL_STATE: QueryExecutionState = {
   status: "idle",
@@ -67,36 +97,83 @@ const INITIAL_STATE: QueryExecutionState = {
   activeTabId: null,
 };
 
+const ORPHAN_OWNER_ID = "__orphan__";
+const OPEN_DATA_OWNER_PREFIX = "open-data:";
+
 function idleOutput(): string {
   return tKey("app.query.idleOutput");
 }
 
+function emptySession(): QueryExecutionState {
+  return { ...INITIAL_STATE };
+}
+
+function isSyntheticOwnerId(ownerId: string): boolean {
+  return (
+    ownerId === ORPHAN_OWNER_ID || ownerId.startsWith(OPEN_DATA_OWNER_PREFIX)
+  );
+}
+
+/** Stable owner key for explorer Open Data result sessions. */
+export function buildOpenDataOwnerId(
+  profileId: string,
+  schemaName: string,
+  objectName: string,
+): string {
+  return `${OPEN_DATA_OWNER_PREFIX}${profileId}:${schemaName}.${objectName}`;
+}
+
 class QueryExecutionServiceImpl {
-  private state: QueryExecutionState = INITIAL_STATE;
+  /** Per editor-tab (or synthetic) result session — MC-E. */
+  private readonly sessions = new Map<string, QueryExecutionState>();
+  private readonly runtimes = new Map<string, SessionRuntime>();
+  /** Which session the panel currently shows. */
+  private viewOwnerId: string | null = null;
+  /** Last EditorService active tab — used to detect focus changes only. */
+  private lastActiveEditorId: string | null = null;
   private readonly listeners = new Set<QueryExecutionListener>();
-  /** Monotonic token so a late response after cancel/re-run is ignored. */
-  private runGeneration = 0;
-  private cancelRequested = false;
   private tabSequence = 0;
-  /** 1-based index within the current execute batch (reset each run). */
-  private runTabOrdinal = 0;
+  private started = false;
+
+  start(): void {
+    if (this.started) return;
+    this.started = true;
+    EditorService.onDidChange(() => {
+      this.syncWithEditorTabs();
+    });
+    this.syncWithEditorTabs();
+  }
 
   getState(): QueryExecutionState {
-    if (this.state.status === "idle" && this.state.tabs.length === 0) {
-      return { ...this.state, output: idleOutput() };
+    const ownerId = this.viewOwnerId;
+    if (!ownerId) {
+      return { ...INITIAL_STATE, output: idleOutput() };
     }
-    return this.state;
+    const session = this.sessions.get(ownerId) ?? emptySession();
+    if (session.status === "idle" && session.tabs.length === 0) {
+      return { ...session, output: idleOutput() };
+    }
+    return session;
+  }
+
+  /** Owner id for the panel's current session (editor tab or open-data). */
+  getViewOwnerId(): string | null {
+    return this.viewOwnerId;
   }
 
   isRunning(): boolean {
-    return this.state.status === "running";
+    return this.getState().status === "running";
   }
 
   setActiveTab(tabId: string): void {
-    const tab = this.state.tabs.find((item) => item.id === tabId);
+    const ownerId = this.viewOwnerId;
+    if (!ownerId) return;
+    const session = this.sessions.get(ownerId);
+    if (!session) return;
+    const tab = session.tabs.find((item) => item.id === tabId);
     if (!tab) return;
-    this.setState({
-      ...this.state,
+    this.setSessionState(ownerId, {
+      ...session,
       status: tab.status === "success" ? "success" : tab.status,
       output: tab.output,
       result: tab.result,
@@ -106,33 +183,39 @@ class QueryExecutionServiceImpl {
   }
 
   closeTab(tabId: string): void {
+    const ownerId = this.findOwnerForResultTab(tabId) ?? this.viewOwnerId;
+    if (!ownerId) return;
+    const session = this.sessions.get(ownerId);
+    if (!session) return;
+
     QueryResultDirtyService.removeTab(tabId);
-    const tabs = this.state.tabs.filter((item) => item.id !== tabId);
-    if (tabs.length === this.state.tabs.length) return;
+    const tabs = session.tabs.filter((item) => item.id !== tabId);
+    if (tabs.length === session.tabs.length) return;
 
     if (tabs.length === 0) {
-      this.setState({
-        status: "idle",
-        output: idleOutput(),
+      this.setSessionState(ownerId, {
+        status: session.status === "running" ? "running" : "idle",
+        output:
+          session.status === "running" ? session.output : idleOutput(),
         result: null,
-        lastSql: this.state.lastSql,
+        lastSql: session.lastSql,
         tabs: [],
         activeTabId: null,
       });
       return;
     }
 
-    const closingActive = this.state.activeTabId === tabId;
-    let activeTabId = this.state.activeTabId;
+    const closingActive = session.activeTabId === tabId;
+    let activeTabId = session.activeTabId;
     if (closingActive) {
-      const closedIndex = this.state.tabs.findIndex((item) => item.id === tabId);
+      const closedIndex = session.tabs.findIndex((item) => item.id === tabId);
       const next =
         tabs[Math.min(closedIndex, tabs.length - 1)] ?? tabs[tabs.length - 1];
       activeTabId = next.id;
     }
 
     const active = tabs.find((item) => item.id === activeTabId) ?? tabs[0];
-    this.setState({
+    this.setSessionState(ownerId, {
       status: active.status === "success" ? "success" : active.status,
       output: active.output,
       result: active.result,
@@ -143,30 +226,35 @@ class QueryExecutionServiceImpl {
   }
 
   closeAllTabs(): void {
-    this.setState({
-      status: this.state.status === "running" ? "running" : "idle",
-      output:
-        this.state.status === "running"
-          ? this.state.output
-          : idleOutput(),
+    const ownerId = this.viewOwnerId;
+    if (!ownerId) return;
+    const session = this.sessions.get(ownerId) ?? emptySession();
+    QueryResultDirtyService.removeTabs(session.tabs.map((tab) => tab.id));
+    this.setSessionState(ownerId, {
+      status: session.status === "running" ? "running" : "idle",
+      output: session.status === "running" ? session.output : idleOutput(),
       result: null,
-      lastSql: this.state.lastSql,
+      lastSql: session.lastSql,
       tabs: [],
       activeTabId: null,
     });
   }
 
   /** Execute a single write statement without opening a new result tab. */
-  async executeWriteStatement(sql: string): Promise<void> {
+  async executeWriteStatement(
+    sql: string,
+    options?: Pick<QueryExecuteOptions, "connectionId">,
+  ): Promise<void> {
     if (!isTauri()) {
       throw new Error("Database writes are available in the desktop app only.");
     }
 
+    const connectionId = resolveExecutionConnectionId(options);
     const readOnly = ConfigurationService.getValue("database.readOnly");
     assertReadOnlyQueryAllowed(sql, readOnly);
-    await this.ensureConnected();
+    await ensureExecutionConnection(connectionId);
 
-    const payload = await this.invokeQuery(sql, readOnly);
+    const payload = await this.invokeQuery(connectionId, sql, readOnly);
     if (!payload || typeof payload !== "object") {
       throw new Error("Invalid query result payload from desktop bridge.");
     }
@@ -180,8 +268,13 @@ class QueryExecutionServiceImpl {
 
   /** Re-run the tab's SELECT and replace its grid data in place. */
   async refreshTabResult(tabId: string): Promise<void> {
-    const tab = this.state.tabs.find((item) => item.id === tabId);
-    if (!tab) {
+    const ownerId = this.findOwnerForResultTab(tabId);
+    if (!ownerId) {
+      throw new Error("Result tab not found.");
+    }
+    const session = this.sessions.get(ownerId);
+    const tab = session?.tabs.find((item) => item.id === tabId);
+    if (!tab || !session) {
       throw new Error("Result tab not found.");
     }
 
@@ -189,16 +282,18 @@ class QueryExecutionServiceImpl {
       throw new Error("Refreshing results is available in the desktop app only.");
     }
 
+    const connectionId =
+      tab.connectionId?.trim() || resolveExecutionConnectionId();
     const readOnly = ConfigurationService.getValue("database.readOnly");
     assertReadOnlyQueryAllowed(tab.sql, readOnly);
-    await this.ensureConnected();
+    await ensureExecutionConnection(connectionId);
 
-    const payload = await this.invokeQuery(tab.sql, readOnly);
+    const payload = await this.invokeQuery(connectionId, tab.sql, readOnly);
     if (!isQueryResultPayload(payload)) {
       throw new Error("Invalid query result payload from desktop bridge.");
     }
 
-    const tabs = this.state.tabs.map((item) =>
+    const tabs = session.tabs.map((item) =>
       item.id === tabId
         ? {
             ...item,
@@ -208,20 +303,21 @@ class QueryExecutionServiceImpl {
         : item,
     );
     const active = tabs.find((item) => item.id === tabId);
-    const isActive = this.state.activeTabId === tabId;
+    const isActive = session.activeTabId === tabId;
 
-    this.setState({
-      ...this.state,
+    this.setSessionState(ownerId, {
+      ...session,
       tabs,
-      result: isActive ? payload : this.state.result,
-      output: isActive ? active?.output ?? this.state.output : this.state.output,
+      result: isActive ? payload : session.result,
+      output: isActive ? active?.output ?? session.output : session.output,
     });
   }
 
   async execute(sql: string, options?: QueryExecuteOptions): Promise<void> {
+    const ownerId = this.resolveOwnerId(options);
     const statement = stripTrailingSemicolon(sql.trim());
     if (!statement) {
-      this.patchRunStatus({
+      this.patchRunStatus(ownerId, {
         status: "error",
         output: tKey("app.query.emptyQuery"),
         lastSql: sql,
@@ -237,12 +333,13 @@ class QueryExecutionServiceImpl {
 
   /**
    * Run one or more statements sequentially. Each statement becomes its own tab
-   * for this run only ??a new execute replaces all prior result tabs.
+   * for this run only — a new execute replaces prior result tabs for this owner.
    */
   async executeStatements(
     statements: Array<{ sql: string; range?: SqlSourceRange }>,
     options?: QueryExecuteOptions,
   ): Promise<void> {
+    const ownerId = this.resolveOwnerId(options);
     const prepared = statements
       .map((item) => ({
         sql: stripTrailingSemicolon(item.sql.trim()),
@@ -251,20 +348,57 @@ class QueryExecutionServiceImpl {
       .filter((item) => item.sql.length > 0);
 
     if (prepared.length === 0) {
-      this.patchRunStatus({
+      this.patchRunStatus(ownerId, {
         status: "error",
         output: tKey("app.query.emptyQuery"),
       });
       return;
     }
 
-    const generation = ++this.runGeneration;
-    this.cancelRequested = false;
+    // Fail fast when the tab has no connection target (before parameter prompts).
+    let connectionId: string | null =
+      options?.connectionId?.trim() ||
+      EditorConnectionBindingService.getActiveBinding().profileId?.trim() ||
+      null;
+    if (isTauri()) {
+      connectionId = resolveExecutionConnectionId(options);
+    }
+
+    const boundList: Array<{
+      sql: string;
+      range?: SqlSourceRange;
+      bound: BoundSql;
+    }> = [];
+
+    for (const item of prepared) {
+      const resolved = await this.resolveStatementBinds(item.sql);
+      if (resolved === "cancelled") {
+        this.patchRunStatus(ownerId, {
+          status: "cancelled",
+          output: tKey("app.query.parametersCancelled"),
+          lastSql: item.sql,
+        });
+        return;
+      }
+      boundList.push({ sql: item.sql, range: item.range, bound: resolved });
+    }
+
+    const runtime = this.ensureRuntime(ownerId);
+    const generation = ++runtime.runGeneration;
+    runtime.cancelRequested = false;
     clearSqlErrorMarkers();
 
-    const total = prepared.length;
+    runtime.activeRunConnectionId = connectionId;
+    const runOptions: QueryExecuteOptions = {
+      ...options,
+      ownerId,
+      connectionId: connectionId ?? undefined,
+    };
+
+    const total = boundList.length;
     this.beginRun(
-      prepared[0].sql,
+      ownerId,
+      boundList[0].sql,
       total === 1
         ? tKey("app.query.executing")
         : tKey("app.query.executingProgress")
@@ -274,40 +408,61 @@ class QueryExecutionServiceImpl {
 
     try {
       if (!isTauri()) {
-        if (!this.isCurrentRun(generation)) return;
-        for (let index = 0; index < prepared.length; index += 1) {
-          if (!this.isCurrentRun(generation) || this.cancelRequested) {
-            this.finishCancelled(prepared[index].sql, performance.now(), options);
+        if (!this.isCurrentRun(ownerId, generation)) return;
+        for (let index = 0; index < boundList.length; index += 1) {
+          if (
+            !this.isCurrentRun(ownerId, generation) ||
+            runtime.cancelRequested
+          ) {
+            this.finishCancelled(
+              ownerId,
+              boundList[index].sql,
+              performance.now(),
+              runOptions,
+            );
             return;
           }
-          const item = prepared[index];
+          const item = boundList[index];
           const output = `Desktop-only JDBC execution.\n\nSQL:\n${item.sql}`;
-          this.commitTab({
+          this.commitTab(ownerId, {
             sql: item.sql,
             output,
             result: null,
             status: "success",
+            connectionId: connectionId ?? undefined,
           });
-          this.recordHistory(item.sql, "success", performance.now(), output, options);
+          this.recordHistory(
+            ownerId,
+            item.sql,
+            "success",
+            performance.now(),
+            output,
+            runOptions,
+          );
         }
         return;
       }
 
+      await ensureExecutionConnection(connectionId!);
       const readOnly = ConfigurationService.getValue("database.readOnly");
-      await this.ensureConnected();
 
-      for (let index = 0; index < prepared.length; index += 1) {
-        if (!this.isCurrentRun(generation)) {
+      for (let index = 0; index < boundList.length; index += 1) {
+        if (!this.isCurrentRun(ownerId, generation)) {
           return;
         }
-        if (this.cancelRequested) {
-          this.finishCancelled(prepared[index].sql, performance.now(), options);
+        if (runtime.cancelRequested) {
+          this.finishCancelled(
+            ownerId,
+            boundList[index].sql,
+            performance.now(),
+            runOptions,
+          );
           return;
         }
 
-        const item = prepared[index];
+        const item = boundList[index];
         if (total > 1) {
-          this.patchRunStatus({
+          this.patchRunStatus(ownerId, {
             status: "running",
             output: `Executing ${index + 1}/${total}...`,
             lastSql: item.sql,
@@ -317,42 +472,49 @@ class QueryExecutionServiceImpl {
         const startedAt = performance.now();
         try {
           assertReadOnlyQueryAllowed(item.sql, readOnly);
-          const payload = await this.invokeQuery(item.sql, readOnly);
+          const payload = await this.invokeQuery(
+            connectionId!,
+            item.bound.sql,
+            readOnly,
+            item.bound.binds,
+          );
 
-          if (!this.isCurrentRun(generation)) {
+          if (!this.isCurrentRun(ownerId, generation)) {
             return;
           }
-          if (this.cancelRequested) {
-            this.finishCancelled(item.sql, startedAt, options);
+          if (runtime.cancelRequested) {
+            this.finishCancelled(ownerId, item.sql, startedAt, runOptions);
             return;
           }
           if (!isQueryResultPayload(payload)) {
             throw new Error("Invalid query result payload from desktop bridge.");
           }
 
-          this.commitTab({
+          this.commitTab(ownerId, {
             sql: item.sql,
             output: payload.message,
             result: payload,
             status: "success",
             relationKind: options?.relationKind,
             title: options?.tabTitle,
+            connectionId: connectionId!,
           });
           this.recordHistory(
+            ownerId,
             options?.historySql && total === 1
               ? options.historySql
               : item.sql,
             "success",
             startedAt,
             payload.message,
-            options,
+            runOptions,
           );
         } catch (error) {
-          if (!this.isCurrentRun(generation)) {
+          if (!this.isCurrentRun(ownerId, generation)) {
             return;
           }
-          if (this.cancelRequested || isCancelError(error)) {
-            this.finishCancelled(item.sql, startedAt, options);
+          if (runtime.cancelRequested || isCancelError(error)) {
+            this.finishCancelled(ownerId, item.sql, startedAt, runOptions);
             return;
           }
 
@@ -361,15 +523,23 @@ class QueryExecutionServiceImpl {
             "query.execute",
             tKey("app.query.executeFailed"),
           );
-          this.commitTab({
+          this.commitTab(ownerId, {
             sql: item.sql,
             output: message,
             result: null,
             status: "error",
             relationKind: options?.relationKind,
             title: options?.tabTitle,
+            connectionId: connectionId!,
           });
-          this.recordHistory(item.sql, "error", startedAt, message, options);
+          this.recordHistory(
+            ownerId,
+            item.sql,
+            "error",
+            startedAt,
+            message,
+            runOptions,
+          );
           applySqlErrorMarkers(message, item.range ?? null);
           // Continue remaining statements so N selections still yield N tabs.
         }
@@ -377,12 +547,20 @@ class QueryExecutionServiceImpl {
     } catch (error) {
       // Connection / setup failure before any statement.
       this.handleRunError(
+        ownerId,
         error,
-        prepared[0].sql,
+        boundList[0]?.sql ?? prepared[0].sql,
         generation,
         performance.now(),
-        { ...options, sourceRange: prepared[0].range },
+        {
+          ...runOptions,
+          sourceRange: boundList[0]?.range ?? prepared[0].range,
+        },
       );
+    } finally {
+      if (this.isCurrentRun(ownerId, generation)) {
+        runtime.activeRunConnectionId = null;
+      }
     }
   }
 
@@ -391,9 +569,10 @@ class QueryExecutionServiceImpl {
    * shows the plan result in the panel (same result grid as normal execute).
    */
   async explain(sql: string, options?: QueryExecuteOptions): Promise<void> {
+    const ownerId = this.resolveOwnerId(options);
     const statement = stripTrailingSemicolon(sql.trim());
     if (!statement) {
-      this.patchRunStatus({
+      this.patchRunStatus(ownerId, {
         status: "error",
         output: tKey("app.query.emptyExplain"),
         lastSql: sql,
@@ -401,10 +580,31 @@ class QueryExecutionServiceImpl {
       return;
     }
 
-    const driverId = resolveActiveDriverId();
-    const plan = buildExplainPlan(driverId, statement);
+    const bound = await this.resolveStatementBinds(statement);
+    if (bound === "cancelled") {
+      this.patchRunStatus(ownerId, {
+        status: "cancelled",
+        output: tKey("app.query.parametersCancelled"),
+        lastSql: statement,
+      });
+      return;
+    }
+
+    const connectionId = isTauri()
+      ? resolveExecutionConnectionId(options)
+      : options?.connectionId?.trim() ||
+        EditorConnectionBindingService.getActiveBinding().profileId?.trim() ||
+        null;
+    const runOptions: QueryExecuteOptions = {
+      ...options,
+      ownerId,
+      connectionId: connectionId ?? undefined,
+    };
+
+    const driverId = resolveActiveDriverId(connectionId);
+    const plan = buildExplainPlan(driverId, bound.sql);
     if (plan.steps.length === 0) {
-      this.patchRunStatus({
+      this.patchRunStatus(ownerId, {
         status: "error",
         output: tKey("app.query.nothingToExplain"),
         lastSql: statement,
@@ -412,8 +612,10 @@ class QueryExecutionServiceImpl {
       return;
     }
 
-    const generation = ++this.runGeneration;
-    this.cancelRequested = false;
+    const runtime = this.ensureRuntime(ownerId);
+    const generation = ++runtime.runGeneration;
+    runtime.cancelRequested = false;
+    runtime.activeRunConnectionId = connectionId;
     const startedAt = performance.now();
     clearSqlErrorMarkers();
 
@@ -421,47 +623,52 @@ class QueryExecutionServiceImpl {
     const displaySql =
       plan.steps.find((step) => step.captureResult)?.sql ?? statement;
 
-    this.beginRun(displaySql, `Running ${plan.label}...`);
+    this.beginRun(ownerId, displaySql, `Running ${plan.label}...`);
 
     const teardownSql =
       plan.steps.find((step) => step.kind === "teardown")?.sql ?? null;
     let captured: QueryResultPayload | null = null;
     let capturedMessage = "";
-    /** SQL Server SHOWPLAN was turned on ??must restore even on failure. */
+    /** SQL Server SHOWPLAN was turned on — must restore even on failure. */
     let showplanArmed = false;
 
     try {
       if (!isTauri()) {
-        if (!this.isCurrentRun(generation)) return;
+        if (!this.isCurrentRun(ownerId, generation)) return;
         const preview = plan.steps
           .filter((step) => step.kind !== "teardown")
           .map((step) => step.sql)
           .join("\n\n");
         const output = `Desktop-only JDBC explain.\n\n${plan.label} steps:\n${preview}`;
-        this.commitTab({
+        this.commitTab(ownerId, {
           sql: displaySql,
           output,
           result: null,
           status: "success",
+          connectionId: connectionId ?? undefined,
         });
         this.recordHistory(
+          ownerId,
           historySql,
           "success",
           startedAt,
           output,
-          options,
+          runOptions,
         );
         return;
       }
 
-      await this.ensureConnected();
+      await ensureExecutionConnection(connectionId!);
 
       for (const step of plan.steps) {
         if (step.kind === "teardown") {
           continue;
         }
 
-        if (this.cancelRequested || !this.isCurrentRun(generation)) {
+        if (
+          runtime.cancelRequested ||
+          !this.isCurrentRun(ownerId, generation)
+        ) {
           break;
         }
 
@@ -469,19 +676,29 @@ class QueryExecutionServiceImpl {
         // agent with readOnly=false so Oracle can write PLAN_TABLE and SQL Server can
         // accept subject DML under SHOWPLAN. Frontend still blocks accidental writes
         // for normal execute via assertReadOnlyQueryAllowed.
-        const payload = await this.invokeQuery(step.sql, false);
+        const stepBinds =
+          bound.binds.length > 0 &&
+          (step.sql === bound.sql || step.sql.endsWith(bound.sql))
+            ? bound.binds
+            : undefined;
+        const payload = await this.invokeQuery(
+          connectionId!,
+          step.sql,
+          false,
+          stepBinds,
+        );
 
         if (step.kind === "setup" && driverId === "sqlserver") {
           showplanArmed = true;
         }
 
-        if (!this.isCurrentRun(generation)) {
+        if (!this.isCurrentRun(ownerId, generation)) {
           return;
         }
 
-        if (this.cancelRequested) {
-          this.finishCancelled(displaySql, startedAt, {
-            ...options,
+        if (runtime.cancelRequested) {
+          this.finishCancelled(ownerId, displaySql, startedAt, {
+            ...runOptions,
             historySql,
           });
           return;
@@ -497,13 +714,13 @@ class QueryExecutionServiceImpl {
         }
       }
 
-      if (!this.isCurrentRun(generation)) {
+      if (!this.isCurrentRun(ownerId, generation)) {
         return;
       }
 
-      if (this.cancelRequested) {
-        this.finishCancelled(displaySql, startedAt, {
-          ...options,
+      if (runtime.cancelRequested) {
+        this.finishCancelled(ownerId, displaySql, startedAt, {
+          ...runOptions,
           historySql,
         });
         return;
@@ -514,28 +731,30 @@ class QueryExecutionServiceImpl {
       }
 
       const output = capturedMessage || `${plan.label} completed.`;
-      this.commitTab({
+      this.commitTab(ownerId, {
         sql: displaySql,
         output,
         result: captured,
         status: "success",
+        connectionId: connectionId!,
       });
       this.recordHistory(
+        ownerId,
         historySql,
         "success",
         startedAt,
         output,
-        options,
+        runOptions,
       );
     } catch (error) {
-      this.handleRunError(error, displaySql, generation, startedAt, {
-        ...options,
+      this.handleRunError(ownerId, error, displaySql, generation, startedAt, {
+        ...runOptions,
         historySql,
       });
     } finally {
-      if (showplanArmed && teardownSql && isTauri()) {
+      if (showplanArmed && teardownSql && isTauri() && connectionId) {
         try {
-          await this.invokeQuery(teardownSql, false);
+          await this.invokeQuery(connectionId, teardownSql, false);
         } catch (teardownError) {
           console.warn(
             "[silk.query.explain] failed to restore SHOWPLAN session state",
@@ -543,24 +762,31 @@ class QueryExecutionServiceImpl {
           );
         }
       }
+      if (this.isCurrentRun(ownerId, generation)) {
+        runtime.activeRunConnectionId = null;
+      }
     }
   }
 
   async cancel(): Promise<void> {
-    if (this.state.status !== "running") {
+    const ownerId = this.viewOwnerId;
+    if (!ownerId) return;
+    const session = this.sessions.get(ownerId);
+    if (!session || session.status !== "running") {
       return;
     }
 
-    this.cancelRequested = true;
-    this.patchRunStatus({
+    const runtime = this.ensureRuntime(ownerId);
+    runtime.cancelRequested = true;
+    this.patchRunStatus(ownerId, {
       status: "running",
       output: tKey("app.query.cancelling"),
     });
 
     if (!isTauri()) {
-      this.runGeneration += 1;
-      this.setState({
-        ...this.state,
+      runtime.runGeneration += 1;
+      this.setSessionState(ownerId, {
+        ...session,
         status: "cancelled",
         output: tKey("app.query.cancelled"),
       });
@@ -568,9 +794,14 @@ class QueryExecutionServiceImpl {
     }
 
     try {
-      await invoke("query_cancel");
+      const connectionId = runtime.activeRunConnectionId;
+      if (!connectionId) {
+        console.warn("[silk.query.cancel] no active run connection");
+        return;
+      }
+      await invoke("query_cancel", { connectionId });
     } catch (error) {
-      // Cancel RPC failed ??still mark cancelled when the execute promise settles.
+      // Cancel RPC failed — still mark cancelled when the execute promise settles.
       console.warn("[silk.query.cancel] bridge cancel failed", error);
     }
   }
@@ -580,10 +811,46 @@ class QueryExecutionServiceImpl {
     return () => this.listeners.delete(listener);
   }
 
-  private beginRun(sql: string, output: string): void {
-    this.runTabOrdinal = 0;
-    this.setState({
-      ...this.state,
+  private resolveOwnerId(options?: QueryExecuteOptions): string {
+    const explicit = options?.ownerId?.trim();
+    if (explicit) return explicit;
+    const active = EditorService.getActiveTabId();
+    if (active) return active;
+    return ORPHAN_OWNER_ID;
+  }
+
+  private ensureRuntime(ownerId: string): SessionRuntime {
+    let runtime = this.runtimes.get(ownerId);
+    if (!runtime) {
+      runtime = {
+        runGeneration: 0,
+        cancelRequested: false,
+        runTabOrdinal: 0,
+        activeRunConnectionId: null,
+      };
+      this.runtimes.set(ownerId, runtime);
+    }
+    return runtime;
+  }
+
+  private findOwnerForResultTab(tabId: string): string | null {
+    for (const [ownerId, session] of this.sessions) {
+      if (session.tabs.some((tab) => tab.id === tabId)) {
+        return ownerId;
+      }
+    }
+    return null;
+  }
+
+  private beginRun(ownerId: string, sql: string, output: string): void {
+    const prev = this.sessions.get(ownerId);
+    if (prev?.tabs.length) {
+      QueryResultDirtyService.removeTabs(prev.tabs.map((tab) => tab.id));
+    }
+    const runtime = this.ensureRuntime(ownerId);
+    runtime.runTabOrdinal = 0;
+    this.viewOwnerId = ownerId;
+    this.setSessionState(ownerId, {
       status: "running",
       output,
       lastSql: sql,
@@ -593,15 +860,21 @@ class QueryExecutionServiceImpl {
     });
   }
 
-  private commitTab(input: {
-    sql: string;
-    output: string;
-    result: QueryResultPayload | null;
-    status: QueryResultTabStatus;
-    relationKind?: "table" | "view";
-    title?: string;
-  }): void {
-    this.runTabOrdinal += 1;
+  private commitTab(
+    ownerId: string,
+    input: {
+      sql: string;
+      output: string;
+      result: QueryResultPayload | null;
+      status: QueryResultTabStatus;
+      relationKind?: "table" | "view";
+      title?: string;
+      connectionId?: string;
+    },
+  ): void {
+    const runtime = this.ensureRuntime(ownerId);
+    const session = this.sessions.get(ownerId) ?? emptySession();
+    runtime.runTabOrdinal += 1;
     this.tabSequence += 1;
     const tab: QueryResultTab = {
       id: `result-${this.tabSequence}-${Date.now()}`,
@@ -610,7 +883,7 @@ class QueryExecutionServiceImpl {
         buildQueryResultTabTitle(
           input.sql,
           input.result,
-          this.runTabOrdinal,
+          runtime.runTabOrdinal,
         ),
       sql: input.sql,
       status: input.status,
@@ -618,14 +891,17 @@ class QueryExecutionServiceImpl {
       result: input.result,
       createdAt: Date.now(),
       relationKind: input.relationKind,
+      connectionId: input.connectionId,
     };
 
-    let tabs = [...this.state.tabs, tab];
+    let tabs = [...session.tabs, tab];
     if (tabs.length > MAX_QUERY_RESULT_TABS) {
+      const dropped = tabs.slice(0, tabs.length - MAX_QUERY_RESULT_TABS);
+      QueryResultDirtyService.removeTabs(dropped.map((item) => item.id));
       tabs = tabs.slice(tabs.length - MAX_QUERY_RESULT_TABS);
     }
 
-    this.setState({
+    this.setSessionState(ownerId, {
       status: input.status === "success" ? "success" : input.status,
       output: input.output,
       result: input.result,
@@ -635,37 +911,55 @@ class QueryExecutionServiceImpl {
     });
   }
 
-  private patchRunStatus(patch: {
-    status: QueryExecutionStatus;
-    output: string;
-    lastSql?: string;
-  }): void {
-    this.setState({
-      ...this.state,
+  private patchRunStatus(
+    ownerId: string,
+    patch: {
+      status: QueryExecutionStatus;
+      output: string;
+      lastSql?: string;
+    },
+  ): void {
+    this.viewOwnerId = ownerId;
+    const session = this.sessions.get(ownerId) ?? emptySession();
+    this.setSessionState(ownerId, {
+      ...session,
       status: patch.status,
       output: patch.output,
-      lastSql: patch.lastSql ?? this.state.lastSql,
+      lastSql: patch.lastSql ?? session.lastSql,
     });
   }
 
-  private async ensureConnected(): Promise<void> {
-    if (!ConnectionService.isConnected()) {
-      const activeProfile = ConnectionService.getActiveProfile();
-      if (activeProfile) {
-        await ConnectionService.connect(activeProfile.id, { silent: true });
-      }
+  private async resolveStatementBinds(
+    sql: string,
+  ): Promise<BoundSql | "cancelled"> {
+    const options = {
+      anonymousEnabled: ConfigurationService.getValue(
+        "sql.parameters.anonymousEnabled",
+      ),
+      namedEnabled: ConfigurationService.getValue(
+        "sql.parameters.namedEnabled",
+      ),
+    };
+    const occurrences = detectSqlParameterOccurrences(sql, options);
+    if (occurrences.length === 0) {
+      return { sql, binds: [] };
     }
 
-    if (!ConnectionService.isConnected()) {
-      throw new Error(
-        tKey("app.query.noConnection"),
-      );
+    const fields = collectSqlParameterFields(occurrences);
+    const result = await SqlParameterDialogService.open(fields);
+
+    if (!result.confirmed) {
+      return "cancelled";
     }
+
+    return bindSqlParameters(sql, occurrences, result.values);
   }
 
   private async invokeQuery(
+    connectionId: string,
     sql: string,
     readOnly: boolean,
+    binds?: Array<string | null>,
   ): Promise<unknown> {
     const maxRows = ConfigurationService.getValue("queryResult.maxRows");
     const queryTimeoutSec = ConfigurationService.getValue(
@@ -673,27 +967,31 @@ class QueryExecutionServiceImpl {
     );
     const autoCommit = ConfigurationService.getValue("database.autoCommit");
     return invoke<unknown>("query_execute", {
+      connectionId,
       sql,
       maxRows,
       queryTimeoutSec,
       autoCommit,
       readOnly,
+      binds: binds && binds.length > 0 ? binds : null,
     });
   }
 
   private handleRunError(
+    ownerId: string,
     error: unknown,
     statement: string,
     generation: number,
     startedAt: number,
     options?: QueryExecuteOptions,
   ): void {
-    if (!this.isCurrentRun(generation)) {
+    if (!this.isCurrentRun(ownerId, generation)) {
       return;
     }
 
-    if (this.cancelRequested || isCancelError(error)) {
-      this.finishCancelled(statement, startedAt, options);
+    const runtime = this.ensureRuntime(ownerId);
+    if (runtime.cancelRequested || isCancelError(error)) {
+      this.finishCancelled(ownerId, statement, startedAt, options);
       return;
     }
 
@@ -702,13 +1000,15 @@ class QueryExecutionServiceImpl {
       "query.execute",
       tKey("app.query.executeFailed"),
     );
-    this.setState({
-      ...this.state,
+    const session = this.sessions.get(ownerId) ?? emptySession();
+    this.setSessionState(ownerId, {
+      ...session,
       status: "error",
       output: message,
       lastSql: statement,
     });
     this.recordHistory(
+      ownerId,
       options?.historySql ?? statement,
       "error",
       startedAt,
@@ -719,17 +1019,20 @@ class QueryExecutionServiceImpl {
   }
 
   private finishCancelled(
+    ownerId: string,
     statement: string,
     startedAt: number,
     options?: QueryExecuteOptions,
   ): void {
-    this.setState({
-      ...this.state,
+    const session = this.sessions.get(ownerId) ?? emptySession();
+    this.setSessionState(ownerId, {
+      ...session,
       status: "cancelled",
       output: tKey("app.query.cancelled"),
       lastSql: statement,
     });
     this.recordHistory(
+      ownerId,
       options?.historySql ?? statement,
       "cancelled",
       startedAt,
@@ -739,6 +1042,7 @@ class QueryExecutionServiceImpl {
   }
 
   private recordHistory(
+    ownerId: string,
     sql: string,
     status: QueryHistoryStatus,
     startedAt: number,
@@ -747,26 +1051,97 @@ class QueryExecutionServiceImpl {
   ): void {
     if (options?.skipHistory) return;
 
-    const profile =
-      ConnectionService.getConnectedProfile() ??
-      ConnectionService.getActiveProfile();
+    const runtime = this.runtimes.get(ownerId);
+    const connectionId =
+      options?.connectionId?.trim() ||
+      runtime?.activeRunConnectionId ||
+      EditorConnectionBindingService.getActiveBinding().profileId?.trim() ||
+      null;
+    const profile = connectionId
+      ? ConnectionService.getProfile(connectionId)
+      : (ConnectionService.getConnectedProfile() ??
+        ConnectionService.getActiveProfile());
     QueryHistoryService.record({
       sql,
       status,
       durationMs: performance.now() - startedAt,
-      connectionProfileId: profile?.id ?? null,
+      connectionProfileId: profile?.id ?? connectionId,
       connectionName: profile?.name ?? null,
       driverId: profile?.driverId ?? null,
       summary,
     });
   }
 
-  private isCurrentRun(generation: number): boolean {
-    return generation === this.runGeneration;
+  private isCurrentRun(ownerId: string, generation: number): boolean {
+    return this.ensureRuntime(ownerId).runGeneration === generation;
   }
 
-  private setState(next: QueryExecutionState): void {
-    this.state = next;
+  private setSessionState(ownerId: string, next: QueryExecutionState): void {
+    this.sessions.set(ownerId, next);
+    this.fireDidChange();
+  }
+
+  private discardSession(ownerId: string): void {
+    const session = this.sessions.get(ownerId);
+    if (session?.tabs.length) {
+      QueryResultDirtyService.removeTabs(session.tabs.map((tab) => tab.id));
+    }
+
+    const runtime = this.runtimes.get(ownerId);
+    if (runtime && session?.status === "running") {
+      runtime.cancelRequested = true;
+      runtime.runGeneration += 1;
+      const connectionId = runtime.activeRunConnectionId;
+      if (connectionId && isTauri()) {
+        void invoke("query_cancel", { connectionId }).catch((error) => {
+          console.warn(
+            "[silk.query] cancel on editor close failed",
+            error,
+          );
+        });
+      }
+    }
+
+    this.sessions.delete(ownerId);
+    this.runtimes.delete(ownerId);
+  }
+
+  private syncWithEditorTabs(): void {
+    const tabs = EditorService.getTabs();
+    const liveIds = new Set(tabs.map((tab) => tab.id));
+    let changed = false;
+
+    for (const ownerId of [...this.sessions.keys()]) {
+      if (isSyntheticOwnerId(ownerId)) continue;
+      if (!liveIds.has(ownerId)) {
+        this.discardSession(ownerId);
+        changed = true;
+      }
+    }
+
+    const activeId = EditorService.getActiveTabId();
+    if (activeId !== this.lastActiveEditorId) {
+      this.lastActiveEditorId = activeId;
+      if (activeId) {
+        if (this.viewOwnerId !== activeId) {
+          this.viewOwnerId = activeId;
+          changed = true;
+        }
+      } else if (
+        this.viewOwnerId &&
+        !isSyntheticOwnerId(this.viewOwnerId)
+      ) {
+        this.viewOwnerId = null;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.fireDidChange();
+    }
+  }
+
+  private fireDidChange(): void {
     for (const listener of this.listeners) {
       listener();
     }

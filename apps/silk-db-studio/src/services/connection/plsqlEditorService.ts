@@ -41,8 +41,7 @@ export function openPlsqlObjectSource(
     );
   }
 
-  const { connectedProfileId } = ConnectionService.getState();
-  if (connectedProfileId !== ref.profileId || !ConnectionService.isConnected()) {
+  if (!ConnectionService.isConnected(ref.profileId)) {
     throw new Error("Connect this profile before opening PL/SQL source.");
   }
 

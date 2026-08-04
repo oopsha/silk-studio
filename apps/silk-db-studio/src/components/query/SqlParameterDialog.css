@@ -1,0 +1,39 @@
+.sql-parameter-dialog {
+  width: min(560px, 100%);
+}
+
+.sql-parameter-dialog__table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sql-parameter-dialog__row {
+  display: grid;
+  grid-template-columns: minmax(96px, 140px) 1fr 52px;
+  gap: 8px;
+  align-items: center;
+}
+
+.sql-parameter-dialog__row--head {
+  font-size: 11px;
+  color: var(--color-description);
+}
+
+.sql-parameter-dialog__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-family-monospace, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--color-foreground);
+}
+
+.sql-parameter-dialog__input {
+  width: 100%;
+}
+
+.sql-parameter-dialog__null {
+  display: flex;
+  justify-content: center;
+}

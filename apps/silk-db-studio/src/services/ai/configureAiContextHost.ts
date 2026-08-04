@@ -5,6 +5,7 @@ import {
   effectiveDefaultSchema,
   getConnectionDriver,
 } from "../connection/connectionTypes";
+import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import { QueryHistoryService } from "../query/queryHistoryService";
 
 import { getExplorerSchemas } from "../connection/useConnectionTree";
@@ -18,8 +19,20 @@ function truncate(value: string, maxChars: number): string {
   return `${trimmed.slice(0, Math.max(0, maxChars - 1))}…`;
 }
 
+function resolveAiContextProfile() {
+  const bindingId =
+    EditorConnectionBindingService.getActiveBinding().profileId?.trim() || null;
+  if (bindingId) {
+    const bound = ConnectionService.getProfile(bindingId);
+    if (bound && ConnectionService.isConnected(bindingId)) {
+      return bound;
+    }
+  }
+  return ConnectionService.getConnectedProfile();
+}
+
 function buildSchemaSummaryText(maxChars: number): string | null {
-  const connected = ConnectionService.getConnectedProfile();
+  const connected = resolveAiContextProfile();
   if (!connected) return null;
 
   const cache = ConnectionTreeService.getCache(connected.id);
@@ -102,14 +115,13 @@ function buildQueryHistoryText(
 export function configureDbStudioAiContextHost(): void {
   configureAiContextHost({
     getConnectionContext: () => {
-      const state = ConnectionService.getState();
-      const profile = ConnectionService.getConnectedProfile();
+      const profile = resolveAiContextProfile();
       if (!profile) {
         return { connected: false };
       }
       const driver = getConnectionDriver(profile.driverId);
       return {
-        connected: state.status === "connected",
+        connected: ConnectionService.isConnected(profile.id),
         profileName: profile.name,
         driverId: profile.driverId,
         dialectLabel: driver.label,

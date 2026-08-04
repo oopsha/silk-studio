@@ -180,6 +180,7 @@ function Panel() {
             sql={activeTab.sql}
             result={gridResult}
             relationKind={activeTab.relationKind}
+            connectionId={activeTab.connectionId}
           />
         ) : (
           <pre className="panel__content">

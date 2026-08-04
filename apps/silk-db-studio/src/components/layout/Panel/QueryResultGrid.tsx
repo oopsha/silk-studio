@@ -70,6 +70,7 @@ type QueryResultGridProps = {
   sql: string;
   result: QueryResultPayload;
   relationKind?: "table" | "view";
+  connectionId?: string;
 };
 
 function QueryResultGrid({
@@ -77,6 +78,7 @@ function QueryResultGrid({
   sql,
   result,
   relationKind,
+  connectionId,
 }: QueryResultGridProps) {
   const { t } = useI18n();
   const configuration = useConfiguration();
@@ -132,7 +134,10 @@ function QueryResultGrid({
 
   useEffect(() => {
     let cancelled = false;
-    void resolveUpdateEligibility(sql, result.columns, { relationKind }).then(
+    void resolveUpdateEligibility(sql, result.columns, {
+      relationKind,
+      connectionId,
+    }).then(
       (eligibility) => {
       if (cancelled) return;
       if (eligibility.eligible) {
@@ -147,7 +152,7 @@ function QueryResultGrid({
     return () => {
       cancelled = true;
     };
-  }, [sql, result.columns, relationKind]);
+  }, [sql, result.columns, relationKind, connectionId]);
 
   const gridTheme = useMemo(() => {
     const palette = GRID_THEME_PALETTES[colorTheme];
@@ -354,6 +359,7 @@ function QueryResultGrid({
     try {
       const nextPreview = await buildUpdatePreview(tabId, sql, result.columns, {
         relationKind,
+        connectionId,
       });
       if ("blocked" in nextPreview) {
         flashMessage(nextPreview.reason);
@@ -378,7 +384,9 @@ function QueryResultGrid({
     if (!preview) return;
     setExecutingUpdates(true);
     setPreviewError(null);
-    const outcome = await executeConfirmedUpdates(tabId, preview.statements);
+    const outcome = await executeConfirmedUpdates(tabId, preview.statements, {
+      connectionId,
+    });
     setExecutingUpdates(false);
     if (!outcome.ok) {
       setPreviewError(outcome.message);

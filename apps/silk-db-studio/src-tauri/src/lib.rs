@@ -52,36 +52,54 @@ struct AppState {
     jdbc_agent: JdbcAgentClient,
 }
 
+fn require_connection_id(connection_id: &str) -> Result<&str, String> {
+    let trimmed = connection_id.trim();
+    if trimmed.is_empty() {
+        return Err("connectionId is required.".into());
+    }
+    Ok(trimmed)
+}
+
 #[tauri::command]
 fn query_execute(
+    connection_id: String,
     sql: String,
     max_rows: Option<u32>,
     query_timeout_sec: Option<u32>,
     auto_commit: Option<bool>,
     read_only: Option<bool>,
+    binds: Option<Vec<Option<String>>>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
     let statement = sql.trim();
     if statement.is_empty() {
         return Err("Query is empty.".into());
     }
 
     state.jdbc_agent.execute_query(
+        connection_id,
         statement,
         max_rows,
         query_timeout_sec,
         auto_commit,
         read_only,
+        binds.as_deref(),
     )
 }
 
 #[tauri::command]
-fn query_cancel(state: tauri::State<'_, AppState>) -> Result<Value, String> {
-    state.jdbc_agent.cancel_query()
+fn query_cancel(
+    connection_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    state.jdbc_agent.cancel_query(connection_id)
 }
 
 #[tauri::command]
 fn connection_connect(
+    connection_id: String,
     url: String,
     user: String,
     password: String,
@@ -89,7 +107,9 @@ fn connection_connect(
     catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
     state.jdbc_agent.connect(
+        connection_id,
         url.trim(),
         user.trim(),
         password.as_str(),
@@ -99,8 +119,12 @@ fn connection_connect(
 }
 
 #[tauri::command]
-fn connection_disconnect(state: tauri::State<'_, AppState>) -> Result<Value, String> {
-    state.jdbc_agent.disconnect()
+fn connection_disconnect(
+    connection_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    state.jdbc_agent.disconnect(connection_id)
 }
 
 #[tauri::command]
@@ -123,42 +147,70 @@ fn connection_test(
 
 #[tauri::command]
 fn connection_metadata(
+    connection_id: String,
     schema: Option<String>,
     catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
     state
         .jdbc_agent
-        .list_metadata(schema.as_deref(), catalog.as_deref())
+        .list_metadata(connection_id, schema.as_deref(), catalog.as_deref())
 }
 
 #[tauri::command]
 fn connection_columns(
+    connection_id: String,
     schema: String,
     table: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
-    state.jdbc_agent.list_columns(schema.trim(), table.trim())
+    let connection_id = require_connection_id(&connection_id)?;
+    state
+        .jdbc_agent
+        .list_columns(connection_id, schema.trim(), table.trim())
+}
+
+#[tauri::command]
+fn connection_package_members(
+    connection_id: String,
+    schema: String,
+    package: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    state.jdbc_agent.list_package_members(
+        connection_id,
+        schema.trim(),
+        package.trim(),
+    )
 }
 
 #[tauri::command]
 fn connection_primary_keys(
+    connection_id: String,
     schema: String,
     table: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
-    state.jdbc_agent.list_primary_keys(schema.trim(), table.trim())
+    let connection_id = require_connection_id(&connection_id)?;
+    state
+        .jdbc_agent
+        .list_primary_keys(connection_id, schema.trim(), table.trim())
 }
 
 #[tauri::command]
 fn connection_ddl(
+    connection_id: String,
     schema: String,
     name: String,
     kind: String,
     package_body: Option<bool>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
     state.jdbc_agent.fetch_object_ddl(
+        connection_id,
         schema.trim(),
         name.trim(),
         kind.trim(),
@@ -168,13 +220,16 @@ fn connection_ddl(
 
 #[tauri::command]
 fn connection_compile(
+    connection_id: String,
     schema: String,
     name: String,
     kind: String,
     package_body: Option<bool>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
     state.jdbc_agent.compile_object(
+        connection_id,
         schema.trim(),
         name.trim(),
         kind.trim(),
@@ -201,6 +256,7 @@ pub fn run() {
             connection_test,
             connection_metadata,
             connection_columns,
+            connection_package_members,
             connection_primary_keys,
             connection_ddl,
             connection_compile,

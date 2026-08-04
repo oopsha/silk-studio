@@ -70,6 +70,8 @@ export const ENGLISH_LABEL_KEYS: Record<string, MessageKey> = {
   "Run Statement": "app.query.runStatement",
   "Run All": "app.query.runAll",
   "Explain Plan": "app.query.explainPlan",
+  "Select Query Target…": "app.connectionTarget.selectTargetTitle",
+  "Select Query Target...": "app.connectionTarget.selectTargetTitle",
   "Format Document": "app.query.formatDocument",
   "Format Selection": "app.query.formatSelection",
   "Copy Selection": "app.query.copySelection",

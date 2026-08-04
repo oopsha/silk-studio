@@ -1,9 +1,15 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Editor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
+import type { editor } from "monaco-editor";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import {
+  monacoModelPathForTab,
+  scheduleRestoreViewState,
+} from "@silk-studio/editor/services/editor/monacoModelPath.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import {
   defineWorkbenchMonacoThemes,
@@ -28,6 +34,7 @@ function DdlEditorView() {
   const ref = parseDdlEditorUri(activeTab?.uri);
   const configuration = useConfiguration();
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
   useEffect(() => {
     if (!ref) {
@@ -38,7 +45,7 @@ function DdlEditorView() {
     let cancelled = false;
     setLoadState({ status: "loading" });
 
-    void bridgeFetchObjectDdl(ref.schemaName, ref.objectName, ref.kind)
+    void bridgeFetchObjectDdl(ref.profileId, ref.schemaName, ref.objectName, ref.kind)
       .then((result) => {
         if (cancelled) return;
         const ddl = result.ddl.endsWith("\n") ? result.ddl : `${result.ddl}\n`;
@@ -62,6 +69,16 @@ function DdlEditorView() {
     t,
   ]);
 
+  useLayoutEffect(() => {
+    const tabId = activeTab?.id;
+    return () => {
+      const instance = editorRef.current;
+      if (instance && tabId) {
+        EditorService.saveViewState(tabId, instance.saveViewState());
+      }
+    };
+  }, [activeTab?.id]);
+
   const profile = ref ? ConnectionService.getProfile(ref.profileId) : undefined;
   const languageId = profile
     ? monacoLanguageIdForDriver(profile.driverId)
@@ -71,6 +88,27 @@ function DdlEditorView() {
     defineWorkbenchMonacoThemes(monaco);
     registerSqlLanguages(monaco);
   };
+
+  const handleMount = useCallback((instance: editor.IStandaloneCodeEditor) => {
+    editorRef.current = instance;
+    const tabId = EditorService.getActiveTabId();
+    if (tabId) {
+      scheduleRestoreViewState(instance, () =>
+        EditorService.getViewState(tabId),
+      );
+    }
+  }, []);
+
+  // readOnly editors always `setValue` in monaco-react, which resets scroll after load.
+  useEffect(() => {
+    if (loadState.status === "loading") return;
+    const instance = editorRef.current;
+    const tabId = activeTab?.id;
+    if (!instance || !tabId) return;
+    scheduleRestoreViewState(instance, () =>
+      EditorService.getViewState(tabId),
+    );
+  }, [loadState, activeTab?.id]);
 
   const content =
     loadState.status === "ready"
@@ -87,12 +125,15 @@ function DdlEditorView() {
       </div>
       <div className="ddl-editor-view__body">
         <Editor
-          key={activeTab?.id}
           height="100%"
+          path={activeTab ? monacoModelPathForTab(activeTab) : undefined}
           language={languageId}
-          value={content}
+          value={loadState.status === "loading" ? undefined : content}
           theme={monacoThemeForColorTheme(configuration["workbench.colorTheme"])}
+          keepCurrentModel
+          saveViewState
           beforeMount={handleBeforeMount}
+          onMount={handleMount}
           options={{
             readOnly: true,
             fontFamily: getEditorFontFamily(),
@@ -102,6 +143,9 @@ function DdlEditorView() {
             lineNumbers: configuration["editor.lineNumbers"],
             renderLineHighlight: "line",
             minimap: { enabled: configuration["editor.minimap.enabled"] },
+            stickyScroll: {
+              enabled: configuration["editor.stickyScroll.enabled"],
+            },
             wordWrap: configuration["editor.wordWrap"],
             scrollBeyondLastLine: false,
             automaticLayout: true,

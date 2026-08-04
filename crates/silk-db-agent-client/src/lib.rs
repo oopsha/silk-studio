@@ -1,9 +1,9 @@
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -15,7 +15,8 @@ struct AgentIo {
     stdin: Mutex<ChildStdin>,
     next_id: AtomicU64,
     pending: PendingMap,
-    connected: AtomicBool,
+    /// Live agent session ids (profile ids from the app).
+    connected_ids: Mutex<HashSet<String>>,
     child: Mutex<Child>,
     /// Reader thread handle; joined on drop after the child is killed.
     reader: Mutex<Option<JoinHandle<()>>>,
@@ -23,6 +24,7 @@ struct AgentIo {
 
 /// Thread-safe JDBC agent client. Requests/responses are demultiplexed by id so
 /// [`Self::cancel_query`] can run while [`Self::execute_query`] is waiting.
+/// Multiple DB sessions are keyed by {@code connection_id}.
 pub struct JdbcAgentClient {
     agent_jar: PathBuf,
     java_bin: PathBuf,
@@ -48,13 +50,19 @@ impl JdbcAgentClient {
 
     pub fn connect(
         &self,
+        connection_id: &str,
         url: &str,
         user: &str,
         password: &str,
         schema: Option<&str>,
         catalog: Option<&str>,
     ) -> Result<Value, String> {
+        let connection_id = connection_id.trim();
+        if connection_id.is_empty() {
+            return Err("connectionId is required.".into());
+        }
         let mut params = json!({
+            "connectionId": connection_id,
             "url": url,
             "user": user,
             "password": password,
@@ -72,14 +80,26 @@ impl JdbcAgentClient {
             }
         }
         let result = self.send_request("connection.open", params)?;
-        self.ensure_process()?.connected.store(true, Ordering::SeqCst);
+        let io = self.ensure_process()?;
+        if let Ok(mut ids) = io.connected_ids.lock() {
+            ids.insert(connection_id.to_string());
+        }
         Ok(result)
     }
 
-    pub fn disconnect(&self) -> Result<Value, String> {
-        let result = self.send_request("connection.close", json!({}))?;
+    pub fn disconnect(&self, connection_id: &str) -> Result<Value, String> {
+        let connection_id = connection_id.trim();
+        if connection_id.is_empty() {
+            return Err("connectionId is required.".into());
+        }
+        let result = self.send_request(
+            "connection.close",
+            json!({ "connectionId": connection_id }),
+        )?;
         if let Ok(io) = self.ensure_process() {
-            io.connected.store(false, Ordering::SeqCst);
+            if let Ok(mut ids) = io.connected_ids.lock() {
+                ids.remove(connection_id);
+            }
         }
         Ok(result)
     }
@@ -114,11 +134,12 @@ impl JdbcAgentClient {
 
     pub fn list_metadata(
         &self,
+        connection_id: &str,
         schema: Option<&str>,
         catalog: Option<&str>,
     ) -> Result<Value, String> {
-        self.ensure_connection()?;
-        let mut params = json!({});
+        self.ensure_connection(connection_id)?;
+        let mut params = json!({ "connectionId": connection_id.trim() });
         if let Some(schema) = schema {
             if !schema.trim().is_empty() {
                 params["schema"] = json!(schema.trim());
@@ -132,8 +153,13 @@ impl JdbcAgentClient {
         self.send_request("connection.metadata", params)
     }
 
-    pub fn list_columns(&self, schema: &str, table: &str) -> Result<Value, String> {
-        self.ensure_connection()?;
+    pub fn list_columns(
+        &self,
+        connection_id: &str,
+        schema: &str,
+        table: &str,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
         let schema = schema.trim();
         let table = table.trim();
         if schema.is_empty() {
@@ -144,30 +170,69 @@ impl JdbcAgentClient {
         }
         self.send_request(
             "connection.columns",
-            json!({ "schema": schema, "table": table }),
+            json!({
+                "connectionId": connection_id.trim(),
+                "schema": schema,
+                "table": table
+            }),
         )
     }
 
-    pub fn list_primary_keys(&self, schema: &str, table: &str) -> Result<Value, String> {
-        self.ensure_connection()?;
+    pub fn list_package_members(
+        &self,
+        connection_id: &str,
+        schema: &str,
+        package: &str,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let schema = schema.trim();
+        let package = package.trim();
+        if schema.is_empty() {
+            return Err("schema is required.".into());
+        }
+        if package.is_empty() {
+            return Err("package is required.".into());
+        }
+        self.send_request(
+            "connection.packageMembers",
+            json!({
+                "connectionId": connection_id.trim(),
+                "schema": schema,
+                "package": package
+            }),
+        )
+    }
+
+    pub fn list_primary_keys(
+        &self,
+        connection_id: &str,
+        schema: &str,
+        table: &str,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
         let table = table.trim();
         if table.is_empty() {
             return Err("table is required.".into());
         }
         self.send_request(
             "connection.primaryKeys",
-            json!({ "schema": schema.trim(), "table": table }),
+            json!({
+                "connectionId": connection_id.trim(),
+                "schema": schema.trim(),
+                "table": table
+            }),
         )
     }
 
     pub fn fetch_object_ddl(
         &self,
+        connection_id: &str,
         schema: &str,
         name: &str,
         kind: &str,
         package_body: Option<bool>,
     ) -> Result<Value, String> {
-        self.ensure_connection()?;
+        self.ensure_connection(connection_id)?;
         let schema = schema.trim();
         let name = name.trim();
         let kind = kind.trim();
@@ -180,7 +245,12 @@ impl JdbcAgentClient {
         if kind.is_empty() {
             return Err("object kind is required.".into());
         }
-        let mut params = json!({ "schema": schema, "name": name, "kind": kind });
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "schema": schema,
+            "name": name,
+            "kind": kind
+        });
         if let Some(package_body) = package_body {
             params["packageBody"] = json!(package_body);
         }
@@ -189,12 +259,13 @@ impl JdbcAgentClient {
 
     pub fn compile_object(
         &self,
+        connection_id: &str,
         schema: &str,
         name: &str,
         kind: &str,
         package_body: Option<bool>,
     ) -> Result<Value, String> {
-        self.ensure_connection()?;
+        self.ensure_connection(connection_id)?;
         let schema = schema.trim();
         let name = name.trim();
         let kind = kind.trim();
@@ -207,7 +278,12 @@ impl JdbcAgentClient {
         if kind.is_empty() {
             return Err("object kind is required.".into());
         }
-        let mut params = json!({ "schema": schema, "name": name, "kind": kind });
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "schema": schema,
+            "name": name,
+            "kind": kind
+        });
         if let Some(package_body) = package_body {
             params["packageBody"] = json!(package_body);
         }
@@ -216,14 +292,19 @@ impl JdbcAgentClient {
 
     pub fn execute_query(
         &self,
+        connection_id: &str,
         sql: &str,
         max_rows: Option<u32>,
         query_timeout_sec: Option<u32>,
         auto_commit: Option<bool>,
         read_only: Option<bool>,
+        binds: Option<&[Option<String>]>,
     ) -> Result<Value, String> {
-        self.ensure_connection()?;
-        let mut params = json!({ "sql": sql });
+        self.ensure_connection(connection_id)?;
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "sql": sql
+        });
         if let Some(max_rows) = max_rows {
             params["maxRows"] = json!(max_rows);
         }
@@ -236,23 +317,44 @@ impl JdbcAgentClient {
         if let Some(read_only) = read_only {
             params["readOnly"] = json!(read_only);
         }
+        if let Some(binds) = binds {
+            if !binds.is_empty() {
+                params["binds"] = json!(binds);
+            }
+        }
         self.send_request("query.execute", params)
     }
 
-    /// Cancels the in-flight JDBC statement. Safe to call while [`Self::execute_query`] waits.
-    pub fn cancel_query(&self) -> Result<Value, String> {
+    /// Cancels the in-flight JDBC statement for {@code connection_id}.
+    /// Safe to call while [`Self::execute_query`] waits.
+    pub fn cancel_query(&self, connection_id: &str) -> Result<Value, String> {
+        let connection_id = connection_id.trim();
+        if connection_id.is_empty() {
+            return Err("connectionId is required.".into());
+        }
         self.ensure_process()?;
-        self.send_request("query.cancel", json!({}))
+        self.send_request(
+            "query.cancel",
+            json!({ "connectionId": connection_id }),
+        )
     }
 
-    fn ensure_connection(&self) -> Result<(), String> {
+    fn ensure_connection(&self, connection_id: &str) -> Result<(), String> {
+        let connection_id = connection_id.trim();
+        if connection_id.is_empty() {
+            return Err("connectionId is required.".into());
+        }
         let io = self.ensure_process()?;
-        if io.connected.load(Ordering::SeqCst) {
+        let ids = io
+            .connected_ids
+            .lock()
+            .map_err(|_| "Failed to lock jdbc-agent connection set".to_string())?;
+        if ids.contains(connection_id) {
             return Ok(());
         }
-        Err(
-            "No active database connection. Connect a profile in the Connections explorer.".into(),
-        )
+        Err(format!(
+            "No active database connection ({connection_id}). Connect a profile in the Connections explorer."
+        ))
     }
 
     fn ensure_process(&self) -> Result<Arc<AgentIo>, String> {
@@ -366,7 +468,7 @@ For local development, install JDK/JRE 17+ and ensure `java` is on PATH.",
             stdin: Mutex::new(stdin),
             next_id: AtomicU64::new(1),
             pending,
-            connected: AtomicBool::new(false),
+            connected_ids: Mutex::new(HashSet::new()),
             child: Mutex::new(child),
             reader: Mutex::new(Some(reader)),
         });

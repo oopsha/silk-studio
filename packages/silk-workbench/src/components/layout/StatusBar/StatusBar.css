@@ -6,7 +6,8 @@
   flex-shrink: 0;
   width: 100%;
   height: var(--status-bar-height);
-  overflow: hidden;
+  /* visible so connection target quick pick can open upward from a status item */
+  overflow: visible;
   cursor: default;
   color: var(--color-status-bar-foreground);
   background-color: var(--color-status-bar-background);
@@ -22,6 +23,7 @@
 .status-bar__right {
   display: flex;
   align-items: stretch;
+  overflow: visible;
 }
 
 .status-bar__left {

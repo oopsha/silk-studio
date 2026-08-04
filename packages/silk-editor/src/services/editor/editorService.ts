@@ -5,6 +5,7 @@ import {
   basenameFromPath,
   languageIdFromPath,
 } from "./languageFromPath";
+import { disposeMonacoModelForTab } from "./monacoModelPath";
 
 type EditorChangeListener = () => void;
 
@@ -39,6 +40,8 @@ class EditorServiceImpl {
   private enablePreviewEditors = true;
   /** Live Monaco instance for the active text editor; cleared on unmount. */
   private activeTextEditor: editor.IStandaloneCodeEditor | null = null;
+  /** Per-tab Monaco view state (scroll / cursor) restored when the tab remounts. */
+  private readonly viewStates = new Map<string, editor.ICodeEditorViewState>();
   private defaultUntitledLanguageId = "plaintext";
   private resolveLanguageId: LanguageIdResolver = (_path, fromExtension) =>
     fromExtension;
@@ -78,6 +81,22 @@ class EditorServiceImpl {
     return this.activeTextEditor;
   }
 
+  saveViewState(
+    tabId: string,
+    state: editor.ICodeEditorViewState | null,
+  ): void {
+    if (!state) {
+      this.viewStates.delete(tabId);
+      return;
+    }
+    this.viewStates.set(tabId, state);
+  }
+
+  /** Returns and keeps the saved view state for restore on remount. */
+  getViewState(tabId: string): editor.ICodeEditorViewState | null {
+    return this.viewStates.get(tabId) ?? null;
+  }
+
   setDefaultUntitledLanguageId(languageId: string): void {
     this.defaultUntitledLanguageId = languageId;
   }
@@ -90,6 +109,26 @@ class EditorServiceImpl {
     const tab = this.tabs.find((item) => item.id === id);
     if (!tab || tab.languageId === languageId) return;
     tab.languageId = languageId;
+    this.fireDidChange();
+  }
+
+  /**
+   * Optional tab chrome (muted suffix + tooltip). No-op when unchanged.
+   * Used by the app to show per-tab connection binding without renaming the file.
+   */
+  setTabDecoration(
+    id: string,
+    decoration: { description?: string | null; tooltip?: string | null },
+  ): void {
+    const tab = this.tabs.find((item) => item.id === id);
+    if (!tab) return;
+    const nextDescription = decoration.description?.trim() || undefined;
+    const nextTooltip = decoration.tooltip?.trim() || undefined;
+    if (tab.description === nextDescription && tab.tooltip === nextTooltip) {
+      return;
+    }
+    tab.description = nextDescription;
+    tab.tooltip = nextTooltip;
     this.fireDidChange();
   }
 
@@ -235,8 +274,10 @@ class EditorServiceImpl {
     const index = this.tabs.findIndex((tab) => tab.id === id);
     if (index === -1) return;
 
-    this.tabs.splice(index, 1);
-    this.savedContent.delete(id);
+    const [removed] = this.tabs.splice(index, 1);
+    if (removed) {
+      this.disposeClosedTab(removed);
+    }
 
     if (this.activeTabId === id) {
       const nextTab = this.tabs[index] ?? this.tabs[index - 1] ?? null;
@@ -259,20 +300,23 @@ class EditorServiceImpl {
   }
 
   closeAllTabs(): void {
+    for (const tab of this.tabs) {
+      this.disposeClosedTab(tab);
+    }
     this.tabs = [];
     this.activeTabId = null;
     this.savedContent.clear();
+    this.viewStates.clear();
     this.openUntitled();
     this.updateContextKeys();
     this.fireDidChange();
   }
 
   closeOtherTabs(keepId: string): void {
+    const removed = this.tabs.filter((tab) => tab.id !== keepId);
     this.tabs = this.tabs.filter((tab) => tab.id === keepId);
-    for (const key of [...this.savedContent.keys()]) {
-      if (key !== keepId) {
-        this.savedContent.delete(key);
-      }
+    for (const tab of removed) {
+      this.disposeClosedTab(tab);
     }
     this.activeTabId = keepId;
     this.updateContextKeys();
@@ -285,7 +329,7 @@ class EditorServiceImpl {
 
     const removed = this.tabs.splice(index + 1);
     for (const tab of removed) {
-      this.savedContent.delete(tab.id);
+      this.disposeClosedTab(tab);
     }
 
     if (
@@ -297,6 +341,12 @@ class EditorServiceImpl {
 
     this.updateContextKeys();
     this.fireDidChange();
+  }
+
+  private disposeClosedTab(tab: EditorTab): void {
+    this.savedContent.delete(tab.id);
+    this.viewStates.delete(tab.id);
+    disposeMonacoModelForTab(tab);
   }
 
   pinTab(id: string): void {

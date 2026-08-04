@@ -1,9 +1,12 @@
 export type QueryExecuteParams = {
+  connectionId: string;
   sql: string;
   maxRows?: number;
   queryTimeoutSec?: number;
   autoCommit?: boolean;
   readOnly?: boolean;
+  /** Positional bind values; JSON null → SQL NULL. */
+  binds?: Array<string | null>;
 };
 
 export type ConnectionCredentials = {
@@ -25,10 +28,14 @@ export type ConnectionCredentials = {
   catalog?: string;
 };
 
-export type ConnectionOpenParams = ConnectionCredentials;
+export type ConnectionOpenParams = ConnectionCredentials & {
+  /** Stable session key (Silk uses connection profile id). */
+  connectionId: string;
+};
 
 export type ConnectionOpenResult = {
   connected: boolean;
+  connectionId: string;
 };
 
 export type ConnectionTestResult = {
@@ -38,6 +45,14 @@ export type ConnectionTestResult = {
 
 export type ConnectionCloseResult = {
   connected: boolean;
+};
+
+export type ConnectionCloseParams = {
+  connectionId: string;
+};
+
+export type QueryCancelParams = {
+  connectionId: string;
 };
 
 export type MetadataObjectKind =
@@ -83,6 +98,7 @@ export type MetadataCatalog = {
 };
 
 export type ConnectionMetadataParams = {
+  connectionId: string;
   /** When set, return that schema with nested objects. */
   schema?: string;
   /**
@@ -107,6 +123,7 @@ export type MetadataColumn = {
 };
 
 export type ConnectionColumnsParams = {
+  connectionId: string;
   schema: string;
   table: string;
 };
@@ -115,12 +132,30 @@ export type ConnectionColumnsResult = {
   columns: MetadataColumn[];
 };
 
+/** Package procedure/function members for SQL autocomplete (`connection.packageMembers`). */
+export type MetadataPackageMember = {
+  name: string;
+  /** `"procedure"` or `"function"`. */
+  kind: "procedure" | "function";
+};
+
+export type ConnectionPackageMembersParams = {
+  connectionId: string;
+  schema: string;
+  package: string;
+};
+
+export type ConnectionPackageMembersResult = {
+  members: MetadataPackageMember[];
+};
+
 /** Primary-key column metadata (`connection.primaryKeys`). */
 export type MetadataPrimaryKeyColumn = {
   name: string;
 };
 
 export type ConnectionPrimaryKeysParams = {
+  connectionId: string;
   schema: string;
   table: string;
 };
@@ -132,6 +167,7 @@ export type ConnectionPrimaryKeysResult = {
 };
 
 export type ConnectionDdlParams = {
+  connectionId: string;
   schema: string;
   name: string;
   kind: MetadataObjectKind;
@@ -150,6 +186,7 @@ export type ConnectionDdlResult = {
 
 /** Recompile a stored PL/SQL object (`connection.compile`). Oracle v1. */
 export type ConnectionCompileParams = {
+  connectionId: string;
   schema: string;
   name: string;
   kind: MetadataObjectKind;
@@ -190,10 +227,12 @@ export type AgentMethod =
   | "connection.test"
   | "connection.metadata"
   | "connection.columns"
+  | "connection.packageMembers"
   | "connection.primaryKeys"
   | "connection.ddl"
   | "connection.compile"
-  | "query.execute";
+  | "query.execute"
+  | "query.cancel";
 
 export type AgentRequest<TParams = unknown> = {
   id: number;
@@ -324,6 +363,28 @@ export function isConnectionColumnsResult(
   const record = value as Record<string, unknown>;
   return (
     Array.isArray(record.columns) && record.columns.every(isMetadataColumn)
+  );
+}
+
+function isMetadataPackageMember(
+  value: unknown,
+): value is MetadataPackageMember {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.name === "string" &&
+    (entry.kind === "procedure" || entry.kind === "function")
+  );
+}
+
+export function isConnectionPackageMembersResult(
+  value: unknown,
+): value is ConnectionPackageMembersResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Array.isArray(record.members) &&
+    record.members.every(isMetadataPackageMember)
   );
 }
 

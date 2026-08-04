@@ -40,7 +40,7 @@ class ConnectionTreeServiceImpl {
   private readonly caches = new Map<string, ProfileTreeCache>();
   private readonly listeners = new Set<TreeListener>();
   private readonly explorerFilters = new Map<string, ExplorerFilterContext>();
-  private connectedProfileId: string | null = null;
+  private readonly connectedProfileIds = new Set<string>();
 
   getCache(profileId: string): ProfileTreeCache {
     return (
@@ -65,17 +65,35 @@ class ConnectionTreeServiceImpl {
     }
   }
 
-  /** Keep in sync from ConnectionService after connect/disconnect (avoids import cycle). */
-  setConnectedProfileId(profileId: string | null): void {
-    if (this.connectedProfileId === profileId) return;
-    this.connectedProfileId = profileId;
-    for (const id of [...this.caches.keys()]) {
-      if (id !== profileId) {
-        this.caches.delete(id);
-        this.explorerFilters.delete(id);
-      }
-    }
+  isProfileConnected(profileId: string): boolean {
+    return this.connectedProfileIds.has(profileId);
+  }
+
+  /** Keep in sync from ConnectionService after connect (avoids import cycle). */
+  addConnectedProfile(profileId: string): void {
+    if (this.connectedProfileIds.has(profileId)) return;
+    this.connectedProfileIds.add(profileId);
     this.fireDidChange();
+  }
+
+  /** Keep in sync from ConnectionService after disconnect. */
+  removeConnectedProfile(profileId: string): void {
+    if (!this.connectedProfileIds.delete(profileId)) return;
+    this.fireDidChange();
+  }
+
+  /**
+   * @deprecated Use {@link addConnectedProfile} / {@link removeConnectedProfile}.
+   * Passing null clears all connected markers (does not wipe sibling caches unless clearing).
+   */
+  setConnectedProfileId(profileId: string | null): void {
+    if (profileId === null) {
+      if (this.connectedProfileIds.size === 0) return;
+      this.connectedProfileIds.clear();
+      this.fireDidChange();
+      return;
+    }
+    this.addConnectedProfile(profileId);
   }
 
   invalidate(profileId?: string): void {
@@ -170,7 +188,7 @@ class ConnectionTreeServiceImpl {
 
   /** Load top-level schemas, or catalogs when the dialect uses a Databases level. */
   async loadSchemas(profileId: string, force = false): Promise<void> {
-    if (this.connectedProfileId !== profileId) {
+    if (!this.connectedProfileIds.has(profileId)) {
       throw new Error("Connect this profile before loading database objects.");
     }
 
@@ -189,7 +207,7 @@ class ConnectionTreeServiceImpl {
     this.fireDidChange();
 
     try {
-      const result = await bridgeListMetadata();
+      const result = await bridgeListMetadata(profileId);
       const filter = this.explorerFilters.get(profileId);
       const catalogs = filterSystemNamespaces(
         (result.catalogs ?? []).map((item) => item.name),
@@ -242,7 +260,7 @@ class ConnectionTreeServiceImpl {
     catalogName: string,
     force = false,
   ): Promise<void> {
-    if (this.connectedProfileId !== profileId) {
+    if (!this.connectedProfileIds.has(profileId)) {
       throw new Error("Connect this profile before loading database objects.");
     }
 
@@ -270,7 +288,7 @@ class ConnectionTreeServiceImpl {
     this.fireDidChange();
 
     try {
-      const result = await bridgeListMetadata(undefined, catalogName);
+      const result = await bridgeListMetadata(profileId, undefined, catalogName);
       const filter = this.explorerFilters.get(profileId);
       const schemaNames = filterSystemNamespaces(
         result.schemas.map((item) => item.name),
@@ -335,7 +353,7 @@ class ConnectionTreeServiceImpl {
     force = false,
     catalogName?: string,
   ): Promise<void> {
-    if (this.connectedProfileId !== profileId) {
+    if (!this.connectedProfileIds.has(profileId)) {
       throw new Error("Connect this profile before loading database objects.");
     }
 
@@ -377,7 +395,7 @@ class ConnectionTreeServiceImpl {
     this.fireDidChange();
 
     try {
-      const result = await bridgeListMetadata(schemaName);
+      const result = await bridgeListMetadata(profileId, schemaName);
       const loaded = result.schemas.find(
         (item) => item.name.toLowerCase() === schemaName.toLowerCase(),
       );
@@ -466,7 +484,7 @@ class ConnectionTreeServiceImpl {
     this.fireDidChange();
 
     try {
-      const result = await bridgeListMetadata(schemaName, catalogName);
+      const result = await bridgeListMetadata(profileId, schemaName, catalogName);
       const loaded = result.schemas.find(
         (item) => item.name.toLowerCase() === schemaName.toLowerCase(),
       );
@@ -540,7 +558,7 @@ class ConnectionTreeServiceImpl {
     this.listeners.clear();
     this.caches.clear();
     this.explorerFilters.clear();
-    this.connectedProfileId = null;
+    this.connectedProfileIds.clear();
   }
 
   private fireDidChange(): void {

@@ -1,10 +1,18 @@
 import "./StatusBar.css";
+import type { ReactNode } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import { useEditorCursorPosition } from "@silk-studio/editor/services/editor/useEditorCursorPosition.ts";
 import { useI18n } from "../../../platform/i18n/useI18n";
 
-function StatusBar() {
+export type StatusBarProps = {
+  /** Extra items after the default left chrome (SCM / problems). */
+  leftExtra?: ReactNode;
+  /** Extra items before the default right chrome (Ln/Col …). */
+  rightExtra?: ReactNode;
+};
+
+function StatusBar({ leftExtra, rightExtra }: StatusBarProps) {
   const { t } = useI18n();
   const activeTab = useActiveEditor();
   const cursorPosition = useEditorCursorPosition();
@@ -37,9 +45,13 @@ function StatusBar() {
             <span>{progressMessage}</span>
           </button>
         ) : null}
+
+        {leftExtra}
       </div>
 
       <div className="status-bar__right">
+        {rightExtra}
+
         <button type="button" className="status-bar__item">
           <span>
             {t("workbench.statusBar.lineCol")

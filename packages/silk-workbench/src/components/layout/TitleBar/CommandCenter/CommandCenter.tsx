@@ -100,15 +100,36 @@ function useWorkspaceName(): string {
 
 
 
+function useTitlebarQuickPickActive(): boolean {
+  const [active, setActive] = useState(() =>
+    document.documentElement.classList.contains("titlebar-quick-pick-active"),
+  );
+
+  useEffect(() => {
+    function sync() {
+      setActive(
+        document.documentElement.classList.contains("titlebar-quick-pick-active"),
+      );
+    }
+
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  return active;
+}
+
 function CommandCenter() {
-
   const actions = useCommandCenterActions();
-
   const workspaceName = useWorkspaceName();
-
   const quickPick = useOpenEditorsQuickPickOptional();
-
-  const quickPickOpen = quickPick?.open ?? false;
+  const externalQuickPickOpen = useTitlebarQuickPickActive();
+  const quickPickOpen = (quickPick?.open ?? false) || externalQuickPickOpen;
 
   const commandCenterEnabled =
     ConfigurationService.getValue("window.commandCenter") !== false;
@@ -194,6 +215,8 @@ function CommandCenter() {
                   className={`command-center__center${quickPickOpen ? " command-center__center--quick-pick-active" : ""}`}
 
                   data-open-editors-anchor
+
+                  data-command-center-anchor
 
                   title={quickOpenAction?.label ?? "Search"}
 

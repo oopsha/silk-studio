@@ -8,6 +8,7 @@ import Panel from "../Panel";
 import SecondarySidebar from "@silk-studio/workbench/components/layout/SecondarySidebar/index.ts";
 import WorkbenchSash from "@silk-studio/workbench/components/layout/WorkbenchSash/index.ts";
 import StatusBar from "@silk-studio/workbench/components/layout/StatusBar/index.ts";
+import ConnectionTargetStatusItem from "../StatusBar/ConnectionTargetStatusItem.tsx";
 import TitleBar from "@silk-studio/workbench/components/layout/TitleBar/index.ts";
 import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
 import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayoutState.ts";
@@ -23,6 +24,7 @@ import ExplorerSearchQuickPick from "../../connections/ExplorerSearchQuickPick.t
 import ExplorerObjectMutationDialog from "../../connections/ExplorerObjectMutationDialog.tsx";
 import AiSqlDiffDialog from "../../ai/AiSqlDiffDialog.tsx";
 import AiSqlExecuteDialog from "../../ai/AiSqlExecuteDialog.tsx";
+import SqlParameterDialog from "../../query/SqlParameterDialog.tsx";
 import AboutDialog from "@silk-studio/workbench/components/diagnostics/AboutDialog.tsx";
 import AppToast from "@silk-studio/workbench/components/diagnostics/AppToast.tsx";
 import PlsqlSaveDialog from "../../plsql/PlsqlSaveDialog.tsx";
@@ -90,7 +92,7 @@ function AppShell() {
         className="accordion-panel__action"
         title={t("workbench.explorer.searchObjectsTitle")}
         aria-label={t("workbench.explorer.searchObjects")}
-        disabled={!connection.connectedProfileId}
+        disabled={connection.connectedProfileIds.length === 0}
         onClick={() =>
           void CommandService.executeCommand(EXPLORER_COMMANDS.searchObjects)
         }
@@ -102,7 +104,7 @@ function AppShell() {
         className="accordion-panel__action"
         title={t("common.collapseAll")}
         aria-label={t("common.collapseAll")}
-        disabled={!connection.connectedProfileId}
+        disabled={connection.connectedProfileIds.length === 0}
         onClick={() =>
           void CommandService.executeCommand(EXPLORER_COMMANDS.collapseAll)
         }
@@ -114,7 +116,7 @@ function AppShell() {
         className="accordion-panel__action"
         title={t("common.refresh")}
         aria-label={t("common.refresh")}
-        disabled={!connection.connectedProfileId}
+        disabled={connection.connectedProfileIds.length === 0}
         onClick={() =>
           void CommandService.executeCommand(EXPLORER_COMMANDS.refresh)
         }
@@ -136,6 +138,7 @@ function AppShell() {
           insertSpaces: configuration["editor.insertSpaces"],
           lineNumbers: configuration["editor.lineNumbers"],
           minimapEnabled: configuration["editor.minimap.enabled"],
+          stickyScrollEnabled: configuration["editor.stickyScroll.enabled"],
           wordWrap: configuration["editor.wordWrap"],
         }}
         beforeMount={handleEditorBeforeMount}
@@ -316,13 +319,14 @@ function AppShell() {
           </div>
         </div>
 
-        <StatusBar />
+        <StatusBar leftExtra={<ConnectionTargetStatusItem />} />
       </div>
       <ExplorerSearchQuickPick />
       <CommandPalette />
       <ExplorerObjectMutationDialog />
       <AiSqlDiffDialog />
       <AiSqlExecuteDialog />
+      <SqlParameterDialog />
       <PlsqlSaveDialog />
       <PlsqlSnapshotDialog />
       <AboutDialog />

@@ -337,6 +337,21 @@ function EditorSettings() {
           <span>{t("settings.editor.minimapHint")}</span>
         </label>
       </SettingRow>
+      <SettingRow title={t("settings.editor.stickyScroll")}>
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={configuration["editor.stickyScroll.enabled"]}
+            onChange={(event) =>
+              ConfigurationService.updateValue(
+                "editor.stickyScroll.enabled",
+                event.target.checked,
+              )
+            }
+          />
+          <span>{t("settings.editor.stickyScrollHint")}</span>
+        </label>
+      </SettingRow>
       <SettingRow title={t("settings.editor.wordWrap")}>
         <select
           className="settings-control"
@@ -436,6 +451,45 @@ function DatabaseSettings() {
             }
           />
           <span>{t("settings.database.preloadDefaultSchemaHint")}</span>
+        </label>
+      </SettingRow>
+      <h3 className="settings-section__subtitle">
+        {t("settings.database.sqlParameters")}
+      </h3>
+      <SettingRow
+        title={t("settings.database.anonymousParameters")}
+        description={t("settings.database.anonymousParametersDescription")}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={configuration["sql.parameters.anonymousEnabled"]}
+            onChange={(event) =>
+              ConfigurationService.updateValue(
+                "sql.parameters.anonymousEnabled",
+                event.target.checked,
+              )
+            }
+          />
+          <span>{t("settings.database.anonymousParametersHint")}</span>
+        </label>
+      </SettingRow>
+      <SettingRow
+        title={t("settings.database.namedParameters")}
+        description={t("settings.database.namedParametersDescription")}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={configuration["sql.parameters.namedEnabled"]}
+            onChange={(event) =>
+              ConfigurationService.updateValue(
+                "sql.parameters.namedEnabled",
+                event.target.checked,
+              )
+            }
+          />
+          <span>{t("settings.database.namedParametersHint")}</span>
         </label>
       </SettingRow>
     </section>

@@ -1,5 +1,6 @@
 import type { ConnectionDriverId } from "../connection/connectionTypes";
 import { ConnectionService } from "../connection/connectionService";
+import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import type { SqlLanguage } from "sql-formatter";
 
 /** Monaco language IDs used for dialect-aware SQL highlighting. */
@@ -47,6 +48,20 @@ export function monacoLanguageIdForDriver(
   return DRIVER_MONACO_LANGUAGE[driverId];
 }
 
+/**
+ * Monaco language for a tab binding. No profile → neutral generic SQL
+ * (not a vendor dialect).
+ */
+export function monacoLanguageIdForProfile(
+  profileId: string | null | undefined,
+): SqlMonacoLanguageId {
+  const id = profileId?.trim() || null;
+  if (!id) return "sql";
+  const profile = ConnectionService.getProfile(id);
+  if (!profile) return "sql";
+  return monacoLanguageIdForDriver(profile.driverId);
+}
+
 export function formatterLanguageForDriver(
   driverId: ConnectionDriverId,
 ): SqlLanguage {
@@ -54,10 +69,21 @@ export function formatterLanguageForDriver(
 }
 
 /**
- * Prefer the connected profile's driver, then the active profile, then Oracle
- * (the studio default when nothing is selected yet).
+ * Prefer the active editor tab binding's driver, then any connected profile,
+ * then the active profile, then Oracle (studio default).
+ * Used for execution / completion — not for editor language mode.
  */
-export function resolveActiveDriverId(): ConnectionDriverId {
+export function resolveActiveDriverId(
+  profileId?: string | null,
+): ConnectionDriverId {
+  const bindingId =
+    profileId?.trim() ||
+    EditorConnectionBindingService.getActiveBinding().profileId?.trim() ||
+    null;
+  if (bindingId) {
+    const bound = ConnectionService.getProfile(bindingId);
+    if (bound) return bound.driverId;
+  }
   const connected = ConnectionService.getConnectedProfile();
   if (connected) return connected.driverId;
   const active = ConnectionService.getActiveProfile();
@@ -65,6 +91,9 @@ export function resolveActiveDriverId(): ConnectionDriverId {
   return "oracle";
 }
 
+/** Editor language from the active tab binding; unbound → generic SQL. */
 export function resolveActiveMonacoLanguageId(): SqlMonacoLanguageId {
-  return monacoLanguageIdForDriver(resolveActiveDriverId());
+  return monacoLanguageIdForProfile(
+    EditorConnectionBindingService.getActiveBinding().profileId,
+  );
 }

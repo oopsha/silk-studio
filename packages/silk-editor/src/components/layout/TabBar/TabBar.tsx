@@ -87,7 +87,14 @@ function TabBar({ commands }: TabBarProps) {
                 className={`tab-bar__tab${isActive ? " tab-bar__tab--active" : ""}${tab.isPreview ? " tab-bar__tab--preview" : ""}${tab.isDirty ? " tab-bar__tab--dirty" : ""}`}
                 role="tab"
                 aria-selected={isActive}
-                title={tab.uri ?? tab.label}
+                title={
+                  tab.tooltip ??
+                  (tab.description
+                    ? `${tab.label} — ${tab.description}${
+                        tab.uri ? `\n${tab.uri}` : ""
+                      }`
+                    : (tab.uri ?? tab.label))
+                }
                 onClick={() => EditorService.setActiveTab(tab.id)}
                 onAuxClick={(event) => handleAuxClick(event, tab.id)}
                 onDoubleClick={() => {
@@ -116,6 +123,11 @@ function TabBar({ commands }: TabBarProps) {
                   />
                 </span>
                 <span className="tab-bar__tab-label">{tab.label}</span>
+                {tab.description ? (
+                  <span className="tab-bar__tab-description">
+                    {tab.description}
+                  </span>
+                ) : null}
                 <span className="tab-bar__tab-actions">
                   {tab.isDirty ? (
                     <span className="tab-bar__dirty-indicator" aria-hidden />

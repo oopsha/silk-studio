@@ -67,6 +67,16 @@ interface DbDialect {
       throws SQLException;
 
   /**
+   * Populates {@code members} with package procedure/function descriptors ({@code name}, {@code
+   * kind}) for SQL autocomplete ({@code PKG.member}). Default: no members (non-Oracle dialects).
+   */
+  default void collectPackageMembers(
+      Connection connection, String schemaName, String packageName, ArrayNode members)
+      throws SQLException {
+    // no-op
+  }
+
+  /**
    * Populates {@code keys} with primary-key column names ({@code name}) for {@code tableName}.
    * When {@code schemaName} is blank, resolves the owner from JDBC session context (same rules
    * as unqualified {@code SELECT}).

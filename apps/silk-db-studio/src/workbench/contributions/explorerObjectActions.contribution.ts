@@ -102,11 +102,13 @@ CommandsRegistry.registerCommand(EXPLORER_COMMANDS.searchObjects, async () => {
 });
 
 CommandsRegistry.registerCommand(EXPLORER_COMMANDS.refresh, async () => {
-  const profileId = ConnectionService.getState().connectedProfileId;
-  if (!profileId) {
+  const ids = ConnectionService.getState().connectedProfileIds;
+  if (ids.length === 0) {
     throw new Error("Connect a database profile before refreshing.");
   }
-  await ConnectionTreeService.loadSchemas(profileId, true);
+  for (const profileId of ids) {
+    await ConnectionTreeService.loadSchemas(profileId, true);
+  }
 });
 
 CommandsRegistry.registerCommand(EXPLORER_COMMANDS.collapseAll, async () => {

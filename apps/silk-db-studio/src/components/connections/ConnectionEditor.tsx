@@ -44,7 +44,7 @@ function ConnectionEditor() {
   const isEditingConnectedProfile =
     profileId !== null &&
     profileId !== "new" &&
-    connection.connectedProfileId === profileId;
+    connection.connectedProfileIds.includes(profileId);
   const tree = useConnectionTree(
     isEditingConnectedProfile ? profileId : null,
   );

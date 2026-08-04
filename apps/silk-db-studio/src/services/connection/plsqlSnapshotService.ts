@@ -188,6 +188,7 @@ export async function reloadPlsqlFromDatabase(tabId: string): Promise<void> {
     throw new Error("Invalid PL/SQL editor tab.");
   }
   const result = await bridgeFetchObjectDdl(
+    ref.profileId,
     ref.schemaName,
     ref.objectName,
     ref.kind,

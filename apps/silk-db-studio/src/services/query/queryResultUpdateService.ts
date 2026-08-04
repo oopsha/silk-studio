@@ -40,12 +40,15 @@ export type UpdatePreview = {
 function resolveExplicitSchemaName(
   tableRef: { schema: string | null; table: string },
   driverId: ConnectionDriverId,
+  connectionId?: string | null,
 ): string {
   if (tableRef.schema?.trim()) {
     return tableRef.schema.trim();
   }
 
-  const profile = ConnectionService.getConnectedProfile();
+  const profile = connectionId
+    ? ConnectionService.getProfile(connectionId)
+    : ConnectionService.getConnectedProfile();
   if (!profile) {
     return "";
   }
@@ -71,7 +74,7 @@ function resolveResultColumn(
 export async function resolveUpdateEligibility(
   sql: string,
   resultColumns: string[],
-  options?: { relationKind?: "table" | "view" },
+  options?: { relationKind?: "table" | "view"; connectionId?: string | null },
 ): Promise<UpdateEligibility> {
   if (!isTauri()) {
     return {
@@ -87,7 +90,10 @@ export async function resolveUpdateEligibility(
     };
   }
 
-  if (!ConnectionService.isConnected()) {
+  const connectionId =
+    options?.connectionId?.trim() ||
+    ConnectionService.getState().connectedProfileId;
+  if (!connectionId || !ConnectionService.isConnected(connectionId)) {
     return {
       eligible: false,
       reason: tKey("app.query.saveNeedConnect"),
@@ -110,12 +116,20 @@ export async function resolveUpdateEligibility(
     };
   }
 
-  const driverId = resolveActiveDriverId();
-  const explicitSchema = resolveExplicitSchemaName(tableRef, driverId);
+  const driverId = resolveActiveDriverId(connectionId);
+  const explicitSchema = resolveExplicitSchemaName(
+    tableRef,
+    driverId,
+    connectionId,
+  );
 
   let payload;
   try {
-    payload = await bridgeListPrimaryKeys(explicitSchema, tableRef.table);
+    payload = await bridgeListPrimaryKeys(
+      connectionId,
+      explicitSchema,
+      tableRef.table,
+    );
   } catch (error) {
     return {
       eligible: false,
@@ -160,7 +174,7 @@ export async function buildUpdatePreview(
   tabId: string,
   sql: string,
   resultColumns: string[],
-  options?: { relationKind?: "table" | "view" },
+  options?: { relationKind?: "table" | "view"; connectionId?: string | null },
 ): Promise<UpdatePreview | { blocked: true; reason: string }> {
   const dirtyRows = QueryResultDirtyService.getDirtyRows(tabId);
   if (dirtyRows.length === 0) {
@@ -197,6 +211,7 @@ export async function buildUpdatePreview(
 export async function executeConfirmedUpdates(
   tabId: string,
   statements: string[],
+  options?: { connectionId?: string | null },
 ): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
   if (statements.length === 0) {
     return { ok: false, message: "No UPDATE statements to execute." };
@@ -205,7 +220,9 @@ export async function executeConfirmedUpdates(
   try {
     for (const statement of statements) {
       assertReadOnlyQueryAllowed(statement, ConfigurationService.getValue("database.readOnly"));
-      await QueryExecutionService.executeWriteStatement(statement);
+      await QueryExecutionService.executeWriteStatement(statement, {
+        connectionId: options?.connectionId ?? undefined,
+      });
     }
 
     await QueryExecutionService.refreshTabResult(tabId);

@@ -140,6 +140,14 @@ class ConfigurationServiceImpl {
       this.values["database.explorer.preloadDefaultSchema"] =
         CONFIGURATION_DEFAULTS["database.explorer.preloadDefaultSchema"];
     }
+    if (typeof this.values["sql.parameters.anonymousEnabled"] !== "boolean") {
+      this.values["sql.parameters.anonymousEnabled"] =
+        CONFIGURATION_DEFAULTS["sql.parameters.anonymousEnabled"];
+    }
+    if (typeof this.values["sql.parameters.namedEnabled"] !== "boolean") {
+      this.values["sql.parameters.namedEnabled"] =
+        CONFIGURATION_DEFAULTS["sql.parameters.namedEnabled"];
+    }
     if (typeof this.values["ai.enabled"] !== "boolean") {
       this.values["ai.enabled"] = CONFIGURATION_DEFAULTS["ai.enabled"];
     }

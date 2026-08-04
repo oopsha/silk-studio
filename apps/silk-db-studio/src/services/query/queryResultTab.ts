@@ -16,6 +16,8 @@ export type QueryResultTab = {
   createdAt: number;
   /** When opened from the explorer, marks table vs view for save eligibility. */
   relationKind?: "table" | "view";
+  /** JDBC session (profile id) that produced this tab — used for refresh/save. */
+  connectionId?: string;
 };
 
 export function buildQueryResultTabTitle(
