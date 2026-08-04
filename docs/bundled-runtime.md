@@ -34,6 +34,11 @@ Env overrides for cross-prep (advanced):
 
 `pnpm tauri build` in `apps/silk-db-studio` runs this script via `beforeBuildCommand`.
 
+After staging, the script makes the JRE tree owner-writable. Temurin ships some
+files (for example `*.jsa`) as read-only; if those modes are preserved into
+`target/*/resources`, the next Tauri rebuild fails with `Permission denied`
+when overwriting them.
+
 **Build each OS on that OS** (or supply the matching JRE). A Mac build embeds a Mac JRE; a Windows build embeds a Windows JRE.
 
 ## Development (`tauri dev`)
