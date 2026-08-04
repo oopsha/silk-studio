@@ -98,8 +98,12 @@
 }
 
 .connections-explorer__row--object {
-  cursor: pointer;
+  cursor: grab;
   outline: none;
+}
+
+.connections-explorer__row--object:active {
+  cursor: grabbing;
 }
 
 .connections-explorer__row--object:focus-visible {

@@ -72,7 +72,8 @@ export const koMessages = {
         "연결 프로필은 탐색기의 연결 뷰에서 관리합니다. 이 페이지는 쿼리 실행용 세션 옵션만 설정합니다.",
       sessionOptions: "세션 옵션",
       queryTimeout: "쿼리 제한 시간",
-      queryTimeoutDescription: "쿼리 실행 제한 시간(초)입니다.",
+      queryTimeoutDescription:
+        "문/스크립트 배치당 최대 초(0 = 제한 없음). 스크립트 실행은 제한을 켠 경우 최소 300초를 씁니다. 타임아웃은 취소가 아니라 오류로 표시됩니다.",
       autoCommit: "자동 커밋",
       autoCommitHint: "JDBC 연결의 auto commit을 사용합니다.",
       readOnly: "읽기 전용",
@@ -201,6 +202,12 @@ export const koMessages = {
       terminal: "터미널",
       help: "도움말",
     },
+    file: {
+      saved: "파일을 저장했습니다",
+      saveFailed: "파일 저장에 실패했습니다: {message}",
+      saveFailedFallback: "파일 저장에 실패했습니다.",
+      saveAllFailed: "{saved}개 저장, {failed}개 실패.",
+    },
     commands: {
       newTextFile: "새 텍스트 파일",
       openFile: "파일 열기...",
@@ -305,6 +312,12 @@ export const koMessages = {
     },
   },
   app: {
+    dnd: {
+      filesOpened: "파일 {n}개를 열었습니다.",
+      filesSkipped: "지원하지 않는 파일 {n}개를 건너뛰었습니다.",
+      filesFailed: "파일 {n}개를 열지 못했습니다.",
+      filesNone: "연 파일이 없습니다.",
+    },
     groups: {
       tables: "테이블",
       views: "뷰",
@@ -420,7 +433,8 @@ export const koMessages = {
     },
     query: {
       runStatement: "문 실행",
-      runAll: "모두 실행",
+      executeScript: "스크립트 실행",
+      runAll: "스크립트 실행",
       explainPlan: "실행 계획",
       cancelQuery: "쿼리 취소",
       formatDocument: "문서 서식",
@@ -478,8 +492,26 @@ export const koMessages = {
       nothingToExplain: "설명할 내용이 없습니다.",
       executing: "쿼리 실행 중...",
       executingProgress: "실행 중 {current}/{total}...",
+      executingScript: "스크립트 실행 중...",
+      executingScriptProgress: "스크립트 실행 중 {current}/{total}...",
+      scriptTabTitle: "스크립트",
+      scriptSummary:
+        "스크립트 완료: 성공 {success}, 실패 {error} (배치 {total}개).",
+      scriptStoppedOnError:
+        "첫 오류에서 스크립트를 중단했습니다. 남은 배치 {count}개를 건너뛰었습니다.",
+      scriptStoppedOnErrorLast: "첫 오류에서 스크립트를 중단했습니다.",
+      scriptRolledBack: "트랜잭션을 롤백했습니다.",
+      scriptRollbackSkippedAutoCommit:
+        "자동 커밋 모드라 롤백할 미커밋 변경이 없습니다.",
+      scriptRollbackFailed: "롤백에 실패했습니다: {message}",
+      copyLog: "로그 복사",
+      copyLogTitle: "결과 로그 전체 복사 (선택이 있으면 선택만)",
+      copiedLog: "로그를 복사했습니다",
       cancelling: "쿼리 취소 중...",
       cancelled: "쿼리가 취소되었습니다.",
+      timedOut:
+        "쿼리가 {seconds}초 제한 시간을 초과했습니다 (설정 → Database → 쿼리 제한 시간).",
+      timedOutUnlimited: "쿼리 제한 시간을 초과했습니다.",
       noConnection:
         "활성 데이터베이스 연결이 없습니다. Connections 탐색기에서 프로필에 연결하세요.",
       noConnectionTarget:

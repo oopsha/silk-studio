@@ -75,7 +75,8 @@ export const enMessages = {
         "Connection profiles are managed in the Explorer Connections view. This page only configures session options for query execution.",
       sessionOptions: "Session Options",
       queryTimeout: "Query Timeout",
-      queryTimeoutDescription: "Maximum query execution time in seconds.",
+      queryTimeoutDescription:
+        "Maximum seconds per statement or script batch (0 = no limit). Execute Script uses at least 300s unless unlimited. Timeouts are reported as errors, not cancellations.",
       autoCommit: "Auto Commit",
       autoCommitHint: "Use JDBC auto-commit on connections.",
       readOnly: "Read Only",
@@ -202,6 +203,12 @@ export const enMessages = {
       terminal: "Terminal",
       help: "Help",
     },
+    file: {
+      saved: "File saved",
+      saveFailed: "Failed to save file: {message}",
+      saveFailedFallback: "Failed to save file.",
+      saveAllFailed: "Saved {saved} file(s); {failed} failed.",
+    },
     commands: {
       newTextFile: "New Text File",
       openFile: "Open File...",
@@ -306,6 +313,12 @@ export const enMessages = {
     },
   },
   app: {
+    dnd: {
+      filesOpened: "Opened {n} file(s).",
+      filesSkipped: "Skipped {n} unsupported file(s).",
+      filesFailed: "Failed to open {n} file(s).",
+      filesNone: "No files opened.",
+    },
     groups: {
       tables: "Tables",
       views: "Views",
@@ -420,7 +433,8 @@ export const enMessages = {
     },
     query: {
       runStatement: "Run Statement",
-      runAll: "Run All",
+      executeScript: "Execute Script",
+      runAll: "Execute Script",
       explainPlan: "Explain Plan",
       cancelQuery: "Cancel Query",
       formatDocument: "Format Document",
@@ -479,8 +493,25 @@ export const enMessages = {
       nothingToExplain: "Nothing to explain.",
       executing: "Executing query...",
       executingProgress: "Executing {current}/{total}...",
+      executingScript: "Executing script...",
+      executingScriptProgress: "Executing script {current}/{total}...",
+      scriptTabTitle: "Script",
+      scriptSummary:
+        "Script finished: {success} succeeded, {error} failed ({total} batches).",
+      scriptStoppedOnError:
+        "Script stopped on first error. Skipped {count} remaining batch(es).",
+      scriptStoppedOnErrorLast: "Script stopped on first error.",
+      scriptRolledBack: "Transaction rolled back.",
+      scriptRollbackSkippedAutoCommit:
+        "Auto-commit is on; nothing to roll back.",
+      scriptRollbackFailed: "Rollback failed: {message}",
+      copyLog: "Copy log",
+      copyLogTitle: "Copy result log (selection if any, otherwise all)",
+      copiedLog: "Log copied",
       cancelling: "Cancelling query...",
       cancelled: "Query cancelled.",
+      timedOut: "Query timed out after {seconds}s (Settings → Database → Query Timeout).",
+      timedOutUnlimited: "Query timed out.",
       noConnection:
         "No active database connection. Connect a profile in the Connections explorer.",
       noConnectionTarget:

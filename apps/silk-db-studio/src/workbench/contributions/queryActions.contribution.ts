@@ -8,8 +8,9 @@ import { QueryExecutionService } from "../../services/query/queryExecutionServic
 import {
   extractExecutableSql,
   extractExecutableStatements,
-  statementsInRange,
 } from "../../services/query/sqlExecutable";
+import { extractExecutableScript } from "../../services/query/sqlScriptBatches";
+import { resolveActiveDriverId } from "../../services/sql/sqlDialect";
 
 CommandsRegistry.registerCommand("silk.query.execute", async () => {
   const snapshot = EditorService.getActiveEditorSnapshot();
@@ -25,14 +26,28 @@ CommandsRegistry.registerCommand("silk.query.execute", async () => {
   await QueryExecutionService.executeStatements(statements);
 });
 
-CommandsRegistry.registerCommand("silk.query.executeAll", async () => {
-  const active = EditorService.getActiveTab();
-  if (!active) return;
+CommandsRegistry.registerCommand("silk.query.executeScript", async () => {
+  const snapshot = EditorService.getActiveEditorSnapshot();
+  if (!snapshot) return;
 
-  const statements = statementsInRange(active.content, 0, active.content.length);
+  const driverId = resolveActiveDriverId();
+  const { statements } = extractExecutableScript(
+    snapshot.content,
+    snapshot.selectionStart,
+    snapshot.selectionEnd,
+    driverId,
+  );
 
   LayoutService.showPanel();
-  await QueryExecutionService.executeStatements(statements);
+  await QueryExecutionService.executeScript(statements);
+});
+
+/** @deprecated Prefer silk.query.executeScript — kept as an alias for old bindings. */
+CommandsRegistry.registerCommand("silk.query.executeAll", async () => {
+  const command = CommandsRegistry.getCommand("silk.query.executeScript");
+  if (command) {
+    await command.handler();
+  }
 });
 
 CommandsRegistry.registerCommand("silk.query.explain", async () => {
@@ -64,8 +79,8 @@ MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
 
 MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
   command: {
-    id: "silk.query.executeAll",
-    title: "Run All",
+    id: "silk.query.executeScript",
+    title: "Execute Script",
   },
   group: "2_run",
   order: 16,
@@ -91,7 +106,7 @@ MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
 
 KeybindingsRegistry.registerKeybinding("silk.query.execute", "Ctrl+Enter");
 KeybindingsRegistry.registerKeybinding(
-  "silk.query.executeAll",
+  "silk.query.executeScript",
   "Ctrl+Shift+Enter",
 );
 KeybindingsRegistry.registerKeybinding(

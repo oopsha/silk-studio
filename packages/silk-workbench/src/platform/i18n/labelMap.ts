@@ -68,6 +68,7 @@ export const ENGLISH_LABEL_KEYS: Record<string, MessageKey> = {
   "Close All Result Tabs": "workbench.panel.closeAllResults",
   "Query Result": "workbench.panel.queryResult",
   "Run Statement": "app.query.runStatement",
+  "Execute Script": "app.query.executeScript",
   "Run All": "app.query.runAll",
   "Explain Plan": "app.query.explainPlan",
   "Select Query Target…": "app.connectionTarget.selectTargetTitle",

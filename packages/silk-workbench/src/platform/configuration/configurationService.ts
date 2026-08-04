@@ -124,8 +124,8 @@ class ConfigurationServiceImpl {
     }
     this.values["database.queryTimeoutSec"] = clampNumber(
       this.values["database.queryTimeoutSec"],
-      5,
-      600,
+      0,
+      3600,
       CONFIGURATION_DEFAULTS["database.queryTimeoutSec"],
     );
     if (typeof this.values["database.autoCommit"] !== "boolean") {

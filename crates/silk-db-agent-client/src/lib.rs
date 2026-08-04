@@ -339,6 +339,15 @@ impl JdbcAgentClient {
         )
     }
 
+    /// Rolls back the open JDBC transaction (`connection.rollback`).
+    pub fn rollback_connection(&self, connection_id: &str) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        self.send_request(
+            "connection.rollback",
+            json!({ "connectionId": connection_id.trim() }),
+        )
+    }
+
     fn ensure_connection(&self, connection_id: &str) -> Result<(), String> {
         let connection_id = connection_id.trim();
         if connection_id.is_empty() {

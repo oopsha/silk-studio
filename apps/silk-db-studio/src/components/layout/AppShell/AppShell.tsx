@@ -1,5 +1,5 @@
 import "./AppShell.css";
-import { useEffect } from "react";
+import { useEffect, type DragEvent as ReactDragEvent } from "react";
 import ActivityBar from "@silk-studio/workbench/components/layout/ActivityBar/index.ts";
 import Sidebar from "@silk-studio/workbench/components/layout/Sidebar/index.ts";
 import TabBar from "@silk-studio/editor/components/layout/TabBar/index.ts";
@@ -35,7 +35,16 @@ import QueryHistoryView from "../../query-history/QueryHistoryView.tsx";
 import { ConnectionEditorService } from "../../../services/connection/connectionEditorService.ts";
 import { isDdlEditorTab } from "../../../services/connection/ddlEditorConstants.ts";
 import { isPlsqlEditorTab } from "../../../services/connection/plsqlEditorConstants.ts";
-import { EXPLORER_COMMANDS } from "../../../services/connection/explorerObjectActions.ts";
+import {
+  EXPLORER_COMMANDS,
+  formatQualifiedName,
+} from "../../../services/connection/explorerObjectActions.ts";
+import {
+  decodeExplorerObjectDrag,
+  isExplorerObjectDrag,
+  SILK_EXPLORER_OBJECT_MIME,
+} from "../../../services/dnd/explorerObjectDrag.ts";
+import { insertSqlIntoActiveEditor } from "../../../services/query/querySqlActions.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
@@ -71,6 +80,23 @@ function AppShell() {
   const handleEditorBeforeMount = (monaco: Monaco) => {
     registerSqlLanguages(monaco);
     registerSqlCompletion(monaco);
+  };
+
+  const handleExplorerObjectDragOver = (event: ReactDragEvent) => {
+    if (!isExplorerObjectDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleExplorerObjectDrop = (event: ReactDragEvent) => {
+    const raw = event.dataTransfer.getData(SILK_EXPLORER_OBJECT_MIME);
+    const payload = decodeExplorerObjectDrag(raw);
+    if (!payload) return;
+    event.preventDefault();
+    event.stopPropagation();
+    insertSqlIntoActiveEditor(
+      formatQualifiedName(payload.schemaName, payload.objectName),
+    );
   };
 
   const panelOnBottom = layout.panelPosition === "bottom";
@@ -129,6 +155,8 @@ function AppShell() {
   const editorArea = (
     <div
       className={`app-shell__editor${showEditor ? "" : " app-shell__editor--hidden"}`}
+      onDragOver={handleExplorerObjectDragOver}
+      onDrop={handleExplorerObjectDrop}
     >
       <EditorArea
         configuration={{
@@ -165,6 +193,9 @@ function AppShell() {
         }}
         onRunQuery={() =>
           void CommandService.executeCommand("silk.query.execute")
+        }
+        onRunScript={() =>
+          void CommandService.executeCommand("silk.query.executeScript")
         }
       />
     </div>

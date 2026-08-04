@@ -31,6 +31,8 @@ export type EditorConfigurationOptions = {
 
 type EditorAreaProps = {
   onRunQuery?: () => void;
+  /** Execute Script (Ctrl+Shift+Enter) — whole buffer or selection with GO batches. */
+  onRunScript?: () => void;
   renderAlternative?: (tab: EditorTab) => React.ReactNode | null;
   configuration: EditorConfigurationOptions;
   /** Extra Monaco setup (language registration, providers) before the first editor mounts. */
@@ -39,6 +41,7 @@ type EditorAreaProps = {
 
 function EditorArea({
   onRunQuery,
+  onRunScript,
   renderAlternative,
   configuration,
   beforeMount,
@@ -88,8 +91,14 @@ function EditorArea({
           onRunQuery,
         );
       }
+      if (onRunScript) {
+        instance.addCommand(
+          monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter,
+          onRunScript,
+        );
+      }
     },
-    [onRunQuery],
+    [onRunQuery, onRunScript],
   );
 
   useEffect(() => {
@@ -190,6 +199,8 @@ function EditorArea({
           wordBasedSuggestions: "off",
           scrollBeyondLastLine: false,
           automaticLayout: true,
+          // Prefer workbench drops (explorer objects) over Monaco's default file drop.
+          dropIntoEditor: { enabled: false },
         }}
       />
     </main>

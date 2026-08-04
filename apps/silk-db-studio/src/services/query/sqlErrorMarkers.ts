@@ -18,13 +18,19 @@ export function clearSqlErrorMarkers(): void {
   editor.setModelMarkers(model, SQL_ERROR_MARKER_OWNER, []);
 }
 
+export type ApplySqlErrorMarkersOptions = {
+  /** When false, place markers without scrolling/focusing the editor. Default true. */
+  reveal?: boolean;
+};
+
 /**
  * Places an error marker on the active Monaco model when the message (or source
- * range) yields a usable location. Scrolls the editor to the marker.
+ * range) yields a usable location. Optionally scrolls the editor to the marker.
  */
 export function applySqlErrorMarkers(
   message: string,
   sourceRange?: SqlSourceRange | null,
+  options?: ApplySqlErrorMarkersOptions,
 ): void {
   const textEditor = EditorService.getActiveTextEditor();
   const model = textEditor?.getModel();
@@ -77,6 +83,10 @@ export function applySqlErrorMarkers(
       endColumn: endPos.column,
     },
   ]);
+
+  if (options?.reveal === false) {
+    return;
+  }
 
   textEditor.revealPositionInCenter(startPos);
   textEditor.setPosition(startPos);

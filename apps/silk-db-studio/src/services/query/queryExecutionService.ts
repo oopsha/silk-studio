@@ -7,6 +7,7 @@ import { EditorService } from "@silk-studio/editor/services/editor/editorService
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { formatErrorMessage, reportError } from "../formatErrorMessage";
+import { bridgeRollback } from "../connection/connectionBridge";
 import { ConnectionService } from "../connection/connectionService";
 import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import { resolveActiveDriverId } from "../sql/sqlDialect";
@@ -38,6 +39,10 @@ import {
   ensureExecutionConnection,
   resolveExecutionConnectionId,
 } from "./resolveExecutionConnection";
+import {
+  classifyQueryError,
+  resolveScriptQueryTimeoutSec,
+} from "./queryErrorKind";
 
 export type QueryExecutionStatus =
   | "idle"
@@ -513,16 +518,15 @@ class QueryExecutionServiceImpl {
           if (!this.isCurrentRun(ownerId, generation)) {
             return;
           }
-          if (runtime.cancelRequested || isCancelError(error)) {
+          if (
+            runtime.cancelRequested ||
+            classifyQueryError(error) === "cancel"
+          ) {
             this.finishCancelled(ownerId, item.sql, startedAt, runOptions);
             return;
           }
 
-          const message = reportError(
-            error,
-            "query.execute",
-            tKey("app.query.executeFailed"),
-          );
+          const message = this.formatQueryFailureMessage(error);
           this.commitTab(ownerId, {
             sql: item.sql,
             output: message,
@@ -554,6 +558,302 @@ class QueryExecutionServiceImpl {
         performance.now(),
         {
           ...runOptions,
+          sourceRange: boundList[0]?.range ?? prepared[0].range,
+        },
+      );
+    } finally {
+      if (this.isCurrentRun(ownerId, generation)) {
+        runtime.activeRunConnectionId = null;
+      }
+    }
+  }
+
+  /**
+   * Execute Script: run batches/statements sequentially. Result-set payloads open
+   * result tabs; update-only / message outcomes are aggregated into one Script log
+   * tab (avoids thousands of tabs for GO / DDL scripts).
+   */
+  async executeScript(
+    statements: Array<{ sql: string; range?: SqlSourceRange }>,
+    options?: QueryExecuteOptions,
+  ): Promise<void> {
+    const ownerId = this.resolveOwnerId(options);
+    const prepared = statements
+      .map((item) => ({
+        sql: stripTrailingSemicolon(item.sql.trim()),
+        range: item.range,
+      }))
+      .filter((item) => item.sql.length > 0);
+
+    if (prepared.length === 0) {
+      this.patchRunStatus(ownerId, {
+        status: "error",
+        output: tKey("app.query.emptyQuery"),
+      });
+      return;
+    }
+
+    let connectionId: string | null =
+      options?.connectionId?.trim() ||
+      EditorConnectionBindingService.getActiveBinding().profileId?.trim() ||
+      null;
+    if (isTauri()) {
+      connectionId = resolveExecutionConnectionId(options);
+    }
+
+    const boundList: Array<{
+      sql: string;
+      range?: SqlSourceRange;
+      bound: BoundSql;
+    }> = [];
+
+    for (const item of prepared) {
+      const resolved = await this.resolveStatementBinds(item.sql);
+      if (resolved === "cancelled") {
+        this.patchRunStatus(ownerId, {
+          status: "cancelled",
+          output: tKey("app.query.parametersCancelled"),
+          lastSql: item.sql,
+        });
+        return;
+      }
+      boundList.push({ sql: item.sql, range: item.range, bound: resolved });
+    }
+
+    const runtime = this.ensureRuntime(ownerId);
+    const generation = ++runtime.runGeneration;
+    runtime.cancelRequested = false;
+    clearSqlErrorMarkers();
+
+    runtime.activeRunConnectionId = connectionId;
+    const runOptions: QueryExecuteOptions = {
+      ...options,
+      ownerId,
+      connectionId: connectionId ?? undefined,
+    };
+
+    const total = boundList.length;
+    const scriptSql = boundList.map((item) => item.sql).join("\nGO\n");
+    const historySql =
+      options?.historySql ??
+      (scriptSql.length > 2000
+        ? `${scriptSql.slice(0, 2000)}\n/* … */`
+        : scriptSql);
+
+    this.beginRun(
+      ownerId,
+      boundList[0].sql,
+      total === 1
+        ? tKey("app.query.executingScript")
+        : tKey("app.query.executingScriptProgress")
+            .replace("{current}", "1")
+            .replace("{total}", String(total)),
+    );
+
+    const logLines: string[] = [];
+    let successCount = 0;
+    let errorCount = 0;
+    let lastErrorRange: SqlSourceRange | null = null;
+    let lastErrorMessage = "";
+    const startedAt = performance.now();
+
+    const appendLog = (line: string) => {
+      logLines.push(line);
+    };
+
+    try {
+      if (!isTauri()) {
+        if (!this.isCurrentRun(ownerId, generation)) return;
+        for (let index = 0; index < boundList.length; index += 1) {
+          appendLog(
+            `[${index + 1}/${total}] OK (desktop mock)\n${boundList[index].sql}`,
+          );
+          successCount += 1;
+        }
+        this.commitScriptOutcome(ownerId, {
+          scriptSql,
+          logLines,
+          successCount,
+          errorCount,
+          connectionId: connectionId ?? undefined,
+        });
+        this.recordHistory(
+          ownerId,
+          historySql,
+          "success",
+          startedAt,
+          logLines.join("\n\n"),
+          runOptions,
+        );
+        return;
+      }
+
+      await ensureExecutionConnection(connectionId!);
+      const readOnly = ConfigurationService.getValue("database.readOnly");
+      const configuredTimeout = ConfigurationService.getValue(
+        "database.queryTimeoutSec",
+      );
+      const scriptTimeoutSec =
+        resolveScriptQueryTimeoutSec(configuredTimeout);
+
+      for (let index = 0; index < boundList.length; index += 1) {
+        if (!this.isCurrentRun(ownerId, generation)) {
+          return;
+        }
+        if (runtime.cancelRequested) {
+          this.finishCancelled(ownerId, boundList[index].sql, startedAt, {
+            ...runOptions,
+            historySql,
+          });
+          return;
+        }
+
+        const item = boundList[index];
+        if (total > 1) {
+          this.patchRunStatus(ownerId, {
+            status: "running",
+            output: tKey("app.query.executingScriptProgress")
+              .replace("{current}", String(index + 1))
+              .replace("{total}", String(total)),
+            lastSql: item.sql,
+          });
+        }
+
+        try {
+          assertReadOnlyQueryAllowed(item.sql, readOnly);
+          const payload = await this.invokeQuery(
+            connectionId!,
+            item.bound.sql,
+            readOnly,
+            item.bound.binds,
+            scriptTimeoutSec,
+          );
+
+          if (!this.isCurrentRun(ownerId, generation)) {
+            return;
+          }
+          if (runtime.cancelRequested) {
+            this.finishCancelled(ownerId, item.sql, startedAt, {
+              ...runOptions,
+              historySql,
+            });
+            return;
+          }
+          if (!isQueryResultPayload(payload)) {
+            throw new Error("Invalid query result payload from desktop bridge.");
+          }
+
+          successCount += 1;
+          if (payload.kind === "resultSet") {
+            this.commitTab(ownerId, {
+              sql: item.sql,
+              output: payload.message,
+              result: payload,
+              status: "success",
+              connectionId: connectionId!,
+            });
+            appendLog(
+              `[${index + 1}/${total}] ${payload.message || "Result set"}`,
+            );
+          } else {
+            appendLog(
+              `[${index + 1}/${total}] ${payload.message || "OK"}`,
+            );
+          }
+        } catch (error) {
+          if (!this.isCurrentRun(ownerId, generation)) {
+            return;
+          }
+          if (
+            runtime.cancelRequested ||
+            classifyQueryError(error) === "cancel"
+          ) {
+            this.finishCancelled(ownerId, item.sql, startedAt, {
+              ...runOptions,
+              historySql,
+            });
+            return;
+          }
+
+          const message = this.formatQueryFailureMessage(
+            error,
+            scriptTimeoutSec,
+          );
+          errorCount += 1;
+          lastErrorRange = item.range ?? null;
+          lastErrorMessage = message;
+          appendLog(`[${index + 1}/${total}] ERROR\n${message}`);
+
+          const remaining = total - (index + 1);
+          appendLog(
+            remaining > 0
+              ? tKey("app.query.scriptStoppedOnError").replace(
+                  "{count}",
+                  String(remaining),
+                )
+              : tKey("app.query.scriptStoppedOnErrorLast"),
+          );
+
+          // Stop + rollback (DBeaver default): do not continue remaining batches.
+          try {
+            const rollback = await bridgeRollback(connectionId!);
+            if (rollback.rolledBack) {
+              appendLog(tKey("app.query.scriptRolledBack"));
+            } else {
+              appendLog(tKey("app.query.scriptRollbackSkippedAutoCommit"));
+            }
+          } catch (rollbackError) {
+            appendLog(
+              tKey("app.query.scriptRollbackFailed").replace(
+                "{message}",
+                formatErrorMessage(rollbackError, String(rollbackError)),
+              ),
+            );
+          }
+          break;
+        }
+      }
+
+      if (!this.isCurrentRun(ownerId, generation)) {
+        return;
+      }
+
+      const status: QueryResultTabStatus =
+        errorCount > 0 ? "error" : "success";
+
+      this.commitScriptOutcome(ownerId, {
+        scriptSql,
+        logLines,
+        successCount,
+        errorCount,
+        connectionId: connectionId ?? undefined,
+        status,
+      });
+
+      if (errorCount > 0 && lastErrorMessage) {
+        applySqlErrorMarkers(lastErrorMessage, lastErrorRange, {
+          reveal: true,
+        });
+      }
+
+      this.recordHistory(
+        ownerId,
+        historySql,
+        errorCount > 0 ? "error" : "success",
+        startedAt,
+        logLines.join("\n\n"),
+        runOptions,
+      );
+    } catch (error) {
+      this.handleRunError(
+        ownerId,
+        error,
+        boundList[0]?.sql ?? prepared[0].sql,
+        generation,
+        startedAt,
+        {
+          ...runOptions,
+          historySql,
           sourceRange: boundList[0]?.range ?? prepared[0].range,
         },
       );
@@ -911,6 +1211,39 @@ class QueryExecutionServiceImpl {
     });
   }
 
+  /** Aggregate script messages into one Script tab (plus any prior result-set tabs). */
+  private commitScriptOutcome(
+    ownerId: string,
+    input: {
+      scriptSql: string;
+      logLines: string[];
+      successCount: number;
+      errorCount: number;
+      connectionId?: string;
+      status?: QueryResultTabStatus;
+    },
+  ): void {
+    const summary = tKey("app.query.scriptSummary")
+      .replace("{success}", String(input.successCount))
+      .replace("{error}", String(input.errorCount))
+      .replace("{total}", String(input.successCount + input.errorCount));
+    const body =
+      input.logLines.length > 0
+        ? `${summary}\n\n${input.logLines.join("\n\n")}`
+        : summary;
+    const status: QueryResultTabStatus =
+      input.status ?? (input.errorCount > 0 ? "error" : "success");
+
+    this.commitTab(ownerId, {
+      sql: input.scriptSql,
+      output: body,
+      result: null,
+      status,
+      title: tKey("app.query.scriptTabTitle"),
+      connectionId: input.connectionId,
+    });
+  }
+
   private patchRunStatus(
     ownerId: string,
     patch: {
@@ -960,11 +1293,13 @@ class QueryExecutionServiceImpl {
     sql: string,
     readOnly: boolean,
     binds?: Array<string | null>,
+    queryTimeoutSecOverride?: number,
   ): Promise<unknown> {
     const maxRows = ConfigurationService.getValue("queryResult.maxRows");
-    const queryTimeoutSec = ConfigurationService.getValue(
-      "database.queryTimeoutSec",
-    );
+    const queryTimeoutSec =
+      queryTimeoutSecOverride !== undefined
+        ? queryTimeoutSecOverride
+        : ConfigurationService.getValue("database.queryTimeoutSec");
     const autoCommit = ConfigurationService.getValue("database.autoCommit");
     return invoke<unknown>("query_execute", {
       connectionId,
@@ -975,6 +1310,31 @@ class QueryExecutionServiceImpl {
       readOnly,
       binds: binds && binds.length > 0 ? binds : null,
     });
+  }
+
+  private formatQueryFailureMessage(
+    error: unknown,
+    timeoutSec?: number,
+  ): string {
+    const kind = classifyQueryError(error);
+    if (kind === "timeout") {
+      const configured =
+        timeoutSec ??
+        ConfigurationService.getValue("database.queryTimeoutSec");
+      const detail = formatErrorMessage(error, "");
+      const headline =
+        configured > 0
+          ? tKey("app.query.timedOut")
+              .replace("{seconds}", String(configured))
+          : tKey("app.query.timedOutUnlimited");
+      return detail ? `${headline}\n${detail}` : headline;
+    }
+
+    return reportError(
+      error,
+      "query.execute",
+      tKey("app.query.executeFailed"),
+    );
   }
 
   private handleRunError(
@@ -990,16 +1350,15 @@ class QueryExecutionServiceImpl {
     }
 
     const runtime = this.ensureRuntime(ownerId);
-    if (runtime.cancelRequested || isCancelError(error)) {
+    if (
+      runtime.cancelRequested ||
+      classifyQueryError(error) === "cancel"
+    ) {
       this.finishCancelled(ownerId, statement, startedAt, options);
       return;
     }
 
-    const message = reportError(
-      error,
-      "query.execute",
-      tKey("app.query.executeFailed"),
-    );
+    const message = this.formatQueryFailureMessage(error);
     const session = this.sessions.get(ownerId) ?? emptySession();
     this.setSessionState(ownerId, {
       ...session,
@@ -1146,16 +1505,6 @@ class QueryExecutionServiceImpl {
       listener();
     }
   }
-}
-
-function isCancelError(error: unknown): boolean {
-  const message = formatErrorMessage(error, "").toLowerCase();
-  return (
-    message.includes("cancel") ||
-    message.includes("ora-01013") ||
-    message.includes("query was cancelled") ||
-    message.includes("statement cancelled")
-  );
 }
 
 export const QueryExecutionService = new QueryExecutionServiceImpl();

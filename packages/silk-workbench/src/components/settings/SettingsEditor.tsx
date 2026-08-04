@@ -391,8 +391,8 @@ function DatabaseSettings() {
         <input
           className="settings-control settings-control--number"
           type="number"
-          min={5}
-          max={600}
+          min={0}
+          max={3600}
           value={configuration["database.queryTimeoutSec"]}
           onChange={(event) =>
             ConfigurationService.updateValue(

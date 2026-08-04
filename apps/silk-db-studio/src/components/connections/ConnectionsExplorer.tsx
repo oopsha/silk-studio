@@ -38,6 +38,10 @@ import { useConnectionTree } from "../../services/connection/useConnectionTree";
 import type { ConnectionProfile } from "../../services/connection/connectionTypes";
 import { effectiveDefaultSchema } from "../../services/connection/connectionTypes";
 import ExplorerContextMenu from "./ExplorerContextMenu";
+import {
+  encodeExplorerObjectDrag,
+  SILK_EXPLORER_OBJECT_MIME,
+} from "../../services/dnd/explorerObjectDrag";
 import "./ConnectionsExplorer.css";
 
 
@@ -783,6 +787,19 @@ function ObjectGroup({
                   role="treeitem"
                   tabIndex={0}
                   aria-selected={selected}
+                  draggable
+                  onDragStart={(event) => {
+                    const qualified = formatQualifiedName(schemaName, item.name);
+                    const payload = encodeExplorerObjectDrag({
+                      schemaName,
+                      objectName: item.name,
+                      kind: item.kind,
+                      profileId,
+                    });
+                    event.dataTransfer.setData(SILK_EXPLORER_OBJECT_MIME, payload);
+                    event.dataTransfer.setData("text/plain", qualified);
+                    event.dataTransfer.effectAllowed = "copy";
+                  }}
                   onClick={() => onSelectObject(key)}
                   onDoubleClick={() => onObjectAction(item)}
                   onKeyDown={(event) => {

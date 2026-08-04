@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type WheelEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+  type WheelEvent,
+} from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { EditorService } from "../../../services/editor/editorService";
 import { TabBarActionService } from "../../../services/editor/tabBarActionService";
@@ -8,6 +15,8 @@ import { useEditorTabs } from "../../../services/editor/useEditorTabs";
 import TabBarContextMenu from "./TabBarContextMenu";
 import TabBarMoreMenu from "./TabBarMoreMenu";
 import "./TabBar.css";
+
+const TAB_DRAG_MIME = "application/x-silk-editor-tab";
 
 type ContextMenuState = {
   tabId: string;
@@ -24,6 +33,11 @@ type TabBarProps = {
   commands: TabBarCommandAdapter;
 };
 
+type DropIndicator = {
+  tabId: string;
+  edge: "before" | "after";
+};
+
 function TabBar({ commands }: TabBarProps) {
   const tabs = useEditorTabs();
   const activeTab = useActiveEditor();
@@ -31,6 +45,10 @@ function TabBar({ commands }: TabBarProps) {
   const moreActionsRef = useRef<HTMLButtonElement>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<DropIndicator | null>(
+    null,
+  );
 
   const showOpenEditorsMenu = useCallback(() => {
     setMoreMenuOpen(false);
@@ -69,6 +87,68 @@ function TabBar({ commands }: TabBarProps) {
     setMoreMenuOpen((open) => !open);
   }
 
+  function handleTabDragStart(event: ReactDragEvent, tabId: string) {
+    event.dataTransfer.setData(TAB_DRAG_MIME, tabId);
+    event.dataTransfer.setData("text/plain", tabId);
+    event.dataTransfer.effectAllowed = "move";
+    setDraggingTabId(tabId);
+    setDropIndicator(null);
+  }
+
+  function handleTabDragEnd() {
+    setDraggingTabId(null);
+    setDropIndicator(null);
+  }
+
+  function resolveDropEdge(
+    event: ReactDragEvent,
+    element: HTMLElement,
+  ): "before" | "after" {
+    const rect = element.getBoundingClientRect();
+    const mid = rect.left + rect.width / 2;
+    return event.clientX < mid ? "before" : "after";
+  }
+
+  function handleTabDragOver(event: ReactDragEvent, targetTabId: string) {
+    if (!draggingTabId || draggingTabId === targetTabId) return;
+    if (!Array.from(event.dataTransfer.types).includes(TAB_DRAG_MIME)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const edge = resolveDropEdge(event, event.currentTarget as HTMLElement);
+    setDropIndicator({ tabId: targetTabId, edge });
+  }
+
+  function handleTabDrop(event: ReactDragEvent, targetTabId: string) {
+    event.preventDefault();
+    const sourceId =
+      event.dataTransfer.getData(TAB_DRAG_MIME) || draggingTabId;
+    if (!sourceId || sourceId === targetTabId) {
+      handleTabDragEnd();
+      return;
+    }
+
+    const edge =
+      dropIndicator?.tabId === targetTabId
+        ? dropIndicator.edge
+        : resolveDropEdge(event, event.currentTarget as HTMLElement);
+
+    const fromIndex = tabs.findIndex((tab) => tab.id === sourceId);
+    const targetIndex = tabs.findIndex((tab) => tab.id === targetTabId);
+    if (fromIndex === -1 || targetIndex === -1) {
+      handleTabDragEnd();
+      return;
+    }
+
+    let toIndex = edge === "before" ? targetIndex : targetIndex + 1;
+    if (fromIndex < toIndex) {
+      toIndex -= 1;
+    }
+
+    EditorService.moveTab(sourceId, toIndex);
+    EditorService.setActiveTab(sourceId);
+    handleTabDragEnd();
+  }
+
   return (
     <header className="tab-bar">
       <div
@@ -79,14 +159,20 @@ function TabBar({ commands }: TabBarProps) {
         <div className="tab-bar__tabs" role="tablist">
           {tabs.map((tab) => {
             const isActive = tab.id === activeTab?.id;
+            const dropBefore =
+              dropIndicator?.tabId === tab.id &&
+              dropIndicator.edge === "before";
+            const dropAfter =
+              dropIndicator?.tabId === tab.id && dropIndicator.edge === "after";
 
             return (
               <div
                 key={tab.id}
                 data-tab-id={tab.id}
-                className={`tab-bar__tab${isActive ? " tab-bar__tab--active" : ""}${tab.isPreview ? " tab-bar__tab--preview" : ""}${tab.isDirty ? " tab-bar__tab--dirty" : ""}`}
+                className={`tab-bar__tab${isActive ? " tab-bar__tab--active" : ""}${tab.isPreview ? " tab-bar__tab--preview" : ""}${tab.isDirty ? " tab-bar__tab--dirty" : ""}${draggingTabId === tab.id ? " tab-bar__tab--dragging" : ""}${dropBefore ? " tab-bar__tab--drop-before" : ""}${dropAfter ? " tab-bar__tab--drop-after" : ""}`}
                 role="tab"
                 aria-selected={isActive}
+                draggable
                 title={
                   tab.tooltip ??
                   (tab.description
@@ -95,6 +181,10 @@ function TabBar({ commands }: TabBarProps) {
                       }`
                     : (tab.uri ?? tab.label))
                 }
+                onDragStart={(event) => handleTabDragStart(event, tab.id)}
+                onDragEnd={handleTabDragEnd}
+                onDragOver={(event) => handleTabDragOver(event, tab.id)}
+                onDrop={(event) => handleTabDrop(event, tab.id)}
                 onClick={() => EditorService.setActiveTab(tab.id)}
                 onAuxClick={(event) => handleAuxClick(event, tab.id)}
                 onDoubleClick={() => {
@@ -137,6 +227,7 @@ function TabBar({ commands }: TabBarProps) {
                     className="tab-bar__close"
                     aria-label={`Close ${tab.label}`}
                     onClick={(event) => handleCloseTab(event, tab.id)}
+                    onMouseDown={(event) => event.stopPropagation()}
                   >
                     <Codicon name="close" />
                   </button>

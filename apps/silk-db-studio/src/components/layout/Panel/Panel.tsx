@@ -1,7 +1,9 @@
 import "./Panel.css";
+import { useRef, type KeyboardEvent } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
+import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayoutState.ts";
 import { QueryExecutionService } from "../../../services/query/queryExecutionService";
 import { truncateSqlLabel } from "../../../services/query/queryResultTab";
@@ -12,6 +14,7 @@ function Panel() {
   const { t } = useI18n();
   const queryState = useQueryExecutionState();
   const layout = useLayoutState();
+  const logPreRef = useRef<HTMLPreElement | null>(null);
   const isRunning = queryState.status === "running";
   const showErrorOrCancel =
     queryState.status === "error" || queryState.status === "cancelled";
@@ -25,6 +28,14 @@ function Panel() {
       ? activeTab.result
       : null;
 
+  const logText = showErrorOrCancel
+    ? queryState.output
+    : (activeTab?.output ?? queryState.output);
+  const showLog =
+    !gridResult &&
+    Boolean(logText?.trim()) &&
+    (Boolean(activeTab) || showErrorOrCancel);
+
   const movePanelLabel =
     layout.panelPosition === "bottom"
       ? t("workbench.commands.movePanelRight")
@@ -32,6 +43,44 @@ function Panel() {
   const maximizeLabel = layout.panelMaximized
     ? t("workbench.commands.restorePanel")
     : t("workbench.commands.maximizePanel");
+
+  async function copyLog() {
+    const pre = logPreRef.current;
+    const selection = window.getSelection();
+    const selected =
+      pre &&
+      selection &&
+      selection.rangeCount > 0 &&
+      pre.contains(selection.anchorNode) &&
+      !selection.isCollapsed
+        ? selection.toString()
+        : "";
+    const text = selected || logText || "";
+    if (!text.trim()) {
+      AppNotificationService.show(t("app.query.nothingToCopy"), "info");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      AppNotificationService.show(t("app.query.copiedLog"), "success");
+    } catch (error) {
+      console.warn("[panel] copy log failed", error);
+      AppNotificationService.show(t("app.query.copyFailed"), "error");
+    }
+  }
+
+  function handleLogKeyDown(event: KeyboardEvent<HTMLPreElement>) {
+    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "c") {
+      return;
+    }
+    // Let the browser copy a non-empty selection; otherwise copy the whole log.
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) {
+      return;
+    }
+    event.preventDefault();
+    void copyLog();
+  }
 
   return (
     <section className="panel">
@@ -52,6 +101,17 @@ function Panel() {
               }
             >
               <Codicon name="debug-stop" />
+            </button>
+          ) : null}
+          {showLog ? (
+            <button
+              type="button"
+              className="panel__action"
+              title={t("app.query.copyLogTitle")}
+              aria-label={t("app.query.copyLog")}
+              onClick={() => void copyLog()}
+            >
+              <Codicon name="copy" />
             </button>
           ) : null}
           {queryState.tabs.length === 1 && queryState.activeTabId ? (
@@ -170,7 +230,12 @@ function Panel() {
         ) : null}
 
         {showErrorOrCancel ? (
-          <pre className="panel__content panel__content--error">
+          <pre
+            ref={logPreRef}
+            className="panel__content panel__content--error"
+            tabIndex={0}
+            onKeyDown={handleLogKeyDown}
+          >
             {queryState.output}
           </pre>
         ) : gridResult && activeTab ? (
@@ -183,7 +248,12 @@ function Panel() {
             connectionId={activeTab.connectionId}
           />
         ) : (
-          <pre className="panel__content">
+          <pre
+            ref={logPreRef}
+            className="panel__content"
+            tabIndex={0}
+            onKeyDown={handleLogKeyDown}
+          >
             {activeTab?.output ?? queryState.output}
           </pre>
         )}
