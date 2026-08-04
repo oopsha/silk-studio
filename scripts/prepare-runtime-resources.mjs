@@ -15,6 +15,7 @@
 
 import { createWriteStream } from "node:fs";
 import {
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -122,6 +123,33 @@ function javaBinExists(jreRoot) {
   return existsSync(win) || existsSync(unix);
 }
 
+/**
+ * Temurin ships some files (e.g. *.jsa) as mode 0444. Tauri copies them into
+ * the cargo target resources tree preserving that mode; the next rebuild then
+ * fails to overwrite with EPERM. Ensure the staged tree is owner-writable first.
+ */
+function ensureTreeWritable(root) {
+  if (!existsSync(root)) return;
+
+  function walk(path) {
+    const st = statSync(path);
+    try {
+      chmodSync(path, st.mode | 0o200);
+    } catch (error) {
+      // Best-effort: continue so one locked leaf does not abort staging.
+      log(`warn: chmod failed for ${path}: ${error}`);
+    }
+    if (st.isDirectory()) {
+      for (const name of readdirSync(path)) {
+        walk(join(path, name));
+      }
+    }
+  }
+
+  walk(root);
+  log(`Ensured owner-writable permissions under ${root}`);
+}
+
 function findExtractedHome(root) {
   const queue = [root];
   while (queue.length > 0) {
@@ -186,6 +214,7 @@ function extractArchive(archivePath, destDir) {
 async function stageJre() {
   if (!forceJre && javaBinExists(OUT_JRE)) {
     log(`Bundled JRE already present: ${OUT_JRE}`);
+    ensureTreeWritable(OUT_JRE);
     return;
   }
 
@@ -212,6 +241,8 @@ async function stageJre() {
     rmSync(OUT_JRE, { recursive: true, force: true });
     mkdirSync(dirname(OUT_JRE), { recursive: true });
     cpSync(home, OUT_JRE, { recursive: true });
+    // Before Tauri embeds into target/*/resources (must be overwritable on rebuild).
+    ensureTreeWritable(OUT_JRE);
 
     writeFileSync(
       join(OUT_JRE, "SILK_JRE_SOURCE.txt"),
