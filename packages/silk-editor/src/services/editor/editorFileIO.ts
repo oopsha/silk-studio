@@ -48,6 +48,15 @@ export async function writeTextFile(path: string, content: string): Promise<void
   await writeFile(path, content);
 }
 
+/** Read a file by absolute path (desktop) or reject in browser. */
+export async function readTextFileAtPath(path: string): Promise<string> {
+  if (!isTauri()) {
+    throw new Error("Reading by path requires the desktop app.");
+  }
+  const { readTextFile } = await import("@tauri-apps/plugin-fs");
+  return readTextFile(path);
+}
+
 function pickFileInBrowser(): Promise<{ path: string; content: string } | null> {
   return new Promise((resolve) => {
     const input = document.createElement("input");

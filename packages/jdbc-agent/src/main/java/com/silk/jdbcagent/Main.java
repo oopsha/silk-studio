@@ -220,6 +220,10 @@ public final class Main {
           ObjectNode result = response.putObject("result");
           result.put("cancelled", cancelled);
         }
+        case "connection.rollback" -> {
+          response.put("ok", true);
+          response.set("result", runtime.rollbackConnection(params));
+        }
         case "agent.shutdown" -> {
           response.put("ok", true);
           ObjectNode result = response.putObject("result");
@@ -397,6 +401,29 @@ public final class Main {
       if (params.has("readOnly")) {
         session.connection.setReadOnly(params.path("readOnly").asBoolean(false));
       }
+    }
+
+    /**
+     * Rolls back the current JDBC transaction when auto-commit is off.
+     * When auto-commit is on, returns {@code rolledBack:false, skipped:true} (nothing to undo).
+     */
+    ObjectNode rollbackConnection(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      ObjectNode result = MAPPER.createObjectNode();
+      Connection connection = session.connection;
+      if (connection == null || connection.isClosed()) {
+        throw new SQLException("Connection is closed.");
+      }
+      if (connection.getAutoCommit()) {
+        result.put("rolledBack", false);
+        result.put("skipped", true);
+        result.put("reason", "autoCommit");
+        return result;
+      }
+      connection.rollback();
+      result.put("rolledBack", true);
+      result.put("skipped", false);
+      return result;
     }
 
     ObjectNode listMetadata(JsonNode params) throws SQLException {
@@ -624,8 +651,13 @@ public final class Main {
       int maxRowsOverride = params.path("maxRows").asInt(-1);
       int effectiveMaxRows = maxRowsOverride > 0 ? maxRowsOverride : maxRows;
 
-      int timeoutOverride = params.path("queryTimeoutSec").asInt(-1);
-      int effectiveTimeout = timeoutOverride > 0 ? timeoutOverride : timeoutSeconds;
+      int timeoutOverride = params.hasNonNull("queryTimeoutSec")
+          ? params.path("queryTimeoutSec").asInt(-1)
+          : -1;
+      // -1 → agent default; 0 → unlimited (JDBC); >0 → seconds.
+      int effectiveTimeout =
+          timeoutOverride >= 0 ? timeoutOverride : timeoutSeconds;
+
 
       JsonNode bindsNode = params.path("binds");
       boolean useBinds = bindsNode.isArray() && bindsNode.size() > 0;

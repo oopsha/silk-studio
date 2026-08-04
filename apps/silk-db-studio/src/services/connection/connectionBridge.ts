@@ -122,3 +122,40 @@ export async function bridgeListPackageMembers(
   }
   return payload;
 }
+
+export type ConnectionRollbackResult = {
+  rolledBack: boolean;
+  skipped: boolean;
+  reason?: string;
+};
+
+function isConnectionRollbackResult(
+  value: unknown,
+): value is ConnectionRollbackResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.rolledBack === "boolean" &&
+    typeof record.skipped === "boolean"
+  );
+}
+
+/** Rolls back the open JDBC transaction when auto-commit is off. */
+export async function bridgeRollback(
+  connectionId: string,
+): Promise<ConnectionRollbackResult> {
+  if (!isTauri()) {
+    return { rolledBack: false, skipped: true, reason: "notDesktop" };
+  }
+  const id = connectionId.trim();
+  if (!id) {
+    throw new Error("connectionId is required.");
+  }
+  const payload = await invoke<unknown>("connection_rollback", {
+    connectionId: id,
+  });
+  if (!isConnectionRollbackResult(payload)) {
+    throw new Error("Invalid connection rollback payload from desktop bridge.");
+  }
+  return payload;
+}

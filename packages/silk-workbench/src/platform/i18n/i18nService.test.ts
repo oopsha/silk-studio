@@ -31,6 +31,7 @@ describe("translate", () => {
   it("translates app screen keys", () => {
     expect(translate("app.connection.newTitle", "ko")).toBe("새 연결");
     expect(translate("app.query.runStatement", "ko")).toBe("문 실행");
+    expect(translate("app.query.executeScript", "ko")).toBe("스크립트 실행");
     expect(translate("app.ai.send", "ko")).toBe("전송");
     expect(translate("app.plsql.saveDialogTitle", "en")).toBe(
       "Save PL/SQL to Database",

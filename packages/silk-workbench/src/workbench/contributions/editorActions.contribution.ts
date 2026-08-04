@@ -10,6 +10,18 @@ import {
 import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
 import { TabBarActionService } from "@silk-studio/editor/services/editor/tabBarActionService.ts";
 import { basenameFromPath } from "@silk-studio/editor/services/editor/languageFromPath.ts";
+import { tKey } from "../../platform/i18n/activeLocale";
+import { AppNotificationService } from "../../services/notifications/appNotificationService";
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    return error.message.trim() || fallback;
+  }
+  if (typeof error === "string") {
+    return error.trim() || fallback;
+  }
+  return fallback;
+}
 
 async function saveActiveEditor(saveAs = false): Promise<void> {
   const active = EditorService.getActiveTab();
@@ -21,28 +33,58 @@ async function saveActiveEditor(saveAs = false): Promise<void> {
     if (!path) return;
   }
 
-  await writeTextFile(path, active.content);
-  EditorService.markTabSaved(
-    active.id,
-    path,
-    basenameFromPath(path),
-  );
+  try {
+    await writeTextFile(path, active.content);
+    EditorService.markTabSaved(active.id, path, basenameFromPath(path));
+    AppNotificationService.show(tKey("workbench.file.saved"), "success");
+  } catch (error) {
+    const message = errorMessage(
+      error,
+      tKey("workbench.file.saveFailedFallback"),
+    );
+    console.warn("[silk.file.save] failed", error);
+    AppNotificationService.show(
+      tKey("workbench.file.saveFailed").replace("{message}", message),
+      "error",
+    );
+  }
 }
 
 async function saveAllEditors(): Promise<void> {
+  let saved = 0;
+  let failed = 0;
+
   for (const tab of EditorService.getTabs()) {
     if (!tab.isDirty) continue;
 
-    if (tab.uri) {
-      await writeTextFile(tab.uri, tab.content);
-      EditorService.markTabSaved(tab.id, tab.uri, tab.label);
-      continue;
-    }
+    try {
+      if (tab.uri) {
+        await writeTextFile(tab.uri, tab.content);
+        EditorService.markTabSaved(tab.id, tab.uri, tab.label);
+        saved += 1;
+        continue;
+      }
 
-    const path = await pickSavePath();
-    if (!path) continue;
-    await writeTextFile(path, tab.content);
-    EditorService.markTabSaved(tab.id, path, basenameFromPath(path));
+      const path = await pickSavePath();
+      if (!path) continue;
+      await writeTextFile(path, tab.content);
+      EditorService.markTabSaved(tab.id, path, basenameFromPath(path));
+      saved += 1;
+    } catch (error) {
+      failed += 1;
+      console.warn("[silk.file.saveAll] failed", tab.label, error);
+    }
+  }
+
+  if (failed > 0) {
+    AppNotificationService.show(
+      tKey("workbench.file.saveAllFailed")
+        .replace("{saved}", String(saved))
+        .replace("{failed}", String(failed)),
+      "error",
+    );
+  } else if (saved > 0) {
+    AppNotificationService.show(tKey("workbench.file.saved"), "success");
   }
 }
 

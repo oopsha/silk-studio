@@ -27,8 +27,16 @@ Maintainer / signing notes: [`release.md`](./release.md).
 | `Ctrl+K` then `Ctrl+S` | Keyboard Shortcuts (searchable list) |
 | `Ctrl+,` | Settings |
 | `Ctrl+Enter` | Run Statement |
-| `Ctrl+Shift+Enter` | Run All |
+| `Ctrl+Shift+Enter` | Execute Script (selection or whole buffer; SQL Server `GO` batches). Stops on first error and rolls back the open transaction (DBeaver-style Stop + rollback). |
 | `Ctrl+K` then `Ctrl+O` | Select query target (connection for this editor) |
+
+### Drag and drop
+
+| Action | Result |
+| --- | --- |
+| Drop `.sql` / text files onto the window | Open as editor tabs (desktop paths via Tauri; browser uses file name) |
+| Drag a Connections object onto the SQL editor | Insert `schema.object` at the caret |
+| Drag editor tabs | Reorder tabs |
 
 Open **Help → Keyboard Shortcuts** (or Manage → Keyboard Shortcuts) to search all registered bindings. Editing bindings in the UI is not in v1.
 

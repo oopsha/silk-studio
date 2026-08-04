@@ -23,6 +23,22 @@
     "core:window:allow-scale-factor",
     "dialog:default",
     "fs:default",
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [{ "path": "**" }]
+    },
     "window-controls:default",
     "allow-ensure-title-bar-overlay",
     "allow-query-execute",

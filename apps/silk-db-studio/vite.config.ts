@@ -8,6 +8,12 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
 
+  // Pre-bundle Monaco so optimizer doesn't chase stale pnpm peer-hash paths
+  // after dependency updates (common ENOENT on @monaco-editor/react/dist/index.mjs).
+  optimizeDeps: {
+    include: ["@monaco-editor/react", "monaco-editor"],
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

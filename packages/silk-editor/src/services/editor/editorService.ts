@@ -343,6 +343,22 @@ class EditorServiceImpl {
     this.fireDidChange();
   }
 
+  /**
+   * Reorder a tab to `toIndex` (0-based in the resulting list).
+   * Used by tab-bar drag-and-drop.
+   */
+  moveTab(tabId: string, toIndex: number): void {
+    const fromIndex = this.tabs.findIndex((tab) => tab.id === tabId);
+    if (fromIndex === -1) return;
+
+    const clamped = Math.max(0, Math.min(toIndex, this.tabs.length - 1));
+    if (fromIndex === clamped) return;
+
+    const [tab] = this.tabs.splice(fromIndex, 1);
+    this.tabs.splice(clamped, 0, tab);
+    this.fireDidChange();
+  }
+
   private disposeClosedTab(tab: EditorTab): void {
     this.savedContent.delete(tab.id);
     this.viewStates.delete(tab.id);
