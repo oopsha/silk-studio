@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isConnectionDependenciesResult,
   isConnectionDdlResult,
   isConnectionMetadataResult,
   isQueryResultPayload,
@@ -45,6 +46,42 @@ describe("isConnectionDdlResult", () => {
 
   it("rejects missing fields", () => {
     expect(isConnectionDdlResult({ ddl: "x" })).toBe(false);
+  });
+});
+
+describe("isConnectionDependenciesResult", () => {
+  it("accepts dependencies + dialectId", () => {
+    expect(
+      isConnectionDependenciesResult({
+        dialectId: "oracle",
+        dependencies: [
+          {
+            schema: "HR",
+            name: "EMPLOYEES",
+            type: "TABLE",
+            dependencyType: "HARD",
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts empty dependencies", () => {
+    expect(
+      isConnectionDependenciesResult({
+        dialectId: "postgresql",
+        dependencies: [],
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects malformed dependency entries", () => {
+    expect(
+      isConnectionDependenciesResult({
+        dialectId: "oracle",
+        dependencies: [{ schema: "HR" }],
+      }),
+    ).toBe(false);
   });
 });
 

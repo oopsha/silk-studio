@@ -144,6 +144,9 @@ export const enMessages = {
       contextSchema: "Include schema context",
       contextSelection: "Include editor selection",
       contextHistory: "Include query history",
+      contextPlsqlDeps: "Include open PL/SQL dependencies",
+      contextPlsqlDepsDescription:
+        "When PL/SQL object tabs are open, attach their source, compile-time dependencies, and referenced table/view columns.",
       allowExecute: "Allow SQL Execution",
       allowExecuteDescription:
         "When enabled, the assistant may propose running SQL after review.",
@@ -665,6 +668,8 @@ export const enMessages = {
       you: "You",
       assistant: "Assistant",
       thinking: "Thinking…",
+      usingTools: "Using tools",
+      emptyToolResponse: "No response after looking up database metadata.",
       placeholderReady:
         "Ask anything… (Enter to send, Shift+Enter for newline)",
       placeholderDisabled: "Configure AI in Settings to chat",

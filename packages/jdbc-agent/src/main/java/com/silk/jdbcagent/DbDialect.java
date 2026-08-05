@@ -129,6 +129,24 @@ interface DbDialect {
     throw new RuntimeException("Compile is not supported for " + id() + ".");
   }
 
+  /**
+   * Populates {@code dependencies} with compile-time references for a stored object.
+   * Default: no dependencies (non-supporting dialects).
+   *
+   * <p>{@code packageBody} is only meaningful for {@code kind=package}:
+   * {@code true} → body, {@code false} → spec, {@code null} → both spec and body.
+   */
+  default void collectObjectDependencies(
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody,
+      ArrayNode dependencies)
+      throws SQLException {
+    // no-op
+  }
+
   /** Shared helper: run {@code testSql} with a timeout and require at least one row back. */
   default void runTestQuery(Connection connection, int timeoutSeconds, String testSql)
       throws SQLException {

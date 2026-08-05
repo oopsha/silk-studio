@@ -45,6 +45,8 @@ export type WorkbenchConfiguration = {
   "ai.context.includeSchema": boolean;
   "ai.context.includeSelection": boolean;
   "ai.context.includeQueryHistory": boolean;
+  /** Open PL/SQL tabs: source + compile-time dependencies + referenced columns. */
+  "ai.context.includePlsqlDeps": boolean;
   "ai.allowExecute": boolean;
 };
 
@@ -80,6 +82,7 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "ai.context.includeSchema": true,
   "ai.context.includeSelection": true,
   "ai.context.includeQueryHistory": false,
+  "ai.context.includePlsqlDeps": true,
   "ai.allowExecute": false,
 };
 

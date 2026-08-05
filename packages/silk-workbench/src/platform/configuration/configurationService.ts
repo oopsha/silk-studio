@@ -188,6 +188,10 @@ class ConfigurationServiceImpl {
       this.values["ai.context.includeQueryHistory"] =
         CONFIGURATION_DEFAULTS["ai.context.includeQueryHistory"];
     }
+    if (typeof this.values["ai.context.includePlsqlDeps"] !== "boolean") {
+      this.values["ai.context.includePlsqlDeps"] =
+        CONFIGURATION_DEFAULTS["ai.context.includePlsqlDeps"];
+    }
     if (typeof this.values["ai.allowExecute"] !== "boolean") {
       this.values["ai.allowExecute"] =
         CONFIGURATION_DEFAULTS["ai.allowExecute"];

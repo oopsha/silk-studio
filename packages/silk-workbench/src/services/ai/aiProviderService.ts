@@ -11,6 +11,7 @@ import {
   type AiProviderClient,
   type AiTestConnectionRequest,
 } from "./aiProviderTypes";
+import type { AiChatTurnRequest, AiChatTurnResult, AiToolDefinition, AiWireMessage } from "./aiToolTypes";
 import { anthropicClient } from "./providers/anthropicClient";
 import { geminiClient } from "./providers/geminiClient";
 import {
@@ -120,6 +121,30 @@ export async function* streamConfiguredChat(
   const request = await createConfiguredChatRequest(messages, options);
   const client = getAiProviderClient(request.provider);
   yield* client.chat(request);
+}
+
+export async function completeConfiguredTurn(
+  messages: AiWireMessage[],
+  options?: {
+    signal?: AbortSignal;
+    tools?: AiToolDefinition[];
+  },
+): Promise<AiChatTurnResult> {
+  const base = await createConfiguredChatRequest(
+    // Placeholder — createConfiguredChatRequest only needs credentials; messages replaced below.
+    [{ role: "user", content: "." }],
+    options,
+  );
+  const request: AiChatTurnRequest = {
+    provider: base.provider,
+    model: base.model,
+    apiKey: base.apiKey,
+    baseUrl: base.baseUrl,
+    signal: options?.signal,
+    messages,
+    tools: options?.tools,
+  };
+  return getAiProviderClient(request.provider).completeTurn(request);
 }
 
 export async function testConfiguredConnection(options?: {

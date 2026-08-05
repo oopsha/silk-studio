@@ -3,19 +3,24 @@ import { ConfigurationService } from "../../platform/configuration/configuration
 import { AiContextHost } from "./aiContextHost";
 
 const LIMITS = {
-  totalChars: 14_000,
+  totalChars: 20_000,
   schemaChars: 6_000,
   selectionChars: 8_000,
   historyChars: 4_000,
   historyEntries: 8,
+  plsqlChars: 8_000,
 } as const;
 
 const BASE_SYSTEM_PROMPT = [
   "You are Silk DB Studio's SQL assistant.",
-  "Help with SQL, schemas, and database questions for the user's connected database.",
+  "Help with SQL, schemas, PL/SQL, and database questions for the user's connected database.",
   "Be concise and prefer dialect-correct SQL.",
   "Do not claim to have executed queries or changed data unless the user confirms an execution action in the app.",
   "When proposing SQL, put it in a fenced code block with language tag sql.",
+  "When open PL/SQL dependency or column metadata is provided, treat it as factual DB metadata — do not invent references that are not listed.",
+  "Compile-time dependencies may omit dynamic SQL (e.g. EXECUTE IMMEDIATE).",
+  "When database tools are available, use them to look up object source, dependencies, and columns instead of guessing.",
+  "You cannot write to the database or compile objects via tools — only read metadata and source.",
 ].join(" ");
 
 function truncateText(value: string, maxChars: number): string {
@@ -71,9 +76,9 @@ function buildConnectionBlock(): string | null {
 
 /**
  * Assemble the system message for an AI chat request based on settings flags.
- * Schema / history come from the app host; selection comes from the editor service.
+ * Schema / history / PL/SQL deps come from the app host; selection from the editor.
  */
-export function buildAiSystemPrompt(): string {
+export async function buildAiSystemPrompt(): Promise<string> {
   const includeSchema = ConfigurationService.getValue(
     "ai.context.includeSchema",
   );
@@ -82,6 +87,9 @@ export function buildAiSystemPrompt(): string {
   );
   const includeHistory = ConfigurationService.getValue(
     "ai.context.includeQueryHistory",
+  );
+  const includePlsqlDeps = ConfigurationService.getValue(
+    "ai.context.includePlsqlDeps",
   );
 
   const sections: string[] = [BASE_SYSTEM_PROMPT];
@@ -116,6 +124,13 @@ export function buildAiSystemPrompt(): string {
     }
   }
 
+  if (includePlsqlDeps) {
+    const plsql = await AiContextHost.getOpenPlsqlContextText(LIMITS.plsqlChars);
+    if (plsql) {
+      sections.push(plsql);
+    }
+  }
+
   if (includeHistory) {
     const history = AiContextHost.getRecentQueryHistoryText(
       LIMITS.historyChars,
@@ -138,6 +153,9 @@ export function getAiContextFlags() {
     ),
     includeQueryHistory: ConfigurationService.getValue(
       "ai.context.includeQueryHistory",
+    ),
+    includePlsqlDeps: ConfigurationService.getValue(
+      "ai.context.includePlsqlDeps",
     ),
   };
 }

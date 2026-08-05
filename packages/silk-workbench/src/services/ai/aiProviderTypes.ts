@@ -74,5 +74,12 @@ export class AiProviderError extends Error {
 
 export type AiProviderClient = {
   chat(request: AiChatRequest): AsyncGenerator<AiChatChunk, void, undefined>;
+  /**
+   * Non-streaming turn that can return tool calls. Used by the chat tool loop.
+   * Providers that receive no tools behave like a single non-streaming completion.
+   */
+  completeTurn(request: import("./aiToolTypes").AiChatTurnRequest): Promise<
+    import("./aiToolTypes").AiChatTurnResult
+  >;
   testConnection(request: AiTestConnectionRequest): Promise<void>;
 };

@@ -219,6 +219,36 @@ export type ConnectionCompileResult = {
   errors: ConnectionCompileError[];
 };
 
+/** Compile-time object reference (`connection.dependencies`). Oracle v1. */
+export type ConnectionDependency = {
+  /** Referenced object owner/schema. */
+  schema: string;
+  name: string;
+  /** Oracle `REFERENCED_TYPE`, e.g. TABLE / VIEW / PACKAGE. */
+  type: string;
+  /** Oracle `DEPENDENCY_TYPE`, e.g. HARD / SOFT. */
+  dependencyType?: string;
+};
+
+export type ConnectionDependenciesParams = {
+  connectionId: string;
+  schema: string;
+  name: string;
+  kind: MetadataObjectKind;
+  /**
+   * When `kind === "package"`:
+   * - `true` → PACKAGE BODY
+   * - omit / `false` → PACKAGE (spec)
+   * - both spec+body when querying both is needed is handled by omitting for union (agent)
+   */
+  packageBody?: boolean;
+};
+
+export type ConnectionDependenciesResult = {
+  dependencies: ConnectionDependency[];
+  dialectId: string;
+};
+
 export type AgentMethod =
   | "agent.ping"
   | "agent.shutdown"
@@ -231,6 +261,7 @@ export type AgentMethod =
   | "connection.primaryKeys"
   | "connection.ddl"
   | "connection.compile"
+  | "connection.dependencies"
   | "query.execute"
   | "query.cancel";
 
@@ -444,5 +475,29 @@ export function isConnectionCompileResult(
     typeof record.dialectId === "string" &&
     Array.isArray(record.errors) &&
     record.errors.every(isConnectionCompileError)
+  );
+}
+
+function isConnectionDependency(value: unknown): value is ConnectionDependency {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.schema === "string" &&
+    typeof entry.name === "string" &&
+    typeof entry.type === "string" &&
+    (entry.dependencyType === undefined ||
+      typeof entry.dependencyType === "string")
+  );
+}
+
+export function isConnectionDependenciesResult(
+  value: unknown,
+): value is ConnectionDependenciesResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.dialectId === "string" &&
+    Array.isArray(record.dependencies) &&
+    record.dependencies.every(isConnectionDependency)
   );
 }

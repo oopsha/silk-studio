@@ -888,6 +888,24 @@ function AiSettings() {
         </label>
       </SettingRow>
       <SettingRow
+        title={t("settings.ai.contextPlsqlDeps")}
+        description={t("settings.ai.contextPlsqlDepsDescription")}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={configuration["ai.context.includePlsqlDeps"]}
+            onChange={(event) =>
+              ConfigurationService.updateValue(
+                "ai.context.includePlsqlDeps",
+                event.target.checked,
+              )
+            }
+          />
+          <span>{t("settings.ai.contextPlsqlDeps")}</span>
+        </label>
+      </SettingRow>
+      <SettingRow
         title={t("settings.ai.allowExecute")}
         description={t("settings.ai.allowExecuteDescription")}
       >
