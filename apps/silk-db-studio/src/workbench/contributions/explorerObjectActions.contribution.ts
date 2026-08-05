@@ -69,12 +69,62 @@ CommandsRegistry.registerCommand(
   EXPLORER_COMMANDS.refreshSchema,
   async (...args: unknown[]) => {
     const payload = args[0] as
-      | { profileId: string; schemaName: string }
+      | { profileId: string; schemaName: string; catalogName?: string }
       | undefined;
     if (!payload?.profileId || !payload.schemaName) return;
     await ConnectionTreeService.invalidateAndRefreshSchema(
       payload.profileId,
       payload.schemaName,
+      payload.catalogName,
+    );
+  },
+);
+
+CommandsRegistry.registerCommand(
+  EXPLORER_COMMANDS.useDatabase,
+  async (...args: unknown[]) => {
+    const payload = args[0] as
+      | { profileId: string; catalogName: string }
+      | undefined;
+    if (!payload?.profileId || !payload.catalogName) return;
+    const { ActiveDatabaseService } = await import(
+      "../../services/connection/activeDatabaseService"
+    );
+    await ActiveDatabaseService.useDatabase(
+      payload.profileId,
+      payload.catalogName,
+    );
+  },
+);
+
+CommandsRegistry.registerCommand(
+  EXPLORER_COMMANDS.setDefaultDatabase,
+  async (...args: unknown[]) => {
+    const payload = args[0] as
+      | { profileId: string; catalogName: string }
+      | undefined;
+    if (!payload?.profileId || !payload.catalogName) return;
+    const { ActiveDatabaseService } = await import(
+      "../../services/connection/activeDatabaseService"
+    );
+    await ActiveDatabaseService.setDefaultDatabase(
+      payload.profileId,
+      payload.catalogName,
+    );
+  },
+);
+
+CommandsRegistry.registerCommand(
+  EXPLORER_COMMANDS.refreshCatalog,
+  async (...args: unknown[]) => {
+    const payload = args[0] as
+      | { profileId: string; catalogName: string }
+      | undefined;
+    if (!payload?.profileId || !payload.catalogName) return;
+    await ConnectionTreeService.loadCatalogSchemas(
+      payload.profileId,
+      payload.catalogName,
+      true,
     );
   },
 );

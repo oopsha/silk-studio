@@ -159,3 +159,34 @@ export async function bridgeRollback(
   }
   return payload;
 }
+
+/** Sets the JDBC session catalog (database). Does not change profile defaults. */
+export async function bridgeSetCatalog(
+  connectionId: string,
+  catalog: string,
+): Promise<string> {
+  if (!isTauri()) {
+    throw new Error("Database connections are available in the desktop app only.");
+  }
+  const id = connectionId.trim();
+  const name = catalog.trim();
+  if (!id) {
+    throw new Error("connectionId is required.");
+  }
+  if (!name) {
+    throw new Error("catalog is required.");
+  }
+  const payload = await invoke<unknown>("connection_set_catalog", {
+    connectionId: id,
+    catalog: name,
+  });
+  if (
+    payload &&
+    typeof payload === "object" &&
+    typeof (payload as { catalog?: unknown }).catalog === "string" &&
+    (payload as { catalog: string }).catalog.trim()
+  ) {
+    return (payload as { catalog: string }).catalog.trim();
+  }
+  return name;
+}

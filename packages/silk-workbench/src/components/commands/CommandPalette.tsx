@@ -15,27 +15,28 @@ import {
   type CommandPaletteItem,
 } from "../../services/commands/commandCatalog";
 import { CommandPaletteService } from "../../services/commands/commandPaletteService";
+import {
+  placeOverSilkEditor,
+  TITLEBAR_QUICK_PICK_CLASS,
+} from "../../services/quickinput/titlebarQuickPickPlacement";
 import { useI18n } from "../../platform/i18n/useI18n";
 import "../layout/TitleBar/OpenEditorsQuickPick/OpenEditorsQuickPick.css";
 import "./CommandPalette.css";
-
-const QUICK_PICK_WIDTH = 520;
 
 function CommandPalette() {
   const { t, locale } = useI18n();
   const [open, setOpen] = useState(() => CommandPaletteService.isOpen());
   const [filter, setFilter] = useState("");
   const [focusedIndex, setFocusedIndex] = useState(0);
+  const [placed, setPlaced] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(
-    null,
-  );
 
   useEffect(() => {
     return CommandPaletteService.onDidChange(() => {
       const next = CommandPaletteService.isOpen();
       setOpen(next);
+      setPlaced(false);
       if (next) {
         setFilter("");
         setFocusedIndex(0);
@@ -58,23 +59,34 @@ function CommandPalette() {
     CommandPaletteService.hide();
   }, []);
 
-  const updatePosition = useCallback(() => {
-    const left = Math.max(12, Math.round((window.innerWidth - QUICK_PICK_WIDTH) / 2));
-    const top = Math.max(48, Math.round(window.innerHeight * 0.12));
-    setPosition({ top, left });
-  }, []);
-
   useLayoutEffect(() => {
-    if (!open) return;
-    updatePosition();
-  }, [open, updatePosition, items.length]);
+    if (!open) {
+      document.documentElement.classList.remove(TITLEBAR_QUICK_PICK_CLASS);
+      return;
+    }
 
-  useEffect(() => {
-    if (!open) return;
-    const onResize = () => updatePosition();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [open, updatePosition]);
+    const el = rootRef.current;
+    if (!el) return;
+
+    const place = () => {
+      if (placeOverSilkEditor(el)) setPlaced(true);
+    };
+
+    // Measure while silk-editor is visible, then hide it (Open Editors pattern).
+    place();
+    document.documentElement.classList.add(TITLEBAR_QUICK_PICK_CLASS);
+    place();
+
+    function handleResize() {
+      place();
+    }
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      document.documentElement.classList.remove(TITLEBAR_QUICK_PICK_CLASS);
+    };
+  }, [open, filter, focusedIndex, items.length]);
 
   useEffect(() => {
     if (!open) return;
@@ -147,16 +159,11 @@ function CommandPalette() {
       aria-modal="true"
       aria-label={t("workbench.commandPalette.ariaLabel")}
       data-testid="command-palette"
-      style={
-        position
-          ? {
-              top: position.top,
-              left: position.left,
-              width: QUICK_PICK_WIDTH,
-              position: "fixed",
-            }
-          : { visibility: "hidden", position: "fixed" }
-      }
+      style={{
+        position: "fixed",
+        opacity: placed ? 1 : 0,
+        pointerEvents: placed ? "auto" : "none",
+      }}
     >
       <div className="quick-input-header">
         <div className="quick-input-filter">

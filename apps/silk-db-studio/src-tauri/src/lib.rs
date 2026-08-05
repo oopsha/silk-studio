@@ -107,6 +107,20 @@ fn connection_rollback(
 }
 
 #[tauri::command]
+fn connection_set_catalog(
+    connection_id: String,
+    catalog: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    let catalog = catalog.trim();
+    if catalog.is_empty() {
+        return Err("catalog is required.".into());
+    }
+    state.jdbc_agent.set_catalog(connection_id, catalog)
+}
+
+#[tauri::command]
 fn connection_connect(
     connection_id: String,
     url: String,
@@ -261,6 +275,7 @@ pub fn run() {
             query_execute,
             query_cancel,
             connection_rollback,
+            connection_set_catalog,
             connection_connect,
             connection_disconnect,
             connection_test,

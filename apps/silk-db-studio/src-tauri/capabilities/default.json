@@ -39,6 +39,14 @@
       "identifier": "fs:allow-write-file",
       "allow": [{ "path": "**" }]
     },
+    {
+      "identifier": "fs:allow-watch",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-unwatch",
+      "allow": [{ "path": "**" }]
+    },
     "window-controls:default",
     "allow-ensure-title-bar-overlay",
     "allow-query-execute",

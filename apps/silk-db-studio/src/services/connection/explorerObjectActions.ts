@@ -38,6 +38,9 @@ export const EXPLORER_COMMANDS = {
   openData: "silk.explorer.openData",
   viewDdl: "silk.explorer.viewDdl",
   refreshSchema: "silk.explorer.refreshSchema",
+  useDatabase: "silk.explorer.useDatabase",
+  setDefaultDatabase: "silk.explorer.setDefaultDatabase",
+  refreshCatalog: "silk.explorer.refreshCatalog",
   copyName: "silk.explorer.copyName",
   searchObjects: "silk.explorer.searchObjects",
   refresh: "silk.explorer.refresh",
@@ -156,6 +159,33 @@ export function buildSchemaMenuItems(): ExplorerMenuItem[] {
       label: I18nService.t("common.refresh"),
       commandId: EXPLORER_COMMANDS.refreshSchema,
       enabled: true,
+    },
+  ];
+}
+
+export function buildCatalogMenuItems(options?: {
+  isCurrent?: boolean;
+  isDefault?: boolean;
+}): ExplorerMenuItem[] {
+  return [
+    {
+      id: "useDatabase",
+      label: I18nService.t("app.explorer.useDatabase"),
+      commandId: EXPLORER_COMMANDS.useDatabase,
+      enabled: !(options?.isCurrent ?? false),
+    },
+    {
+      id: "setDefaultDatabase",
+      label: I18nService.t("app.explorer.setDefaultDatabase"),
+      commandId: EXPLORER_COMMANDS.setDefaultDatabase,
+      enabled: !(options?.isDefault ?? false),
+    },
+    {
+      id: "refreshCatalog",
+      label: I18nService.t("common.refresh"),
+      commandId: EXPLORER_COMMANDS.refreshCatalog,
+      enabled: true,
+      separator: true,
     },
   ];
 }

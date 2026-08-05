@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MenuRegistry } from "../../platform/actions/menuRegistry";
 import { useI18n } from "../../platform/i18n/useI18n";
 import { KeybindingsRegistry } from "../../platform/keybinding/keybindingRegistry";
+import { resolveCommandDisplayLabel } from "../../services/commands/commandDisplayLabel";
 import "./KeybindingsEditor.css";
 
 type KeybindingRow = {
@@ -10,22 +11,14 @@ type KeybindingRow = {
   keybinding: string;
 };
 
-function fallbackLabel(commandId: string): string {
-  const leaf = commandId.split(".").pop() ?? commandId;
-  return leaf
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[-_]/g, " ")
-    .replace(/\b\w/g, (ch) => ch.toUpperCase());
-}
-
 function buildRows(): KeybindingRow[] {
-  const titles = MenuRegistry.collectCommandTitles();
+  const menuTitles = MenuRegistry.collectCommandTitles();
   const rows: KeybindingRow[] = [];
   for (const entry of KeybindingsRegistry.getKeybindings()) {
     for (const keybinding of entry.labels) {
       rows.push({
         commandId: entry.commandId,
-        label: titles.get(entry.commandId) ?? fallbackLabel(entry.commandId),
+        label: resolveCommandDisplayLabel(entry.commandId, menuTitles),
         keybinding,
       });
     }

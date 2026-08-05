@@ -18,6 +18,10 @@ import {
   clearSqlErrorMarkers,
   type SqlSourceRange,
 } from "./sqlErrorMarkers";
+import {
+  buildLinkedErrorLog,
+  type QueryLogPart,
+} from "./queryLogNav";
 import { buildExplainPlan } from "./sqlExplain";
 import { assertReadOnlyQueryAllowed } from "./sqlGuard";
 import { stripTrailingSemicolon } from "./sqlExecutable";
@@ -55,6 +59,8 @@ export type QueryExecutionState = {
   status: QueryExecutionStatus;
   /** Status-line / message for the current run or active tab. */
   output: string;
+  /** Rich log parts for the active output (Ctrl+click error links). */
+  logParts: QueryLogPart[] | null;
   /** Active tab result (convenience mirror). */
   result: QueryResultPayload | null;
   lastSql: string;
@@ -96,6 +102,7 @@ type SessionRuntime = {
 const INITIAL_STATE: QueryExecutionState = {
   status: "idle",
   output: "",
+  logParts: null,
   result: null,
   lastSql: "",
   tabs: [],
@@ -181,6 +188,7 @@ class QueryExecutionServiceImpl {
       ...session,
       status: tab.status === "success" ? "success" : tab.status,
       output: tab.output,
+      logParts: tab.logParts ?? null,
       result: tab.result,
       lastSql: tab.sql,
       activeTabId: tab.id,
@@ -202,6 +210,7 @@ class QueryExecutionServiceImpl {
         status: session.status === "running" ? "running" : "idle",
         output:
           session.status === "running" ? session.output : idleOutput(),
+        logParts: null,
         result: null,
         lastSql: session.lastSql,
         tabs: [],
@@ -223,6 +232,7 @@ class QueryExecutionServiceImpl {
     this.setSessionState(ownerId, {
       status: active.status === "success" ? "success" : active.status,
       output: active.output,
+      logParts: active.logParts ?? null,
       result: active.result,
       lastSql: active.sql,
       tabs,
@@ -238,6 +248,7 @@ class QueryExecutionServiceImpl {
     this.setSessionState(ownerId, {
       status: session.status === "running" ? "running" : "idle",
       output: session.status === "running" ? session.output : idleOutput(),
+      logParts: null,
       result: null,
       lastSql: session.lastSql,
       tabs: [],
@@ -315,6 +326,7 @@ class QueryExecutionServiceImpl {
       tabs,
       result: isActive ? payload : session.result,
       output: isActive ? active?.output ?? session.output : session.output,
+      logParts: isActive ? active?.logParts ?? null : session.logParts,
     });
   }
 
@@ -527,9 +539,11 @@ class QueryExecutionServiceImpl {
           }
 
           const message = this.formatQueryFailureMessage(error);
+          const linked = buildLinkedErrorLog(message, item.range ?? null);
           this.commitTab(ownerId, {
             sql: item.sql,
-            output: message,
+            output: linked.output,
+            logParts: linked.logParts,
             result: null,
             status: "error",
             relationKind: options?.relationKind,
@@ -651,30 +665,77 @@ class QueryExecutionServiceImpl {
     );
 
     const logLines: string[] = [];
+    const metaLines: string[] = [];
     let successCount = 0;
     let errorCount = 0;
+    let resultSetCount = 0;
     let lastErrorRange: SqlSourceRange | null = null;
     let lastErrorMessage = "";
+    let linkedError: ReturnType<typeof buildLinkedErrorLog> | null = null;
     const startedAt = performance.now();
 
     const appendLog = (line: string) => {
       logLines.push(line);
     };
 
+    const appendMeta = (line: string) => {
+      metaLines.push(line);
+    };
+
+    const buildPrefaceLines = (): string[] => {
+      const lines: string[] = [];
+      if (successCount > 0) {
+        lines.push(
+          tKey("app.query.scriptSuccessSummary").replace(
+            "{count}",
+            String(successCount),
+          ),
+        );
+      }
+      if (resultSetCount > 0) {
+        lines.push(
+          tKey("app.query.scriptResultSetSummary").replace(
+            "{count}",
+            String(resultSetCount),
+          ),
+        );
+      }
+      lines.push(...metaLines);
+      return lines;
+    };
+
+    const buildScriptLogLines = (): string[] => {
+      const lines = buildPrefaceLines();
+      if (logLines.length > 0) {
+        if (lines.length > 0) {
+          lines.push("");
+        }
+        lines.push(...logLines);
+      }
+      return lines;
+    };
+
+    const buildScriptLogParts = (): QueryLogPart[] | null => {
+      if (!linkedError) return null;
+      const preface = buildPrefaceLines();
+      const parts: QueryLogPart[] = [];
+      if (preface.length > 0) {
+        parts.push({ kind: "text", text: `${preface.join("\n")}\n\n` });
+      }
+      parts.push(...linkedError.logParts);
+      return parts;
+    };
+
     try {
       if (!isTauri()) {
         if (!this.isCurrentRun(ownerId, generation)) return;
-        for (let index = 0; index < boundList.length; index += 1) {
-          appendLog(
-            `[${index + 1}/${total}] OK (desktop mock)\n${boundList[index].sql}`,
-          );
-          successCount += 1;
-        }
+        successCount = boundList.length;
         this.commitScriptOutcome(ownerId, {
           scriptSql,
-          logLines,
+          logLines: buildScriptLogLines(),
           successCount,
           errorCount,
+          plannedTotal: total,
           connectionId: connectionId ?? undefined,
         });
         this.recordHistory(
@@ -682,7 +743,7 @@ class QueryExecutionServiceImpl {
           historySql,
           "success",
           startedAt,
-          logLines.join("\n\n"),
+          buildScriptLogLines().join("\n"),
           runOptions,
         );
         return;
@@ -745,6 +806,7 @@ class QueryExecutionServiceImpl {
 
           successCount += 1;
           if (payload.kind === "resultSet") {
+            resultSetCount += 1;
             this.commitTab(ownerId, {
               sql: item.sql,
               output: payload.message,
@@ -752,14 +814,8 @@ class QueryExecutionServiceImpl {
               status: "success",
               connectionId: connectionId!,
             });
-            appendLog(
-              `[${index + 1}/${total}] ${payload.message || "Result set"}`,
-            );
-          } else {
-            appendLog(
-              `[${index + 1}/${total}] ${payload.message || "OK"}`,
-            );
           }
+          // Update-only successes are summarized at the end (no per-batch OK lines).
         } catch (error) {
           if (!this.isCurrentRun(ownerId, generation)) {
             return;
@@ -782,10 +838,14 @@ class QueryExecutionServiceImpl {
           errorCount += 1;
           lastErrorRange = item.range ?? null;
           lastErrorMessage = message;
-          appendLog(`[${index + 1}/${total}] ERROR\n${message}`);
+          linkedError = buildLinkedErrorLog(message, item.range ?? null, {
+            batchIndex: index + 1,
+            batchTotal: total,
+          });
+          appendLog(linkedError.output);
 
           const remaining = total - (index + 1);
-          appendLog(
+          appendMeta(
             remaining > 0
               ? tKey("app.query.scriptStoppedOnError").replace(
                   "{count}",
@@ -798,12 +858,12 @@ class QueryExecutionServiceImpl {
           try {
             const rollback = await bridgeRollback(connectionId!);
             if (rollback.rolledBack) {
-              appendLog(tKey("app.query.scriptRolledBack"));
+              appendMeta(tKey("app.query.scriptRolledBack"));
             } else {
-              appendLog(tKey("app.query.scriptRollbackSkippedAutoCommit"));
+              appendMeta(tKey("app.query.scriptRollbackSkippedAutoCommit"));
             }
           } catch (rollbackError) {
-            appendLog(
+            appendMeta(
               tKey("app.query.scriptRollbackFailed").replace(
                 "{message}",
                 formatErrorMessage(rollbackError, String(rollbackError)),
@@ -820,12 +880,15 @@ class QueryExecutionServiceImpl {
 
       const status: QueryResultTabStatus =
         errorCount > 0 ? "error" : "success";
+      const scriptLog = buildScriptLogLines();
 
       this.commitScriptOutcome(ownerId, {
         scriptSql,
-        logLines,
+        logLines: scriptLog,
+        logParts: buildScriptLogParts(),
         successCount,
         errorCount,
+        plannedTotal: total,
         connectionId: connectionId ?? undefined,
         status,
       });
@@ -841,7 +904,7 @@ class QueryExecutionServiceImpl {
         historySql,
         errorCount > 0 ? "error" : "success",
         startedAt,
-        logLines.join("\n\n"),
+        scriptLog.join("\n"),
         runOptions,
       );
     } catch (error) {
@@ -1089,6 +1152,7 @@ class QueryExecutionServiceImpl {
         ...session,
         status: "cancelled",
         output: tKey("app.query.cancelled"),
+        logParts: null,
       });
       return;
     }
@@ -1153,6 +1217,7 @@ class QueryExecutionServiceImpl {
     this.setSessionState(ownerId, {
       status: "running",
       output,
+      logParts: null,
       lastSql: sql,
       result: null,
       tabs: [],
@@ -1165,6 +1230,7 @@ class QueryExecutionServiceImpl {
     input: {
       sql: string;
       output: string;
+      logParts?: QueryLogPart[] | null;
       result: QueryResultPayload | null;
       status: QueryResultTabStatus;
       relationKind?: "table" | "view";
@@ -1188,6 +1254,7 @@ class QueryExecutionServiceImpl {
       sql: input.sql,
       status: input.status,
       output: input.output,
+      logParts: input.logParts ?? undefined,
       result: input.result,
       createdAt: Date.now(),
       relationKind: input.relationKind,
@@ -1204,6 +1271,7 @@ class QueryExecutionServiceImpl {
     this.setSessionState(ownerId, {
       status: input.status === "success" ? "success" : input.status,
       output: input.output,
+      logParts: input.logParts ?? null,
       result: input.result,
       lastSql: input.sql,
       tabs,
@@ -1217,26 +1285,46 @@ class QueryExecutionServiceImpl {
     input: {
       scriptSql: string;
       logLines: string[];
+      logParts?: QueryLogPart[] | null;
       successCount: number;
       errorCount: number;
+      plannedTotal?: number;
       connectionId?: string;
       status?: QueryResultTabStatus;
     },
   ): void {
+    const executed = input.successCount + input.errorCount;
+    const planned = input.plannedTotal ?? executed;
     const summary = tKey("app.query.scriptSummary")
       .replace("{success}", String(input.successCount))
       .replace("{error}", String(input.errorCount))
-      .replace("{total}", String(input.successCount + input.errorCount));
+      .replace("{executed}", String(executed))
+      .replace("{planned}", String(planned));
+
+    const detailParts = input.logParts ?? null;
+    const detailText =
+      input.logLines.length > 0 ? input.logLines.join("\n") : "";
     const body =
-      input.logLines.length > 0
-        ? `${summary}\n\n${input.logLines.join("\n\n")}`
-        : summary;
+      detailText.length > 0 ? `${summary}\n\n${detailText}` : summary;
+
+    let logParts: QueryLogPart[] | null = null;
+    if (detailParts && detailParts.length > 0) {
+      logParts = [
+        {
+          kind: "text",
+          text: detailText.length > 0 ? `${summary}\n\n` : summary,
+        },
+        ...detailParts,
+      ];
+    }
+
     const status: QueryResultTabStatus =
       input.status ?? (input.errorCount > 0 ? "error" : "success");
 
     this.commitTab(ownerId, {
       sql: input.scriptSql,
       output: body,
+      logParts,
       result: null,
       status,
       title: tKey("app.query.scriptTabTitle"),
@@ -1258,6 +1346,7 @@ class QueryExecutionServiceImpl {
       ...session,
       status: patch.status,
       output: patch.output,
+      logParts: patch.status === "running" ? null : session.logParts,
       lastSql: patch.lastSql ?? session.lastSql,
     });
   }
@@ -1359,11 +1448,16 @@ class QueryExecutionServiceImpl {
     }
 
     const message = this.formatQueryFailureMessage(error);
+    const linked = buildLinkedErrorLog(
+      message,
+      options?.sourceRange ?? null,
+    );
     const session = this.sessions.get(ownerId) ?? emptySession();
     this.setSessionState(ownerId, {
       ...session,
       status: "error",
-      output: message,
+      output: linked.output,
+      logParts: linked.logParts,
       lastSql: statement,
     });
     this.recordHistory(
@@ -1388,6 +1482,7 @@ class QueryExecutionServiceImpl {
       ...session,
       status: "cancelled",
       output: tKey("app.query.cancelled"),
+      logParts: null,
       lastSql: statement,
     });
     this.recordHistory(

@@ -140,6 +140,55 @@ class EditorConnectionBindingServiceImpl {
     }
   }
 
+  /**
+   * Update catalog on SQL tabs for `profileId` (JDBC session is shared).
+   * Also rebinds the active SQL tab to this profile so the status bar / execute
+   * path see the session database. Does not write connection profile storage.
+   */
+  setCatalogForProfile(profileId: string, catalog: string | null): void {
+    const id = profileId.trim();
+    if (!id) return;
+    const nextCatalog = catalog?.trim() || null;
+    const profile = ConnectionService.getProfile(id);
+    const defaultSchema = profile ? effectiveDefaultSchema(profile) || null : null;
+    let changed = false;
+
+    for (const tab of EditorService.getTabs()) {
+      if (!isSqlLanguageId(tab.languageId)) continue;
+      const prev = this.bindings.get(tab.id) ?? emptyBinding();
+      if (prev.profileId !== id) continue;
+      if ((prev.catalog ?? null) === nextCatalog) continue;
+      this.bindings.set(tab.id, {
+        profileId: id,
+        catalog: nextCatalog,
+        schema: prev.schema ?? defaultSchema,
+      });
+      changed = true;
+    }
+
+    const active = EditorService.getActiveTab();
+    if (active && isSqlLanguageId(active.languageId)) {
+      const prev = this.bindings.get(active.id) ?? emptyBinding();
+      const nextSchema = prev.schema ?? defaultSchema;
+      if (
+        prev.profileId !== id ||
+        (prev.catalog ?? null) !== nextCatalog
+      ) {
+        this.bindings.set(active.id, {
+          profileId: id,
+          catalog: nextCatalog,
+          schema: nextSchema,
+        });
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.defaultProfileId = id;
+      this.fireDidChange();
+    }
+  }
+
   /** Assign default binding when missing (new SQL tabs). */
   ensureBinding(tabId: string): EditorConnectionBinding {
     const existing = this.bindings.get(tabId);

@@ -1,4 +1,4 @@
-/** Shared title-bar Quick Pick placement (Open Editors / connection / object search). */
+/** Shared title-bar Quick Pick placement (Open Editors / command palette / connection / object search). */
 
 export const TITLEBAR_QUICK_PICK_CLASS = "titlebar-quick-pick-active";
 

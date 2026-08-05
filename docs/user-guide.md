@@ -27,7 +27,7 @@ Maintainer / signing notes: [`release.md`](./release.md).
 | `Ctrl+K` then `Ctrl+S` | Keyboard Shortcuts (searchable list) |
 | `Ctrl+,` | Settings |
 | `Ctrl+Enter` | Run Statement |
-| `Ctrl+Shift+Enter` | Execute Script (selection or whole buffer; SQL Server `GO` batches). Stops on first error and rolls back the open transaction (DBeaver-style Stop + rollback). |
+| `Ctrl+Shift+Enter` | Execute Script (selection or whole buffer; SQL Server `GO` batches). Stops on first error and rolls back the open transaction. The Script result tab shows a short summary (success count + errors), not one OK line per batch. |
 | `Ctrl+K` then `Ctrl+O` | Select query target (connection for this editor) |
 
 ### Drag and drop
@@ -35,6 +35,7 @@ Maintainer / signing notes: [`release.md`](./release.md).
 | Action | Result |
 | --- | --- |
 | Drop `.sql` / text files onto the window | Open as editor tabs (desktop paths via Tauri; browser uses file name) |
+| External edit to an open file | Clean tabs reload automatically; dirty tabs ask before reload |
 | Drag a Connections object onto the SQL editor | Insert `schema.object` at the caret |
 | Drag editor tabs | Reorder tabs |
 

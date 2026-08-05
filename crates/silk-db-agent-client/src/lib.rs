@@ -348,6 +348,22 @@ impl JdbcAgentClient {
         )
     }
 
+    /// Sets the JDBC session catalog (database) for {@code connection_id}.
+    pub fn set_catalog(&self, connection_id: &str, catalog: &str) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let catalog = catalog.trim();
+        if catalog.is_empty() {
+            return Err("catalog is required.".into());
+        }
+        self.send_request(
+            "connection.setCatalog",
+            json!({
+                "connectionId": connection_id.trim(),
+                "catalog": catalog,
+            }),
+        )
+    }
+
     fn ensure_connection(&self, connection_id: &str) -> Result<(), String> {
         let connection_id = connection_id.trim();
         if connection_id.is_empty() {

@@ -17,6 +17,7 @@ import {
   type FilteredSchemaView,
 } from "../../services/connection/connectionTreeFilter";
 import {
+  buildCatalogMenuItems,
   buildGroupMenuItems,
   buildObjectMenuItems,
   buildSchemaMenuItems,
@@ -27,6 +28,7 @@ import {
   type ExplorerMenuOptions,
   type ExplorerObjectRef,
 } from "../../services/connection/explorerObjectActions";
+import { ActiveDatabaseService } from "../../services/connection/activeDatabaseService";
 import { ExplorerUiService } from "../../services/connection/explorerUiService";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import {
@@ -572,13 +574,34 @@ function ProfileTree({
                   tree.currentCatalog != null &&
                   catalog.name.toLowerCase() ===
                     tree.currentCatalog.toLowerCase();
+                const isDefault =
+                  profile.catalog.trim().length > 0 &&
+                  catalog.name.toLowerCase() ===
+                    profile.catalog.trim().toLowerCase();
 
                 return (
                   <div
                     key={catalog.name}
                     className="connections-explorer__node"
                   >
-                    <div className="connections-explorer__row">
+                    <div
+                      className="connections-explorer__row"
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        onOpenContextMenu({
+                          x: event.clientX,
+                          y: event.clientY,
+                          items: buildCatalogMenuItems({
+                            isCurrent,
+                            isDefault,
+                          }),
+                          payload: {
+                            profileId: profile.id,
+                            catalogName: catalog.name,
+                          },
+                        });
+                      }}
+                    >
                       <button
                         type="button"
                         className="connections-explorer__twistie"
@@ -586,18 +609,14 @@ function ProfileTree({
                         onClick={() => {
                           const next = !catalogExpanded;
                           setExpandedValue(catalogKey, next);
-                          if (
-                            next &&
-                            (catalog.status === "idle" ||
-                              catalog.status === "error")
-                          ) {
-                            void run(() =>
-                              ConnectionTreeService.loadCatalogSchemas(
-                                profile.id,
-                                catalog.name,
-                              ),
-                            );
-                          }
+                          if (!next) return;
+                          // Switch session + preload schemas/default objects (filter-ready).
+                          void run(() =>
+                            ActiveDatabaseService.useDatabase(
+                              profile.id,
+                              catalog.name,
+                            ),
+                          );
                         }}
                       >
                         <Codicon
@@ -897,6 +916,73 @@ function ConnectionsExplorer() {
             ? (payload as { schemaName: string }).schemaName
             : "schema";
         flash(`Refreshed ${schemaName}`);
+      } catch (error) {
+        flash(formatErrorMessage(error, t("app.explorer.refreshFailed")));
+      }
+      return;
+    }
+
+    if (item.commandId === EXPLORER_COMMANDS.useDatabase) {
+      try {
+        await CommandService.executeCommand(item.commandId, payload);
+        const catalogName =
+          payload &&
+          typeof payload === "object" &&
+          "catalogName" in payload &&
+          typeof (payload as { catalogName: unknown }).catalogName === "string"
+            ? (payload as { catalogName: string }).catalogName
+            : "";
+        flash(
+          catalogName
+            ? t("app.explorer.usingDatabase").replace("{name}", catalogName)
+            : t("app.explorer.useDatabase"),
+        );
+      } catch (error) {
+        flash(formatErrorMessage(error, t("app.explorer.useDatabaseFailed")));
+      }
+      return;
+    }
+
+    if (item.commandId === EXPLORER_COMMANDS.setDefaultDatabase) {
+      try {
+        await CommandService.executeCommand(item.commandId, payload);
+        const catalogName =
+          payload &&
+          typeof payload === "object" &&
+          "catalogName" in payload &&
+          typeof (payload as { catalogName: unknown }).catalogName === "string"
+            ? (payload as { catalogName: string }).catalogName
+            : "";
+        flash(
+          catalogName
+            ? t("app.explorer.defaultDatabaseSet").replace(
+                "{name}",
+                catalogName,
+              )
+            : t("app.explorer.setDefaultDatabase"),
+        );
+      } catch (error) {
+        flash(
+          formatErrorMessage(
+            error,
+            t("app.explorer.setDefaultDatabaseFailed"),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (item.commandId === EXPLORER_COMMANDS.refreshCatalog) {
+      try {
+        await CommandService.executeCommand(item.commandId, payload);
+        const catalogName =
+          payload &&
+          typeof payload === "object" &&
+          "catalogName" in payload &&
+          typeof (payload as { catalogName: unknown }).catalogName === "string"
+            ? (payload as { catalogName: string }).catalogName
+            : "database";
+        flash(t("app.explorer.refreshNamed").replace("{name}", catalogName));
       } catch (error) {
         flash(formatErrorMessage(error, t("app.explorer.refreshFailed")));
       }
