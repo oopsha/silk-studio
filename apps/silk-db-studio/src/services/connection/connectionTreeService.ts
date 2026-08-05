@@ -9,6 +9,7 @@ import {
   filterSystemNamespaces,
   type ExplorerFilterContext,
 } from "./systemNamespaces";
+import { EditorConnectionBindingService } from "./editorConnectionBindingService";
 
 export type SchemaTreeNode = {
   name: string;
@@ -52,6 +53,24 @@ class ConnectionTreeServiceImpl {
         schemas: [],
       }
     );
+  }
+
+  /** Update explorer highlight only (session catalog already applied). */
+  setCurrentCatalog(profileId: string, catalogName: string): void {
+    const cache = this.getCache(profileId);
+    const name = catalogName.trim();
+    if (!name) return;
+    if (
+      cache.currentCatalog &&
+      cache.currentCatalog.toLowerCase() === name.toLowerCase()
+    ) {
+      return;
+    }
+    this.caches.set(profileId, {
+      ...cache,
+      currentCatalog: name,
+    });
+    this.fireDidChange();
   }
 
   setExplorerFilter(
@@ -272,6 +291,7 @@ class ConnectionTreeServiceImpl {
       throw new Error(`Database not found: ${catalogName}`);
     }
     if (!force && (catalog.status === "loaded" || catalog.status === "loading")) {
+      // Session switch is handled by ActiveDatabaseService.useDatabase / expand.
       return;
     }
 
@@ -320,6 +340,10 @@ class ConnectionTreeServiceImpl {
         ),
       });
       this.fireDidChange();
+      EditorConnectionBindingService.setCatalogForProfile(
+        profileId,
+        result.currentCatalog?.trim() || catalogName,
+      );
     } catch (error) {
       const message = formatErrorMessage(
         error,

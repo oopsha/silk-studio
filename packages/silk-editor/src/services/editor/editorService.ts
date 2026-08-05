@@ -396,6 +396,39 @@ class EditorServiceImpl {
     this.fireDidChange();
   }
 
+  /** Replace tab content from disk and clear dirty (external reload / reopen). */
+  reloadTabFromDisk(id: string, content: string): void {
+    const tab = this.tabs.find((item) => item.id === id);
+    if (!tab) return;
+
+    tab.content = content;
+    tab.isDirty = false;
+    this.savedContent.set(id, content);
+
+    if (this.activeTabId === id && this.activeTextEditor) {
+      const model = this.activeTextEditor.getModel();
+      if (model && model.getValue() !== content) {
+        const position = this.activeTextEditor.getPosition();
+        model.setValue(content);
+        if (position) {
+          this.activeTextEditor.setPosition(position);
+        }
+      }
+    }
+
+    this.updateContextKeys();
+    this.fireDidChange();
+  }
+
+  /** Absolute filesystem path tabs only (not untitled / silk://). */
+  getFilesystemTabs(): readonly EditorTab[] {
+    return this.tabs.filter(
+      (tab) =>
+        Boolean(tab.uri?.trim()) &&
+        !tab.uri!.startsWith("silk://"),
+    );
+  }
+
   markTabSaved(id: string, uri?: string, label?: string): void {
     const tab = this.tabs.find((item) => item.id === id);
     if (!tab) return;

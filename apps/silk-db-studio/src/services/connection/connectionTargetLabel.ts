@@ -15,6 +15,10 @@ export function formatConnectionTargetLabel(
 
   const profile = ConnectionService.getProfile(binding.profileId);
   const name = profile?.name?.trim() || binding.profileId;
+  const catalog =
+    binding.catalog?.trim() ||
+    profile?.catalog.trim() ||
+    "";
   const schema =
     binding.schema?.trim() ||
     (profile ? effectiveDefaultSchema(profile) : "") ||
@@ -25,6 +29,12 @@ export function formatConnectionTargetLabel(
     return labels.disconnected.replace("{name}", name);
   }
 
+  if (catalog && schema) {
+    return `${name} › ${catalog} › ${schema}`;
+  }
+  if (catalog) {
+    return `${name} › ${catalog}`;
+  }
   return schema ? `${name} › ${schema}` : name;
 }
 

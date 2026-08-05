@@ -1,4 +1,5 @@
 import type { QueryResultPayload } from "@silk-studio/db-protocol";
+import type { QueryLogPart } from "./queryLogNav";
 
 /** Soft cap — oldest tabs are dropped when exceeded. */
 export const MAX_QUERY_RESULT_TABS = 10;
@@ -12,6 +13,11 @@ export type QueryResultTab = {
   sql: string;
   status: QueryResultTabStatus;
   output: string;
+  /**
+   * Rich log segments for VS Code-style Ctrl+click navigation.
+   * When absent, the panel renders `output` as plain text.
+   */
+  logParts?: QueryLogPart[];
   result: QueryResultPayload | null;
   createdAt: number;
   /** When opened from the explorer, marks table vs view for save eligibility. */

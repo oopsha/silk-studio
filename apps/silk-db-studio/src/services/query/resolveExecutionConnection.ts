@@ -27,28 +27,36 @@ export function resolveExecutionConnectionId(options?: {
 /** Ensure the given profile session is open (reconnect that profile only). */
 export async function ensureExecutionConnection(
   connectionId: string,
+  options?: { skipCatalogApply?: boolean },
 ): Promise<void> {
-  if (ConnectionService.isConnected(connectionId)) {
+  if (!ConnectionService.isConnected(connectionId)) {
+    const profile = ConnectionService.getProfile(connectionId);
+    if (!profile) {
+      throw new Error(tKey("app.query.noConnectionTarget"));
+    }
+
+    try {
+      await ConnectionService.connect(connectionId, { silent: true });
+    } catch {
+      // Surface a clear disconnected message rather than the raw connect error.
+    }
+
+    if (!ConnectionService.isConnected(connectionId)) {
+      throw new Error(
+        tKey("app.query.connectionDisconnected").replace(
+          "{name}",
+          profile.name,
+        ),
+      );
+    }
+  }
+
+  if (options?.skipCatalogApply) {
     return;
   }
 
-  const profile = ConnectionService.getProfile(connectionId);
-  if (!profile) {
-    throw new Error(tKey("app.query.noConnectionTarget"));
-  }
-
-  try {
-    await ConnectionService.connect(connectionId, { silent: true });
-  } catch {
-    // Surface a clear disconnected message rather than the raw connect error.
-  }
-
-  if (!ConnectionService.isConnected(connectionId)) {
-    throw new Error(
-      tKey("app.query.connectionDisconnected").replace(
-        "{name}",
-        profile.name,
-      ),
-    );
-  }
+  const { ActiveDatabaseService } = await import(
+    "../connection/activeDatabaseService"
+  );
+  await ActiveDatabaseService.applyBindingCatalogForExecute(connectionId);
 }

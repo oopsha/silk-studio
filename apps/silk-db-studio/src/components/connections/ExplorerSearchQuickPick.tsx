@@ -30,7 +30,7 @@ import { EditorConnectionBindingService } from "../../services/connection/editor
 import {
   placeOverSilkEditor,
   TITLEBAR_QUICK_PICK_CLASS,
-} from "../../services/connection/titlebarQuickPickPlacement";
+} from "@silk-studio/workbench/services/quickinput/titlebarQuickPickPlacement.ts";
 import "@silk-studio/workbench/components/layout/TitleBar/OpenEditorsQuickPick/OpenEditorsQuickPick.css";
 import "./ExplorerSearchQuickPick.css";
 

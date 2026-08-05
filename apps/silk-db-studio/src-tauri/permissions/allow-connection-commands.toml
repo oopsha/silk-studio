@@ -12,4 +12,5 @@ commands.allow = [
   "connection_ddl",
   "connection_compile",
   "connection_rollback",
+  "connection_set_catalog",
 ]

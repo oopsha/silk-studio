@@ -20,18 +20,55 @@ import {
 import { EditorConnectionBindingService } from "../../../services/connection/editorConnectionBindingService";
 import { useConnectionState } from "../../../services/connection/useConnectionState";
 import { useEditorConnectionBinding } from "../../../services/connection/useEditorConnectionBinding";
-import { effectiveDefaultSchema } from "../../../services/connection/connectionTypes";
+import {
+  effectiveDefaultSchema,
+  getConnectionDriver,
+} from "../../../services/connection/connectionTypes";
+import { ConnectionTreeService } from "../../../services/connection/connectionTreeService";
+import { ActiveDatabaseService } from "../../../services/connection/activeDatabaseService";
+import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
+import { formatErrorMessage } from "../../../services/formatErrorMessage";
 import "@silk-studio/workbench/components/layout/TitleBar/OpenEditorsQuickPick/OpenEditorsQuickPick.css";
 import {
   placeOverSilkEditor,
   TITLEBAR_QUICK_PICK_CLASS,
-} from "../../../services/connection/titlebarQuickPickPlacement";
+} from "@silk-studio/workbench/services/quickinput/titlebarQuickPickPlacement.ts";
 import "./ConnectionTargetStatusItem.css";
 
 type PickItem =
+  | { kind: "separator"; id: string; label: string }
+  | { kind: "hint"; id: string; label: string }
   | { kind: "profile"; profileId: string; label: string; detail: string }
+  | {
+      kind: "catalog";
+      profileId: string;
+      catalogName: string;
+      label: string;
+    }
   | { kind: "applyAll"; profileId: string; label: string }
   | { kind: "clear"; label: string };
+
+function isSelectable(pick: PickItem): boolean {
+  return pick.kind !== "separator" && pick.kind !== "hint";
+}
+
+function profilePathLabel(
+  name: string,
+  catalog: string,
+  schema: string,
+): string {
+  if (catalog && schema) return `${name} › ${catalog} › ${schema}`;
+  if (catalog) return `${name} › ${catalog}`;
+  if (schema) return `${name} › ${schema}`;
+  return name;
+}
+
+function supportsCatalogProfile(profileId: string): boolean {
+  const profile = ConnectionService.getProfile(profileId);
+  return Boolean(
+    profile && getConnectionDriver(profile.driverId).supportsCatalog,
+  );
+}
 
 function ConnectionTargetStatusItem() {
   const { t } = useI18n();
@@ -42,6 +79,10 @@ function ConnectionTargetStatusItem() {
   );
   const [filter, setFilter] = useState("");
   const [focusedIndex, setFocusedIndex] = useState(0);
+  const [catalogSourceProfileId, setCatalogSourceProfileId] = useState<
+    string | null
+  >(null);
+  const [treeRev, setTreeRev] = useState(0);
   const [placed, setPlaced] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -100,7 +141,7 @@ function ConnectionTargetStatusItem() {
       window.removeEventListener("resize", handleResize);
       document.documentElement.classList.remove(TITLEBAR_QUICK_PICK_CLASS);
     };
-  }, [open, filter, focusedIndex]);
+  }, [open, filter, focusedIndex, catalogSourceProfileId, treeRev]);
 
   useEffect(() => {
     if (!open) return;
@@ -126,31 +167,149 @@ function ConnectionTargetStatusItem() {
 
   useCloseOnAppBlur(close, open);
 
+  // Reset catalog source when the picker opens.
+  useEffect(() => {
+    if (!open) return;
+    const boundId = binding.profileId;
+    if (
+      boundId &&
+      ConnectionService.isConnected(boundId) &&
+      supportsCatalogProfile(boundId)
+    ) {
+      setCatalogSourceProfileId(boundId);
+      return;
+    }
+    const first = ConnectionService.getConnectedProfiles().find((profile) =>
+      getConnectionDriver(profile.driverId).supportsCatalog,
+    );
+    setCatalogSourceProfileId(first?.id ?? null);
+    // Only when opening — hover/keyboard may preview another connection's databases.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+  }, [open]);
+
+  // Load databases for every connected catalog-capable profile.
+  useEffect(() => {
+    if (!open) return;
+    for (const profile of ConnectionService.getConnectedProfiles()) {
+      if (!getConnectionDriver(profile.driverId).supportsCatalog) continue;
+      const cache = ConnectionTreeService.getCache(profile.id);
+      if (cache.catalogs.length > 0 || cache.status === "loading") continue;
+      void ConnectionTreeService.loadSchemas(profile.id).catch(() => {
+        /* picker still works with profiles only */
+      });
+    }
+  }, [open, connection.connectedProfileIds]);
+
+  useEffect(() => {
+    if (!open) return;
+    return ConnectionTreeService.onDidChange(() => {
+      setTreeRev((value) => value + 1);
+    });
+  }, [open]);
+
   const picks = useMemo((): PickItem[] => {
     if (!open) return [];
+    void treeRev;
     const query = filter.trim().toLowerCase();
     const profiles = ConnectionService.getConnectedProfiles().filter(
       (profile) => {
         if (!query) return true;
         const schema = effectiveDefaultSchema(profile).toLowerCase();
+        const catalog = profile.catalog.trim().toLowerCase();
         return (
           profile.name.toLowerCase().includes(query) ||
           profile.user.toLowerCase().includes(query) ||
-          schema.includes(query)
+          schema.includes(query) ||
+          catalog.includes(query)
         );
       },
     );
 
-    const items: PickItem[] = profiles.map((profile) => {
-      const schema = effectiveDefaultSchema(profile);
-      return {
-        kind: "profile" as const,
-        profileId: profile.id,
-        label: schema ? `${profile.name} › ${schema}` : profile.name,
-        detail: profile.user
-          ? `${profile.user} · ${profile.driverId}`
-          : profile.driverId,
-      };
+    const items: PickItem[] = [];
+
+    items.push({
+      kind: "separator",
+      id: "connections",
+      label: t("app.connectionTarget.sectionConnections"),
+    });
+
+    if (profiles.length === 0) {
+      items.push({
+        kind: "hint",
+        id: "connections-empty",
+        label: query
+          ? t("app.connectionTarget.pickerNoMatch")
+          : t("app.connectionTarget.pickerEmpty"),
+      });
+    } else {
+      for (const profile of profiles) {
+        const catalog = profile.catalog.trim();
+        const schema = effectiveDefaultSchema(profile);
+        items.push({
+          kind: "profile",
+          profileId: profile.id,
+          label: profilePathLabel(profile.name, catalog, schema),
+          detail: profile.user
+            ? `${profile.user} · ${profile.driverId}`
+            : profile.driverId,
+        });
+      }
+    }
+
+    const sourceId =
+      catalogSourceProfileId &&
+      ConnectionService.isConnected(catalogSourceProfileId) &&
+      supportsCatalogProfile(catalogSourceProfileId)
+        ? catalogSourceProfileId
+        : null;
+
+    if (sourceId) {
+      const sourceProfile = ConnectionService.getProfile(sourceId);
+      const sourceName = sourceProfile?.name ?? sourceId;
+      items.push({
+        kind: "separator",
+        id: "databases",
+        label: t("app.connectionTarget.sectionDatabases").replace(
+          "{name}",
+          sourceName,
+        ),
+      });
+
+      const cache = ConnectionTreeService.getCache(sourceId);
+      const catalogs = cache.catalogs
+        .map((item) => item.name)
+        .filter((name) => {
+          if (!query) return true;
+          return name.toLowerCase().includes(query);
+        });
+
+      if (catalogs.length === 0) {
+        items.push({
+          kind: "hint",
+          id: "databases-empty",
+          label:
+            cache.status === "loading"
+              ? t("app.explorer.loadingDatabases")
+              : query
+                ? t("app.connectionTarget.pickerNoMatch")
+                : t("app.connectionTarget.databasesEmpty"),
+        });
+      } else {
+        for (const catalogName of catalogs) {
+          items.push({
+            kind: "catalog",
+            profileId: sourceId,
+            catalogName,
+            label: catalogName,
+          });
+        }
+      }
+    }
+
+    items.push({
+      kind: "separator",
+      id: "other",
+      label: t("app.connectionTarget.sectionOther"),
     });
 
     items.push({
@@ -158,34 +317,117 @@ function ConnectionTargetStatusItem() {
       label: t("app.connectionTarget.clearBinding"),
     });
 
-    for (const profile of profiles) {
+    for (const profile of ConnectionService.getConnectedProfiles().filter(
+      (profile) => {
+        if (!query) return true;
+        const schema = effectiveDefaultSchema(profile).toLowerCase();
+        const catalog = profile.catalog.trim().toLowerCase();
+        return (
+          profile.name.toLowerCase().includes(query) ||
+          profile.user.toLowerCase().includes(query) ||
+          schema.includes(query) ||
+          catalog.includes(query)
+        );
+      },
+    )) {
+      const catalog = profile.catalog.trim();
       const schema = effectiveDefaultSchema(profile);
-      const name = schema ? `${profile.name} › ${schema}` : profile.name;
       items.push({
         kind: "applyAll",
         profileId: profile.id,
         label: t("app.connectionTarget.applyToAllNamed").replace(
           "{name}",
-          name,
+          profilePathLabel(profile.name, catalog, schema),
         ),
       });
     }
 
     return items;
-  }, [open, filter, connection.connectedProfileIds, t]);
+  }, [open, filter, connection.connectedProfileIds, catalogSourceProfileId, treeRev, t]);
+
+  const focusPick = useCallback(
+    (index: number) => {
+      setFocusedIndex(index);
+      const pick = picks[index];
+      if (pick?.kind === "catalog") {
+        setCatalogSourceProfileId(pick.profileId);
+        return;
+      }
+      if (pick?.kind === "profile") {
+        setCatalogSourceProfileId(
+          supportsCatalogProfile(pick.profileId) ? pick.profileId : null,
+        );
+      }
+    },
+    [picks],
+  );
+
+  const findSelectableIndex = useCallback(
+    (from: number, delta: number): number => {
+      if (picks.length === 0) return 0;
+      let index = from;
+      for (let step = 0; step < picks.length; step += 1) {
+        index = (index + delta + picks.length) % picks.length;
+        const pick = picks[index];
+        if (pick && isSelectable(pick)) return index;
+      }
+      return from;
+    },
+    [picks],
+  );
 
   useEffect(() => {
-    setFocusedIndex((current) =>
-      picks.length === 0 ? 0 : Math.min(current, picks.length - 1),
-    );
+    if (picks.length === 0) {
+      setFocusedIndex(0);
+      return;
+    }
+    setFocusedIndex((current) => {
+      const pick = picks[current];
+      if (pick && isSelectable(pick)) {
+        return Math.min(current, picks.length - 1);
+      }
+      for (let index = 0; index < picks.length; index += 1) {
+        if (isSelectable(picks[index]!)) return index;
+      }
+      return 0;
+    });
   }, [picks]);
 
   const acceptPick = useCallback(
     (pick: PickItem) => {
+      if (!isSelectable(pick)) return;
+
       if (pick.kind === "applyAll") {
         EditorConnectionBindingService.setBindingsForAllSqlTabs(
           bindingForProfile(pick.profileId),
         );
+        close();
+        return;
+      }
+
+      if (pick.kind === "catalog") {
+        void ActiveDatabaseService.useDatabase(
+          pick.profileId,
+          pick.catalogName,
+        )
+          .then(() => {
+            AppNotificationService.show(
+              t("app.explorer.usingDatabase").replace(
+                "{name}",
+                pick.catalogName,
+              ),
+              "info",
+            );
+          })
+          .catch((error) => {
+            AppNotificationService.show(
+              formatErrorMessage(
+                error,
+                t("app.explorer.useDatabaseFailed"),
+              ),
+              "error",
+            );
+          });
         close();
         return;
       }
@@ -209,7 +451,7 @@ function ConnectionTargetStatusItem() {
       }
       close();
     },
-    [close],
+    [close, t],
   );
 
   const handleInputKeyDown = (
@@ -223,19 +465,19 @@ function ConnectionTargetStatusItem() {
     if (event.key === "ArrowDown") {
       event.preventDefault();
       if (picks.length === 0) return;
-      setFocusedIndex((index) => (index + 1) % picks.length);
+      focusPick(findSelectableIndex(focusedIndex, 1));
       return;
     }
     if (event.key === "ArrowUp") {
       event.preventDefault();
       if (picks.length === 0) return;
-      setFocusedIndex((index) => (index - 1 + picks.length) % picks.length);
+      focusPick(findSelectableIndex(focusedIndex, -1));
       return;
     }
     if (event.key === "Enter") {
       event.preventDefault();
       const pick = picks[focusedIndex];
-      if (!pick) return;
+      if (!pick || !isSelectable(pick)) return;
       acceptPick(pick);
     }
   };
@@ -244,6 +486,8 @@ function ConnectionTargetStatusItem() {
     connection.connectedProfileIds.length === 0
       ? t("app.connectionTarget.pickerEmpty")
       : t("app.connectionTarget.pickerNoMatch");
+
+  const hasSelectable = picks.some(isSelectable);
 
   return (
     <>
@@ -303,20 +547,49 @@ function ConnectionTargetStatusItem() {
                 </div>
               </div>
               <div className="quick-input-list" role="listbox">
-                {picks.length === 0 ? (
+                {!hasSelectable ? (
                   <div className="quick-input-list__empty">{emptyHint}</div>
                 ) : (
                   picks.map((pick, index) => {
+                    if (pick.kind === "separator") {
+                      return (
+                        <div
+                          key={`sep-${pick.id}`}
+                          className="connection-target-picker__separator"
+                          role="presentation"
+                        >
+                          {pick.label}
+                        </div>
+                      );
+                    }
+                    if (pick.kind === "hint") {
+                      return (
+                        <div
+                          key={`hint-${pick.id}`}
+                          className="connection-target-picker__hint"
+                          role="presentation"
+                        >
+                          {pick.label}
+                        </div>
+                      );
+                    }
+
                     const selected =
-                      pick.kind === "profile" &&
-                      pick.profileId === binding.profileId;
+                      (pick.kind === "profile" &&
+                        pick.profileId === binding.profileId) ||
+                      (pick.kind === "catalog" &&
+                        pick.profileId === binding.profileId &&
+                        pick.catalogName.toLowerCase() ===
+                          (binding.catalog ?? "").toLowerCase());
                     const focused = index === focusedIndex;
                     const rowKey =
                       pick.kind === "profile"
                         ? pick.profileId
-                        : pick.kind === "applyAll"
-                          ? `apply-${pick.profileId}`
-                          : "clear";
+                        : pick.kind === "catalog"
+                          ? `catalog-${pick.profileId}-${pick.catalogName}`
+                          : pick.kind === "applyAll"
+                            ? `apply-${pick.profileId}`
+                            : "clear";
                     return (
                       <div
                         key={rowKey}
@@ -325,7 +598,7 @@ function ConnectionTargetStatusItem() {
                         }`}
                         role="option"
                         aria-selected={focused}
-                        onMouseEnter={() => setFocusedIndex(index)}
+                        onMouseEnter={() => focusPick(index)}
                         onClick={() => acceptPick(pick)}
                       >
                         <div className="quick-input-list-entry">
@@ -336,9 +609,13 @@ function ConnectionTargetStatusItem() {
                                   ? "circle-outline"
                                   : pick.kind === "applyAll"
                                     ? "files"
-                                    : selected
-                                      ? "check"
-                                      : "database"
+                                    : pick.kind === "catalog"
+                                      ? selected
+                                        ? "check"
+                                        : "folder"
+                                      : selected
+                                        ? "check"
+                                        : "database"
                               }
                             />
                           </span>

@@ -1,3 +1,7 @@
+.command-palette .quick-input-list {
+  overflow-x: hidden;
+}
+
 .command-palette .quick-input-list-entry {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -21,9 +25,16 @@
   font-family: var(--monaco-monospace-font, ui-monospace, monospace);
 }
 
+.quick-input-list-row--focused .command-palette__id,
+.quick-input-list-row--focused .command-palette__keybinding {
+  color: var(--color-quick-input-list-focus-foreground);
+  opacity: 0.85;
+}
+
 .command-palette__status {
-  padding: 6px 12px;
-  border-top: 1px solid var(--color-border);
+  padding: 4px 12px 8px;
+  border-top: 1px solid var(--color-quick-input-border);
   color: var(--color-description);
   font-size: 11px;
+  line-height: 16px;
 }

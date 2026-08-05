@@ -9,6 +9,7 @@ import { QueryExecutionService } from "../../../services/query/queryExecutionSer
 import { truncateSqlLabel } from "../../../services/query/queryResultTab";
 import { useQueryExecutionState } from "../../../services/query/useQueryExecutionState";
 import QueryResultGrid from "./QueryResultGrid";
+import QueryResultLog from "./QueryResultLog";
 
 function Panel() {
   const { t } = useI18n();
@@ -31,6 +32,10 @@ function Panel() {
   const logText = showErrorOrCancel
     ? queryState.output
     : (activeTab?.output ?? queryState.output);
+  const logParts = showErrorOrCancel
+    ? queryState.logParts
+    : (activeTab?.logParts ?? queryState.logParts);
+  const hasLogLinks = Boolean(logParts?.some((part) => part.kind === "link"));
   const showLog =
     !gridResult &&
     Boolean(logText?.trim()) &&
@@ -45,14 +50,11 @@ function Panel() {
     : t("workbench.commands.maximizePanel");
 
   async function copyLog() {
-    const pre = logPreRef.current;
     const selection = window.getSelection();
     const selected =
-      pre &&
       selection &&
-      selection.rangeCount > 0 &&
-      pre.contains(selection.anchorNode) &&
-      !selection.isCollapsed
+      !selection.isCollapsed &&
+      selection.toString().length > 0
         ? selection.toString()
         : "";
     const text = selected || logText || "";
@@ -80,6 +82,28 @@ function Panel() {
     }
     event.preventDefault();
     void copyLog();
+  }
+
+  function renderLog(className: string) {
+    if (hasLogLinks && logParts) {
+      return (
+        <QueryResultLog
+          parts={logParts}
+          plainText={logText || ""}
+          className={className}
+        />
+      );
+    }
+    return (
+      <pre
+        ref={logPreRef}
+        className={className}
+        tabIndex={0}
+        onKeyDown={handleLogKeyDown}
+      >
+        {logText}
+      </pre>
+    );
   }
 
   return (
@@ -229,34 +253,20 @@ function Panel() {
           </div>
         ) : null}
 
-        {showErrorOrCancel ? (
-          <pre
-            ref={logPreRef}
-            className="panel__content panel__content--error"
-            tabIndex={0}
-            onKeyDown={handleLogKeyDown}
-          >
-            {queryState.output}
-          </pre>
-        ) : gridResult && activeTab ? (
-          <QueryResultGrid
-            key={activeTab.id}
-            tabId={activeTab.id}
-            sql={activeTab.sql}
-            result={gridResult}
-            relationKind={activeTab.relationKind}
-            connectionId={activeTab.connectionId}
-          />
-        ) : (
-          <pre
-            ref={logPreRef}
-            className="panel__content"
-            tabIndex={0}
-            onKeyDown={handleLogKeyDown}
-          >
-            {activeTab?.output ?? queryState.output}
-          </pre>
-        )}
+        {showErrorOrCancel
+          ? renderLog("panel__content panel__content--error")
+          : gridResult && activeTab ? (
+              <QueryResultGrid
+                key={activeTab.id}
+                tabId={activeTab.id}
+                sql={activeTab.sql}
+                result={gridResult}
+                relationKind={activeTab.relationKind}
+                connectionId={activeTab.connectionId}
+              />
+            ) : (
+              renderLog("panel__content")
+            )}
       </div>
     </section>
   );

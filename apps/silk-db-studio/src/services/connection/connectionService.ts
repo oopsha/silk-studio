@@ -158,6 +158,31 @@ class ConnectionServiceImpl {
     return updated;
   }
 
+  /**
+   * Persist the profile's default catalog/database without reconnecting.
+   * Session catalog is unchanged — call ActiveDatabaseService.useDatabase if needed.
+   */
+  setDefaultCatalog(profileId: string, catalogName: string): ConnectionProfile {
+    const catalog = catalogName.trim();
+    const profiles = this.state.profiles.map((profile) => {
+      if (profile.id !== profileId) return profile;
+      if (profile.catalog.trim() === catalog) return profile;
+      return {
+        ...profile,
+        catalog,
+        updatedAt: Date.now(),
+      };
+    });
+
+    const updated = profiles.find((profile) => profile.id === profileId);
+    if (!updated) {
+      throw new Error("Connection profile not found.");
+    }
+
+    this.persistProfiles(profiles);
+    return updated;
+  }
+
   async duplicateProfile(profileId: string): Promise<ConnectionProfile> {
     const source = this.getProfile(profileId);
     if (!source) {

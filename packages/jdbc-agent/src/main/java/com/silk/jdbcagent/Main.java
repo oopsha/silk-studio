@@ -224,6 +224,10 @@ public final class Main {
           response.put("ok", true);
           response.set("result", runtime.rollbackConnection(params));
         }
+        case "connection.setCatalog" -> {
+          response.put("ok", true);
+          response.set("result", runtime.setCatalog(params));
+        }
         case "agent.shutdown" -> {
           response.put("ok", true);
           ObjectNode result = response.putObject("result");
@@ -423,6 +427,31 @@ public final class Main {
       connection.rollback();
       result.put("rolledBack", true);
       result.put("skipped", false);
+      return result;
+    }
+
+    /**
+     * Sets the JDBC session catalog (SQL Server / MySQL database). Session-only —
+     * does not change connection profile defaults on the client.
+     */
+    ObjectNode setCatalog(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      ObjectNode result = MAPPER.createObjectNode();
+      Connection connection = session.connection;
+      if (connection == null || connection.isClosed()) {
+        throw new SQLException("Connection is closed.");
+      }
+      String catalog = params.path("catalog").asText("").trim();
+      if (catalog.isEmpty()) {
+        throw new RuntimeException("Missing params.catalog");
+      }
+      connection.setCatalog(catalog);
+      String current = connection.getCatalog();
+      if (current != null && !current.isBlank()) {
+        result.put("catalog", current);
+      } else {
+        result.put("catalog", catalog);
+      }
       return result;
     }
 
