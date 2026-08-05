@@ -16,6 +16,7 @@ import { AiSqlProposalHost } from "../../../services/ai/aiSqlProposalHost";
 import { extractSqlFromMarkdown } from "../../../services/ai/extractSqlFromMarkdown";
 import { useAiChat } from "../../../services/ai/useAiChat";
 import { useAiReadyState } from "../../../services/ai/useAiReadyState";
+import { AiChatMarkdown } from "./AiChatMarkdown";
 import "./SecondarySidebar.css";
 
 function previewSql(sql: string): string {
@@ -219,8 +220,13 @@ function SecondarySidebar() {
                 {message.status === "streaming" ? " · …" : ""}
               </div>
               <div className="secondary-sidebar__message-body">
-                {message.content ||
-                  (message.status === "streaming" ? t("app.ai.thinking") : "")}
+                {message.content ? (
+                  <AiChatMarkdown content={message.content} />
+                ) : message.status === "streaming" ? (
+                  t("app.ai.thinking")
+                ) : (
+                  ""
+                )}
               </div>
               <ProposedSqlActions message={message} />
             </div>

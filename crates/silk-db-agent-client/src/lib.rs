@@ -290,6 +290,39 @@ impl JdbcAgentClient {
         self.send_request("connection.compile", params)
     }
 
+    pub fn list_object_dependencies(
+        &self,
+        connection_id: &str,
+        schema: &str,
+        name: &str,
+        kind: &str,
+        package_body: Option<bool>,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let schema = schema.trim();
+        let name = name.trim();
+        let kind = kind.trim();
+        if schema.is_empty() {
+            return Err("schema is required.".into());
+        }
+        if name.is_empty() {
+            return Err("object name is required.".into());
+        }
+        if kind.is_empty() {
+            return Err("object kind is required.".into());
+        }
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "schema": schema,
+            "name": name,
+            "kind": kind
+        });
+        if let Some(package_body) = package_body {
+            params["packageBody"] = json!(package_body);
+        }
+        self.send_request("connection.dependencies", params)
+    }
+
     pub fn execute_query(
         &self,
         connection_id: &str,

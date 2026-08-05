@@ -7,6 +7,7 @@ import { WindowTitleService } from "@silk-studio/workbench/services/windowTitle/
 import { AppLogService } from "@silk-studio/workbench/services/diagnostics/appLogService.ts";
 import { configureDbStudioAiContextHost } from "./services/ai/configureAiContextHost";
 import { configureDbStudioAiSqlProposalHost } from "./services/ai/configureAiSqlProposalHost";
+import { configureDbStudioAiToolHost } from "./services/ai/configureAiToolHost";
 import { configureDbStudioDiagnosticsHost } from "./services/diagnostics/configureDiagnosticsHost";
 import "@silk-studio/ui/global.css";
 import "@silk-studio/workbench/workbench/workbench.contribution";
@@ -29,6 +30,7 @@ configureEditorHost({
 });
 WindowTitleService.setWorkspaceName("silk-db-studio");
 configureDbStudioAiContextHost();
+configureDbStudioAiToolHost();
 configureDbStudioAiSqlProposalHost();
 configureDbStudioDiagnosticsHost();
 AppLogService.installGlobalHandlers();

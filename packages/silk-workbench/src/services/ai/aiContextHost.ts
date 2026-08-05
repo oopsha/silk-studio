@@ -16,6 +16,11 @@ export type AiContextHostAdapter = {
     maxChars: number,
     maxEntries: number,
   ) => string | null;
+  /**
+   * Open PL/SQL object tabs: source + compile-time dependencies + referenced
+   * table/view columns. May hit the DB (async). Default: none.
+   */
+  getOpenPlsqlContextText?: (maxChars: number) => Promise<string | null>;
 };
 
 const emptyAdapter: AiContextHostAdapter = {
@@ -42,5 +47,13 @@ export const AiContextHost = {
     maxEntries: number,
   ): string | null {
     return adapter.getRecentQueryHistoryText(maxChars, maxEntries);
+  },
+  async getOpenPlsqlContextText(maxChars: number): Promise<string | null> {
+    if (!adapter.getOpenPlsqlContextText) return null;
+    try {
+      return await adapter.getOpenPlsqlContextText(maxChars);
+    } catch {
+      return null;
+    }
   },
 };

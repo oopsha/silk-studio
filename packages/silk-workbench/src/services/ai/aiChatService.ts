@@ -1,15 +1,22 @@
 import {
   AiProviderError,
-  type AiChatMessage,
   type AiTokenUsage,
 } from "./aiProviderTypes";
 import { AiAuditLogService } from "./aiAuditLogService";
 import { buildAiSystemPrompt } from "./aiContextService";
-import { getAiReadyState, streamConfiguredChat } from "./aiProviderService";
+import {
+  completeConfiguredTurn,
+  getAiReadyState,
+  streamConfiguredChat,
+} from "./aiProviderService";
 import { ConfigurationService } from "../../platform/configuration/configurationService";
+import { I18nService } from "../../platform/i18n/i18nService";
 import type { AiChatSessionState, AiChatUiMessage } from "./aiChatTypes";
+import { AiToolHost } from "./aiToolHost";
+import type { AiWireMessage } from "./aiToolTypes";
 
 const STORAGE_KEY = "silk-db-studio.aiChat.session.v1";
+const MAX_TOOL_ROUNDS = 6;
 
 type AiChatListener = () => void;
 type FocusListener = () => void;
@@ -36,7 +43,6 @@ function loadPersistedMessages(): AiChatUiMessage[] {
       )
       .map((item) => ({
         ...item,
-        // Never restore mid-stream state.
         status: item.status === "error" ? "error" : "done",
       }));
   } catch {
@@ -51,6 +57,23 @@ function persistMessages(messages: AiChatUiMessage[]): void {
   } catch {
     // Quota / private mode — ignore.
   }
+}
+
+function mergeUsage(
+  current: AiTokenUsage | undefined,
+  next: AiTokenUsage | undefined,
+): AiTokenUsage | undefined {
+  if (!current && !next) return undefined;
+  return {
+    inputTokens: (current?.inputTokens ?? 0) + (next?.inputTokens ?? 0) || undefined,
+    outputTokens:
+      (current?.outputTokens ?? 0) + (next?.outputTokens ?? 0) || undefined,
+  };
+}
+
+function formatToolStatus(names: string[]): string {
+  const unique = [...new Set(names)];
+  return `${I18nService.t("app.ai.usingTools")}: ${unique.join(", ")}`;
 }
 
 class AiChatServiceImpl {
@@ -170,21 +193,6 @@ class AiChatServiceImpl {
     this.error = null;
     this.fireDidChange();
 
-    const history: AiChatMessage[] = [
-      { role: "system", content: buildAiSystemPrompt() },
-      ...this.messages
-        .filter(
-          (message) =>
-            message.id !== assistantMessage.id &&
-            message.content.trim().length > 0 &&
-            message.status !== "error",
-        )
-        .map((message) => ({
-          role: message.role,
-          content: message.content,
-        })),
-    ];
-
     const controller = new AbortController();
     this.abortController = controller;
     const startedAt = performance.now();
@@ -195,18 +203,122 @@ class AiChatServiceImpl {
     let errorCode: AiProviderError["code"] | undefined;
 
     try {
-      for await (const chunk of streamConfiguredChat(history, {
-        signal: controller.signal,
-      })) {
-        if (chunk.text) {
-          this.patchAssistant(assistantMessage.id, (current) => ({
-            ...current,
-            content: current.content + chunk.text,
-          }));
+      const tools = AiToolHost.getTools();
+      if (tools.length === 0) {
+        const history = [
+          { role: "system" as const, content: await buildAiSystemPrompt() },
+          ...this.messages
+            .filter(
+              (message) =>
+                message.id !== assistantMessage.id &&
+                message.content.trim().length > 0 &&
+                message.status !== "error",
+            )
+            .map((message) => ({
+              role: message.role,
+              content: message.content,
+            })),
+        ];
+        for await (const chunk of streamConfiguredChat(history, {
+          signal: controller.signal,
+        })) {
+          if (chunk.text) {
+            this.patchAssistant(assistantMessage.id, (current) => ({
+              ...current,
+              content: current.content + chunk.text,
+            }));
+          }
+          if (chunk.usage) {
+            usage = chunk.usage;
+          }
         }
-        if (chunk.usage) {
-          usage = chunk.usage;
+      } else {
+        const wire: AiWireMessage[] = [
+          { role: "system", content: await buildAiSystemPrompt() },
+          ...this.messages
+            .filter(
+              (message) =>
+                message.id !== assistantMessage.id &&
+                message.content.trim().length > 0 &&
+                message.status !== "error",
+            )
+            .map((message) => ({
+              role: message.role as "user" | "assistant",
+              content: message.content,
+            })),
+        ];
+
+        let finalText = "";
+        for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+          const turn = await completeConfiguredTurn(wire, {
+            signal: controller.signal,
+            tools,
+          });
+          usage = mergeUsage(usage, turn.usage);
+
+          if (turn.toolCalls && turn.toolCalls.length > 0) {
+            this.patchAssistant(assistantMessage.id, (current) => ({
+              ...current,
+              content: formatToolStatus(turn.toolCalls!.map((call) => call.name)),
+            }));
+
+            wire.push({
+              role: "assistant",
+              content: turn.text,
+              toolCalls: turn.toolCalls,
+            });
+
+            for (const call of turn.toolCalls) {
+              if (controller.signal.aborted) {
+                throw new AiProviderError("Request cancelled.", {
+                  code: "cancelled",
+                  provider,
+                });
+              }
+              let result: string;
+              try {
+                result = await AiToolHost.executeTool(
+                  call.name,
+                  call.arguments,
+                  controller.signal,
+                );
+              } catch (error) {
+                result = JSON.stringify({
+                  error:
+                    error instanceof Error
+                      ? error.message
+                      : "Tool execution failed.",
+                });
+              }
+              wire.push({
+                role: "tool",
+                toolCallId: call.id,
+                name: call.name,
+                content: result,
+              });
+            }
+            continue;
+          }
+
+          finalText = turn.text;
+          break;
         }
+
+        if (!finalText.trim()) {
+          // Last resort: one more turn without tools if the model only called tools.
+          const turn = await completeConfiguredTurn(wire, {
+            signal: controller.signal,
+          });
+          usage = mergeUsage(usage, turn.usage);
+          finalText = turn.text;
+        }
+
+        this.patchAssistant(assistantMessage.id, (current) => ({
+          ...current,
+          content: finalText.trim()
+            ? finalText
+            : I18nService.t("app.ai.emptyToolResponse"),
+        }));
       }
 
       this.patchAssistant(assistantMessage.id, (current) => ({

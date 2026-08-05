@@ -293,6 +293,85 @@ final class OracleDialect implements DbDialect {
     return result;
   }
 
+  @Override
+  public void collectObjectDependencies(
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody,
+      ArrayNode dependencies)
+      throws SQLException {
+    String normalizedKind = kind.trim().toLowerCase(java.util.Locale.ROOT);
+    if (!normalizedKind.equals("procedure")
+        && !normalizedKind.equals("function")
+        && !normalizedKind.equals("package")) {
+      throw new RuntimeException(
+          "Dependencies are only supported for procedure, function, and package.");
+    }
+
+    java.util.List<String> oracleTypes =
+        MetadataDdl.oracleDependencyTypes(normalizedKind, packageBody);
+  outer:
+    for (String schema : distinctCases(schemaName)) {
+      for (String object : distinctCases(objectName)) {
+        collectAllDependencies(connection, schema, object, oracleTypes, dependencies);
+        if (dependencies.size() > 0) {
+          break outer;
+        }
+      }
+    }
+  }
+
+  private static void collectAllDependencies(
+      Connection connection,
+      String schema,
+      String object,
+      java.util.List<String> oracleTypes,
+      ArrayNode dependencies)
+      throws SQLException {
+    String placeholders =
+        String.join(", ", java.util.Collections.nCopies(oracleTypes.size(), "?"));
+    String sql =
+        "SELECT DISTINCT REFERENCED_OWNER, REFERENCED_NAME, REFERENCED_TYPE, DEPENDENCY_TYPE "
+            + "FROM ALL_DEPENDENCIES "
+            + "WHERE OWNER = ? AND NAME = ? AND TYPE IN ("
+            + placeholders
+            + ") "
+            + "ORDER BY REFERENCED_TYPE, REFERENCED_OWNER, REFERENCED_NAME";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      int index = 1;
+      statement.setString(index++, schema);
+      statement.setString(index++, object);
+      for (String oracleType : oracleTypes) {
+        statement.setString(index++, oracleType);
+      }
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          String referencedOwner = rs.getString("REFERENCED_OWNER");
+          String referencedName = rs.getString("REFERENCED_NAME");
+          String referencedType = rs.getString("REFERENCED_TYPE");
+          if (referencedOwner == null
+              || referencedOwner.isBlank()
+              || referencedName == null
+              || referencedName.isBlank()
+              || referencedType == null
+              || referencedType.isBlank()) {
+            continue;
+          }
+          ObjectNode entry = dependencies.addObject();
+          entry.put("schema", referencedOwner.trim());
+          entry.put("name", referencedName.trim());
+          entry.put("type", referencedType.trim());
+          String dependencyType = rs.getString("DEPENDENCY_TYPE");
+          if (dependencyType != null && !dependencyType.isBlank()) {
+            entry.put("dependencyType", dependencyType.trim());
+          }
+        }
+      }
+    }
+  }
+
   private static String buildCompileAlterSql(
       String schemaName, String objectName, String kind, Boolean packageBody) {
     String qualified = quoteOracleIdent(schemaName) + "." + quoteOracleIdent(objectName);

@@ -9,6 +9,7 @@ import { EditorConnectionBindingService } from "../connection/editorConnectionBi
 import { QueryHistoryService } from "../query/queryHistoryService";
 
 import { getExplorerSchemas } from "../connection/useConnectionTree";
+import { buildOpenPlsqlContextText } from "./aiPlsqlContextService";
 
 const MAX_SCHEMAS = 30;
 const MAX_OBJECTS_PER_GROUP = 40;
@@ -111,7 +112,7 @@ function buildQueryHistoryText(
   return blocks.length > 0 ? blocks.join("\n") : null;
 }
 
-/** Wire DB Studio connection / Explorer / history into the workbench AI context host. */
+/** Wire DB Studio connection / Explorer / history / PL/SQL into the workbench AI context host. */
 export function configureDbStudioAiContextHost(): void {
   configureAiContextHost({
     getConnectionContext: () => {
@@ -131,5 +132,9 @@ export function configureDbStudioAiContextHost(): void {
     },
     getSchemaSummaryText: buildSchemaSummaryText,
     getRecentQueryHistoryText: buildQueryHistoryText,
+    getOpenPlsqlContextText: async (maxChars) => {
+      const profile = resolveAiContextProfile();
+      return buildOpenPlsqlContextText(profile?.id, maxChars);
+    },
   });
 }

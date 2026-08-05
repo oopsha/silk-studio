@@ -206,6 +206,10 @@ public final class Main {
           response.put("ok", true);
           response.set("result", runtime.compileObject(params));
         }
+        case "connection.dependencies" -> {
+          response.put("ok", true);
+          response.set("result", runtime.listObjectDependencies(params));
+        }
         case "query.execute" -> {
           String sql = params.path("sql").asText("").trim();
           if (sql.isEmpty()) {
@@ -633,6 +637,35 @@ public final class Main {
       }
       return session.dialect.compileObject(
           session.connection, schemaName, objectName, kind, packageBody, MAPPER);
+    }
+
+    ObjectNode listObjectDependencies(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      String schemaName = params.path("schema").asText("").trim();
+      String objectName = params.path("name").asText("").trim();
+      String kind = params.path("kind").asText("").trim().toLowerCase(java.util.Locale.ROOT);
+      if (schemaName.isEmpty()) {
+        throw new RuntimeException("Missing params.schema");
+      }
+      if (objectName.isEmpty()) {
+        throw new RuntimeException("Missing params.name");
+      }
+      if (kind.isEmpty()) {
+        throw new RuntimeException("Missing params.kind");
+      }
+      Boolean packageBody = null;
+      if (params.hasNonNull("packageBody")) {
+        packageBody = params.path("packageBody").asBoolean();
+      }
+
+      ArrayNode dependencies = MAPPER.createArrayNode();
+      session.dialect.collectObjectDependencies(
+          session.connection, schemaName, objectName, kind, packageBody, dependencies);
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.set("dependencies", dependencies);
+      result.put("dialectId", session.dialect.id());
+      return result;
     }
 
     /**

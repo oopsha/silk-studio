@@ -63,4 +63,20 @@ final class MetadataDdl {
       default -> throw new IllegalArgumentException("Unsupported object kind for DDL: " + kind);
     };
   }
+
+  static java.util.List<String> oracleDependencyTypes(String kind, Boolean packageBody) {
+    return switch (kind) {
+      case "procedure" -> java.util.List.of("PROCEDURE");
+      case "function" -> java.util.List.of("FUNCTION");
+      case "package" -> {
+        if (packageBody == null) {
+          yield java.util.List.of("PACKAGE", "PACKAGE BODY");
+        }
+        yield packageBody ? java.util.List.of("PACKAGE BODY") : java.util.List.of("PACKAGE");
+      }
+      default ->
+          throw new IllegalArgumentException(
+              "Unsupported object kind for dependencies: " + kind);
+    };
+  }
 }

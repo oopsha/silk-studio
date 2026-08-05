@@ -142,6 +142,9 @@ export const koMessages = {
       contextSchema: "스키마 컨텍스트 포함",
       contextSelection: "에디터 선택 포함",
       contextHistory: "쿼리 히스토리 포함",
+      contextPlsqlDeps: "열린 PL/SQL 의존성 포함",
+      contextPlsqlDepsDescription:
+        "PL/SQL 객체 탭이 열려 있으면 소스·컴파일 시점 의존성·참조 테이블/뷰 컬럼을 컨텍스트에 붙입니다.",
       allowExecute: "SQL 실행 허용",
       allowExecuteDescription:
         "켜면 어시스턴트가 검토 후 SQL 실행을 제안할 수 있습니다.",
@@ -663,6 +666,8 @@ export const koMessages = {
       you: "나",
       assistant: "어시스턴트",
       thinking: "생각 중…",
+      usingTools: "도구 사용 중",
+      emptyToolResponse: "데이터베이스 메타데이터를 조회한 뒤 응답이 비어 있습니다.",
       placeholderReady:
         "무엇이든 물어보세요… (Enter 전송, Shift+Enter 줄바꿈)",
       placeholderDisabled: "채팅하려면 Settings에서 AI를 구성하세요",
