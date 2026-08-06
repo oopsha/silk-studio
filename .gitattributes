@@ -1,0 +1,28 @@
+# Normalize text files to LF in the repository and on checkout.
+# Prevents Windows autocrlf phantom "modified" files (e.g. Cargo.toml).
+* text=auto eol=lf
+
+# Known binaries — do not convert line endings
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.bmp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.otf binary
+*.zip binary
+*.gz binary
+*.7z binary
+*.jar binary
+*.class binary
+*.dll binary
+*.exe binary
+*.so binary
+*.dylib binary
+*.pdf binary
+*.snk binary
