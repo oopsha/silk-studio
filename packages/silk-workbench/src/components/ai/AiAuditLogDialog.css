@@ -1,0 +1,179 @@
+.ai-audit-log-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 6650;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background-color: rgba(0, 0, 0, 0.45);
+}
+
+.ai-audit-log-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  max-height: min(80vh, 640px);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background-color: var(--color-surface);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.ai-audit-log-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ai-audit-log-dialog__header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.ai-audit-log-dialog__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--color-foreground);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.ai-audit-log-dialog__close:hover {
+  background-color: var(--color-toolbar-hover-background);
+}
+
+.ai-audit-log-dialog__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 12px 16px;
+  overflow: hidden;
+}
+
+.ai-audit-log-dialog__summary {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-foreground);
+}
+
+.ai-audit-log-dialog__note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-description);
+}
+
+.ai-audit-log-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-audit-log-dialog__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.ai-audit-log-dialog__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ai-audit-log-dialog__item:last-child {
+  border-bottom: none;
+}
+
+.ai-audit-log-dialog__item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--color-description);
+}
+
+.ai-audit-log-dialog__item-detail {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-foreground);
+  word-break: break-word;
+}
+
+.ai-audit-log-dialog__status {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ai-audit-log-dialog__status--success {
+  color: var(--color-foreground);
+}
+
+.ai-audit-log-dialog__status--error {
+  color: var(--vscode-errorForeground, #f48771);
+}
+
+.ai-audit-log-dialog__status--cancelled {
+  color: var(--color-description);
+}
+
+.ai-audit-log-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.ai-audit-log-dialog__button {
+  padding: 5px 12px;
+  color: var(--color-foreground);
+  background-color: var(--color-input-background);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ai-audit-log-dialog__button:hover:not(:disabled) {
+  background-color: var(--color-toolbar-hover-background);
+}
+
+.ai-audit-log-dialog__button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ai-audit-log-dialog__button--primary {
+  color: var(--color-button-foreground, #fff);
+  background-color: var(--color-button-background, #0e639c);
+  border-color: var(--color-button-background, #0e639c);
+}
+
+.ai-audit-log-dialog__button--primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}

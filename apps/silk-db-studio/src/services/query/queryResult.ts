@@ -6,6 +6,9 @@ export type {
 /** Internal row key — not part of result columns. */
 export const QUERY_RESULT_ROW_INDEX_KEY = "__rowIndex";
 
+/** Grid-only row number column (display index, not a result field). */
+export const QUERY_RESULT_ROW_NUMBER_COL_ID = "__rowNum";
+
 export type QueryResultRow = Record<string, string | null>;
 
 export function toQueryResultRows(

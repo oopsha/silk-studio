@@ -3,7 +3,11 @@ import type { PlsqlSnapshotEntry } from "./plsqlSnapshotStorage";
 
 export type PlsqlSnapshotDialogMode = "history" | "diff" | "confirm";
 
-export type PlsqlSnapshotConfirmKind = "rollback" | "reload";
+export type PlsqlSnapshotConfirmKind =
+  | "rollback"
+  | "reload"
+  | "delete"
+  | "clearAll";
 
 export type PlsqlSnapshotDialogRequest = {
   mode: PlsqlSnapshotDialogMode;

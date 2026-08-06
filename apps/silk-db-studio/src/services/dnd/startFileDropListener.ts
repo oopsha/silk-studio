@@ -7,7 +7,10 @@ import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 
 /**
  * Listen for OS file drops onto the window and open text files as editor tabs.
- * Desktop: Tauri webview drag-drop (paths). Browser: HTML5 File drop (name-only).
+ * Desktop: Tauri native drag-drop (absolute paths) — keep dragDropEnabled true
+ * so File>Open and OS drop share the same path/save/watch behavior. In-app UI
+ * DnD (tabs, explorer) uses pointer events, not HTML5, for WebView2 coexistence.
+ * Browser: HTML5 File drop (name-only).
  */
 export function startFileDropListener(): () => void {
   if (isTauri()) {

@@ -179,19 +179,28 @@ function ExplorerSearchQuickPick() {
         schemaName: pick.schemaName,
         object: pick.object,
       };
-      const primary = defaultObjectAction(pick.object.kind);
+      const profile = ConnectionService.getProfile(pick.profileId);
+      const primary = defaultObjectAction(
+        pick.object.kind,
+        profile?.driverId,
+      );
       let commandId =
         primary === "openData"
           ? EXPLORER_COMMANDS.openData
-          : EXPLORER_COMMANDS.viewDdl;
+          : primary === "openSource"
+            ? EXPLORER_COMMANDS.openSource
+            : EXPLORER_COMMANDS.viewDdl;
 
       if (alternate) {
+        // Opposite of the primary action (data ↔ DDL, source ↔ DDL).
         commandId =
           primary === "openData"
             ? EXPLORER_COMMANDS.viewDdl
-            : pick.object.kind === "table" || pick.object.kind === "view"
-              ? EXPLORER_COMMANDS.openData
-              : EXPLORER_COMMANDS.viewDdl;
+            : primary === "openSource"
+              ? EXPLORER_COMMANDS.viewDdl
+              : pick.object.kind === "table" || pick.object.kind === "view"
+                ? EXPLORER_COMMANDS.openData
+                : EXPLORER_COMMANDS.viewDdl;
       }
 
       close();

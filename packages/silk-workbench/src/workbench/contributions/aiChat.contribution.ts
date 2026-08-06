@@ -3,6 +3,7 @@ import { MenuId } from "../../platform/actions/menuId";
 import { MenuRegistry } from "../../platform/actions/menuRegistry";
 import { KeybindingsRegistry } from "../../platform/keybinding/keybindingRegistry";
 import { LayoutService } from "../../services/layout/layoutService";
+import { AiAuditLogDialogService } from "../../services/ai/aiAuditLogDialogService";
 import { AiChatService } from "../../services/ai/aiChatService";
 
 CommandsRegistry.registerCommand("silk.ai.focusChat", () => {
@@ -13,6 +14,10 @@ CommandsRegistry.registerCommand("silk.ai.focusChat", () => {
   });
 });
 
+CommandsRegistry.registerCommand("silk.ai.showCallLog", () => {
+  AiAuditLogDialogService.show();
+});
+
 MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
   command: {
     id: "silk.ai.focusChat",
@@ -20,6 +25,15 @@ MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
   },
   group: "3_ai",
   order: 10,
+});
+
+MenuRegistry.appendMenuItem(MenuId.MenubarHelpMenu, {
+  command: {
+    id: "silk.ai.showCallLog",
+    title: { value: "AI Call Log", mnemonicTitle: "AI &&Call Log" },
+  },
+  group: "2_diagnostics",
+  order: 30,
 });
 
 KeybindingsRegistry.registerKeybinding("silk.ai.focusChat", "Ctrl+Shift+A");

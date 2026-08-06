@@ -11,7 +11,9 @@ import {
 import { PlsqlSnapshotDialogService } from "./plsqlSnapshotDialogService";
 import {
   appendPlsqlSnapshot,
+  clearPlsqlSnapshots,
   loadPlsqlSnapshots,
+  removePlsqlSnapshot,
   type PlsqlSnapshotEntry,
   type PlsqlSnapshotReason,
 } from "./plsqlSnapshotStorage";
@@ -151,6 +153,65 @@ export function openPlsqlRollbackConfirm(
     snapshot,
     confirmKind: "rollback",
   });
+}
+
+export function openPlsqlDeleteConfirm(
+  snapshot: PlsqlSnapshotEntry,
+  tabId?: string,
+): void {
+  const current = requireActivePlsqlTab(tabId);
+  const existing = PlsqlSnapshotDialogService.getRequest();
+  if (existing && existing.tabId === current.tabId) {
+    PlsqlSnapshotDialogService.setMode("confirm", {
+      snapshot,
+      confirmKind: "delete",
+      bufferContent: current.content,
+    });
+    return;
+  }
+  PlsqlSnapshotDialogService.open({
+    mode: "confirm",
+    tabId: current.tabId,
+    ref: current.ref,
+    objectLabel: current.label,
+    bufferContent: current.content,
+    snapshot,
+    confirmKind: "delete",
+  });
+}
+
+export function openPlsqlClearAllConfirm(tabId?: string): void {
+  const current = requireActivePlsqlTab(tabId);
+  const existing = PlsqlSnapshotDialogService.getRequest();
+  if (existing && existing.tabId === current.tabId) {
+    PlsqlSnapshotDialogService.setMode("confirm", {
+      snapshot: undefined,
+      confirmKind: "clearAll",
+      bufferContent: current.content,
+    });
+    return;
+  }
+  PlsqlSnapshotDialogService.open({
+    mode: "confirm",
+    tabId: current.tabId,
+    ref: current.ref,
+    objectLabel: current.label,
+    bufferContent: current.content,
+    confirmKind: "clearAll",
+  });
+}
+
+export function deletePlsqlSnapshotEntry(
+  ref: PlsqlEditorRef,
+  snapshotId: string,
+): void {
+  if (!removePlsqlSnapshot(ref, snapshotId)) {
+    throw new Error("Snapshot not found.");
+  }
+}
+
+export function clearAllPlsqlSnapshots(ref: PlsqlEditorRef): void {
+  clearPlsqlSnapshots(ref);
 }
 
 export function openPlsqlReloadConfirm(tabId?: string): void {

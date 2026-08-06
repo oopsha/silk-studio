@@ -11,97 +11,10 @@ import { useConfiguration } from "../../../platform/configuration/useConfigurati
 import { useI18n } from "../../../platform/i18n/useI18n";
 import { AI_PROVIDER_LABELS } from "../../../services/settings/aiSettingsConstants";
 import { AiChatService } from "../../../services/ai/aiChatService";
-import type { AiChatUiMessage } from "../../../services/ai/aiChatTypes";
-import { AiSqlProposalHost } from "../../../services/ai/aiSqlProposalHost";
-import { extractSqlFromMarkdown } from "../../../services/ai/extractSqlFromMarkdown";
 import { useAiChat } from "../../../services/ai/useAiChat";
 import { useAiReadyState } from "../../../services/ai/useAiReadyState";
 import { AiChatMarkdown } from "./AiChatMarkdown";
 import "./SecondarySidebar.css";
-
-function previewSql(sql: string): string {
-  const oneLine = sql.replace(/\s+/g, " ").trim();
-  return oneLine.length > 96 ? `${oneLine.slice(0, 95)}…` : oneLine;
-}
-
-function ProposedSqlActions({ message }: { message: AiChatUiMessage }) {
-  const { t } = useI18n();
-  if (message.role !== "assistant" || message.status !== "done") {
-    return null;
-  }
-
-  const blocks = extractSqlFromMarkdown(message.content);
-  if (blocks.length === 0) return null;
-
-  return (
-    <div className="secondary-sidebar__proposals">
-      {blocks.map((sql, index) => {
-        const risk = AiSqlProposalHost.getSqlRisk(sql);
-        const key = `${message.id}-sql-${index}`;
-        return (
-          <div key={key} className="secondary-sidebar__proposal">
-            <div className="secondary-sidebar__proposal-meta">
-              <span className="secondary-sidebar__proposal-label">
-                SQL{blocks.length > 1 ? ` ${index + 1}` : ""}
-              </span>
-              {risk.isWrite ? (
-                <span
-                  className="secondary-sidebar__proposal-badge"
-                  title={
-                    risk.readOnly
-                      ? t("app.ai.writeBadgeReadonly")
-                      : t("app.ai.writeBadgeReview")
-                  }
-                >
-                  {t("app.ai.writeBadge")}
-                </span>
-              ) : null}
-            </div>
-            <div className="secondary-sidebar__proposal-preview" title={sql}>
-              {previewSql(sql)}
-            </div>
-            <div className="secondary-sidebar__proposal-actions">
-              <button
-                type="button"
-                className="secondary-sidebar__proposal-button"
-                title={t("app.ai.reviewTitle")}
-                onClick={() => AiSqlProposalHost.reviewProposedSql(sql)}
-              >
-                <Codicon name="diff" />
-                {t("app.ai.review")}
-              </button>
-              <button
-                type="button"
-                className="secondary-sidebar__proposal-button"
-                title={t("app.ai.copySql")}
-                onClick={() => void AiSqlProposalHost.copyProposedSql(sql)}
-              >
-                <Codicon name="copy" />
-                {t("common.copy")}
-              </button>
-              {risk.allowExecute ? (
-                <button
-                  type="button"
-                  className="secondary-sidebar__proposal-button secondary-sidebar__proposal-button--execute"
-                  title={
-                    risk.readOnly && risk.isWrite
-                      ? t("app.ai.executeBlockedReadonly")
-                      : t("app.ai.executeConfirmTitle")
-                  }
-                  disabled={risk.readOnly && risk.isWrite}
-                  onClick={() => void AiSqlProposalHost.executeProposedSql(sql)}
-                >
-                  <Codicon name="play" />
-                  {t("app.ai.executeEllipsis")}
-                </button>
-              ) : null}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 function SecondarySidebar() {
   const { t } = useI18n();
@@ -155,6 +68,17 @@ function SecondarySidebar() {
           {t("workbench.secondarySidebar.aiChat")}
         </span>
         <div className="secondary-sidebar__header-actions">
+          <button
+            type="button"
+            className="secondary-sidebar__icon-button"
+            title={t("app.ai.usage")}
+            aria-label={t("app.ai.usage")}
+            onClick={() =>
+              void CommandService.executeCommand("silk.ai.showCallLog")
+            }
+          >
+            <Codicon name="graph" />
+          </button>
           <button
             type="button"
             className="secondary-sidebar__icon-button"
@@ -220,15 +144,33 @@ function SecondarySidebar() {
                 {message.status === "streaming" ? " · …" : ""}
               </div>
               <div className="secondary-sidebar__message-body">
-                {message.content ? (
-                  <AiChatMarkdown content={message.content} />
+                {message.status === "error" ? (
+                  <div className="secondary-sidebar__message-error">
+                    <p className="secondary-sidebar__message-error-summary">
+                      {t("app.ai.requestFailed")}
+                    </p>
+                    {message.content ? (
+                      <>
+                        <p className="secondary-sidebar__message-error-label">
+                          {t("app.ai.errorDetails")}
+                        </p>
+                        <AiChatMarkdown content={message.content} />
+                      </>
+                    ) : null}
+                  </div>
+                ) : message.content ? (
+                  <AiChatMarkdown
+                    content={message.content}
+                    showSqlActions={
+                      message.role === "assistant" && message.status === "done"
+                    }
+                  />
                 ) : message.status === "streaming" ? (
                   t("app.ai.thinking")
                 ) : (
                   ""
                 )}
               </div>
-              <ProposedSqlActions message={message} />
             </div>
           ))
         )}
@@ -236,7 +178,15 @@ function SecondarySidebar() {
 
       {chat.error && chat.messages.every((m) => m.status !== "error") ? (
         <div className="secondary-sidebar__banner" role="alert">
-          {chat.error}
+          <div className="secondary-sidebar__banner-summary">
+            {t("app.ai.requestFailed")}
+          </div>
+          <div className="secondary-sidebar__banner-details">
+            <span className="secondary-sidebar__banner-details-label">
+              {t("app.ai.errorDetails")}
+            </span>
+            {chat.error}
+          </div>
         </div>
       ) : null}
 

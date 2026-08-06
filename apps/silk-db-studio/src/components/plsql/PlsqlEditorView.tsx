@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { Editor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
+import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
@@ -217,6 +218,7 @@ function PlsqlEditorView() {
               void CommandService.executeCommand("silk.plsql.snapshot.history");
             }}
           >
+            <Codicon name="history" />
             {t("app.plsql.actionHistory")}
           </button>
           <button
@@ -228,6 +230,7 @@ function PlsqlEditorView() {
               void CommandService.executeCommand("silk.plsql.snapshot.take");
             }}
           >
+            <Codicon name="save-all" />
             {t("app.plsql.actionSnapshot")}
           </button>
           <button
@@ -239,6 +242,7 @@ function PlsqlEditorView() {
               void CommandService.executeCommand("silk.plsql.reloadFromDb");
             }}
           >
+            <Codicon name="refresh" />
             {t("app.plsql.actionReload")}
           </button>
           <button
@@ -254,6 +258,7 @@ function PlsqlEditorView() {
               void CommandService.executeCommand("silk.plsql.compile");
             }}
           >
+            <Codicon name="server-process" />
             {t("app.plsql.actionCompile")}
           </button>
           <button
@@ -269,6 +274,7 @@ function PlsqlEditorView() {
               void CommandService.executeCommand("silk.file.save");
             }}
           >
+            <Codicon name="save" />
             {t("app.plsql.actionSave")}
           </button>
         </div>

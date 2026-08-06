@@ -11,9 +11,13 @@ import {
 } from "@silk-studio/editor/themes/dark2026-monaco.ts";
 import { PlsqlSnapshotDialogService } from "../../services/connection/plsqlSnapshotDialogService";
 import {
+  clearAllPlsqlSnapshots,
+  deletePlsqlSnapshotEntry,
   formatPlsqlSnapshotError,
   formatSnapshotTimestamp,
   listPlsqlSnapshots,
+  openPlsqlClearAllConfirm,
+  openPlsqlDeleteConfirm,
   openPlsqlRollbackConfirm,
   openPlsqlSnapshotDiff,
   reloadPlsqlFromDatabase,
@@ -23,6 +27,24 @@ import type { PlsqlSnapshotEntry } from "../../services/connection/plsqlSnapshot
 import { registerSqlLanguages } from "../../services/sql/registerSqlLanguages";
 import "../connections/ExplorerObjectMutationDialog.css";
 import "./PlsqlSnapshotDialog.css";
+
+function renderTemplateWithStrong(
+  template: string,
+  placeholder: "{label}" | "{time}",
+  value: string,
+) {
+  const parts = template.split(placeholder);
+  if (parts.length < 2) {
+    return template.replace(placeholder, value);
+  }
+  return (
+    <>
+      {parts[0]}
+      <strong>{value}</strong>
+      {parts.slice(1).join(placeholder)}
+    </>
+  );
+}
 
 function PlsqlSnapshotDialog() {
   const { t } = useI18n();
@@ -60,9 +82,16 @@ function PlsqlSnapshotDialog() {
     if (!request) return "";
     if (request.mode === "diff") return t("app.plsql.compareWithSnapshot");
     if (request.mode === "confirm") {
-      return request.confirmKind === "reload"
-        ? t("app.plsql.reloadFromDatabase")
-        : t("app.plsql.restoreSnapshot");
+      if (request.confirmKind === "reload") {
+        return t("app.plsql.reloadFromDatabase");
+      }
+      if (request.confirmKind === "delete") {
+        return t("app.plsql.deleteSnapshot");
+      }
+      if (request.confirmKind === "clearAll") {
+        return t("app.plsql.clearAllSnapshots");
+      }
+      return t("app.plsql.restoreSnapshot");
     }
     return t("app.plsql.snapshotDialogTitle");
   }, [request, t]);
@@ -80,7 +109,14 @@ function PlsqlSnapshotDialog() {
     if (busy || !request) return;
     PlsqlSnapshotDialogService.setMode("history", {
       bufferContent: request.bufferContent,
+      snapshot: undefined,
+      confirmKind: undefined,
     });
+  }
+
+  function refreshEntries() {
+    if (!request) return;
+    setEntries(listPlsqlSnapshots(request.ref));
   }
 
   async function handleConfirm() {
@@ -90,8 +126,25 @@ function PlsqlSnapshotDialog() {
     try {
       if (request.confirmKind === "reload") {
         await reloadPlsqlFromDatabase(request.tabId);
-      } else if (request.confirmKind === "rollback" && request.snapshot) {
+        PlsqlSnapshotDialogService.close();
+        return;
+      }
+      if (request.confirmKind === "rollback" && request.snapshot) {
         rollbackPlsqlSnapshot(request.tabId, request.snapshot);
+        PlsqlSnapshotDialogService.close();
+        return;
+      }
+      if (request.confirmKind === "delete" && request.snapshot) {
+        deletePlsqlSnapshotEntry(request.ref, request.snapshot.id);
+        refreshEntries();
+        backToHistory();
+        return;
+      }
+      if (request.confirmKind === "clearAll") {
+        clearAllPlsqlSnapshots(request.ref);
+        refreshEntries();
+        backToHistory();
+        return;
       }
       PlsqlSnapshotDialogService.close();
     } catch (error) {
@@ -106,6 +159,52 @@ function PlsqlSnapshotDialog() {
     defineWorkbenchMonacoThemes(monaco);
     registerSqlLanguages(monaco);
   };
+
+  const confirmSummary = (() => {
+    if (request.mode !== "confirm") return null;
+    if (request.confirmKind === "reload") {
+      return renderTemplateWithStrong(
+        t("app.plsql.reloadConfirm"),
+        "{label}",
+        request.objectLabel,
+      );
+    }
+    if (request.confirmKind === "delete") {
+      return renderTemplateWithStrong(
+        t("app.plsql.deleteConfirm"),
+        "{time}",
+        request.snapshot
+          ? formatSnapshotTimestamp(request.snapshot.createdAt)
+          : "",
+      );
+    }
+    if (request.confirmKind === "clearAll") {
+      return renderTemplateWithStrong(
+        t("app.plsql.clearAllConfirm"),
+        "{label}",
+        request.objectLabel,
+      );
+    }
+    return renderTemplateWithStrong(
+      t("app.plsql.restoreConfirm"),
+      "{time}",
+      request.snapshot
+        ? formatSnapshotTimestamp(request.snapshot.createdAt)
+        : "",
+    );
+  })();
+
+  const confirmPrimaryLabel =
+    request.confirmKind === "reload"
+      ? t("app.plsql.reload")
+      : request.confirmKind === "delete" || request.confirmKind === "clearAll"
+        ? t("common.delete")
+        : t("app.plsql.restore");
+
+  const confirmIsDanger =
+    request.confirmKind === "reload" ||
+    request.confirmKind === "delete" ||
+    request.confirmKind === "clearAll";
 
   return (
     <div
@@ -142,55 +241,80 @@ function PlsqlSnapshotDialog() {
           {request.mode === "history" ? (
             <>
               <p className="explorer-mutation-dialog__summary">
-                Local history for <strong>{request.objectLabel}</strong>
+                {renderTemplateWithStrong(
+                  t("app.plsql.historyForObject"),
+                  "{label}",
+                  request.objectLabel,
+                )}
               </p>
               <p className="explorer-mutation-dialog__hint">
-                Snapshots are stored in this browser only (max 20 per object).
+                {t("app.plsql.snapshotsBrowserOnly")}
               </p>
               {entries.length === 0 ? (
                 <p className="explorer-mutation-dialog__hint">
-                  No snapshots yet. Save to the database or take a manual
-                  snapshot.
+                  {t("app.plsql.noSnapshotsYet")}
                 </p>
               ) : (
-                <ul className="plsql-snapshot-dialog__list">
-                  {entries.map((entry) => (
-                    <li key={entry.id} className="plsql-snapshot-dialog__row">
-                      <div className="plsql-snapshot-dialog__meta">
-                        <span className="plsql-snapshot-dialog__when">
-                          {formatSnapshotTimestamp(entry.createdAt)}
-                        </span>
-                        <span className="plsql-snapshot-dialog__reason">
-                          {entry.reason === "save"
-                            ? t("app.plsql.reasonSave")
-                            : t("app.plsql.reasonManual")}
-                        </span>
-                      </div>
-                      <div className="plsql-snapshot-dialog__row-actions">
-                        <button
-                          type="button"
-                          className="explorer-mutation-dialog__button"
-                          disabled={busy}
-                          onClick={() =>
-                            openPlsqlSnapshotDiff(entry, request.tabId)
-                          }
-                        >
-                          Diff
-                        </button>
-                        <button
-                          type="button"
-                          className="explorer-mutation-dialog__button explorer-mutation-dialog__button--primary"
-                          disabled={busy}
-                          onClick={() =>
-                            openPlsqlRollbackConfirm(entry, request.tabId)
-                          }
-                        >
-                          {t("app.plsql.restore")}
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <div className="plsql-snapshot-dialog__toolbar">
+                    <button
+                      type="button"
+                      className="explorer-mutation-dialog__button"
+                      disabled={busy}
+                      onClick={() => openPlsqlClearAllConfirm(request.tabId)}
+                    >
+                      {t("app.plsql.clearAllSnapshots")}
+                    </button>
+                  </div>
+                  <ul className="plsql-snapshot-dialog__list">
+                    {entries.map((entry) => (
+                      <li key={entry.id} className="plsql-snapshot-dialog__row">
+                        <div className="plsql-snapshot-dialog__meta">
+                          <span className="plsql-snapshot-dialog__when">
+                            {formatSnapshotTimestamp(entry.createdAt)}
+                          </span>
+                          <span className="plsql-snapshot-dialog__reason">
+                            {entry.reason === "save"
+                              ? t("app.plsql.reasonSave")
+                              : t("app.plsql.reasonManual")}
+                          </span>
+                        </div>
+                        <div className="plsql-snapshot-dialog__row-actions">
+                          <button
+                            type="button"
+                            className="explorer-mutation-dialog__button"
+                            disabled={busy}
+                            onClick={() =>
+                              openPlsqlSnapshotDiff(entry, request.tabId)
+                            }
+                          >
+                            {t("app.plsql.diff")}
+                          </button>
+                          <button
+                            type="button"
+                            className="explorer-mutation-dialog__button explorer-mutation-dialog__button--primary"
+                            disabled={busy}
+                            onClick={() =>
+                              openPlsqlRollbackConfirm(entry, request.tabId)
+                            }
+                          >
+                            {t("app.plsql.restore")}
+                          </button>
+                          <button
+                            type="button"
+                            className="explorer-mutation-dialog__button explorer-mutation-dialog__button--danger"
+                            disabled={busy}
+                            onClick={() =>
+                              openPlsqlDeleteConfirm(entry, request.tabId)
+                            }
+                          >
+                            {t("common.delete")}
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
             </>
           ) : null}
@@ -198,8 +322,10 @@ function PlsqlSnapshotDialog() {
           {request.mode === "diff" && request.snapshot ? (
             <>
               <p className="explorer-mutation-dialog__hint">
-                Left: snapshot ({formatSnapshotTimestamp(request.snapshot.createdAt)})
-                · Right: current buffer
+                {t("app.plsql.diffHint").replace(
+                  "{time}",
+                  formatSnapshotTimestamp(request.snapshot.createdAt),
+                )}
               </p>
               <div className="plsql-snapshot-dialog__diff">
                 <DiffEditor
@@ -224,25 +350,7 @@ function PlsqlSnapshotDialog() {
           ) : null}
 
           {request.mode === "confirm" ? (
-            <p className="explorer-mutation-dialog__summary">
-              {request.confirmKind === "reload" ? (
-                <>
-                  Discard the current buffer for{" "}
-                  <strong>{request.objectLabel}</strong> and reload source from
-                  the database?
-                </>
-              ) : (
-                <>
-                  Replace the current buffer with the snapshot from{" "}
-                  <strong>
-                    {request.snapshot
-                      ? formatSnapshotTimestamp(request.snapshot.createdAt)
-                      : ""}
-                  </strong>
-                  ? The tab will be marked dirty until you save.
-                </>
-              )}
-            </p>
+            <p className="explorer-mutation-dialog__summary">{confirmSummary}</p>
           ) : null}
 
           {errorMessage ? (
@@ -296,10 +404,10 @@ function PlsqlSnapshotDialog() {
                 className="explorer-mutation-dialog__button"
                 disabled={busy}
                 onClick={() => {
-                  if (request.confirmKind === "rollback") {
-                    backToHistory();
-                  } else {
+                  if (request.confirmKind === "reload") {
                     close();
+                  } else {
+                    backToHistory();
                   }
                 }}
               >
@@ -308,18 +416,14 @@ function PlsqlSnapshotDialog() {
               <button
                 type="button"
                 className={`explorer-mutation-dialog__button${
-                  request.confirmKind === "reload"
+                  confirmIsDanger
                     ? " explorer-mutation-dialog__button--danger"
                     : " explorer-mutation-dialog__button--primary"
                 }`}
                 disabled={busy}
                 onClick={() => void handleConfirm()}
               >
-                {busy
-                  ? t("common.working")
-                  : request.confirmKind === "reload"
-                    ? t("app.plsql.reload")
-                    : t("app.plsql.restore")}
+                {busy ? t("common.working") : confirmPrimaryLabel}
               </button>
             </>
           ) : null}

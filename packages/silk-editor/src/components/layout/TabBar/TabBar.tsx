@@ -3,7 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
-  type DragEvent as ReactDragEvent,
+  type PointerEvent as ReactPointerEvent,
   type WheelEvent,
 } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
@@ -16,7 +16,8 @@ import TabBarContextMenu from "./TabBarContextMenu";
 import TabBarMoreMenu from "./TabBarMoreMenu";
 import "./TabBar.css";
 
-const TAB_DRAG_MIME = "application/x-silk-editor-tab";
+/** Ignore tiny pointer jitter before starting a reorder drag. */
+const DRAG_THRESHOLD_PX = 4;
 
 type ContextMenuState = {
   tabId: string;
@@ -38,11 +39,29 @@ type DropIndicator = {
   edge: "before" | "after";
 };
 
+type PointerDragSession = {
+  tabId: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  active: boolean;
+  suppressClick: boolean;
+};
+
+/**
+ * Pointer-based tab reorder (not HTML5 DnD).
+ * Tauri keeps native OS file-drop; HTML5 DnD cannot coexist on Windows WebView2.
+ */
 function TabBar({ commands }: TabBarProps) {
   const tabs = useEditorTabs();
   const activeTab = useActiveEditor();
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const moreActionsRef = useRef<HTMLButtonElement>(null);
+  const dragSessionRef = useRef<PointerDragSession | null>(null);
+  const suppressClickRef = useRef(false);
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
@@ -71,6 +90,135 @@ function TabBar({ commands }: TabBarProps) {
     activeElement?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeTab?.id]);
 
+  const clearDragVisuals = useCallback(() => {
+    setDraggingTabId(null);
+    setDropIndicator(null);
+  }, []);
+
+  const resolveIndicatorAtPoint = useCallback(
+    (clientX: number, sourceId: string): DropIndicator | null => {
+      const container = tabsContainerRef.current;
+      const currentTabs = tabsRef.current;
+      if (!container || currentTabs.length === 0) return null;
+
+      const tabElements = Array.from(
+        container.querySelectorAll<HTMLElement>("[data-tab-id]"),
+      );
+      if (tabElements.length === 0) return null;
+
+      const firstRect = tabElements[0].getBoundingClientRect();
+      const lastRect =
+        tabElements[tabElements.length - 1].getBoundingClientRect();
+
+      if (clientX <= firstRect.left) {
+        return { tabId: currentTabs[0].id, edge: "before" };
+      }
+      if (clientX >= lastRect.right) {
+        return {
+          tabId: currentTabs[currentTabs.length - 1].id,
+          edge: "after",
+        };
+      }
+
+      for (const el of tabElements) {
+        const tabId = el.dataset.tabId;
+        if (!tabId || tabId === sourceId) continue;
+        const rect = el.getBoundingClientRect();
+        if (clientX < rect.left || clientX > rect.right) continue;
+        const mid = rect.left + rect.width / 2;
+        return {
+          tabId,
+          edge: clientX < mid ? "before" : "after",
+        };
+      }
+
+      return null;
+    },
+    [],
+  );
+
+  const commitReorder = useCallback(
+    (sourceId: string, indicator: DropIndicator) => {
+      const currentTabs = tabsRef.current;
+      const fromIndex = currentTabs.findIndex((tab) => tab.id === sourceId);
+      const targetIndex = currentTabs.findIndex(
+        (tab) => tab.id === indicator.tabId,
+      );
+      if (fromIndex === -1 || targetIndex === -1) return;
+
+      let toIndex =
+        indicator.edge === "before" ? targetIndex : targetIndex + 1;
+      if (fromIndex < toIndex) {
+        toIndex -= 1;
+      }
+
+      EditorService.moveTab(sourceId, toIndex);
+      EditorService.setActiveTab(sourceId);
+    },
+    [],
+  );
+
+  const endPointerDrag = useCallback(
+    (session: PointerDragSession, clientX: number) => {
+      if (session.active) {
+        suppressClickRef.current = true;
+        const indicator = resolveIndicatorAtPoint(clientX, session.tabId);
+        if (indicator) {
+          commitReorder(session.tabId, indicator);
+        }
+      }
+      dragSessionRef.current = null;
+      clearDragVisuals();
+    },
+    [clearDragVisuals, commitReorder, resolveIndicatorAtPoint],
+  );
+
+  useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      const session = dragSessionRef.current;
+      if (!session || event.pointerId !== session.pointerId) return;
+
+      const dx = event.clientX - session.startX;
+      const dy = event.clientY - session.startY;
+      if (
+        !session.active &&
+        dx * dx + dy * dy >= DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX
+      ) {
+        session.active = true;
+        session.suppressClick = true;
+        setDraggingTabId(session.tabId);
+      }
+
+      if (!session.active) return;
+
+      event.preventDefault();
+      const indicator = resolveIndicatorAtPoint(event.clientX, session.tabId);
+      setDropIndicator(indicator);
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      const session = dragSessionRef.current;
+      if (!session || event.pointerId !== session.pointerId) return;
+      endPointerDrag(session, event.clientX);
+    };
+
+    const onPointerCancel = (event: PointerEvent) => {
+      const session = dragSessionRef.current;
+      if (!session || event.pointerId !== session.pointerId) return;
+      dragSessionRef.current = null;
+      clearDragVisuals();
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+    };
+  }, [clearDragVisuals, endPointerDrag, resolveIndicatorAtPoint]);
+
   function handleCloseTab(event: React.MouseEvent, tabId: string) {
     event.stopPropagation();
     EditorService.closeTab(tabId);
@@ -87,66 +235,29 @@ function TabBar({ commands }: TabBarProps) {
     setMoreMenuOpen((open) => !open);
   }
 
-  function handleTabDragStart(event: ReactDragEvent, tabId: string) {
-    event.dataTransfer.setData(TAB_DRAG_MIME, tabId);
-    event.dataTransfer.setData("text/plain", tabId);
-    event.dataTransfer.effectAllowed = "move";
-    setDraggingTabId(tabId);
-    setDropIndicator(null);
+  function handleTabPointerDown(
+    event: ReactPointerEvent<HTMLDivElement>,
+    tabId: string,
+  ) {
+    if (event.button !== 0) return;
+    if ((event.target as HTMLElement).closest(".tab-bar__close")) return;
+
+    dragSessionRef.current = {
+      tabId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false,
+      suppressClick: false,
+    };
   }
 
-  function handleTabDragEnd() {
-    setDraggingTabId(null);
-    setDropIndicator(null);
-  }
-
-  function resolveDropEdge(
-    event: ReactDragEvent,
-    element: HTMLElement,
-  ): "before" | "after" {
-    const rect = element.getBoundingClientRect();
-    const mid = rect.left + rect.width / 2;
-    return event.clientX < mid ? "before" : "after";
-  }
-
-  function handleTabDragOver(event: ReactDragEvent, targetTabId: string) {
-    if (!draggingTabId || draggingTabId === targetTabId) return;
-    if (!Array.from(event.dataTransfer.types).includes(TAB_DRAG_MIME)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    const edge = resolveDropEdge(event, event.currentTarget as HTMLElement);
-    setDropIndicator({ tabId: targetTabId, edge });
-  }
-
-  function handleTabDrop(event: ReactDragEvent, targetTabId: string) {
-    event.preventDefault();
-    const sourceId =
-      event.dataTransfer.getData(TAB_DRAG_MIME) || draggingTabId;
-    if (!sourceId || sourceId === targetTabId) {
-      handleTabDragEnd();
+  function handleTabClick(tabId: string) {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
       return;
     }
-
-    const edge =
-      dropIndicator?.tabId === targetTabId
-        ? dropIndicator.edge
-        : resolveDropEdge(event, event.currentTarget as HTMLElement);
-
-    const fromIndex = tabs.findIndex((tab) => tab.id === sourceId);
-    const targetIndex = tabs.findIndex((tab) => tab.id === targetTabId);
-    if (fromIndex === -1 || targetIndex === -1) {
-      handleTabDragEnd();
-      return;
-    }
-
-    let toIndex = edge === "before" ? targetIndex : targetIndex + 1;
-    if (fromIndex < toIndex) {
-      toIndex -= 1;
-    }
-
-    EditorService.moveTab(sourceId, toIndex);
-    EditorService.setActiveTab(sourceId);
-    handleTabDragEnd();
+    EditorService.setActiveTab(tabId);
   }
 
   return (
@@ -172,7 +283,6 @@ function TabBar({ commands }: TabBarProps) {
                 className={`tab-bar__tab${isActive ? " tab-bar__tab--active" : ""}${tab.isPreview ? " tab-bar__tab--preview" : ""}${tab.isDirty ? " tab-bar__tab--dirty" : ""}${draggingTabId === tab.id ? " tab-bar__tab--dragging" : ""}${dropBefore ? " tab-bar__tab--drop-before" : ""}${dropAfter ? " tab-bar__tab--drop-after" : ""}`}
                 role="tab"
                 aria-selected={isActive}
-                draggable
                 title={
                   tab.tooltip ??
                   (tab.description
@@ -181,11 +291,8 @@ function TabBar({ commands }: TabBarProps) {
                       }`
                     : (tab.uri ?? tab.label))
                 }
-                onDragStart={(event) => handleTabDragStart(event, tab.id)}
-                onDragEnd={handleTabDragEnd}
-                onDragOver={(event) => handleTabDragOver(event, tab.id)}
-                onDrop={(event) => handleTabDrop(event, tab.id)}
-                onClick={() => EditorService.setActiveTab(tab.id)}
+                onPointerDown={(event) => handleTabPointerDown(event, tab.id)}
+                onClick={() => handleTabClick(tab.id)}
                 onAuxClick={(event) => handleAuxClick(event, tab.id)}
                 onDoubleClick={() => {
                   if (tab.isPreview) {
@@ -227,7 +334,7 @@ function TabBar({ commands }: TabBarProps) {
                     className="tab-bar__close"
                     aria-label={`Close ${tab.label}`}
                     onClick={(event) => handleCloseTab(event, tab.id)}
-                    onMouseDown={(event) => event.stopPropagation()}
+                    onPointerDown={(event) => event.stopPropagation()}
                   >
                     <Codicon name="close" />
                   </button>

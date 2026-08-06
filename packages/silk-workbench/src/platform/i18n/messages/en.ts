@@ -151,18 +151,10 @@ export const enMessages = {
       allowExecuteDescription:
         "When enabled, the assistant may propose running SQL after review.",
       allowExecuteHint: "Allow the assistant to propose SQL execution.",
-      auditLog: "AI call log",
-      auditEmpty: "No AI calls recorded yet.",
-      auditSummary: "{n} call(s) · est. total {cost} (approx.)",
-      auditNote:
-        "Stores time, provider, model, tokens, and rough cost locally. Prompts and API keys are never logged. Prices are estimates only.",
-      auditExport: "Export JSON",
-      auditClear: "Clear log",
-      auditClearConfirm: "Clear all AI audit log entries?",
-      auditKindTest: "Test",
-      auditKindChat: "Chat",
-      auditTokensLine: "tokens in/out {tokens} · est. {cost}",
-      auditShowingLatest: "Showing latest {n}. Export JSON for the full ring buffer.",
+      debugDumpHttp: "Dump AI HTTP (temporary)",
+      debugDumpHttpDescription:
+        "Developer aid. When on, opens Gemini generateContent request/response JSON in an editor tab. API keys are never included.",
+      debugDumpHttpHint: "Open request/response JSON in the editor (temporary).",
     },
   },
   workbench: {
@@ -247,6 +239,7 @@ export const enMessages = {
       copyDiagnostics: "Copy Diagnostics",
       openLogFolder: "Open Log Folder",
       focusAiChat: "Focus AI Chat",
+      showAiCallLog: "AI Call Log",
       toggleSidebar: "Toggle Primary Side Bar",
       togglePanel: "Toggle Panel",
       toggleAiChat: "Toggle AI Chat",
@@ -586,6 +579,8 @@ export const enMessages = {
       parametersName: "Parameter",
       parametersValue: "Value",
       parametersNull: "NULL",
+      parametersExecuteHint:
+        "Ctrl+Enter (⌘Enter on macOS) to execute · Enter: next value · Enter on last: execute · ↑/↓: move",
       parametersCancelled: "Query cancelled — parameter input dismissed.",
       readOnlyBlocked:
         "Read-only mode is enabled. Write statements (INSERT, UPDATE, DELETE, DDL, etc.) are blocked.",
@@ -661,6 +656,23 @@ export const enMessages = {
       restore: "Restore",
       reload: "Reload",
       snapshotApplyFailed: "Failed to apply snapshot action.",
+      historyForObject: "Local history for {label}",
+      snapshotsBrowserOnly:
+        "Stored only on this device. Not kept on a server. Maximum 20 per object.",
+      noSnapshotsYet:
+        "No snapshots yet. Save to the database or take a manual snapshot.",
+      diff: "Diff",
+      diffHint: "Left: snapshot ({time}) · Right: current buffer",
+      reloadConfirm:
+        "Discard the current buffer for {label} and reload source from the database?",
+      restoreConfirm:
+        "Replace the current buffer with the snapshot from {time}? The tab will be marked dirty until you save.",
+      deleteSnapshot: "Delete Snapshot",
+      deleteConfirm:
+        "Delete the snapshot from {time}? This cannot be undone.",
+      clearAllSnapshots: "Delete All",
+      clearAllConfirm:
+        "Delete all local snapshots for {label}? This cannot be undone.",
     },
     ai: {
       emptyHint:
@@ -670,6 +682,22 @@ export const enMessages = {
       thinking: "Thinking…",
       usingTools: "Using tools",
       emptyToolResponse: "No response after looking up database metadata.",
+      requestFailed: "An error occurred while processing the request.",
+      errorDetails: "Error details",
+      usage: "Usage",
+      auditLog: "AI call log",
+      auditEmpty: "No AI calls recorded yet.",
+      auditSummary: "{n} call(s) · est. total {cost} (approx.)",
+      auditNote:
+        "Stores time, provider, model, tokens, and rough cost locally. Prompts and API keys are never logged. Prices are estimates only.",
+      auditExport: "Export JSON",
+      auditClear: "Clear log",
+      auditClearConfirm: "Clear all AI audit log entries?",
+      auditKindTest: "Test",
+      auditKindChat: "Chat",
+      auditTokensLine: "tokens in/out {tokens} · est. {cost}",
+      auditShowingLatest:
+        "Showing latest {n}. Export JSON for the full ring buffer.",
       placeholderReady:
         "Ask anything… (Enter to send, Shift+Enter for newline)",
       placeholderDisabled: "Configure AI in Settings to chat",

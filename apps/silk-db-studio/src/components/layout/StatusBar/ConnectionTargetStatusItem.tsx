@@ -443,7 +443,7 @@ function ConnectionTargetStatusItem() {
           catalog: null,
           schema: null,
         });
-      } else {
+      } else if (pick.kind === "profile") {
         EditorConnectionBindingService.setBinding(
           tab.id,
           bindingForProfile(pick.profileId),

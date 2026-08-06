@@ -19,6 +19,12 @@
   overflow: auto;
 }
 
+.plsql-snapshot-dialog__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
 .plsql-snapshot-dialog__row {
   display: flex;
   align-items: center;

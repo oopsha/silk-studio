@@ -15,7 +15,11 @@ export type LayoutDimensions = {
   auxiliaryBarWidth: number;
 };
 
-/** OS window geometry (logical pixels). Optional until first capture. */
+/**
+ * OS window geometry (logical pixels).
+ * Width/height are inner (client) size to match Tauri `set_size`;
+ * x/y are outer position. Optional until first capture.
+ */
 export type WindowLayoutState = {
   windowX: number;
   windowY: number;

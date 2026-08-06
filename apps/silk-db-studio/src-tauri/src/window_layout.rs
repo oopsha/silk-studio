@@ -17,8 +17,10 @@ pub struct WindowLayoutState {
     pub window_x: f64,
     #[serde(rename = "windowY")]
     pub window_y: f64,
+    /// Inner (client) width — matches `WebviewWindow::set_size`.
     #[serde(rename = "windowWidth")]
     pub window_width: f64,
+    /// Inner (client) height — matches `WebviewWindow::set_size`.
     #[serde(rename = "windowHeight")]
     pub window_height: f64,
     #[serde(rename = "windowMaximized")]

@@ -7,13 +7,16 @@ import {
 } from "@silk-studio/workbench/services/layout/layoutService.ts";
 
 const PERSIST_DEBOUNCE_MS = 250;
+/** Ignore restore/overlay-triggered move/resize noise on startup. */
+const STARTUP_SUPPRESS_MS = 600;
 
 async function captureWindowLayout(): Promise<WindowLayoutState | null> {
   try {
     const win = getCurrentWindow();
     const factor = await win.scaleFactor();
     const maximized = await win.isMaximized();
-    const size = (await win.outerSize()).toLogical(factor);
+    // set_size applies inner size — capture the same metric to avoid grow-on-restart.
+    const size = (await win.innerSize()).toLogical(factor);
     const position = (await win.outerPosition()).toLogical(factor);
     return {
       windowX: position.x,
@@ -78,7 +81,8 @@ async function persistWindowLayout(): Promise<void> {
 /**
  * Keep OS window geometry in sync with layout storage.
  * Startup geometry is applied in Rust (always show). This module migrates
- * legacy localStorage geometry once and persists move/resize.
+ * legacy localStorage geometry once and persists user move/resize.
+ * Size is stored as inner (client) size to match Tauri `set_size`.
  */
 export function startWindowLayoutSync(): () => void {
   if (!isTauri()) {
@@ -86,16 +90,19 @@ export function startWindowLayoutSync(): () => void {
   }
 
   let disposed = false;
+  let suppressPersistUntil = 0;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   const unlisteners: Array<() => void> = [];
 
   const schedulePersist = () => {
     if (disposed) return;
+    if (Date.now() < suppressPersistUntil) return;
     if (debounceTimer !== null) {
       clearTimeout(debounceTimer);
     }
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
+      if (disposed || Date.now() < suppressPersistUntil) return;
       void persistWindowLayout();
     }, PERSIST_DEBOUNCE_MS);
   };
@@ -130,10 +137,12 @@ export function startWindowLayoutSync(): () => void {
 
     try {
       const win = getCurrentWindow();
+      // Do not persist on startup — restore/overlay already set geometry; capturing
+      // here (especially outer vs inner) caused size/position drift every launch.
+      suppressPersistUntil = Date.now() + STARTUP_SUPPRESS_MS;
       unlisteners.push(await win.onResized(() => schedulePersist()));
       unlisteners.push(await win.onMoved(() => schedulePersist()));
       unlisteners.push(await win.onScaleChanged(() => schedulePersist()));
-      await persistWindowLayout();
     } catch {
       if (!disposed) {
         await ensureWindowVisible();

@@ -12,6 +12,7 @@ import {
 } from "./queryResultColumnLayout";
 import { toCsv, toTsv } from "./queryResultFormat";
 import type { QueryResultRow } from "./queryResult";
+import { QUERY_RESULT_ROW_NUMBER_COL_ID } from "./queryResult";
 
 export type QueryResultGridSnapshot = {
   totalRows: number;
@@ -147,23 +148,49 @@ class QueryResultGridServiceImpl {
     this.applyingLayout = true;
     try {
       grid.api.resetColumnState();
-      // Re-apply explicit default widths so flex from an old session does not linger.
       grid.api.applyColumnState({
-        state: grid.columns.map((colId) => ({
-          colId,
-          width: DEFAULT_COLUMN_WIDTH,
-          flex: null,
-          hide: false,
-          pinned: null,
-        })),
+        state: [
+          {
+            colId: QUERY_RESULT_ROW_NUMBER_COL_ID,
+            width: 32,
+            pinned: "left",
+            hide: false,
+            flex: null,
+          },
+          ...grid.columns.map((colId) => ({
+            colId,
+            flex: null,
+            hide: false,
+            pinned: null as null,
+          })),
+        ],
         applyOrder: true,
       });
+      // Fit data columns only — keep the row-number gutter fixed width.
+      grid.api.autoSizeColumns(grid.columns, false);
     } finally {
       this.applyingLayout = false;
     }
 
     this.refreshSnapshot();
     return true;
+  }
+
+  /**
+   * Size columns to header/cell contents when no saved layout exists.
+   * Safe to call after data is rendered (firstDataRendered / new result).
+   */
+  autoSizeToContent(): void {
+    const grid = this.active;
+    if (!grid || grid.columns.length === 0) return;
+    if (hasSavedColumnLayout(grid.profileId, grid.columns)) return;
+
+    this.applyingLayout = true;
+    try {
+      grid.api.autoSizeColumns(grid.columns, false);
+    } finally {
+      this.applyingLayout = false;
+    }
   }
 
   clearFiltersAndSort(): void {
@@ -396,13 +423,15 @@ function toPersistedLayoutState(
     pinned?: "left" | "right" | boolean | null;
   }>,
 ): PersistedColumnLayoutItem[] {
-  return state.map((column) => ({
-    colId: column.colId,
-    width: column.width ?? null,
-    flex: column.flex ?? null,
-    hide: column.hide ?? false,
-    pinned: column.pinned ?? null,
-  }));
+  return state
+    .filter((column) => column.colId !== QUERY_RESULT_ROW_NUMBER_COL_ID)
+    .map((column) => ({
+      colId: column.colId,
+      width: column.width ?? null,
+      flex: column.flex ?? null,
+      hide: column.hide ?? false,
+      pinned: column.pinned ?? null,
+    }));
 }
 
 function visibleColumnFields(

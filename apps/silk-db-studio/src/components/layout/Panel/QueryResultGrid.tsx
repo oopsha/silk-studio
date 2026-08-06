@@ -5,6 +5,7 @@ import {
   themeQuartz,
   type CellValueChangedEvent,
   type ColDef,
+  type FirstDataRenderedEvent,
   type GridApi,
   type GridReadyEvent,
   type ValueFormatterParams,
@@ -18,10 +19,11 @@ import {
   toQueryResultRows,
   isResultTruncated,
   getQueryResultRowIndex,
+  QUERY_RESULT_ROW_NUMBER_COL_ID,
   type QueryResultPayload,
   type QueryResultRow,
 } from "../../../services/query/queryResult";
-import { QueryResultGridService, DEFAULT_COLUMN_WIDTH } from "../../../services/query/queryResultGridService";
+import { QueryResultGridService } from "../../../services/query/queryResultGridService";
 import { QueryResultDirtyService } from "../../../services/query/queryResultDirtyService";
 import {
   buildUpdatePreview,
@@ -199,8 +201,25 @@ function QueryResultGrid({
   );
 
   const columnDefs = useMemo<ColDef<QueryResultRow>[]>(
-    () =>
-      result.columns.map((column) => ({
+    () => [
+      {
+        colId: QUERY_RESULT_ROW_NUMBER_COL_ID,
+        headerName: "#",
+        valueGetter: (params) => (params.node?.rowIndex ?? 0) + 1,
+        width: 32,
+        minWidth: 32,
+        pinned: "left",
+        lockPosition: "left",
+        suppressMovable: true,
+        editable: false,
+        sortable: false,
+        filter: false,
+        floatingFilter: false,
+        resizable: false,
+        suppressHeaderMenuButton: true,
+        suppressAutoSize: true,
+      },
+      ...result.columns.map((column) => ({
         colId: column,
         field: column,
         headerName: column,
@@ -214,10 +233,11 @@ function QueryResultGrid({
         sortable: true,
         resizable: true,
         unSortIcon: true,
-        width: DEFAULT_COLUMN_WIDTH,
         minWidth: 80,
+        maxWidth: 480,
         valueFormatter: formatCellValue,
       })),
+    ],
     [filterEnabled, formatCellValue, primaryKeySet, primaryKeys, result.columns],
   );
 
@@ -254,7 +274,12 @@ function QueryResultGrid({
     const api = apiRef.current;
     if (!api) return;
     QueryResultGridService.attach(api, result.columns, nullDisplay);
-  }, [nullDisplay, result.columns]);
+    // New result while the grid is already mounted — size after paint.
+    const frame = window.requestAnimationFrame(() => {
+      QueryResultGridService.autoSizeToContent();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [nullDisplay, result.columns, result.rows]);
 
   const flashMessage = (message: string) => {
     setActionMessage(message);
@@ -270,6 +295,12 @@ function QueryResultGrid({
   const handleGridReady = (event: GridReadyEvent<QueryResultRow>) => {
     apiRef.current = event.api;
     QueryResultGridService.attach(event.api, result.columns, nullDisplay);
+  };
+
+  const handleFirstDataRendered = (
+    _event: FirstDataRenderedEvent<QueryResultRow>,
+  ) => {
+    QueryResultGridService.autoSizeToContent();
   };
 
   const handleCellValueChanged = (event: CellValueChangedEvent<QueryResultRow>) => {
@@ -562,6 +593,7 @@ function QueryResultGrid({
             enableClickSelection: true,
           }}
           onGridReady={handleGridReady}
+          onFirstDataRendered={handleFirstDataRendered}
           onCellValueChanged={handleCellValueChanged}
           onFilterChanged={() => QueryResultGridService.refreshSnapshot()}
           onSortChanged={() => QueryResultGridService.refreshSnapshot()}

@@ -48,6 +48,11 @@ export type WorkbenchConfiguration = {
   /** Open PL/SQL tabs: source + compile-time dependencies + referenced columns. */
   "ai.context.includePlsqlDeps": boolean;
   "ai.allowExecute": boolean;
+  /**
+   * Temporary: dump AI HTTP request/response JSON into an editor tab.
+   * Intended for developers; may be removed or gated later.
+   */
+  "ai.debug.dumpHttp": boolean;
 };
 
 export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
@@ -84,6 +89,7 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "ai.context.includeQueryHistory": false,
   "ai.context.includePlsqlDeps": true,
   "ai.allowExecute": false,
+  "ai.debug.dumpHttp": false,
 };
 
 export type ConfigurationKey = keyof WorkbenchConfiguration;

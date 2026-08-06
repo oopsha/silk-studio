@@ -42,6 +42,20 @@ function DdlEditorView() {
       return;
     }
 
+    const tabId = activeTab?.id;
+    const buffered = activeTab?.content ?? "";
+    const looksLoaded =
+      buffered.trim().length > 0 &&
+      !buffered.startsWith("-- Loading DDL") &&
+      !buffered.startsWith(`-- ${t("app.ddl.loading")}`) &&
+      !buffered.startsWith(`-- ${t("app.ddl.loadFailed")}`);
+
+    if (looksLoaded) {
+      const ddl = buffered.endsWith("\n") ? buffered : `${buffered}\n`;
+      setLoadState({ status: "ready", ddl });
+      return;
+    }
+
     let cancelled = false;
     setLoadState({ status: "loading" });
 
@@ -49,6 +63,9 @@ function DdlEditorView() {
       .then((result) => {
         if (cancelled) return;
         const ddl = result.ddl.endsWith("\n") ? result.ddl : `${result.ddl}\n`;
+        if (tabId) {
+          EditorService.setTabContentSnapshot(tabId, ddl);
+        }
         setLoadState({ status: "ready", ddl });
       })
       .catch((error) => {
@@ -66,6 +83,7 @@ function DdlEditorView() {
     ref?.objectName,
     ref?.kind,
     activeTab?.id,
+    activeTab?.content,
     t,
   ]);
 
