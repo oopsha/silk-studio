@@ -1,4 +1,4 @@
-import type { QueryResultPayload } from "@silk-studio/db-protocol";
+import type { QueryRelationKind, QueryResultPayload } from "@silk-studio/db-protocol";
 import type { QueryLogPart } from "./queryLogNav";
 
 /** Soft cap — oldest tabs are dropped when exceeded. */
@@ -20,8 +20,8 @@ export type QueryResultTab = {
   logParts?: QueryLogPart[];
   result: QueryResultPayload | null;
   createdAt: number;
-  /** When opened from the explorer, marks table vs view for save eligibility. */
-  relationKind?: "table" | "view";
+  /** When opened from the explorer, marks relation kind for save eligibility. */
+  relationKind?: QueryRelationKind;
   /** JDBC session (profile id) that produced this tab — used for refresh/save. */
   connectionId?: string;
 };

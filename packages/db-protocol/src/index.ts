@@ -154,6 +154,9 @@ export type MetadataPrimaryKeyColumn = {
   name: string;
 };
 
+/** Relation kind for cell-update eligibility (from explorer tab or JDBC metadata). */
+export type QueryRelationKind = "table" | "view" | "materializedView";
+
 export type ConnectionPrimaryKeysParams = {
   connectionId: string;
   schema: string;
@@ -164,6 +167,8 @@ export type ConnectionPrimaryKeysResult = {
   /** Resolved owner/schema when the request omitted schema. */
   schema?: string;
   keys: MetadataPrimaryKeyColumn[];
+  /** When known: table / view / materializedView (for save messaging). */
+  relationKind?: QueryRelationKind;
 };
 
 export type ConnectionDdlParams = {
@@ -419,6 +424,12 @@ export function isConnectionPackageMembersResult(
   );
 }
 
+function isQueryRelationKind(value: unknown): value is QueryRelationKind {
+  return (
+    value === "table" || value === "view" || value === "materializedView"
+  );
+}
+
 function isMetadataPrimaryKeyColumn(
   value: unknown,
 ): value is MetadataPrimaryKeyColumn {
@@ -435,7 +446,9 @@ export function isConnectionPrimaryKeysResult(
   return (
     Array.isArray(record.keys) &&
     record.keys.every(isMetadataPrimaryKeyColumn) &&
-    (record.schema === undefined || typeof record.schema === "string")
+    (record.schema === undefined || typeof record.schema === "string") &&
+    (record.relationKind === undefined ||
+      isQueryRelationKind(record.relationKind))
   );
 }
 

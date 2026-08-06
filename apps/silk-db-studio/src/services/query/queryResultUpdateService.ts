@@ -1,4 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
+import type { QueryRelationKind } from "@silk-studio/db-protocol";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { bridgeListPrimaryKeys } from "../connection/connectionPrimaryKeysBridge";
@@ -15,6 +16,8 @@ import { QueryResultDirtyService } from "./queryResultDirtyService";
 import { buildUpdateStatements } from "./safeUpdateSql";
 import { assertReadOnlyQueryAllowed } from "./sqlGuard";
 import { parseSingleTableFromSelect } from "./sqlTableReference";
+
+export type { QueryRelationKind };
 
 export type UpdateEligibility =
   | {
@@ -35,6 +38,11 @@ export type UpdatePreview = {
   statements: string[];
   dirtyRowCount: number;
   dirtyCellCount: number;
+};
+
+type UpdateEligibilityOptions = {
+  relationKind?: QueryRelationKind;
+  connectionId?: string | null;
 };
 
 function resolveExplicitSchemaName(
@@ -71,10 +79,32 @@ function resolveResultColumn(
   return resultColumns.find((column) => column.toLowerCase() === lower) ?? null;
 }
 
+function blockedReasonForRelationKind(
+  kind: QueryRelationKind | undefined,
+): string | null {
+  if (kind === "view") {
+    return tKey("app.query.saveViewsReadonly");
+  }
+  if (kind === "materializedView") {
+    return tKey("app.query.saveMviewsReadonly");
+  }
+  return null;
+}
+
+function noPrimaryKeyReason(
+  kind: QueryRelationKind | undefined,
+  label: string,
+): string {
+  if (kind === "table") {
+    return tKey("app.query.saveNoPrimaryKey").replace("{table}", label);
+  }
+  return tKey("app.query.saveNoPrimaryKeyGeneric").replace("{name}", label);
+}
+
 export async function resolveUpdateEligibility(
   sql: string,
   resultColumns: string[],
-  options?: { relationKind?: "table" | "view"; connectionId?: string | null },
+  options?: UpdateEligibilityOptions,
 ): Promise<UpdateEligibility> {
   if (!isTauri()) {
     return {
@@ -83,11 +113,9 @@ export async function resolveUpdateEligibility(
     };
   }
 
-  if (options?.relationKind === "view") {
-    return {
-      eligible: false,
-      reason: tKey("app.query.saveViewsReadonly"),
-    };
+  const earlyRelationBlock = blockedReasonForRelationKind(options?.relationKind);
+  if (earlyRelationBlock) {
+    return { eligible: false, reason: earlyRelationBlock };
   }
 
   const connectionId =
@@ -133,17 +161,36 @@ export async function resolveUpdateEligibility(
   } catch (error) {
     return {
       eligible: false,
-      reason: formatErrorMessage(error, "Failed to load primary key metadata."),
+      reason: formatErrorMessage(error, tKey("app.query.savePkMetadataFailed")),
     };
   }
 
+  const label = explicitSchema
+    ? `${explicitSchema}.${tableRef.table}`
+    : tableRef.table;
+
+  /** Prefer non-table metadata over a stale explorer "table" tag (e.g. MV as TABLE). */
+  const effectiveKind: QueryRelationKind | undefined = (() => {
+    const fromTab = options?.relationKind;
+    const fromMeta = payload.relationKind;
+    if (fromTab === "view" || fromTab === "materializedView") {
+      return fromTab;
+    }
+    if (fromMeta === "view" || fromMeta === "materializedView") {
+      return fromMeta;
+    }
+    return fromTab ?? fromMeta;
+  })();
+
+  const relationBlock = blockedReasonForRelationKind(effectiveKind);
+  if (relationBlock) {
+    return { eligible: false, reason: relationBlock };
+  }
+
   if (payload.keys.length === 0) {
-    const label = explicitSchema
-      ? `${explicitSchema}.${tableRef.table}`
-      : tableRef.table;
     return {
       eligible: false,
-      reason: `Table ${label} has no primary key. Updates are blocked for safety.`,
+      reason: noPrimaryKeyReason(effectiveKind, label),
     };
   }
 
@@ -155,7 +202,10 @@ export async function resolveUpdateEligibility(
     if (!resolved) {
       return {
         eligible: false,
-        reason: `Primary key column "${key.name}" is not present in the result set. Include all PK columns in the SELECT list.`,
+        reason: tKey("app.query.savePkMissingInResult").replace(
+          "{column}",
+          key.name,
+        ),
       };
     }
     primaryKeys.push(resolved);
@@ -174,11 +224,11 @@ export async function buildUpdatePreview(
   tabId: string,
   sql: string,
   resultColumns: string[],
-  options?: { relationKind?: "table" | "view"; connectionId?: string | null },
+  options?: UpdateEligibilityOptions,
 ): Promise<UpdatePreview | { blocked: true; reason: string }> {
   const dirtyRows = QueryResultDirtyService.getDirtyRows(tabId);
   if (dirtyRows.length === 0) {
-    return { blocked: true, reason: "No edited cells to save." };
+    return { blocked: true, reason: tKey("app.query.saveNoEditedCells") };
   }
 
   const eligibility = await resolveUpdateEligibility(
@@ -243,7 +293,7 @@ export async function executeConfirmedUpdates(
 export function getSaveBlockedReason(
   sql: string,
   dirtyCount: number,
-  options?: { relationKind?: "table" | "view" },
+  options?: { relationKind?: QueryRelationKind },
 ): string | null {
   if (dirtyCount === 0) {
     return tKey("app.query.saveNoEdits");
@@ -255,6 +305,9 @@ export function getSaveBlockedReason(
 
   if (options?.relationKind === "view") {
     return tKey("app.query.saveViewsShort");
+  }
+  if (options?.relationKind === "materializedView") {
+    return tKey("app.query.saveMviewsShort");
   }
 
   if (ConfigurationService.getValue("database.readOnly")) {

@@ -116,6 +116,7 @@ export const ENGLISH_LABEL_KEYS: Record<string, MessageKey> = {
   "Copy All Filtered Rows": "app.query.copyAllFiltered",
   "Export CSV (Filtered)": "app.query.exportCsv",
   "Clear Result Filters": "app.query.clearFilters",
+  "Save Column Layout": "app.query.saveLayout",
   "Reset Column Layout": "app.query.resetLayout",
   "Add Editor SQL to Favorites": "app.query.addEditorToFavorites",
   "Clear Query History": "app.query.clearQueryHistory",

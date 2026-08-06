@@ -3,6 +3,7 @@ import {
   isConnectionDependenciesResult,
   isConnectionDdlResult,
   isConnectionMetadataResult,
+  isConnectionPrimaryKeysResult,
   isQueryResultPayload,
 } from "./index";
 
@@ -80,6 +81,27 @@ describe("isConnectionDependenciesResult", () => {
       isConnectionDependenciesResult({
         dialectId: "oracle",
         dependencies: [{ schema: "HR" }],
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("isConnectionPrimaryKeysResult", () => {
+  it("accepts keys with optional relationKind", () => {
+    expect(
+      isConnectionPrimaryKeysResult({
+        keys: [{ name: "ID" }],
+        schema: "HR",
+        relationKind: "view",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects invalid relationKind", () => {
+    expect(
+      isConnectionPrimaryKeysResult({
+        keys: [],
+        relationKind: "synonym",
       }),
     ).toBe(false);
   });
