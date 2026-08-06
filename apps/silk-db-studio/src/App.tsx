@@ -5,6 +5,7 @@ import AppShell from "./components/layout/AppShell";
 import { ConnectionService } from "./services/connection/connectionService";
 import { startFileDropListener } from "./services/dnd/startFileDropListener";
 import { startExternalFileWatch } from "./services/files/startExternalFileWatch";
+import { startEditorSessionSync } from "./services/editor/startEditorSessionSync";
 import { startWindowLayoutSync } from "./services/windowLayoutSync";
 
 function App() {
@@ -15,11 +16,13 @@ function App() {
     const stopWindowLayout = startWindowLayoutSync();
     const stopFileDrop = startFileDropListener();
     const stopFileWatch = startExternalFileWatch();
+    const stopEditorSession = startEditorSessionSync();
     return () => {
       stopMenubar();
       stopWindowLayout();
       stopFileDrop();
       stopFileWatch();
+      stopEditorSession();
     };
   }, []);
 

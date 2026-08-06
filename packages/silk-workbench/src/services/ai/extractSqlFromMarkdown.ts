@@ -8,14 +8,24 @@ const FENCED_BLOCK =
 const SQL_LOOKS_LIKE =
   /^\s*(with|select|insert|update|delete|merge|create|alter|drop|truncate|grant|revoke|begin|declare|call|exec|explain|analyze|show|describe|desc|use|set)\b/i;
 
-function normalizeFenceLanguage(raw: string): string {
+const SQL_FENCE_LANGUAGES = new Set(["sql", "plsql", "mysql"]);
+
+export function normalizeFenceLanguage(raw: string): string {
   return raw.trim().split(/\s+/, 1)[0]?.toLowerCase() ?? "";
 }
 
-function looksLikeSql(body: string): boolean {
+export function looksLikeSql(body: string): boolean {
   const trimmed = body.trim();
   if (!trimmed) return false;
   return SQL_LOOKS_LIKE.test(trimmed);
+}
+
+/** Whether a fenced code block should get SQL proposal actions. */
+export function isSqlCodeFence(language: string, body: string): boolean {
+  const lang = normalizeFenceLanguage(language);
+  if (SQL_FENCE_LANGUAGES.has(lang)) return true;
+  if (!lang && looksLikeSql(body)) return true;
+  return false;
 }
 
 export function extractSqlFromMarkdown(markdown: string): string[] {
@@ -30,7 +40,7 @@ export function extractSqlFromMarkdown(markdown: string): string[] {
     const body = (match[2] ?? "").trim();
     if (!body) continue;
 
-    if (language === "sql" || language === "plsql" || language === "mysql") {
+    if (SQL_FENCE_LANGUAGES.has(language)) {
       sqlTagged.push(body);
       continue;
     }

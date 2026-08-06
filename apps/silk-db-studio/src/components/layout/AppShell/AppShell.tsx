@@ -1,5 +1,5 @@
 import "./AppShell.css";
-import { useEffect, type DragEvent as ReactDragEvent } from "react";
+import { useEffect } from "react";
 import ActivityBar from "@silk-studio/workbench/components/layout/ActivityBar/index.ts";
 import Sidebar from "@silk-studio/workbench/components/layout/Sidebar/index.ts";
 import TabBar from "@silk-studio/editor/components/layout/TabBar/index.ts";
@@ -26,6 +26,7 @@ import AiSqlDiffDialog from "../../ai/AiSqlDiffDialog.tsx";
 import AiSqlExecuteDialog from "../../ai/AiSqlExecuteDialog.tsx";
 import SqlParameterDialog from "../../query/SqlParameterDialog.tsx";
 import AboutDialog from "@silk-studio/workbench/components/diagnostics/AboutDialog.tsx";
+import AiAuditLogDialog from "@silk-studio/workbench/components/ai/AiAuditLogDialog.tsx";
 import AppToast from "@silk-studio/workbench/components/diagnostics/AppToast.tsx";
 import PlsqlSaveDialog from "../../plsql/PlsqlSaveDialog.tsx";
 import PlsqlSnapshotDialog from "../../plsql/PlsqlSnapshotDialog.tsx";
@@ -40,9 +41,7 @@ import {
   formatQualifiedName,
 } from "../../../services/connection/explorerObjectActions.ts";
 import {
-  decodeExplorerObjectDrag,
-  isExplorerObjectDrag,
-  SILK_EXPLORER_OBJECT_MIME,
+  setExplorerObjectDropHandler,
 } from "../../../services/dnd/explorerObjectDrag.ts";
 import { insertSqlIntoActiveEditor } from "../../../services/query/querySqlActions.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
@@ -82,22 +81,14 @@ function AppShell() {
     registerSqlCompletion(monaco);
   };
 
-  const handleExplorerObjectDragOver = (event: ReactDragEvent) => {
-    if (!isExplorerObjectDrag(event.dataTransfer)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-  };
-
-  const handleExplorerObjectDrop = (event: ReactDragEvent) => {
-    const raw = event.dataTransfer.getData(SILK_EXPLORER_OBJECT_MIME);
-    const payload = decodeExplorerObjectDrag(raw);
-    if (!payload) return;
-    event.preventDefault();
-    event.stopPropagation();
-    insertSqlIntoActiveEditor(
-      formatQualifiedName(payload.schemaName, payload.objectName),
-    );
-  };
+  useEffect(() => {
+    setExplorerObjectDropHandler((payload) => {
+      insertSqlIntoActiveEditor(
+        formatQualifiedName(payload.schemaName, payload.objectName),
+      );
+    });
+    return () => setExplorerObjectDropHandler(null);
+  }, []);
 
   const panelOnBottom = layout.panelPosition === "bottom";
   const showEditor = !layout.panelMaximized;
@@ -155,8 +146,7 @@ function AppShell() {
   const editorArea = (
     <div
       className={`app-shell__editor${showEditor ? "" : " app-shell__editor--hidden"}`}
-      onDragOver={handleExplorerObjectDragOver}
-      onDrop={handleExplorerObjectDrop}
+      data-silk-editor-drop=""
     >
       <EditorArea
         configuration={{
@@ -361,6 +351,7 @@ function AppShell() {
       <PlsqlSaveDialog />
       <PlsqlSnapshotDialog />
       <AboutDialog />
+      <AiAuditLogDialog />
       <AppToast />
     </div>
   );

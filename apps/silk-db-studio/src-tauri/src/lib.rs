@@ -1,5 +1,6 @@
 mod ai_http;
 mod app_log;
+mod open_external;
 mod runtime_paths;
 mod secrets;
 mod window_layout;
@@ -312,6 +313,7 @@ pub fn run() {
             secrets::ai_secret_get,
             secrets::ai_secret_delete,
             ai_http::ai_http_fetch,
+            open_external::open_external_url,
             window_layout::window_layout_save,
             window_layout::window_layout_apply_and_show,
             window_layout::window_layout_show,
@@ -342,9 +344,10 @@ pub fn run() {
             }
 
             if let Some(window) = app.get_webview_window("main") {
+                // Overlay/chrome first so restore measures the final frame metrics.
+                configure_main_window(&window)?;
                 // Always restore (if possible) then show — never leave visible:false stuck.
                 window_layout::restore_main_window(app.handle(), &window);
-                configure_main_window(&window)?;
             }
 
             Ok(())

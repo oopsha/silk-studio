@@ -86,3 +86,32 @@ export function appendPlsqlSnapshot(
   savePlsqlSnapshots(ref, next);
   return entry;
 }
+
+export function removePlsqlSnapshot(
+  ref: PlsqlEditorRef,
+  snapshotId: string,
+): boolean {
+  const current = loadPlsqlSnapshots(ref);
+  const next = current.filter((entry) => entry.id !== snapshotId);
+  if (next.length === current.length) {
+    return false;
+  }
+  if (next.length === 0) {
+    try {
+      localStorage.removeItem(storageKey(ref));
+    } catch {
+      savePlsqlSnapshots(ref, []);
+    }
+  } else {
+    savePlsqlSnapshots(ref, next);
+  }
+  return true;
+}
+
+export function clearPlsqlSnapshots(ref: PlsqlEditorRef): void {
+  try {
+    localStorage.removeItem(storageKey(ref));
+  } catch {
+    savePlsqlSnapshots(ref, []);
+  }
+}

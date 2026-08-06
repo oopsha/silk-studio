@@ -1368,7 +1368,7 @@ class QueryExecutionServiceImpl {
     }
 
     const fields = collectSqlParameterFields(occurrences);
-    const result = await SqlParameterDialogService.open(fields);
+    const result = await SqlParameterDialogService.open(fields, { sql });
 
     if (!result.confirmed) {
       return "cancelled";

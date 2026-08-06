@@ -1,4 +1,5 @@
 import { aiHttpFetch } from "../aiHttpBridge";
+import { dumpAiHttpExchange } from "../aiHttpDebugDump";
 import {
   AiProviderError,
   type AiChatChunk,
@@ -98,12 +99,17 @@ function toGeminiContents(messages: AiWireMessage[]) {
         } catch {
           args = {};
         }
-        parts.push({
+        const part: Record<string, unknown> = {
           functionCall: {
             name: call.name,
             args,
           },
-        });
+        };
+        // Gemini 3 requires echoing thoughtSignature on functionCall parts.
+        if (call.thoughtSignature) {
+          part.thoughtSignature = call.thoughtSignature;
+        }
+        parts.push(part);
       }
       if (parts.length === 0) {
         parts.push({ text: "" });
@@ -150,20 +156,34 @@ function toGeminiContents(messages: AiWireMessage[]) {
   return contents;
 }
 
-function parseGeminiToolCalls(parts: unknown[] | undefined): AiToolCall[] | undefined {
+function readThoughtSignature(part: object): string | undefined {
+  const record = part as {
+    thoughtSignature?: unknown;
+    thought_signature?: unknown;
+  };
+  const raw = record.thoughtSignature ?? record.thought_signature;
+  return typeof raw === "string" && raw.length > 0 ? raw : undefined;
+}
+
+function parseGeminiToolCalls(
+  parts: unknown[] | undefined,
+): AiToolCall[] | undefined {
   if (!parts || parts.length === 0) return undefined;
   const calls: AiToolCall[] = [];
   let index = 0;
   for (const part of parts) {
     if (!part || typeof part !== "object") continue;
-    const functionCall = (part as { functionCall?: { name?: string; args?: unknown } })
-      .functionCall;
+    const functionCall = (
+      part as { functionCall?: { name?: string; args?: unknown } }
+    ).functionCall;
     if (!functionCall?.name) continue;
     index += 1;
+    const thoughtSignature = readThoughtSignature(part);
     calls.push({
       id: `gemini-tool-${index}-${functionCall.name}`,
       name: functionCall.name,
       arguments: JSON.stringify(functionCall.args ?? {}),
+      ...(thoughtSignature ? { thoughtSignature } : {}),
     });
   }
   return calls.length > 0 ? calls : undefined;
@@ -198,16 +218,19 @@ async function completeGemini(
     body.tools = tools;
   }
 
+  const url = `${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`;
+  const requestBody = JSON.stringify(body);
+
   let response;
   try {
     response = await aiHttpFetch({
-      url: `${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`,
+      url,
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-goog-api-key": request.apiKey,
       },
-      body: JSON.stringify(body),
+      body: requestBody,
       signal: request.signal,
     });
   } catch (error) {
@@ -229,6 +252,15 @@ async function completeGemini(
       },
     );
   }
+
+  dumpAiHttpExchange({
+    provider: "gemini",
+    operation: "generateContent",
+    url,
+    requestBody,
+    status: response.status,
+    responseBody: response.body,
+  });
 
   if (!response.ok) {
     throw mapHttpError("gemini", response.status, response.body);

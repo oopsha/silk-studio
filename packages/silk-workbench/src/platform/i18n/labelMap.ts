@@ -36,6 +36,7 @@ export const ENGLISH_LABEL_KEYS: Record<string, MessageKey> = {
   "Copy Diagnostics": "workbench.commands.copyDiagnostics",
   "Open Log Folder": "workbench.commands.openLogFolder",
   "Focus AI Chat": "workbench.commands.focusAiChat",
+  "AI Call Log": "workbench.commands.showAiCallLog",
   "Toggle Primary Side Bar": "workbench.commands.toggleSidebar",
   "Toggle Panel": "workbench.commands.togglePanel",
   "Toggle AI Chat": "workbench.commands.toggleAiChat",

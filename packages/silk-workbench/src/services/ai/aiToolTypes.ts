@@ -20,6 +20,11 @@ export type AiToolCall = {
   name: string;
   /** Raw JSON arguments string from the model. */
   arguments: string;
+  /**
+   * Gemini 3 thought signature from the functionCall part. Must be echoed
+   * back on the same part in the next generateContent request.
+   */
+  thoughtSignature?: string;
 };
 
 /** Wire-format messages used during a tool-calling loop (not persisted in the UI transcript). */

@@ -149,19 +149,10 @@ export const koMessages = {
       allowExecuteDescription:
         "켜면 어시스턴트가 검토 후 SQL 실행을 제안할 수 있습니다.",
       allowExecuteHint: "어시스턴트가 SQL 실행을 제안할 수 있게 합니다.",
-      auditLog: "AI 호출 로그",
-      auditEmpty: "기록된 AI 호출이 없습니다.",
-      auditSummary: "호출 {n}건 · 예상 합계 {cost} (대략)",
-      auditNote:
-        "시간·제공자·모델·토큰·대략 비용만 로컬에 저장합니다. 프롬프트와 API 키는 기록하지 않습니다. 가격은 추정치입니다.",
-      auditExport: "JSON 내보내기",
-      auditClear: "로그 지우기",
-      auditClearConfirm: "AI 호출 로그를 모두 지울까요?",
-      auditKindTest: "테스트",
-      auditKindChat: "채팅",
-      auditTokensLine: "토큰 입/출 {tokens} · 예상 {cost}",
-      auditShowingLatest:
-        "최근 {n}건만 표시합니다. 전체 링 버퍼는 JSON으로 내보내세요.",
+      debugDumpHttp: "AI HTTP 덤프 (임시)",
+      debugDumpHttpDescription:
+        "개발용입니다. 켜면 Gemini generateContent 요청·응답 JSON을 에디터 탭으로 엽니다. API 키는 포함되지 않습니다.",
+      debugDumpHttpHint: "요청/응답 JSON을 에디터에 엽니다 (임시).",
     },
   },
   workbench: {
@@ -246,6 +237,7 @@ export const koMessages = {
       copyDiagnostics: "진단 정보 복사",
       openLogFolder: "로그 폴더 열기",
       focusAiChat: "AI 채팅에 포커스",
+      showAiCallLog: "AI 호출 로그",
       toggleSidebar: "기본 사이드 바 토글",
       togglePanel: "패널 토글",
       toggleAiChat: "AI 채팅 토글",
@@ -586,6 +578,8 @@ export const koMessages = {
       parametersName: "파라미터",
       parametersValue: "값",
       parametersNull: "NULL",
+      parametersExecuteHint:
+        "Ctrl+Enter(macOS: ⌘Enter)로 실행 · Enter: 다음 값 · 마지막 Enter: 실행 · ↑/↓: 값 이동",
       parametersCancelled: "쿼리가 취소되었습니다 — 파라미터 입력을 닫았습니다.",
       readOnlyBlocked:
         "읽기 전용 모드가 켜져 있습니다. 쓰기 문(INSERT, UPDATE, DELETE, DDL 등)은 차단됩니다.",
@@ -659,6 +653,22 @@ export const koMessages = {
       restore: "복원",
       reload: "다시 로드",
       snapshotApplyFailed: "스냅샷 작업 적용에 실패했습니다.",
+      historyForObject: "{label}의 로컬 기록",
+      snapshotsBrowserOnly:
+        "이 기기의 로컬에만 저장됩니다. 서버에는 보관되지 않으며, 최대 20개입니다.",
+      noSnapshotsYet:
+        "아직 스냅샷이 없습니다. 데이터베이스에 저장하거나 수동 스냅샷을 찍으세요.",
+      diff: "Diff",
+      diffHint: "왼쪽: 스냅샷 ({time}) · 오른쪽: 현재 버퍼",
+      reloadConfirm:
+        "{label}의 현재 버퍼를 버리고 데이터베이스에서 소스를 다시 로드할까요?",
+      restoreConfirm:
+        "{time} 스냅샷으로 현재 버퍼를 바꿀까요? 저장하기 전까지 탭은 수정됨으로 표시됩니다.",
+      deleteSnapshot: "스냅샷 삭제",
+      deleteConfirm: "{time} 스냅샷을 삭제할까요? 이 작업은 되돌릴 수 없습니다.",
+      clearAllSnapshots: "모두 삭제",
+      clearAllConfirm:
+        "{label}의 로컬 스냅샷을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.",
     },
     ai: {
       emptyHint:
@@ -668,6 +678,22 @@ export const koMessages = {
       thinking: "생각 중…",
       usingTools: "도구 사용 중",
       emptyToolResponse: "데이터베이스 메타데이터를 조회한 뒤 응답이 비어 있습니다.",
+      requestFailed: "요청 중 오류가 발생했습니다.",
+      errorDetails: "오류 내용",
+      usage: "사용량",
+      auditLog: "AI 호출 로그",
+      auditEmpty: "기록된 AI 호출이 없습니다.",
+      auditSummary: "호출 {n}건 · 예상 합계 {cost} (대략)",
+      auditNote:
+        "시간·제공자·모델·토큰·대략 비용만 로컬에 저장합니다. 프롬프트와 API 키는 기록하지 않습니다. 가격은 추정치입니다.",
+      auditExport: "JSON 내보내기",
+      auditClear: "로그 지우기",
+      auditClearConfirm: "AI 호출 로그를 모두 지울까요?",
+      auditKindTest: "테스트",
+      auditKindChat: "채팅",
+      auditTokensLine: "토큰 입/출 {tokens} · 예상 {cost}",
+      auditShowingLatest:
+        "최근 {n}건만 표시합니다. 전체 링 버퍼는 JSON으로 내보내세요.",
       placeholderReady:
         "무엇이든 물어보세요… (Enter 전송, Shift+Enter 줄바꿈)",
       placeholderDisabled: "채팅하려면 Settings에서 AI를 구성하세요",

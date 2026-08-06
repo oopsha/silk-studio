@@ -41,8 +41,8 @@ import type { ConnectionProfile } from "../../services/connection/connectionType
 import { effectiveDefaultSchema } from "../../services/connection/connectionTypes";
 import ExplorerContextMenu from "./ExplorerContextMenu";
 import {
-  encodeExplorerObjectDrag,
-  SILK_EXPLORER_OBJECT_MIME,
+  beginExplorerObjectPointerDrag,
+  shouldSuppressExplorerObjectClick,
 } from "../../services/dnd/explorerObjectDrag";
 import "./ConnectionsExplorer.css";
 
@@ -611,12 +611,12 @@ function ProfileTree({
                           setExpandedValue(catalogKey, next);
                           if (!next) return;
                           // Switch session + preload schemas/default objects (filter-ready).
-                          void run(() =>
-                            ActiveDatabaseService.useDatabase(
+                          void run(async () => {
+                            await ActiveDatabaseService.useDatabase(
                               profile.id,
                               catalog.name,
-                            ),
-                          );
+                            );
+                          });
                         }}
                       >
                         <Codicon
@@ -806,20 +806,26 @@ function ObjectGroup({
                   role="treeitem"
                   tabIndex={0}
                   aria-selected={selected}
-                  draggable
-                  onDragStart={(event) => {
+                  onPointerDown={(event) => {
+                    if (event.button !== 0) return;
                     const qualified = formatQualifiedName(schemaName, item.name);
-                    const payload = encodeExplorerObjectDrag({
-                      schemaName,
-                      objectName: item.name,
-                      kind: item.kind,
-                      profileId,
+                    beginExplorerObjectPointerDrag({
+                      payload: {
+                        schemaName,
+                        objectName: item.name,
+                        kind: item.kind,
+                        profileId,
+                      },
+                      label: qualified,
+                      pointerId: event.pointerId,
+                      clientX: event.clientX,
+                      clientY: event.clientY,
                     });
-                    event.dataTransfer.setData(SILK_EXPLORER_OBJECT_MIME, payload);
-                    event.dataTransfer.setData("text/plain", qualified);
-                    event.dataTransfer.effectAllowed = "copy";
                   }}
-                  onClick={() => onSelectObject(key)}
+                  onClick={() => {
+                    if (shouldSuppressExplorerObjectClick()) return;
+                    onSelectObject(key);
+                  }}
                   onDoubleClick={() => onObjectAction(item)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {

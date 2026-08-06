@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { applyWorkbenchFonts } from "@silk-studio/ui/platform/fonts.ts";
 import { configureEditorHost } from "@silk-studio/editor/services/editor/editorHost.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
 import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import { WindowTitleService } from "@silk-studio/workbench/services/windowTitle/windowTitleService.ts";
 import { AppLogService } from "@silk-studio/workbench/services/diagnostics/appLogService.ts";
@@ -36,6 +37,8 @@ configureDbStudioDiagnosticsHost();
 AppLogService.installGlobalHandlers();
 void AppLogService.info("Frontend bootstrap complete.", "bootstrap");
 applyWorkbenchFonts();
+// Hold blank Untitled until Hot Exit restore finishes (see startEditorSessionSync).
+EditorService.prepareSessionRestore();
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <App />

@@ -36,20 +36,28 @@
 
 .plsql-editor-view__action,
 .plsql-editor-view__save {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   flex-shrink: 0;
-  height: 22px;
-  padding: 0 10px;
-  font-size: 12px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
   color: var(--color-foreground);
-  background-color: transparent;
-  border: 1px solid var(--color-border);
+  background-color: var(--color-input-background);
+  border: 1px solid var(--color-input-border);
   border-radius: 4px;
   cursor: pointer;
 }
 
+.plsql-editor-view__action .codicon,
+.plsql-editor-view__save .codicon {
+  font-size: 14px;
+}
+
 .plsql-editor-view__action:hover:not(:disabled),
 .plsql-editor-view__save:hover:not(:disabled) {
-  background-color: var(--color-toolbar-hover-background);
+  background-color: var(--color-list-hover);
 }
 
 .plsql-editor-view__action:disabled,

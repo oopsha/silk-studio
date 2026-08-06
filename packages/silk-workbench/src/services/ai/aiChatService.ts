@@ -76,6 +76,24 @@ function formatToolStatus(names: string[]): string {
   return `${I18nService.t("app.ai.usingTools")}: ${unique.join(", ")}`;
 }
 
+/** True when the bubble still shows the in-progress tool placeholder, not a real reply. */
+function isToolStatusContent(content: string): boolean {
+  const prefix = `${I18nService.t("app.ai.usingTools")}:`;
+  return content.trimStart().startsWith(prefix);
+}
+
+/**
+ * On failure/cancel, keep a real partial answer but replace the "Using tools: …"
+ * placeholder so the bubble shows the actual outcome instead of looking stuck.
+ */
+function resolveFailureContent(currentContent: string, fallback: string): string {
+  const trimmed = currentContent.trim();
+  if (!trimmed || isToolStatusContent(trimmed)) {
+    return fallback;
+  }
+  return currentContent;
+}
+
 class AiChatServiceImpl {
   private messages: AiChatUiMessage[] = loadPersistedMessages();
   private streaming = false;
@@ -333,12 +351,17 @@ class AiChatServiceImpl {
       if (cancelled) {
         auditStatus = "cancelled";
         errorCode = "cancelled";
-        this.patchAssistant(assistantMessage.id, (current) => ({
-          ...current,
-          status: current.content.trim() ? "done" : "error",
-          error: current.content.trim() ? undefined : "Cancelled.",
-          content: current.content.trim() ? current.content : "Cancelled.",
-        }));
+        this.patchAssistant(assistantMessage.id, (current) => {
+          const content = resolveFailureContent(current.content, "Cancelled.");
+          const keptPartial =
+            content === current.content && current.content.trim().length > 0;
+          return {
+            ...current,
+            status: keptPartial ? "done" : "error",
+            error: keptPartial ? undefined : "Cancelled.",
+            content,
+          };
+        });
       } else {
         auditStatus = "error";
         errorCode =
@@ -352,7 +375,7 @@ class AiChatServiceImpl {
           ...current,
           status: "error",
           error: message,
-          content: current.content.trim() ? current.content : message,
+          content: resolveFailureContent(current.content, message),
         }));
       }
     } finally {

@@ -23,10 +23,47 @@ function createTabId(): string {
 /** Alternative editor tabs that sync Monaco content and dirty state via EditorService. */
 const MANAGED_SILK_URI_PREFIXES = ["silk://plsql/"];
 
+/** Workbench chrome tabs — not part of Hot Exit restore. */
+const EXCLUDED_SESSION_URI_PREFIXES = [
+  "silk://settings",
+  "silk://keybindings",
+  "silk://documentation",
+  "silk://connection/",
+];
+
 function isManagedSilkTabUri(uri: string | undefined): boolean {
   if (!uri) return false;
   return MANAGED_SILK_URI_PREFIXES.some((prefix) => uri.startsWith(prefix));
 }
+
+export function isExcludedFromEditorSession(uri: string | undefined): boolean {
+  if (!uri) return false;
+  return EXCLUDED_SESSION_URI_PREFIXES.some(
+    (prefix) => uri === prefix || uri.startsWith(prefix),
+  );
+}
+
+export type EditorSessionTabSnapshot = {
+  id: string;
+  label: string;
+  uri?: string;
+  languageId: string;
+  content: string;
+  savedContent: string;
+  isDirty: boolean;
+  isPreview: boolean;
+  isPinned: boolean;
+  description?: string;
+  tooltip?: string;
+};
+
+export type EditorSessionSnapshot = {
+  version: 1;
+  savedAt: number;
+  activeTabId: string | null;
+  untitledCounter: number;
+  tabs: EditorSessionTabSnapshot[];
+};
 
 type LanguageIdResolver = (path: string, fromExtension: string) => string;
 
@@ -45,11 +82,22 @@ class EditorServiceImpl {
   private defaultUntitledLanguageId = "plaintext";
   private resolveLanguageId: LanguageIdResolver = (_path, fromExtension) =>
     fromExtension;
+  /** When true, ensureInitialTab will not invent an Untitled tab (Hot Exit restore in flight). */
+  private sessionRestorePending = false;
+
+  /**
+   * Call before first React paint so getTabs() does not open a blank Untitled
+   * while async Hot Exit restore runs.
+   */
+  prepareSessionRestore(): void {
+    this.sessionRestorePending = true;
+    this.initialized = true;
+  }
 
   ensureInitialTab(): void {
     if (this.initialized) return;
     this.initialized = true;
-    if (this.tabs.length === 0) {
+    if (this.tabs.length === 0 && !this.sessionRestorePending) {
       this.openUntitled();
     }
   }
@@ -174,6 +222,119 @@ class EditorServiceImpl {
       content: "",
       preview: false,
     });
+  }
+
+  getUntitledCounter(): number {
+    return this.untitledCounter;
+  }
+
+  getSavedContent(tabId: string): string {
+    return this.savedContent.get(tabId) ?? "";
+  }
+
+  /**
+   * Snapshot tabs eligible for Hot Exit (excludes settings / keybindings / docs /
+   * connection editors).
+   */
+  captureSessionSnapshot(): EditorSessionSnapshot {
+    const tabs: EditorSessionTabSnapshot[] = [];
+    for (const tab of this.tabs) {
+      if (isExcludedFromEditorSession(tab.uri)) continue;
+      tabs.push({
+        id: tab.id,
+        label: tab.label,
+        uri: tab.uri,
+        languageId: tab.languageId,
+        content: tab.content,
+        savedContent: this.savedContent.get(tab.id) ?? tab.content,
+        isDirty: tab.isDirty,
+        isPreview: tab.isPreview,
+        isPinned: tab.isPinned,
+        description: tab.description,
+        tooltip: tab.tooltip,
+      });
+    }
+    let activeTabId = this.activeTabId;
+    if (activeTabId && !tabs.some((tab) => tab.id === activeTabId)) {
+      activeTabId = tabs[0]?.id ?? null;
+    }
+    return {
+      version: 1,
+      savedAt: Date.now(),
+      activeTabId,
+      untitledCounter: this.untitledCounter,
+      tabs,
+    };
+  }
+
+  /**
+   * Replace open editors with a Hot Exit snapshot. Clears restore-pending and
+   * opens Untitled when the snapshot has no tabs.
+   */
+  applySessionSnapshot(snapshot: EditorSessionSnapshot | null): void {
+    for (const tab of this.tabs) {
+      this.disposeClosedTab(tab);
+    }
+    this.tabs = [];
+    this.activeTabId = null;
+    this.savedContent.clear();
+    this.viewStates.clear();
+    this.sessionRestorePending = false;
+    this.initialized = true;
+
+    if (!snapshot || snapshot.tabs.length === 0) {
+      this.untitledCounter = Math.max(1, snapshot?.untitledCounter ?? 1);
+      this.openUntitled();
+      this.updateContextKeys();
+      this.fireDidChange();
+      return;
+    }
+
+    this.untitledCounter = Math.max(1, snapshot.untitledCounter);
+    for (const item of snapshot.tabs) {
+      if (isExcludedFromEditorSession(item.uri)) continue;
+      const tab: EditorTab = {
+        id: item.id,
+        label: item.label,
+        uri: item.uri,
+        languageId: item.languageId,
+        content: item.content,
+        isDirty: item.isDirty,
+        isPreview: item.isPreview,
+        isPinned: item.isPinned,
+        description: item.description,
+        tooltip: item.tooltip,
+      };
+      this.tabs.push(tab);
+      this.savedContent.set(item.id, item.savedContent);
+    }
+
+    if (this.tabs.length === 0) {
+      this.openUntitled();
+    } else {
+      const active =
+        (snapshot.activeTabId &&
+          this.tabs.find((tab) => tab.id === snapshot.activeTabId)?.id) ||
+        this.tabs[0]!.id;
+      this.activeTabId = active;
+    }
+
+    this.updateContextKeys();
+    this.fireDidChange();
+  }
+
+  /**
+   * Update tab buffer used for Hot Exit / display without toggling dirty
+   * (e.g. DDL fetch completed).
+   */
+  setTabContentSnapshot(id: string, content: string): void {
+    const tab = this.tabs.find((item) => item.id === id);
+    if (!tab || tab.content === content) return;
+    tab.content = content;
+    if (!tab.isDirty) {
+      this.savedContent.set(id, content);
+    }
+    this.fireDidChange();
   }
 
   openEditor(input: OpenEditorInput): string {

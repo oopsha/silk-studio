@@ -10,13 +10,9 @@ import type {
 import { useConfiguration } from "../../platform/configuration/useConfiguration";
 import { useI18n } from "../../platform/i18n/useI18n";
 import type { LocaleId } from "../../platform/i18n/locale";
-import { AiAuditLogService } from "../../services/ai/aiAuditLogService";
-import { formatEstimatedCostUsd } from "../../services/ai/aiAuditLogPricing";
-import type { AiAuditLogEntry } from "../../services/ai/aiAuditLogTypes";
 import { AiSecretService } from "../../services/ai/aiSecretService";
 import { testConfiguredConnection } from "../../services/ai/aiProviderService";
 import { AiProviderError } from "../../services/ai/aiProviderTypes";
-import { useAiAuditLog } from "../../services/ai/useAiAuditLog";
 import { useAiHasApiKey } from "../../services/ai/useAiReadyState";
 import { shouldUseDevSecretStore } from "../../services/secrets/devSecretStore";
 import {
@@ -48,124 +44,6 @@ const SETTINGS_CATEGORY_MESSAGE_KEYS = {
   | "settings.category.queryResult"
   | "settings.category.ai"
 >;
-const AI_AUDIT_DISPLAY_LIMIT = 50;
-
-function formatAuditTime(at: number): string {
-  try {
-    return new Date(at).toLocaleString();
-  } catch {
-    return String(at);
-  }
-}
-
-function formatTokenPair(entry: AiAuditLogEntry): string {
-  const input =
-    typeof entry.inputTokens === "number" ? String(entry.inputTokens) : "—";
-  const output =
-    typeof entry.outputTokens === "number" ? String(entry.outputTokens) : "—";
-  if (input === "—" && output === "—") return "—";
-  return `${input} / ${output}`;
-}
-
-function AiAuditLogPanel() {
-  const { t } = useI18n();
-  const entries = useAiAuditLog();
-  const visible = entries.slice(0, AI_AUDIT_DISPLAY_LIMIT);
-  const totalCost = AiAuditLogService.getTotalEstimatedCostUsd();
-
-  function handleClear(): void {
-    if (entries.length === 0) return;
-    if (!window.confirm(t("settings.ai.auditClearConfirm"))) return;
-    AiAuditLogService.clear();
-  }
-
-  function handleExport(): void {
-    const blob = new Blob([AiAuditLogService.exportJson()], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `silk-ai-audit-${new Date().toISOString().slice(0, 10)}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }
-
-  return (
-    <div className="settings-ai-audit">
-      <p className="settings-ai-audit__summary">
-        {entries.length === 0
-          ? t("settings.ai.auditEmpty")
-          : t("settings.ai.auditSummary")
-              .replace("{n}", String(entries.length))
-              .replace("{cost}", formatEstimatedCostUsd(totalCost))}
-      </p>
-      <p className="settings-ai-audit__note">{t("settings.ai.auditNote")}</p>
-      <div className="settings-ai-audit__actions">
-        <button
-          type="button"
-          className="settings-button"
-          disabled={entries.length === 0}
-          onClick={handleExport}
-        >
-          {t("settings.ai.auditExport")}
-        </button>
-        <button
-          type="button"
-          className="settings-button"
-          disabled={entries.length === 0}
-          onClick={handleClear}
-        >
-          {t("settings.ai.auditClear")}
-        </button>
-      </div>
-      {visible.length > 0 ? (
-        <ul className="settings-ai-audit__list">
-          {visible.map((entry) => (
-            <li key={entry.id} className="settings-ai-audit__item">
-              <div className="settings-ai-audit__item-meta">
-                <span
-                  className={`settings-ai-audit__status settings-ai-audit__status--${entry.status}`}
-                >
-                  {entry.status}
-                </span>
-                <span>{formatAuditTime(entry.at)}</span>
-                <span>
-                  {entry.kind === "test_connection"
-                    ? t("settings.ai.auditKindTest")
-                    : t("settings.ai.auditKindChat")}
-                </span>
-              </div>
-              <div className="settings-ai-audit__item-detail">
-                {AI_PROVIDER_LABELS[entry.provider]} · {entry.model || "(model)"}
-              </div>
-              <div className="settings-ai-audit__item-detail">
-                {t("settings.ai.auditTokensLine")
-                  .replace("{tokens}", formatTokenPair(entry))
-                  .replace(
-                    "{cost}",
-                    formatEstimatedCostUsd(entry.estimatedCostUsd),
-                  )}
-                {typeof entry.durationMs === "number"
-                  ? ` · ${entry.durationMs}ms`
-                  : ""}
-                {entry.errorCode ? ` · ${entry.errorCode}` : ""}
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {entries.length > AI_AUDIT_DISPLAY_LIMIT ? (
-        <p className="settings-ai-audit__note">
-          {t("settings.ai.auditShowingLatest").replace(
-            "{n}",
-            String(AI_AUDIT_DISPLAY_LIMIT),
-          )}
-        </p>
-      ) : null}
-    </div>
-  );
-}
 
 type SettingRowProps = {
   title: string;
@@ -923,9 +801,26 @@ function AiSettings() {
           <span>{t("settings.ai.allowExecuteHint")}</span>
         </label>
       </SettingRow>
-      <SettingRow title={t("settings.ai.auditLog")}>
-        <AiAuditLogPanel />
-      </SettingRow>
+      {shouldUseDevSecretStore() ? (
+        <SettingRow
+          title={t("settings.ai.debugDumpHttp")}
+          description={t("settings.ai.debugDumpHttpDescription")}
+        >
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={configuration["ai.debug.dumpHttp"]}
+              onChange={(event) =>
+                ConfigurationService.updateValue(
+                  "ai.debug.dumpHttp",
+                  event.target.checked,
+                )
+              }
+            />
+            <span>{t("settings.ai.debugDumpHttpHint")}</span>
+          </label>
+        </SettingRow>
+      ) : null}
     </section>
   );
 }

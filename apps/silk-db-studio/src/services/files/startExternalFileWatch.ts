@@ -8,7 +8,7 @@ import { AppNotificationService } from "@silk-studio/workbench/services/notifica
 type UnwatchFn = () => void;
 
 function normalizePathKey(path: string): string {
-  return path.trim().replaceAll("\\", "/").toLowerCase();
+  return path.trim().replace(/\\/g, "/").toLowerCase();
 }
 
 function isModifyOrCreateEvent(type: unknown): boolean {

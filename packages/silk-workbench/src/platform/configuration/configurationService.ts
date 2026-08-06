@@ -196,6 +196,10 @@ class ConfigurationServiceImpl {
       this.values["ai.allowExecute"] =
         CONFIGURATION_DEFAULTS["ai.allowExecute"];
     }
+    if (typeof this.values["ai.debug.dumpHttp"] !== "boolean") {
+      this.values["ai.debug.dumpHttp"] =
+        CONFIGURATION_DEFAULTS["ai.debug.dumpHttp"];
+    }
   }
 
   private fireDidChange(): void {

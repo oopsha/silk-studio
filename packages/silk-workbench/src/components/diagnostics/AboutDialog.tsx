@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useI18n } from "../../platform/i18n/useI18n";
+import { CommandService } from "../../platform/commands/commandService";
 import { AboutDialogService } from "../../services/diagnostics/aboutDialogService";
 import {
   APP_DISPLAY_NAME,
@@ -158,6 +159,16 @@ function AboutDialog() {
             onClick={() => void handleOpenLogFolder()}
           >
             {t("workbench.commands.openLogFolder")}
+          </button>
+          <button
+            type="button"
+            className="about-dialog__button about-dialog__button--secondary"
+            onClick={() => {
+              close();
+              void CommandService.executeCommand("silk.ai.showCallLog");
+            }}
+          >
+            {t("workbench.commands.showAiCallLog")}
           </button>
           <button
             type="button"
