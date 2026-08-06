@@ -45,6 +45,11 @@ CommandsRegistry.registerCommand("silk.queryResult.clearFilters", () => {
   QueryResultGridService.clearFiltersAndSort();
 });
 
+CommandsRegistry.registerCommand("silk.queryResult.saveColumnLayout", () => {
+  if (!QueryResultGridService.isAttached()) return;
+  QueryResultGridService.saveColumnLayoutNow();
+});
+
 CommandsRegistry.registerCommand("silk.queryResult.resetColumnLayout", () => {
   if (!QueryResultGridService.isAttached()) return;
   QueryResultGridService.resetColumnLayout();
@@ -93,6 +98,15 @@ MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
   },
   group: "3_result",
   order: 50,
+});
+
+MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+  command: {
+    id: "silk.queryResult.saveColumnLayout",
+    title: "Save Column Layout",
+  },
+  group: "3_result",
+  order: 55,
 });
 
 MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {

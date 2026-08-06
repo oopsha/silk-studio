@@ -88,6 +88,17 @@ interface DbDialect {
       throws SQLException;
 
   /**
+   * Resolves whether {@code tableName} is a {@code table}, {@code view}, or {@code
+   * materializedView} for safe cell-update messaging. Default: JDBC {@code getTables}.
+   *
+   * @return kind string, or {@code null} when unknown / not found
+   */
+  default String resolveRelationKind(
+      Connection connection, String schemaName, String tableName) throws SQLException {
+    return MetadataRelationKind.resolveViaJdbc(connection, schemaName, tableName);
+  }
+
+  /**
    * Which Explorer object groups this database has a concept of, in display order. {@link Main}
    * partitions {@link #collectSchemaObjects}'s flat object list into exactly these groups —
    * databases with no PACKAGE concept (SQL Server, MySQL, ...) must omit

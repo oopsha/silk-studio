@@ -581,6 +581,14 @@ public final class Main {
       if (resolvedSchema != null && !resolvedSchema.isBlank()) {
         result.put("schema", resolvedSchema);
       }
+      String schemaForKind =
+          resolvedSchema != null && !resolvedSchema.isBlank() ? resolvedSchema : schemaName;
+      String relationKind =
+          session.dialect.resolveRelationKind(
+              session.connection, schemaForKind, tableName);
+      if (relationKind != null && !relationKind.isBlank()) {
+        result.put("relationKind", relationKind);
+      }
       return result;
     }
 

@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   isQueryResultPayload,
+  type QueryRelationKind,
   type QueryResultPayload,
 } from "@silk-studio/db-protocol";
 import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
@@ -74,8 +75,8 @@ export type QueryExecuteOptions = {
   /** Override SQL stored in history (e.g. original statement for Explain). */
   historySql?: string;
   skipHistory?: boolean;
-  /** Explorer Open Data — table results may be editable; views are read-only. */
-  relationKind?: "table" | "view";
+  /** Explorer Open Data — table results may be editable; views/MVs are read-only. */
+  relationKind?: QueryRelationKind;
   /** Override the result tab label (e.g. schema.object from the explorer). */
   tabTitle?: string;
   /**
@@ -1233,7 +1234,7 @@ class QueryExecutionServiceImpl {
       logParts?: QueryLogPart[] | null;
       result: QueryResultPayload | null;
       status: QueryResultTabStatus;
-      relationKind?: "table" | "view";
+      relationKind?: QueryRelationKind;
       title?: string;
       connectionId?: string;
     },

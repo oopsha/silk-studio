@@ -21,6 +21,8 @@ export type QueryResultGridSnapshot = {
   sortActive: boolean;
   /** True when a saved column layout exists for the current column set. */
   hasCustomLayout: boolean;
+  /** True when the user changed layout since last save/reset/restore. */
+  layoutDirty: boolean;
 };
 
 export type QueryResultCopyMode = "selection" | "rows" | "all";
@@ -36,7 +38,8 @@ type ActiveGrid = {
 
 type SnapshotListener = () => void;
 
-const LAYOUT_SAVE_DEBOUNCE_MS = 250;
+/** Ignore column events briefly after programmatic layout/autosize. */
+const APPLYING_LAYOUT_CLEAR_MS = 120;
 
 /**
  * Holds the mounted query-result grid API so menu/keybinding commands can
@@ -50,11 +53,13 @@ class QueryResultGridServiceImpl {
     filterActive: false,
     sortActive: false,
     hasCustomLayout: false,
+    layoutDirty: false,
   };
   private readonly listeners = new Set<SnapshotListener>();
-  /** Suppress layout persistence while applying a stored layout / reset. */
+  /** Suppress dirty marks while applying a stored layout / reset / autosize. */
   private applyingLayout = false;
-  private layoutSaveTimer: number | null = null;
+  private applyingLayoutClearTimer: number | null = null;
+  private layoutDirty = false;
 
   attach(
     api: GridApi<QueryResultRow>,
@@ -63,20 +68,24 @@ class QueryResultGridServiceImpl {
   ): void {
     const profileId = resolveLayoutProfileId();
     this.active = { api, columns, nullDisplay, profileId };
+    this.layoutDirty = false;
     this.restoreColumnLayout();
     this.refreshSnapshot();
   }
 
   detach(api: GridApi<QueryResultRow>): void {
     if (this.active?.api === api) {
-      this.flushLayoutSave();
+      this.cancelApplyingLayoutClear();
       this.active = null;
+      this.layoutDirty = false;
+      this.applyingLayout = false;
       this.snapshot = {
         totalRows: 0,
         displayedRows: 0,
         filterActive: false,
         sortActive: false,
         hasCustomLayout: false,
+        layoutDirty: false,
       };
       this.fire();
     }
@@ -121,31 +130,41 @@ class QueryResultGridServiceImpl {
       filterActive,
       sortActive,
       hasCustomLayout: hasSavedColumnLayout(grid.profileId, grid.columns),
+      layoutDirty: this.layoutDirty,
     };
     this.fire();
   }
 
-  /** Debounced persist of width / order / hide / pin (not sort/filter). */
-  scheduleColumnLayoutSave(): void {
-    if (this.applyingLayout || !this.active) return;
-    if (this.layoutSaveTimer != null) {
-      window.clearTimeout(this.layoutSaveTimer);
-    }
-    this.layoutSaveTimer = window.setTimeout(() => {
-      this.layoutSaveTimer = null;
-      this.persistColumnLayoutNow();
-    }, LAYOUT_SAVE_DEBOUNCE_MS);
+  /** Mark layout dirty after a user-driven column change (no auto-save). */
+  markColumnLayoutDirty(): void {
+    if (this.applyingLayout || !this.active || this.layoutDirty) return;
+    this.layoutDirty = true;
+    this.refreshSnapshot();
+  }
+
+  /** Persist current column layout explicitly (toolbar / command). */
+  saveColumnLayoutNow(): boolean {
+    const grid = this.active;
+    if (!grid || this.applyingLayout) return false;
+
+    const state = toPersistedLayoutState(grid.api.getColumnState());
+    if (state.length === 0) return false;
+    saveColumnLayout(grid.profileId, grid.columns, state);
+    this.layoutDirty = false;
+    this.refreshSnapshot();
+    return true;
   }
 
   resetColumnLayout(): boolean {
     const grid = this.active;
     if (!grid) return false;
 
-    // Drop pending save — do not persist the layout we are about to clear.
-    this.cancelLayoutSave();
-    clearColumnLayout(grid.profileId, grid.columns);
+    const hadSaved = hasSavedColumnLayout(grid.profileId, grid.columns);
+    if (!hadSaved && !this.layoutDirty) return false;
 
-    this.applyingLayout = true;
+    clearColumnLayout(grid.profileId, grid.columns);
+    this.layoutDirty = false;
+    this.beginApplyingLayout();
     try {
       grid.api.resetColumnState();
       grid.api.applyColumnState({
@@ -169,7 +188,7 @@ class QueryResultGridServiceImpl {
       // Fit data columns only — keep the row-number gutter fixed width.
       grid.api.autoSizeColumns(grid.columns, false);
     } finally {
-      this.applyingLayout = false;
+      this.endApplyingLayout({ keepClean: true });
     }
 
     this.refreshSnapshot();
@@ -185,11 +204,11 @@ class QueryResultGridServiceImpl {
     if (!grid || grid.columns.length === 0) return;
     if (hasSavedColumnLayout(grid.profileId, grid.columns)) return;
 
-    this.applyingLayout = true;
+    this.beginApplyingLayout();
     try {
       grid.api.autoSizeColumns(grid.columns, false);
     } finally {
-      this.applyingLayout = false;
+      this.endApplyingLayout({ keepClean: true });
     }
   }
 
@@ -247,7 +266,8 @@ class QueryResultGridServiceImpl {
     const layout = loadColumnLayout(grid.profileId, grid.columns);
     if (!layout) return;
 
-    this.applyingLayout = true;
+    this.layoutDirty = false;
+    this.beginApplyingLayout();
     try {
       grid.api.applyColumnState({
         state: layout.state.map((item) => ({
@@ -260,32 +280,31 @@ class QueryResultGridServiceImpl {
         applyOrder: true,
       });
     } finally {
+      this.endApplyingLayout({ keepClean: true });
+    }
+  }
+
+  private beginApplyingLayout(): void {
+    this.cancelApplyingLayoutClear();
+    this.applyingLayout = true;
+  }
+
+  private endApplyingLayout(options?: { keepClean?: boolean }): void {
+    this.cancelApplyingLayoutClear();
+    this.applyingLayoutClearTimer = window.setTimeout(() => {
+      this.applyingLayoutClearTimer = null;
       this.applyingLayout = false;
-    }
+      if (options?.keepClean) {
+        this.layoutDirty = false;
+        this.refreshSnapshot();
+      }
+    }, APPLYING_LAYOUT_CLEAR_MS);
   }
 
-  private persistColumnLayoutNow(): void {
-    const grid = this.active;
-    if (!grid || this.applyingLayout) return;
-
-    const state = toPersistedLayoutState(grid.api.getColumnState());
-    if (state.length === 0) return;
-    saveColumnLayout(grid.profileId, grid.columns, state);
-    this.refreshSnapshot();
-  }
-
-  private flushLayoutSave(): void {
-    if (this.layoutSaveTimer != null) {
-      window.clearTimeout(this.layoutSaveTimer);
-      this.layoutSaveTimer = null;
-      this.persistColumnLayoutNow();
-    }
-  }
-
-  private cancelLayoutSave(): void {
-    if (this.layoutSaveTimer != null) {
-      window.clearTimeout(this.layoutSaveTimer);
-      this.layoutSaveTimer = null;
+  private cancelApplyingLayoutClear(): void {
+    if (this.applyingLayoutClearTimer != null) {
+      window.clearTimeout(this.applyingLayoutClearTimer);
+      this.applyingLayoutClearTimer = null;
     }
   }
 

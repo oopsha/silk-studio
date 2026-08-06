@@ -490,6 +490,7 @@ export const koMessages = {
       exportCsv: "CSV 내보내기(필터)",
       clearFilters: "결과 필터 지우기",
       resetLayout: "열 레이아웃 초기화",
+      saveLayout: "열 레이아웃 저장",
       copiedSelection: "선택을 복사했습니다",
       nothingToCopy: "복사할 내용이 없습니다",
       copyFailed: "복사에 실패했습니다",
@@ -501,7 +502,9 @@ export const koMessages = {
       exportFailed: "내보내기에 실패했습니다",
       filtersCleared: "필터와 정렬을 지웠습니다",
       layoutReset: "열 레이아웃을 초기화했습니다",
+      layoutSaved: "열 레이아웃을 저장했습니다",
       nothingToReset: "초기화할 내용이 없습니다",
+      nothingToSaveLayout: "저장할 레이아웃 변경이 없습니다",
       updatePreviewFailed: "UPDATE 미리보기를 만들지 못했습니다",
       dirtyCellsTitle: "저장되지 않은 편집 셀 {n}개",
       truncatedTitle:
@@ -513,6 +516,7 @@ export const koMessages = {
       copyFilteredTitle: "필터된 모든 행 복사(TSV)",
       exportCsvTitle: "CSV 내보내기(필터된 행)",
       clearFiltersTitle: "필터와 정렬 지우기",
+      saveLayoutTitle: "열 레이아웃 저장(너비, 순서, 표시)",
       resetLayoutTitle: "열 레이아웃 초기화(너비, 순서, 표시)",
       statusHintFilter: "복사/CSV는 필터·정렬된 보기를 사용합니다",
       statusHintEdit: "편집된 셀은 UPDATE 전에 미리보기와 확인이 필요합니다",
@@ -521,6 +525,7 @@ export const koMessages = {
       badgeFiltered: "필터됨",
       badgeSorted: "정렬됨",
       badgeLayout: "레이아웃 저장됨",
+      badgeLayoutDirty: "레이아웃 변경됨",
       badgeSaveBlocked: "저장 차단",
       rowsOf: "{shown} / {total}행",
       rowsCount: "{n}행",
@@ -531,6 +536,7 @@ export const koMessages = {
       statusFilterActive: "필터 활성",
       statusSortActive: "정렬 활성",
       statusLayoutSaved: "열 레이아웃 저장됨",
+      statusLayoutDirty: "열 레이아웃 변경됨",
       idleOutput: "SQL 문을 실행하면 결과가 표시됩니다.",
       emptyQuery: "쿼리가 비어 있습니다. 에디터에 SQL을 작성한 뒤 다시 실행하세요.",
       emptyExplain: "쿼리가 비어 있습니다. 에디터에 SQL을 작성한 뒤 다시 Explain하세요.",
@@ -586,14 +592,25 @@ export const koMessages = {
       saveDesktopOnly: "셀 편집 저장은 데스크톱 앱에서만 가능합니다.",
       saveViewsReadonly:
         "뷰는 읽기 전용입니다. 셀 편집을 저장하려면 테이블에서 Open Data를 사용하세요.",
+      saveMviewsReadonly:
+        "머티리얼라이즈드 뷰는 읽기 전용입니다. 셀 편집은 저장할 수 없습니다(갱신은 refresh를 사용하세요).",
       saveNeedConnect: "변경을 저장하려면 데이터베이스 프로필에 연결하세요.",
       saveReadOnlyUpdate:
         "읽기 전용 모드가 켜져 있습니다. UPDATE 문은 차단됩니다.",
       saveSimpleSelectOnly:
         "단일 테이블의 단순 SELECT 결과만 저장할 수 있습니다. 조인·유니온·서브쿼리는 지원하지 않습니다.",
+      saveNoPrimaryKey:
+        "테이블 {table}에 기본 키가 없습니다. 안전을 위해 업데이트를 차단합니다.",
+      saveNoPrimaryKeyGeneric:
+        "{name}에 기본 키가 없어 업데이트를 차단합니다.",
+      savePkMetadataFailed: "기본 키 메타데이터를 불러오지 못했습니다.",
+      savePkMissingInResult:
+        '기본 키 열 "{column}"이(가) 결과 집합에 없습니다. SELECT 목록에 모든 PK 열을 포함하세요.',
       saveNoEdits: "셀을 편집하면 변경된 행으로 표시됩니다.",
+      saveNoEditedCells: "저장할 편집된 셀이 없습니다.",
       saveDesktopShort: "저장은 데스크톱 앱에서만 가능합니다.",
       saveViewsShort: "뷰는 읽기 전용입니다.",
+      saveMviewsShort: "머티리얼라이즈드 뷰는 읽기 전용입니다.",
       saveReadOnlyShort: "읽기 전용 모드가 켜져 있습니다.",
       saveSimpleSelectShort: "단일 테이블의 단순 SELECT 결과만 저장할 수 있습니다.",
       confirmUpdateTitle: "UPDATE 확인",

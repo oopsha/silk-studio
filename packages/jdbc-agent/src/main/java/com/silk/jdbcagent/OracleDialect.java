@@ -209,6 +209,52 @@ final class OracleDialect implements DbDialect {
         connection, schemaName, tableName, keys, candidates, null);
   }
 
+  /**
+   * Oracle JDBC often reports materialized views as {@code TABLE}; prefer {@code ALL_OBJECTS}.
+   */
+  @Override
+  public String resolveRelationKind(
+      Connection connection, String schemaName, String tableName) throws SQLException {
+    String schema = schemaName == null ? "" : schemaName.trim();
+    if (schema.isBlank()) {
+      String currentSchema =
+          MetadataTableScope.querySingleString(
+              connection, "SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') FROM DUAL");
+      if (currentSchema != null && !currentSchema.isBlank()) {
+        schema = currentSchema.trim();
+      } else {
+        String user = connection.getMetaData().getUserName();
+        if (user != null && !user.isBlank()) {
+          schema = user.trim();
+        }
+      }
+    }
+    if (schema.isBlank() || tableName == null || tableName.isBlank()) {
+      return MetadataRelationKind.resolveViaJdbc(connection, schemaName, tableName);
+    }
+
+    String sql =
+        "SELECT OBJECT_TYPE FROM ALL_OBJECTS WHERE OWNER = ? AND OBJECT_NAME = ? "
+            + "AND OBJECT_TYPE IN ('TABLE', 'VIEW', 'MATERIALIZED VIEW')";
+    for (String schemaCase : MetadataTableScope.distinctCases(schema)) {
+      for (String nameCase : MetadataTableScope.distinctCases(tableName.trim())) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+          statement.setString(1, schemaCase);
+          statement.setString(2, nameCase);
+          try (ResultSet rs = statement.executeQuery()) {
+            if (rs.next()) {
+              String kind = MetadataRelationKind.fromJdbcTableType(rs.getString(1));
+              if (kind != null) {
+                return kind;
+              }
+            }
+          }
+        }
+      }
+    }
+    return MetadataRelationKind.resolveViaJdbc(connection, schemaName, tableName);
+  }
+
   @Override
   public String fetchObjectDdl(
       Connection connection,

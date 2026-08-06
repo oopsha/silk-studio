@@ -491,6 +491,7 @@ export const enMessages = {
       exportCsv: "Export CSV (Filtered)",
       clearFilters: "Clear Result Filters",
       resetLayout: "Reset Column Layout",
+      saveLayout: "Save Column Layout",
       copiedSelection: "Copied selection",
       nothingToCopy: "Nothing to copy",
       copyFailed: "Copy failed",
@@ -502,7 +503,9 @@ export const enMessages = {
       exportFailed: "Export failed",
       filtersCleared: "Filters and sort cleared",
       layoutReset: "Column layout reset",
+      layoutSaved: "Column layout saved",
       nothingToReset: "Nothing to reset",
+      nothingToSaveLayout: "No layout changes to save",
       updatePreviewFailed: "Failed to build UPDATE preview",
       dirtyCellsTitle: "{n} edited cell(s) not saved",
       truncatedTitle:
@@ -515,6 +518,7 @@ export const enMessages = {
       copyFilteredTitle: "Copy all filtered rows (TSV)",
       exportCsvTitle: "Export CSV (filtered rows)",
       clearFiltersTitle: "Clear filters and sort",
+      saveLayoutTitle: "Save column layout (width, order, visibility)",
       resetLayoutTitle: "Reset column layout (width, order, visibility)",
       statusHintFilter: "Copy/CSV use the filtered & sorted view",
       statusHintEdit: "Edited cells require preview + confirm before UPDATE",
@@ -523,6 +527,7 @@ export const enMessages = {
       badgeFiltered: "Filtered",
       badgeSorted: "Sorted",
       badgeLayout: "Layout saved",
+      badgeLayoutDirty: "Layout changed",
       badgeSaveBlocked: "Save blocked",
       rowsOf: "{shown} of {total} rows",
       rowsCount: "{n} rows",
@@ -533,6 +538,7 @@ export const enMessages = {
       statusFilterActive: "filter active",
       statusSortActive: "sort active",
       statusLayoutSaved: "column layout saved",
+      statusLayoutDirty: "column layout changed",
       idleOutput: "Run a SQL statement to see results.",
       emptyQuery: "Query is empty. Write SQL in the editor and run again.",
       emptyExplain: "Query is empty. Write SQL in the editor and explain again.",
@@ -587,14 +593,25 @@ export const enMessages = {
       saveDesktopOnly: "Cell edits can only be saved in the desktop app.",
       saveViewsReadonly:
         "Views are read-only. Open Data on a table to save cell edits.",
+      saveMviewsReadonly:
+        "Materialized views are read-only. Cell edits cannot be saved (use refresh instead).",
       saveNeedConnect: "Connect a database profile before saving changes.",
       saveReadOnlyUpdate:
         "Read-only mode is enabled. UPDATE statements are blocked.",
       saveSimpleSelectOnly:
         "Only simple SELECT results from a single table can be saved. Joins, unions, and subqueries are not supported.",
+      saveNoPrimaryKey:
+        "Table {table} has no primary key. Updates are blocked for safety.",
+      saveNoPrimaryKeyGeneric:
+        "No primary key was found for {name}. Updates are blocked for safety.",
+      savePkMetadataFailed: "Failed to load primary key metadata.",
+      savePkMissingInResult:
+        'Primary key column "{column}" is not present in the result set. Include all PK columns in the SELECT list.',
       saveNoEdits: "Edit a cell to mark rows as changed.",
+      saveNoEditedCells: "No edited cells to save.",
       saveDesktopShort: "Saving is available in the desktop app only.",
       saveViewsShort: "Views are read-only.",
+      saveMviewsShort: "Materialized views are read-only.",
       saveReadOnlyShort: "Read-only mode is enabled.",
       saveSimpleSelectShort:
         "Only simple single-table SELECT results can be saved.",

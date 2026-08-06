@@ -30,6 +30,7 @@ import {
   executeConfirmedUpdates,
   getSaveBlockedReason,
   resolveUpdateEligibility,
+  type QueryRelationKind,
   type UpdatePreview,
 } from "../../../services/query/queryResultUpdateService";
 import QueryResultUpdateDialog from "./QueryResultUpdateDialog";
@@ -71,7 +72,7 @@ type QueryResultGridProps = {
   tabId: string;
   sql: string;
   result: QueryResultPayload;
-  relationKind?: "table" | "view";
+  relationKind?: QueryRelationKind;
   connectionId?: string;
 };
 
@@ -367,8 +368,13 @@ function QueryResultGrid({
     flashMessage(ok ? t("app.query.layoutReset") : t("app.query.nothingToReset"));
   };
 
-  const persistLayout = () => {
-    QueryResultGridService.scheduleColumnLayoutSave();
+  const handleSaveColumnLayout = () => {
+    const ok = QueryResultGridService.saveColumnLayoutNow();
+    flashMessage(ok ? t("app.query.layoutSaved") : t("app.query.nothingToSaveLayout"));
+  };
+
+  const markLayoutDirty = () => {
+    QueryResultGridService.markColumnLayoutDirty();
   };
 
   const saveHint =
@@ -482,7 +488,11 @@ function QueryResultGrid({
               {t("app.query.badgeSorted")}
             </span>
           ) : null}
-          {snapshot.hasCustomLayout ? (
+          {snapshot.layoutDirty ? (
+            <span className="query-result-grid__badge">
+              {t("app.query.badgeLayoutDirty")}
+            </span>
+          ) : snapshot.hasCustomLayout ? (
             <span className="query-result-grid__badge">
               {t("app.query.badgeLayout")}
             </span>
@@ -562,9 +572,19 @@ function QueryResultGrid({
           <button
             type="button"
             className="query-result-grid__action"
+            title={t("app.query.saveLayoutTitle")}
+            aria-label={t("app.query.saveLayout")}
+            disabled={!snapshot.layoutDirty}
+            onClick={handleSaveColumnLayout}
+          >
+            <Codicon name="bookmark" />
+          </button>
+          <button
+            type="button"
+            className="query-result-grid__action"
             title={t("app.query.resetLayoutTitle")}
             aria-label={t("app.query.resetLayout")}
-            disabled={!snapshot.hasCustomLayout}
+            disabled={!snapshot.hasCustomLayout && !snapshot.layoutDirty}
             onClick={handleResetColumnLayout}
           >
             <Codicon name="layout" />
@@ -600,13 +620,13 @@ function QueryResultGrid({
           onModelUpdated={() => QueryResultGridService.refreshSnapshot()}
           onSelectionChanged={() => QueryResultGridService.refreshSnapshot()}
           onColumnResized={(event) => {
-            if (event.finished) persistLayout();
+            if (event.finished) markLayoutDirty();
           }}
           onColumnMoved={(event) => {
-            if (event.finished) persistLayout();
+            if (event.finished) markLayoutDirty();
           }}
-          onColumnVisible={persistLayout}
-          onColumnPinned={persistLayout}
+          onColumnVisible={markLayoutDirty}
+          onColumnPinned={markLayoutDirty}
         />
       </div>
 
@@ -658,6 +678,7 @@ function statusTitle(
     filterActive: boolean;
     sortActive: boolean;
     hasCustomLayout: boolean;
+    layoutDirty: boolean;
   },
   truncated: boolean,
   maxRows: number,
@@ -669,6 +690,7 @@ function statusTitle(
     | "app.query.statusFilterActive"
     | "app.query.statusSortActive"
     | "app.query.statusLayoutSaved"
+    | "app.query.statusLayoutDirty"
     | "app.query.statusHintFilter"
     | "app.query.statusHintEdit") => string,
 ): string {
@@ -686,7 +708,11 @@ function statusTitle(
   }
   if (snapshot.filterActive) parts.push(t("app.query.statusFilterActive"));
   if (snapshot.sortActive) parts.push(t("app.query.statusSortActive"));
-  if (snapshot.hasCustomLayout) parts.push(t("app.query.statusLayoutSaved"));
+  if (snapshot.layoutDirty) {
+    parts.push(t("app.query.statusLayoutDirty"));
+  } else if (snapshot.hasCustomLayout) {
+    parts.push(t("app.query.statusLayoutSaved"));
+  }
   parts.push(t("app.query.statusHintFilter"));
   parts.push(t("app.query.statusHintEdit"));
   return parts.join(" · ");
