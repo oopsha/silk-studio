@@ -5,7 +5,7 @@ import type { editor } from "monaco-editor";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import {
   monacoModelPathForTab,
   scheduleRestoreViewState,

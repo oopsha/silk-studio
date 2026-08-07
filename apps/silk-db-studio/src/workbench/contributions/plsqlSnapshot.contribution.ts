@@ -1,7 +1,7 @@
 import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { shouldUsePlsqlSave } from "../../services/connection/plsqlSaveService";
 import {

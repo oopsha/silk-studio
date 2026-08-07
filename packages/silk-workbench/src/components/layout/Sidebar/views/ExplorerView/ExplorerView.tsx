@@ -3,7 +3,7 @@ import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { CommandService } from "../../../../../platform/commands/commandService";
 import { useI18n } from "../../../../../platform/i18n/useI18n";
 import type { MessageKey } from "../../../../../platform/i18n/translate";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { codiconForLanguage } from "@silk-studio/editor/services/editor/languageFromPath.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import { useEditorTabs } from "@silk-studio/editor/services/editor/useEditorTabs.ts";

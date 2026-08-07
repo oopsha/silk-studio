@@ -1,4 +1,4 @@
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { ConnectionService } from "./connectionService";
 import { effectiveDefaultSchema } from "./connectionTypes";
 import { isSqlLanguageId } from "../sql/sqlDialect";

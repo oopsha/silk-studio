@@ -1,6 +1,6 @@
 import { editor, MarkerSeverity } from "monaco-editor";
 import type { ConnectionCompileError } from "@silk-studio/db-protocol";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 
 export const PLSQL_COMPILE_MARKER_OWNER = "silk.plsql.compile";
 

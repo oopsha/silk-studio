@@ -7,7 +7,8 @@ import {
   pickSavePath,
   writeTextFile,
 } from "@silk-studio/editor/services/editor/editorFileIO.ts";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
+import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import { TabBarActionService } from "@silk-studio/editor/services/editor/tabBarActionService.ts";
 import { basenameFromPath } from "@silk-studio/editor/services/editor/languageFromPath.ts";
 import { tKey } from "../../platform/i18n/activeLocale";
@@ -113,7 +114,12 @@ CommandsRegistry.registerCommand("workbench.action.lockEditorGroup", () => {
 });
 
 CommandsRegistry.registerCommand("workbench.action.splitEditorRight", () => {
-  console.log("[command] workbench.action.splitEditorRight");
+  const sourceId = EditorGroupsService.getFocusedGroupId();
+  EditorGroupsService.splitGroup(sourceId, "right");
+});
+
+CommandsRegistry.registerCommand("workbench.action.closeEditorGroup", () => {
+  EditorGroupsService.closeGroup(EditorGroupsService.getFocusedGroupId());
 });
 
 CommandsRegistry.registerCommand(

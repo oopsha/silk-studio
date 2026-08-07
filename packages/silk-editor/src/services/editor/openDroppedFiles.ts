@@ -1,4 +1,4 @@
-import { EditorService } from "./editorService";
+import { EditorService } from "./editorServiceFacade";
 import { readTextFileAtPath } from "./editorFileIO";
 import { isOpenableTextPath } from "./languageFromPath";
 

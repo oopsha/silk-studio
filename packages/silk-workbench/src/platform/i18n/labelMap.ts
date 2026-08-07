@@ -60,6 +60,7 @@ export const ENGLISH_LABEL_KEYS: Record<string, MessageKey> = {
   "Toggle Preview Editors": "workbench.commands.togglePreviewEditors",
   "Lock Editor Group": "workbench.commands.lockEditorGroup",
   "Split Editor Right": "workbench.commands.splitEditorRight",
+  "Close Editor Group": "workbench.commands.closeEditorGroup",
   "Close Other Editors": "workbench.commands.closeOtherEditors",
   "Close Editors To the Right": "workbench.commands.closeEditorsToTheRight",
   "Next Editor": "workbench.commands.nextEditor",

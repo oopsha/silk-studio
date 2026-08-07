@@ -1,5 +1,5 @@
 import { editor, MarkerSeverity } from "monaco-editor";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import {
   parseSqlErrorPosition,
   positionToOffset,

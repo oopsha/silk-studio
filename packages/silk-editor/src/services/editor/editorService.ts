@@ -57,9 +57,8 @@ export type EditorSessionTabSnapshot = {
   tooltip?: string;
 };
 
-export type EditorSessionSnapshot = {
-  version: 1;
-  savedAt: number;
+/** One editor group's content — the unit `EditorGroupsService` assembles into a full session. */
+export type EditorGroupContentSnapshot = {
   activeTabId: string | null;
   untitledCounter: number;
   tabs: EditorSessionTabSnapshot[];
@@ -67,7 +66,7 @@ export type EditorSessionSnapshot = {
 
 type LanguageIdResolver = (path: string, fromExtension: string) => string;
 
-class EditorServiceImpl {
+export class EditorServiceImpl {
   private tabs: EditorTab[] = [];
   private activeTabId: string | null = null;
   private untitledCounter = 1;
@@ -236,7 +235,7 @@ class EditorServiceImpl {
    * Snapshot tabs eligible for Hot Exit (excludes settings / keybindings / docs /
    * connection editors).
    */
-  captureSessionSnapshot(): EditorSessionSnapshot {
+  captureSessionSnapshot(): EditorGroupContentSnapshot {
     const tabs: EditorSessionTabSnapshot[] = [];
     for (const tab of this.tabs) {
       if (isExcludedFromEditorSession(tab.uri)) continue;
@@ -259,8 +258,6 @@ class EditorServiceImpl {
       activeTabId = tabs[0]?.id ?? null;
     }
     return {
-      version: 1,
-      savedAt: Date.now(),
       activeTabId,
       untitledCounter: this.untitledCounter,
       tabs,
@@ -271,7 +268,7 @@ class EditorServiceImpl {
    * Replace open editors with a Hot Exit snapshot. Clears restore-pending and
    * opens Untitled when the snapshot has no tabs.
    */
-  applySessionSnapshot(snapshot: EditorSessionSnapshot | null): void {
+  applySessionSnapshot(snapshot: EditorGroupContentSnapshot | null): void {
     for (const tab of this.tabs) {
       this.disposeClosedTab(tab);
     }
@@ -654,5 +651,3 @@ class EditorServiceImpl {
     }
   }
 }
-
-export const EditorService = new EditorServiceImpl();

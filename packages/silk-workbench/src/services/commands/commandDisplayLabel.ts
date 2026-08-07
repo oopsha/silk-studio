@@ -13,6 +13,7 @@ export const COMMAND_ENGLISH_TITLES: Readonly<Record<string, string>> = {
   "workbench.action.togglePreviewEditors": "Toggle Preview Editors",
   "workbench.action.lockEditorGroup": "Lock Editor Group",
   "workbench.action.splitEditorRight": "Split Editor Right",
+  "workbench.action.closeEditorGroup": "Close Editor Group",
   "workbench.action.closeOtherEditors": "Close Other Editors",
   "workbench.action.closeEditorsToTheRight": "Close Editors To the Right",
   "workbench.action.nextEditor": "Next Editor",

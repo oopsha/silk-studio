@@ -1,6 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { ask } from "@tauri-apps/plugin-dialog";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { readTextFileAtPath } from "@silk-studio/editor/services/editor/editorFileIO.ts";
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";

@@ -1,4 +1,4 @@
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { I18nService } from "../../platform/i18n/i18nService";
 import {
   SETTINGS_CATEGORY_ORDER,

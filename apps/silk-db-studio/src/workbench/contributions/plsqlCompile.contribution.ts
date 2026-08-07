@@ -5,7 +5,7 @@ import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { compileActivePlsqlObject } from "../../services/connection/plsqlCompileService";
 import { shouldUsePlsqlSave } from "../../services/connection/plsqlSaveService";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 
 CommandsRegistry.registerCommand("silk.plsql.compile", async () => {
   const active = EditorService.getActiveTab();

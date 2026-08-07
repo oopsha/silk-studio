@@ -9,7 +9,7 @@ import {
 import { createPortal } from "react-dom";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { ConnectionService } from "../../../services/connection/connectionService";
 import { ConnectionTargetQuickPickService } from "../../../services/connection/connectionTargetQuickPickService";

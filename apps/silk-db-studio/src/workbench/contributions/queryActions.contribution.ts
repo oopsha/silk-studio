@@ -2,7 +2,7 @@ import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
 import { QueryExecutionService } from "../../services/query/queryExecutionService";
 import {

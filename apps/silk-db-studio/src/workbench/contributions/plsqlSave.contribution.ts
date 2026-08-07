@@ -2,7 +2,7 @@ import {
   pickSavePath,
   writeTextFile,
 } from "@silk-studio/editor/services/editor/editorFileIO.ts";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { basenameFromPath } from "@silk-studio/editor/services/editor/languageFromPath.ts";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";

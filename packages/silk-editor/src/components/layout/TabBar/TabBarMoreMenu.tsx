@@ -9,7 +9,7 @@ import {
 import { createPortal } from "react-dom";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
-import { EditorService } from "../../../services/editor/editorService";
+import { EditorService } from "../../../services/editor/editorServiceFacade";
 import { useEnablePreviewEditors } from "../../../services/editor/useEnablePreviewEditors";
 import type { TabBarCommandAdapter } from "./TabBar";
 import "./TabBarMenu.css";

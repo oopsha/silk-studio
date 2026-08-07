@@ -1,5 +1,5 @@
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { formatErrorMessage } from "../formatErrorMessage";
 import { ConnectionService } from "./connectionService";
 import { bridgeCompileObject } from "./connectionCompileBridge";

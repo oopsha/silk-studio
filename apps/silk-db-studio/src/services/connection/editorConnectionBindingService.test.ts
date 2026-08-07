@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 
 // Lightweight unit tests for binding helpers without Tauri.
 
-vi.mock("@silk-studio/editor/services/editor/editorService.ts", () => {
+vi.mock("@silk-studio/editor/services/editor/editorServiceFacade.ts", () => {
   const tabs: Array<{ id: string; languageId: string }> = [];
   const listeners = new Set<() => void>();
   return {
@@ -61,7 +61,7 @@ describe("EditorConnectionBindingService", () => {
   beforeEach(async () => {
     vi.resetModules();
     const editor = await import(
-      "@silk-studio/editor/services/editor/editorService.ts"
+      "@silk-studio/editor/services/editor/editorServiceFacade.ts"
     );
     (editor.EditorService as unknown as { __reset: () => void }).__reset();
   });
@@ -71,7 +71,7 @@ describe("EditorConnectionBindingService", () => {
       "./editorConnectionBindingService"
     );
     const editor = await import(
-      "@silk-studio/editor/services/editor/editorService.ts"
+      "@silk-studio/editor/services/editor/editorServiceFacade.ts"
     );
     EditorConnectionBindingService.start();
     (
@@ -107,7 +107,7 @@ describe("EditorConnectionBindingService", () => {
       "./editorConnectionBindingService"
     );
     const editor = await import(
-      "@silk-studio/editor/services/editor/editorService.ts"
+      "@silk-studio/editor/services/editor/editorServiceFacade.ts"
     );
     const svc = editor.EditorService as unknown as {
       __reset: () => void;

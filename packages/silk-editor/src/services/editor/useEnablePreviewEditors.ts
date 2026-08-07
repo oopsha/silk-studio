@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { EditorService } from "./editorService";
+import { EditorService } from "./editorServiceFacade";
 
 export function useEnablePreviewEditors(): boolean {
   const [enabled, setEnabled] = useState(() =>

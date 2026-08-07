@@ -1,5 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { isOpenableTextPath } from "@silk-studio/editor/services/editor/languageFromPath.ts";
 import { openDroppedFilePaths } from "@silk-studio/editor/services/editor/openDroppedFiles.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";

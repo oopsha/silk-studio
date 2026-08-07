@@ -1,4 +1,4 @@
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
 import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import { resolveActiveMonacoLanguageId } from "../sql/sqlDialect";
