@@ -26,7 +26,6 @@ function migrateV1(v1: EditorSessionSnapshotV1): EditorSessionSnapshotV2 {
       {
         groupId,
         activeTabId: v1.activeTabId,
-        untitledCounter: v1.untitledCounter,
         tabs: v1.tabs,
       },
     ],

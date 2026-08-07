@@ -227,13 +227,13 @@ function TabBar({ groupId, commands }: TabBarProps) {
 
   function handleCloseTab(event: React.MouseEvent, tabId: string) {
     event.stopPropagation();
-    group.closeTab(tabId);
+    EditorGroupsService.closeTab(groupId, tabId);
   }
 
   function handleAuxClick(event: React.MouseEvent, tabId: string) {
     if (event.button === 1) {
       event.preventDefault();
-      group.closeTab(tabId);
+      EditorGroupsService.closeTab(groupId, tabId);
     }
   }
 

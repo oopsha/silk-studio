@@ -38,6 +38,9 @@ class EditorGroupsServiceImpl {
 
   private registerGroup(id: EditorGroupId, instance: EditorServiceImpl): void {
     this.groups.set(id, instance);
+    // Must be configured before the group can possibly call openUntitled()
+    // (e.g. ensureInitialTab()) — callers register before triggering that.
+    instance.configureUntitledLabelFactory(() => this.nextUntitledLabel());
     const unsubscribeAggregate = instance.onDidChange(() => {
       if (this.focusedGroupId === id) {
         this.fireDidChange();
@@ -73,6 +76,24 @@ class EditorGroupsServiceImpl {
     this.groupUnsubs.get(id)?.();
     this.groupUnsubs.delete(id);
     this.groups.delete(id);
+  }
+
+  /**
+   * Computed fresh from currently-open tabs across all groups (not a
+   * persisted counter) so numbering is unique app-wide and naturally
+   * resets to 1 once no Untitled tabs remain open anywhere.
+   */
+  private nextUntitledLabel(): string {
+    let max = 0;
+    for (const group of this.groups.values()) {
+      for (const tab of group.getTabs()) {
+        const match = /^Untitled-(\d+)$/.exec(tab.label);
+        if (match) {
+          max = Math.max(max, Number(match[1]));
+        }
+      }
+    }
+    return `Untitled-${max + 1}`;
   }
 
   getLayout(): EditorLayoutNode {
@@ -117,8 +138,10 @@ class EditorGroupsServiceImpl {
     newGroup.setEnablePreviewEditors(
       this.getGroup(sourceId).getEnablePreviewEditors(),
     );
-    newGroup.ensureInitialTab();
+    // Register before ensureInitialTab(): it may call openUntitled(), which
+    // needs the untitled-label factory registerGroup() configures.
     this.registerGroup(newGroupId, newGroup);
+    newGroup.ensureInitialTab();
     this.layout = splitLeaf(this.layout, sourceId, splitDirection, newGroupId);
     this.focusedGroupId = newGroupId;
     this.syncEditorHost();
@@ -141,6 +164,36 @@ class EditorGroupsServiceImpl {
     this.syncEditorHost();
     this.fireDidChange();
     this.fireAnyGroupDidChange();
+  }
+
+  /** Closes a tab; if that empties the group, closes the group too (unless it's the last one). */
+  closeTab(groupId: EditorGroupId, tabId: string): void {
+    const group = this.getGroup(groupId);
+    group.closeTab(tabId);
+    this.collapseIfEmpty(groupId, group);
+  }
+
+  closeActiveTab(groupId: EditorGroupId): void {
+    const group = this.getGroup(groupId);
+    const active = group.getActiveTab();
+    if (!active) return;
+    group.closeTab(active.id);
+    this.collapseIfEmpty(groupId, group);
+  }
+
+  closeAllTabsInGroup(groupId: EditorGroupId): void {
+    const group = this.getGroup(groupId);
+    group.closeAllTabs();
+    this.collapseIfEmpty(groupId, group);
+  }
+
+  private collapseIfEmpty(groupId: EditorGroupId, group: EditorServiceImpl): void {
+    if (group.getTabs().length > 0) return;
+    if (this.getGroupIds().length > 1) {
+      this.closeGroup(groupId);
+    }
+    // Sole remaining group: leave it with 0 tabs — EditorArea already
+    // renders an empty state rather than inventing a new Untitled tab.
   }
 
   setSplitRatio(splitId: string, sizes: number[]): void {
