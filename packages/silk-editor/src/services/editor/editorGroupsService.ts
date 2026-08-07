@@ -330,12 +330,16 @@ class EditorGroupsServiceImpl {
   }
 
   private fireDidChange(): void {
+    // See applySessionSnapshot: layout/groups are transiently inconsistent
+    // mid-rebuild, so external listeners must not observe intermediate state.
+    if (this.isRebuildingGroups) return;
     for (const listener of this.listeners) {
       listener();
     }
   }
 
   private fireAnyGroupDidChange(): void {
+    if (this.isRebuildingGroups) return;
     for (const listener of this.anyGroupListeners) {
       listener();
     }
