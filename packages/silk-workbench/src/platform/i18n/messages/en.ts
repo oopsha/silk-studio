@@ -171,6 +171,7 @@ export const enMessages = {
       primaryAria: "Primary Side Bar",
       connections: "CONNECTIONS",
       openEditors: "Open Editors",
+      openEditorsGroup: "Group {n}",
       outline: "Outline",
       timeline: "Timeline",
       noOpenEditors: "No open editors",

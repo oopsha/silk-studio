@@ -64,6 +64,15 @@
   line-height: 22px;
 }
 
+.quick-input-list-group-header {
+  padding: 4px 12px 2px;
+  color: var(--color-description);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-transform: uppercase;
+}
+
 .quick-input-list-row {
   margin: 0 6px;
   border-radius: 3px;
