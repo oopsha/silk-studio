@@ -3,7 +3,8 @@ import { Editor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import type { IDisposable, editor } from "monaco-editor";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
-import { EditorService } from "../../../services/editor/editorService";
+import { EditorGroupsService } from "../../../services/editor/editorGroupsService";
+import type { EditorGroupId } from "../../../services/editor/editorGroupTypes";
 import { EditorStatusService } from "../../../services/editor/editorStatusService";
 import { useActiveEditor } from "../../../services/editor/useActiveEditor";
 import type { EditorTab } from "../../../services/editor/editorTypes";
@@ -30,6 +31,10 @@ export type EditorConfigurationOptions = {
 };
 
 type EditorAreaProps = {
+  /** Which editor group this instance renders — one Monaco instance per group. */
+  groupId: EditorGroupId;
+  /** Gates the shared cursor-position status bar so an unfocused pane can't stomp it. */
+  isFocusedGroup: boolean;
   onRunQuery?: () => void;
   /** Execute Script (Ctrl+Shift+Enter) — whole buffer or selection with GO batches. */
   onRunScript?: () => void;
@@ -40,15 +45,20 @@ type EditorAreaProps = {
 };
 
 function EditorArea({
+  groupId,
+  isFocusedGroup,
   onRunQuery,
   onRunScript,
   renderAlternative,
   configuration,
   beforeMount,
 }: EditorAreaProps) {
-  const activeTab = useActiveEditor();
+  const group = EditorGroupsService.getGroup(groupId);
+  const activeTab = useActiveEditor(groupId);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const cursorListenerRef = useRef<IDisposable | null>(null);
+  const isFocusedGroupRef = useRef(isFocusedGroup);
+  isFocusedGroupRef.current = isFocusedGroup;
 
   const handleEditorWillMount = useCallback(
     (monaco: Monaco) => {
@@ -61,24 +71,25 @@ function EditorArea({
   const handleMount = useCallback(
     (instance: editor.IStandaloneCodeEditor, monaco: Monaco) => {
       editorRef.current = instance;
-      EditorService.setActiveTextEditor(instance);
+      group.setActiveTextEditor(instance);
 
-      const tabId = EditorService.getActiveTabId();
+      const tabId = group.getActiveTabId();
       if (tabId) {
-        scheduleRestoreViewState(instance, () =>
-          EditorService.getViewState(tabId),
-        );
+        scheduleRestoreViewState(instance, () => group.getViewState(tabId));
       }
 
       cursorListenerRef.current?.dispose();
 
-      const position = instance.getPosition();
-      EditorStatusService.setCursorPosition(
-        position?.lineNumber ?? 1,
-        position?.column ?? 1,
-      );
+      if (isFocusedGroupRef.current) {
+        const position = instance.getPosition();
+        EditorStatusService.setCursorPosition(
+          position?.lineNumber ?? 1,
+          position?.column ?? 1,
+        );
+      }
 
       cursorListenerRef.current = instance.onDidChangeCursorPosition((event) => {
+        if (!isFocusedGroupRef.current) return;
         EditorStatusService.setCursorPosition(
           event.position.lineNumber,
           event.position.column,
@@ -98,34 +109,32 @@ function EditorArea({
         );
       }
     },
-    [onRunQuery, onRunScript],
+    [group, onRunQuery, onRunScript],
   );
 
   useEffect(() => {
-    if (!activeTab) {
+    if (!activeTab && isFocusedGroup) {
       EditorStatusService.resetCursorPosition();
     }
-  }, [activeTab]);
+  }, [activeTab, isFocusedGroup]);
 
   useLayoutEffect(() => {
     const tabId = activeTab?.id;
     return () => {
       const instance = editorRef.current;
       if (instance && tabId) {
-        EditorService.saveViewState(tabId, instance.saveViewState());
+        group.saveViewState(tabId, instance.saveViewState());
       }
     };
-  }, [activeTab?.id]);
+  }, [activeTab?.id, group]);
 
   // After tab switch, controlled `value` sync can reset scroll — restore after that.
   useEffect(() => {
     const instance = editorRef.current;
     const tabId = activeTab?.id;
     if (!instance || !tabId) return;
-    scheduleRestoreViewState(instance, () =>
-      EditorService.getViewState(tabId),
-    );
-  }, [activeTab?.id]);
+    scheduleRestoreViewState(instance, () => group.getViewState(tabId));
+  }, [activeTab?.id, group]);
 
   useEffect(() => {
     const instance = editorRef.current;
@@ -147,19 +156,21 @@ function EditorArea({
       cursorListenerRef.current?.dispose();
       cursorListenerRef.current = null;
       if (editorRef.current) {
-        EditorService.setActiveTextEditor(null);
+        group.setActiveTextEditor(null);
         editorRef.current = null;
       }
-      EditorStatusService.resetCursorPosition();
+      if (isFocusedGroupRef.current) {
+        EditorStatusService.resetCursorPosition();
+      }
     };
-  }, []);
+  }, [group]);
 
   const handleChange = useCallback(
     (value: string | undefined) => {
       if (!activeTab || value === undefined) return;
-      EditorService.updateTabContent(activeTab.id, value);
+      group.updateTabContent(activeTab.id, value);
     },
-    [activeTab],
+    [activeTab, group],
   );
 
   if (!activeTab) {

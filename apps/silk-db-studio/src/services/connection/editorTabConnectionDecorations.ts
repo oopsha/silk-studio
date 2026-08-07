@@ -1,4 +1,4 @@
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { ConnectionService } from "./connectionService";
 import {

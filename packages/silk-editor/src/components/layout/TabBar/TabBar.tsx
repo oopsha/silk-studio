@@ -7,11 +7,13 @@ import {
   type WheelEvent,
 } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import { EditorService } from "../../../services/editor/editorService";
+import { EditorGroupsService } from "../../../services/editor/editorGroupsService";
+import type { EditorGroupId } from "../../../services/editor/editorGroupTypes";
 import { TabBarActionService } from "../../../services/editor/tabBarActionService";
 import { codiconForLanguage } from "../../../services/editor/languageFromPath";
 import { useActiveEditor } from "../../../services/editor/useActiveEditor";
 import { useEditorTabs } from "../../../services/editor/useEditorTabs";
+import { useEditorGroupsLayout } from "../../../services/editor/useEditorGroupsLayout";
 import TabBarContextMenu from "./TabBarContextMenu";
 import TabBarMoreMenu from "./TabBarMoreMenu";
 import "./TabBar.css";
@@ -31,6 +33,7 @@ export type TabBarCommandAdapter = {
 };
 
 type TabBarProps = {
+  groupId: EditorGroupId;
   commands: TabBarCommandAdapter;
 };
 
@@ -52,9 +55,12 @@ type PointerDragSession = {
  * Pointer-based tab reorder (not HTML5 DnD).
  * Tauri keeps native OS file-drop; HTML5 DnD cannot coexist on Windows WebView2.
  */
-function TabBar({ commands }: TabBarProps) {
-  const tabs = useEditorTabs();
-  const activeTab = useActiveEditor();
+function TabBar({ groupId, commands }: TabBarProps) {
+  const group = EditorGroupsService.getGroup(groupId);
+  const tabs = useEditorTabs(groupId);
+  const activeTab = useActiveEditor(groupId);
+  const { layout: groupsLayout } = useEditorGroupsLayout();
+  const hasMultipleGroups = groupsLayout.type === "split";
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const moreActionsRef = useRef<HTMLButtonElement>(null);
   const dragSessionRef = useRef<PointerDragSession | null>(null);
@@ -152,10 +158,10 @@ function TabBar({ commands }: TabBarProps) {
         toIndex -= 1;
       }
 
-      EditorService.moveTab(sourceId, toIndex);
-      EditorService.setActiveTab(sourceId);
+      group.moveTab(sourceId, toIndex);
+      group.setActiveTab(sourceId);
     },
-    [],
+    [group],
   );
 
   const endPointerDrag = useCallback(
@@ -221,13 +227,13 @@ function TabBar({ commands }: TabBarProps) {
 
   function handleCloseTab(event: React.MouseEvent, tabId: string) {
     event.stopPropagation();
-    EditorService.closeTab(tabId);
+    group.closeTab(tabId);
   }
 
   function handleAuxClick(event: React.MouseEvent, tabId: string) {
     if (event.button === 1) {
       event.preventDefault();
-      EditorService.closeTab(tabId);
+      group.closeTab(tabId);
     }
   }
 
@@ -257,7 +263,7 @@ function TabBar({ commands }: TabBarProps) {
       suppressClickRef.current = false;
       return;
     }
-    EditorService.setActiveTab(tabId);
+    group.setActiveTab(tabId);
   }
 
   return (
@@ -296,12 +302,12 @@ function TabBar({ commands }: TabBarProps) {
                 onAuxClick={(event) => handleAuxClick(event, tab.id)}
                 onDoubleClick={() => {
                   if (tab.isPreview) {
-                    EditorService.pinTab(tab.id);
+                    group.pinTab(tab.id);
                   }
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  EditorService.setActiveTab(tab.id);
+                  group.setActiveTab(tab.id);
                   setMoreMenuOpen(false);
                   setContextMenu({
                     tabId: tab.id,
@@ -346,17 +352,35 @@ function TabBar({ commands }: TabBarProps) {
       </div>
 
       <div className="tab-bar__actions">
-        <button
-          type="button"
-          className="tab-bar__action"
-          title="Split Editor Right"
-          aria-label="Split Editor Right"
-          onClick={() =>
-            void commands.executeCommand("workbench.action.splitEditorRight")
-          }
-        >
-          <Codicon name="split-horizontal" />
-        </button>
+        {!hasMultipleGroups ? (
+          <button
+            type="button"
+            className="tab-bar__action"
+            title="Split Editor Right"
+            aria-label="Split Editor Right"
+            onClick={() => {
+              // The command reads the focused group — make sure it's this pane's,
+              // even if the user clicked the button without focusing the pane first.
+              EditorGroupsService.setFocusedGroup(groupId);
+              void commands.executeCommand("workbench.action.splitEditorRight");
+            }}
+          >
+            <Codicon name="split-horizontal" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="tab-bar__action"
+            title="Close Editor Group"
+            aria-label="Close Editor Group"
+            onClick={() => {
+              EditorGroupsService.setFocusedGroup(groupId);
+              void commands.executeCommand("workbench.action.closeEditorGroup");
+            }}
+          >
+            <Codicon name="close-all" />
+          </button>
+        )}
         <button
           ref={moreActionsRef}
           type="button"

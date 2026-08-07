@@ -2,8 +2,7 @@ import "./AppShell.css";
 import { useEffect } from "react";
 import ActivityBar from "@silk-studio/workbench/components/layout/ActivityBar/index.ts";
 import Sidebar from "@silk-studio/workbench/components/layout/Sidebar/index.ts";
-import TabBar from "@silk-studio/editor/components/layout/TabBar/index.ts";
-import EditorArea from "@silk-studio/editor/components/layout/EditorArea/index.ts";
+import EditorGroupsView from "./EditorGroupsView.tsx";
 import Panel from "../Panel";
 import SecondarySidebar from "@silk-studio/workbench/components/layout/SecondarySidebar/index.ts";
 import WorkbenchSash from "@silk-studio/workbench/components/layout/WorkbenchSash/index.ts";
@@ -44,6 +43,7 @@ import {
   setExplorerObjectDropHandler,
 } from "../../../services/dnd/explorerObjectDrag.ts";
 import { insertSqlIntoActiveEditor } from "../../../services/query/querySqlActions.ts";
+import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
@@ -82,7 +82,12 @@ function AppShell() {
   };
 
   useEffect(() => {
-    setExplorerObjectDropHandler((payload) => {
+    setExplorerObjectDropHandler((payload, groupId) => {
+      // Dropping onto an unfocused pane must insert (and focus) there, not
+      // wherever focus happened to already be.
+      if (groupId) {
+        EditorGroupsService.setFocusedGroup(groupId);
+      }
       insertSqlIntoActiveEditor(
         formatQualifiedName(payload.schemaName, payload.objectName),
       );
@@ -146,47 +151,47 @@ function AppShell() {
   const editorArea = (
     <div
       className={`app-shell__editor${showEditor ? "" : " app-shell__editor--hidden"}`}
-      data-silk-editor-drop=""
     >
-      <EditorArea
-        configuration={{
-          colorTheme: configuration["workbench.colorTheme"],
-          fontSize: configuration["editor.fontSize"],
-          tabSize: configuration["editor.tabSize"],
-          insertSpaces: configuration["editor.insertSpaces"],
-          lineNumbers: configuration["editor.lineNumbers"],
-          minimapEnabled: configuration["editor.minimap.enabled"],
-          stickyScrollEnabled: configuration["editor.stickyScroll.enabled"],
-          wordWrap: configuration["editor.wordWrap"],
+      <EditorGroupsView
+        commands={tabBarCommands}
+        editorProps={{
+          configuration: {
+            colorTheme: configuration["workbench.colorTheme"],
+            fontSize: configuration["editor.fontSize"],
+            tabSize: configuration["editor.tabSize"],
+            insertSpaces: configuration["editor.insertSpaces"],
+            lineNumbers: configuration["editor.lineNumbers"],
+            minimapEnabled: configuration["editor.minimap.enabled"],
+            stickyScrollEnabled: configuration["editor.stickyScroll.enabled"],
+            wordWrap: configuration["editor.wordWrap"],
+          },
+          beforeMount: handleEditorBeforeMount,
+          renderAlternative: (tab) => {
+            if (SettingsService.isSettingsTab(tab.uri)) {
+              return <SettingsEditor />;
+            }
+            if (KeybindingsEditorService.isKeybindingsTab(tab.uri)) {
+              return <KeybindingsEditor />;
+            }
+            if (DocumentationService.isDocumentationTab(tab.uri)) {
+              return <DocumentationViewer />;
+            }
+            if (ConnectionEditorService.isConnectionEditorTab(tab.uri)) {
+              return <ConnectionEditor />;
+            }
+            if (isDdlEditorTab(tab.uri)) {
+              return <DdlEditorView />;
+            }
+            if (isPlsqlEditorTab(tab.uri)) {
+              return <PlsqlEditorView />;
+            }
+            return null;
+          },
+          onRunQuery: () =>
+            void CommandService.executeCommand("silk.query.execute"),
+          onRunScript: () =>
+            void CommandService.executeCommand("silk.query.executeScript"),
         }}
-        beforeMount={handleEditorBeforeMount}
-        renderAlternative={(tab) => {
-          if (SettingsService.isSettingsTab(tab.uri)) {
-            return <SettingsEditor />;
-          }
-          if (KeybindingsEditorService.isKeybindingsTab(tab.uri)) {
-            return <KeybindingsEditor />;
-          }
-          if (DocumentationService.isDocumentationTab(tab.uri)) {
-            return <DocumentationViewer />;
-          }
-          if (ConnectionEditorService.isConnectionEditorTab(tab.uri)) {
-            return <ConnectionEditor />;
-          }
-          if (isDdlEditorTab(tab.uri)) {
-            return <DdlEditorView />;
-          }
-          if (isPlsqlEditorTab(tab.uri)) {
-            return <PlsqlEditorView />;
-          }
-          return null;
-        }}
-        onRunQuery={() =>
-          void CommandService.executeCommand("silk.query.execute")
-        }
-        onRunScript={() =>
-          void CommandService.executeCommand("silk.query.executeScript")
-        }
       />
     </div>
   );
@@ -212,7 +217,6 @@ function AppShell() {
           : ""
       }`}
     >
-      <TabBar commands={tabBarCommands} />
       {panelOnBottom ? (
         <>
           {editorArea}

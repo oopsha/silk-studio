@@ -1,4 +1,4 @@
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import {
   CONNECTION_EDITOR_URI_PREFIX,
   connectionEditorUri,

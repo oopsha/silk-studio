@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";

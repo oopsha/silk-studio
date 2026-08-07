@@ -1,5 +1,5 @@
 import type { ConnectionDependency } from "@silk-studio/db-protocol";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { bridgeListColumns } from "../connection/connectionBridge";
 import { bridgeListObjectDependencies } from "../connection/connectionDependenciesBridge";
 import { ConnectionService } from "../connection/connectionService";

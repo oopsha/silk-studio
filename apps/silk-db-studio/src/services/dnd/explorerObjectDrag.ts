@@ -50,6 +50,8 @@ type ActiveDrag = {
 const DRAG_THRESHOLD_PX = 4;
 /** Drop target marker on the editor column (see AppShell). */
 export const SILK_EDITOR_DROP_ATTR = "data-silk-editor-drop";
+/** Which editor group a drop target belongs to (see EditorGroupsView). */
+export const SILK_EDITOR_DROP_GROUP_ATTR = "data-silk-editor-drop-group";
 
 let activeDrag: ActiveDrag | null = null;
 let listenersAttached = false;
@@ -81,9 +83,12 @@ function clearDrag(): void {
   activeDrag = null;
 }
 
-function isOverEditorDropTarget(clientX: number, clientY: number): boolean {
+/** Returns the target's editor group id, or `null` if not over a drop target. */
+function resolveEditorDropTarget(clientX: number, clientY: number): string | null {
   const el = document.elementFromPoint(clientX, clientY);
-  return Boolean(el?.closest(`[${SILK_EDITOR_DROP_ATTR}]`));
+  const target = el?.closest(`[${SILK_EDITOR_DROP_ATTR}]`);
+  if (!target) return null;
+  return target.getAttribute(SILK_EDITOR_DROP_GROUP_ATTR);
 }
 
 function onPointerMove(event: PointerEvent): void {
@@ -111,17 +116,17 @@ function onPointerUp(event: PointerEvent): void {
   if (!activeDrag || event.pointerId !== activeDrag.pointerId) return;
 
   const drag = activeDrag;
-  const dropped =
-    drag.active && isOverEditorDropTarget(event.clientX, event.clientY)
-      ? drag.payload
-      : null;
+  const groupId = drag.active
+    ? resolveEditorDropTarget(event.clientX, event.clientY)
+    : null;
+  const dropped = groupId !== null ? drag.payload : null;
 
   clearDrag();
   detachListeners();
 
   if (dropped) {
     const { onExplorerObjectDrop } = dragCallbacks;
-    onExplorerObjectDrop?.(dropped);
+    onExplorerObjectDrop?.(dropped, groupId);
   }
 }
 
@@ -148,14 +153,19 @@ function detachListeners(): void {
 }
 
 type DragCallbacks = {
-  onExplorerObjectDrop?: (payload: SilkExplorerObjectDragPayload) => void;
+  onExplorerObjectDrop?: (
+    payload: SilkExplorerObjectDragPayload,
+    groupId: string | null,
+  ) => void;
 };
 
 const dragCallbacks: DragCallbacks = {};
 
 /** Register how a completed explorer→editor drop should insert SQL. */
 export function setExplorerObjectDropHandler(
-  handler: ((payload: SilkExplorerObjectDragPayload) => void) | null,
+  handler:
+    | ((payload: SilkExplorerObjectDragPayload, groupId: string | null) => void)
+    | null,
 ): void {
   dragCallbacks.onExplorerObjectDrop = handler ?? undefined;
 }

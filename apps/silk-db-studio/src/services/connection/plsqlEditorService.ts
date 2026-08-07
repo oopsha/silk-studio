@@ -1,5 +1,5 @@
 import type { MetadataObjectKind } from "@silk-studio/db-protocol";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import type { ConnectionDriverId } from "./connectionTypes";
 import { ConnectionService } from "./connectionService";
 import type { ExplorerObjectRef } from "./explorerObjectActions";

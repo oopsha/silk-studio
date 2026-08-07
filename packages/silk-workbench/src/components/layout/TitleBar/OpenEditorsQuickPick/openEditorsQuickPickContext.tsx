@@ -10,7 +10,7 @@ import {
   type RefObject,
 } from "react";
 import { TabBarActionService } from "@silk-studio/editor/services/editor/tabBarActionService.ts";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import { useEditorTabs } from "@silk-studio/editor/services/editor/useEditorTabs.ts";
 import type { EditorTab } from "@silk-studio/editor/services/editor/editorTypes.ts";

@@ -1,7 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
-import type { EditorSessionSnapshot } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
+import type { EditorSessionSnapshotV2 } from "@silk-studio/editor/services/editor/editorSessionTypes.ts";
 import {
   loadEditorSessionSnapshot,
   saveEditorSessionSnapshot,
@@ -18,48 +18,55 @@ type SessionFileExtras = {
   bindings?: Record<string, EditorConnectionBinding>;
 };
 
-type StoredSession = EditorSessionSnapshot & SessionFileExtras;
+type StoredSession = EditorSessionSnapshotV2 & SessionFileExtras;
 
 async function resolveFilesystemTabs(
-  snapshot: EditorSessionSnapshot,
-): Promise<EditorSessionSnapshot> {
-  const tabs = await Promise.all(
-    snapshot.tabs.map(async (tab) => {
-      const uri = tab.uri?.trim();
-      if (!uri || uri.startsWith("silk://")) {
-        return tab;
-      }
+  snapshot: EditorSessionSnapshotV2,
+): Promise<EditorSessionSnapshotV2> {
+  const groups = await Promise.all(
+    snapshot.groups.map(async (group) => {
+      const tabs = await Promise.all(
+        group.tabs.map(async (tab) => {
+          const uri = tab.uri?.trim();
+          if (!uri || uri.startsWith("silk://")) {
+            return tab;
+          }
 
-      if (tab.isDirty) {
-        return tab;
-      }
+          if (tab.isDirty) {
+            return tab;
+          }
 
-      try {
-        const disk = await readTextFileAtPath(uri);
-        return {
-          ...tab,
-          content: disk,
-          savedContent: disk,
-          isDirty: false,
-        };
-      } catch {
-        // Missing/unreadable file: keep backup and mark dirty like VS Code.
-        return {
-          ...tab,
-          isDirty: true,
-        };
-      }
+          try {
+            const disk = await readTextFileAtPath(uri);
+            return {
+              ...tab,
+              content: disk,
+              savedContent: disk,
+              isDirty: false,
+            };
+          } catch {
+            // Missing/unreadable file: keep backup and mark dirty like VS Code.
+            return {
+              ...tab,
+              isDirty: true,
+            };
+          }
+        }),
+      );
+      return { ...group, tabs };
     }),
   );
 
-  return { ...snapshot, tabs };
+  return { ...snapshot, groups };
 }
 
 function captureStoredSession(): StoredSession {
-  const snapshot = EditorService.captureSessionSnapshot();
+  const snapshot = EditorGroupsService.captureSessionSnapshot();
   const bindings: Record<string, EditorConnectionBinding> = {};
-  for (const tab of snapshot.tabs) {
-    bindings[tab.id] = EditorConnectionBindingService.getBinding(tab.id);
+  for (const group of snapshot.groups) {
+    for (const tab of group.tabs) {
+      bindings[tab.id] = EditorConnectionBindingService.getBinding(tab.id);
+    }
   }
   return { ...snapshot, bindings };
 }
@@ -82,9 +89,9 @@ async function persistSessionBeforeClose(): Promise<void> {
 }
 
 /**
- * Hot Exit: persist open editors (files / untitled / PL/SQL / DDL) and restore
- * on the next launch. Call `EditorService.prepareSessionRestore()` in main
- * before React mounts.
+ * Hot Exit: persist open editors (files / untitled / PL/SQL / DDL) across all
+ * editor groups and restore on the next launch. Call
+ * `EditorGroupsService.prepareSessionRestore()` in main before React mounts.
  */
 export function startEditorSessionSync(): () => void {
   let disposed = false;
@@ -107,13 +114,13 @@ export function startEditorSessionSync(): () => void {
     const raw = (await loadEditorSessionSnapshot()) as StoredSession | null;
     if (disposed) return;
 
-    let snapshot: EditorSessionSnapshot | null = raw;
+    let snapshot: EditorSessionSnapshotV2 | null = raw;
     if (snapshot) {
       snapshot = await resolveFilesystemTabs(snapshot);
     }
     if (disposed) return;
 
-    EditorService.applySessionSnapshot(snapshot);
+    EditorGroupsService.applySessionSnapshot(snapshot);
 
     if (raw?.bindings) {
       for (const [tabId, binding] of Object.entries(raw.bindings)) {
@@ -123,7 +130,9 @@ export function startEditorSessionSync(): () => void {
 
     if (disposed) return;
 
-    unlisteners.push(EditorService.onDidChange(() => schedulePersist()));
+    unlisteners.push(
+      EditorGroupsService.onDidChangeAnyGroup(() => schedulePersist()),
+    );
     unlisteners.push(
       EditorConnectionBindingService.onDidChange(() => schedulePersist()),
     );

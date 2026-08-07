@@ -4,7 +4,7 @@ import {
   type QueryRelationKind,
   type QueryResultPayload,
 } from "@silk-studio/db-protocol";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { formatErrorMessage, reportError } from "../formatErrorMessage";

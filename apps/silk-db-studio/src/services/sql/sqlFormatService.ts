@@ -1,6 +1,6 @@
 import { format } from "sql-formatter";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import {
   formatterLanguageForDriver,
   isSqlLanguageId,

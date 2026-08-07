@@ -263,6 +263,7 @@ export const enMessages = {
       togglePreviewEditors: "Toggle Preview Editors",
       lockEditorGroup: "Lock Editor Group",
       splitEditorRight: "Split Editor Right",
+      closeEditorGroup: "Close Editor Group",
       closeOtherEditors: "Close Other Editors",
       closeEditorsToTheRight: "Close Editors To the Right",
       nextEditor: "Next Editor",

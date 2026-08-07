@@ -4,7 +4,7 @@ import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/comma
 import { ViewService } from "@silk-studio/workbench/services/view/viewService.ts";
 import { QueryFavoritesService } from "../../services/query/queryFavoritesService";
 import { QueryHistoryService } from "../../services/query/queryHistoryService";
-import { EditorService } from "@silk-studio/editor/services/editor/editorService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import {
   insertSqlIntoActiveEditor,
   openSqlInEditor,

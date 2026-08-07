@@ -7,7 +7,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
-import { EditorService } from "../../../services/editor/editorService";
+import { EditorService } from "../../../services/editor/editorServiceFacade";
 import type { TabBarCommandAdapter } from "./TabBar";
 import "./TabBarMenu.css";
 

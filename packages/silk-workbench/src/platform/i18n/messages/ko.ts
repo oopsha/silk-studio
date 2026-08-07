@@ -261,6 +261,7 @@ export const koMessages = {
       togglePreviewEditors: "미리 보기 편집기 토글",
       lockEditorGroup: "편집기 그룹 잠금",
       splitEditorRight: "오른쪽으로 편집기 분할",
+      closeEditorGroup: "편집기 그룹 닫기",
       closeOtherEditors: "다른 편집기 닫기",
       closeEditorsToTheRight: "오른쪽 편집기 닫기",
       nextEditor: "다음 편집기",
