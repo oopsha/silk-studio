@@ -3,7 +3,12 @@ import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { CommandService } from "../../../../../platform/commands/commandService";
 import { useI18n } from "../../../../../platform/i18n/useI18n";
 import type { MessageKey } from "../../../../../platform/i18n/translate";
-import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
+import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
+import { useEditorGroupsLayout } from "@silk-studio/editor/services/editor/useEditorGroupsLayout.ts";
+import {
+  collectGroupIds,
+  type EditorGroupId,
+} from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { codiconForLanguage } from "@silk-studio/editor/services/editor/languageFromPath.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import { useEditorTabs } from "@silk-studio/editor/services/editor/useEditorTabs.ts";
@@ -135,33 +140,52 @@ function renderSectionActions(
   );
 }
 
-function OpenEditorsList({
-  activeTabId,
+function OpenEditorsGroupSection({
+  groupId,
+  groupIndex,
+  showHeader,
+  isFocused,
 }: {
-  activeTabId: string | null;
+  groupId: EditorGroupId;
+  groupIndex: number;
+  showHeader: boolean;
+  isFocused: boolean;
 }) {
   const { t } = useI18n();
-  const tabs = useEditorTabs();
-
-  if (tabs.length === 0) {
-    return (
-      <div className="accordion-panel__empty">
-        {t("workbench.sidebar.noOpenEditors")}
-      </div>
-    );
-  }
+  const tabs = useEditorTabs(groupId);
+  const activeTab = useActiveEditor(groupId);
 
   return (
-    <ul className="open-editors-list">
+    <>
+      {showHeader ? (
+        <li
+          className={`open-editors-list__group-header${isFocused ? " open-editors-list__group-header--focused" : ""}`}
+        >
+          {t("workbench.sidebar.openEditorsGroup").replace(
+            "{n}",
+            String(groupIndex),
+          )}
+        </li>
+      ) : null}
+      {tabs.length === 0 && !showHeader ? (
+        <li className="accordion-panel__empty">
+          {t("workbench.sidebar.noOpenEditors")}
+        </li>
+      ) : null}
       {tabs.map((tab) => {
-        const isActive = tab.id === activeTabId;
+        const isActive = tab.id === activeTab?.id;
 
         return (
           <li
             key={tab.id}
             className={`open-editors-list__item${isActive ? " open-editors-list__item--active" : ""}${tab.isDirty ? " open-editors-list__item--dirty" : ""}${tab.isPreview ? " open-editors-list__item--preview" : ""}`}
             title={tab.uri ?? tab.label}
-            onClick={() => EditorService.setActiveTab(tab.id)}
+            onClick={() => {
+              // Clicking a tab in an unfocused group's section must focus
+              // that group too, not just activate the tab within it.
+              EditorGroupsService.setFocusedGroup(groupId);
+              EditorGroupsService.getGroup(groupId).setActiveTab(tab.id);
+            }}
           >
             <span className="open-editors-list__icon" aria-hidden>
               <Codicon name={codiconForLanguage(tab.languageId)} />
@@ -173,6 +197,26 @@ function OpenEditorsList({
           </li>
         );
       })}
+    </>
+  );
+}
+
+function OpenEditorsList() {
+  const { layout, focusedGroupId } = useEditorGroupsLayout();
+  const groupIds = useMemo(() => collectGroupIds(layout), [layout]);
+  const showHeaders = groupIds.length > 1;
+
+  return (
+    <ul className="open-editors-list">
+      {groupIds.map((groupId, index) => (
+        <OpenEditorsGroupSection
+          key={groupId}
+          groupId={groupId}
+          groupIndex={index + 1}
+          showHeader={showHeaders}
+          isFocused={groupId === focusedGroupId}
+        />
+      ))}
     </ul>
   );
 }
@@ -186,7 +230,6 @@ function ExplorerView({
   const resolvedConnectionsTitle =
     connectionsTitle ?? t("workbench.sidebar.connections");
   const viewsMenuButtonRef = useRef<HTMLButtonElement>(null);
-  const activeTab = useActiveEditor();
   const [viewsMenuOpen, setViewsMenuOpen] = useState(false);
   const [outlineMenuOpen, setOutlineMenuOpen] = useState(false);
   const [timelineMenuOpen, setTimelineMenuOpen] = useState(false);
@@ -363,7 +406,7 @@ function ExplorerView({
             actions={openEditorsActions}
           >
             {segment.expanded ? (
-              <OpenEditorsList activeTabId={activeTab?.id ?? null} />
+              <OpenEditorsList />
             ) : null}
           </AccordionPanel>
         </div>

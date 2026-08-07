@@ -10,30 +10,47 @@ import {
   type RefObject,
 } from "react";
 import { TabBarActionService } from "@silk-studio/editor/services/editor/tabBarActionService.ts";
-import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
+import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
-import { useEditorTabs } from "@silk-studio/editor/services/editor/useEditorTabs.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import type { EditorTab } from "@silk-studio/editor/services/editor/editorTypes.ts";
 
 export const FILTER_PREFIX = "edt active ";
+
+export type OpenEditorsQuickPickTab = EditorTab & { groupId: EditorGroupId };
 
 type OpenEditorsQuickPickContextValue = {
   open: boolean;
   filter: string;
   setFilter: (value: string) => void;
-  filteredTabs: EditorTab[];
+  filteredTabs: OpenEditorsQuickPickTab[];
+  /** Layout-ordered group ids (unfiltered) — used to number "Group N" headers stably. */
+  groupOrder: EditorGroupId[];
   focusedIndex: number;
   setFocusedIndex: (index: number) => void;
   inputRef: RefObject<HTMLInputElement | null>;
   close: () => void;
-  selectTab: (tabId: string) => void;
+  selectTab: (tabId: string, groupId: EditorGroupId) => void;
   handleInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
 };
 
 const OpenEditorsQuickPickContext =
   createContext<OpenEditorsQuickPickContextValue | null>(null);
 
-function filterTabs(tabs: readonly EditorTab[], query: string): EditorTab[] {
+function collectAllTabs(): OpenEditorsQuickPickTab[] {
+  const result: OpenEditorsQuickPickTab[] = [];
+  for (const groupId of EditorGroupsService.getGroupIds()) {
+    for (const tab of EditorGroupsService.getGroup(groupId).getTabs()) {
+      result.push({ ...tab, groupId });
+    }
+  }
+  return result;
+}
+
+function filterTabs(
+  tabs: readonly OpenEditorsQuickPickTab[],
+  query: string,
+): OpenEditorsQuickPickTab[] {
   const normalized = query.toLowerCase();
   const prefix = FILTER_PREFIX.toLowerCase();
 
@@ -55,7 +72,13 @@ export function OpenEditorsQuickPickProvider({ children }: { children: ReactNode
   const [focusedIndex, setFocusedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const tabs = useEditorTabs();
+  const [tabs, setTabs] = useState<OpenEditorsQuickPickTab[]>(() => collectAllTabs());
+  useEffect(() => {
+    return EditorGroupsService.onDidChangeAnyGroup(() => {
+      setTabs(collectAllTabs());
+    });
+  }, []);
+  const groupOrder = useMemo(() => EditorGroupsService.getGroupIds(), [tabs]);
   const activeTab = useActiveEditor();
   const filteredTabs = useMemo(
     () => filterTabs(tabs, filter),
@@ -68,8 +91,9 @@ export function OpenEditorsQuickPickProvider({ children }: { children: ReactNode
   }, []);
 
   const selectTab = useCallback(
-    (tabId: string) => {
-      EditorService.setActiveTab(tabId);
+    (tabId: string, groupId: EditorGroupId) => {
+      EditorGroupsService.setFocusedGroup(groupId);
+      EditorGroupsService.getGroup(groupId).setActiveTab(tabId);
       close();
     },
     [close],
@@ -128,7 +152,7 @@ export function OpenEditorsQuickPickProvider({ children }: { children: ReactNode
         event.preventDefault();
         const tab = filteredTabs[focusedIndex];
         if (tab) {
-          selectTab(tab.id);
+          selectTab(tab.id, tab.groupId);
         }
       }
     },
@@ -141,6 +165,7 @@ export function OpenEditorsQuickPickProvider({ children }: { children: ReactNode
       filter,
       setFilter,
       filteredTabs,
+      groupOrder,
       focusedIndex,
       setFocusedIndex,
       inputRef,
@@ -152,6 +177,7 @@ export function OpenEditorsQuickPickProvider({ children }: { children: ReactNode
       open,
       filter,
       filteredTabs,
+      groupOrder,
       focusedIndex,
       close,
       selectTab,

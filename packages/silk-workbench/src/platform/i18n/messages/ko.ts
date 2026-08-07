@@ -169,6 +169,7 @@ export const koMessages = {
       primaryAria: "기본 사이드 바",
       connections: "연결",
       openEditors: "열린 편집기",
+      openEditorsGroup: "그룹 {n}",
       outline: "개요",
       timeline: "타임라인",
       noOpenEditors: "열린 편집기 없음",

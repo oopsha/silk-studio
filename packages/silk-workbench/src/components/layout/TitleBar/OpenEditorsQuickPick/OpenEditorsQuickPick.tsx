@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
 import { codiconForLanguage } from "@silk-studio/editor/services/editor/languageFromPath.ts";
+import { useI18n } from "../../../../platform/i18n/useI18n";
 import { useOpenEditorsQuickPick } from "./openEditorsQuickPickContext";
 import "./OpenEditorsQuickPick.css";
 
@@ -30,11 +31,13 @@ function getAnchorRect(): DOMRect | null {
 function OpenEditorsQuickPick() {
   const rootRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<QuickPickPosition | null>(null);
+  const { t } = useI18n();
   const {
     open,
     filter,
     setFilter,
     filteredTabs,
+    groupOrder,
     focusedIndex,
     setFocusedIndex,
     inputRef,
@@ -42,6 +45,7 @@ function OpenEditorsQuickPick() {
     selectTab,
     handleInputKeyDown,
   } = useOpenEditorsQuickPick();
+  const showGroupHeaders = groupOrder.length > 1;
 
   const updatePosition = useCallback(() => {
     const anchor = getAnchorRect();
@@ -128,29 +132,42 @@ function OpenEditorsQuickPick() {
         ) : (
           filteredTabs.map((tab, index) => {
             const isFocused = index === focusedIndex;
+            const showHeader =
+              showGroupHeaders &&
+              (index === 0 || filteredTabs[index - 1]?.groupId !== tab.groupId);
+            const groupIndex = groupOrder.indexOf(tab.groupId) + 1;
 
             return (
-              <div
-                key={tab.id}
-                className={`quick-input-list-row${isFocused ? " quick-input-list-row--focused" : ""}`}
-                role="option"
-                aria-selected={isFocused}
-                title={tab.uri ?? tab.label}
-                onMouseEnter={() => setFocusedIndex(index)}
-                onClick={() => selectTab(tab.id)}
-              >
-                <div className="quick-input-list-entry">
-                  <span className="quick-input-list-icon" aria-hidden>
-                    <Codicon name={codiconForLanguage(tab.languageId)} />
-                  </span>
-                  <span
-                    className={`quick-input-list-label${tab.isPreview ? " quick-input-list-label--preview" : ""}`}
-                  >
-                    {tab.label}
-                  </span>
-                  {tab.isDirty ? (
-                    <span className="quick-input-list-dirty" aria-hidden />
-                  ) : null}
+              <div key={tab.id}>
+                {showHeader ? (
+                  <div className="quick-input-list-group-header">
+                    {t("workbench.sidebar.openEditorsGroup").replace(
+                      "{n}",
+                      String(groupIndex),
+                    )}
+                  </div>
+                ) : null}
+                <div
+                  className={`quick-input-list-row${isFocused ? " quick-input-list-row--focused" : ""}`}
+                  role="option"
+                  aria-selected={isFocused}
+                  title={tab.uri ?? tab.label}
+                  onMouseEnter={() => setFocusedIndex(index)}
+                  onClick={() => selectTab(tab.id, tab.groupId)}
+                >
+                  <div className="quick-input-list-entry">
+                    <span className="quick-input-list-icon" aria-hidden>
+                      <Codicon name={codiconForLanguage(tab.languageId)} />
+                    </span>
+                    <span
+                      className={`quick-input-list-label${tab.isPreview ? " quick-input-list-label--preview" : ""}`}
+                    >
+                      {tab.label}
+                    </span>
+                    {tab.isDirty ? (
+                      <span className="quick-input-list-dirty" aria-hidden />
+                    ) : null}
+                  </div>
                 </div>
               </div>
             );
