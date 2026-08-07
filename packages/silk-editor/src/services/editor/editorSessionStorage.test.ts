@@ -46,8 +46,8 @@ describe("editorSessionStorage", () => {
       },
       focusedGroupId: "group-b",
       groups: [
-        { groupId: "group-a", activeTabId: "tab-1", untitledCounter: 1, tabs: [] },
-        { groupId: "group-b", activeTabId: null, untitledCounter: 2, tabs: [] },
+        { groupId: "group-a", activeTabId: "tab-1", tabs: [] },
+        { groupId: "group-b", activeTabId: null, tabs: [] },
       ],
     };
 
@@ -87,7 +87,6 @@ describe("editorSessionStorage", () => {
     });
     expect(loaded?.groups[0]?.groupId).toBe(loaded?.focusedGroupId);
     expect(loaded?.groups[0]?.activeTabId).toBe("tab-legacy-1");
-    expect(loaded?.groups[0]?.untitledCounter).toBe(3);
     expect(loaded?.groups[0]?.tabs).toEqual(v1.tabs);
   });
 

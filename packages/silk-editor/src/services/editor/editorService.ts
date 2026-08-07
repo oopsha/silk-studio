@@ -60,7 +60,6 @@ export type EditorSessionTabSnapshot = {
 /** One editor group's content — the unit `EditorGroupsService` assembles into a full session. */
 export type EditorGroupContentSnapshot = {
   activeTabId: string | null;
-  untitledCounter: number;
   tabs: EditorSessionTabSnapshot[];
 };
 
@@ -69,7 +68,8 @@ type LanguageIdResolver = (path: string, fromExtension: string) => string;
 export class EditorServiceImpl {
   private tabs: EditorTab[] = [];
   private activeTabId: string | null = null;
-  private untitledCounter = 1;
+  /** Configured by EditorGroupsService so numbering stays unique/reset across all groups. */
+  private untitledLabelFactory: () => string = () => "Untitled-1";
   private readonly savedContent = new Map<string, string>();
   private readonly listeners = new Set<EditorChangeListener>();
   private initialized = false;
@@ -152,6 +152,10 @@ export class EditorServiceImpl {
     this.resolveLanguageId = resolver;
   }
 
+  configureUntitledLabelFactory(factory: () => string): void {
+    this.untitledLabelFactory = factory;
+  }
+
   setTabLanguageId(id: string, languageId: string): void {
     const tab = this.tabs.find((item) => item.id === id);
     if (!tab || tab.languageId === languageId) return;
@@ -214,17 +218,13 @@ export class EditorServiceImpl {
   }
 
   openUntitled(languageId?: string): string {
-    const label = `Untitled-${this.untitledCounter++}`;
+    const label = this.untitledLabelFactory();
     return this.openEditor({
       label,
       languageId: languageId ?? this.defaultUntitledLanguageId,
       content: "",
       preview: false,
     });
-  }
-
-  getUntitledCounter(): number {
-    return this.untitledCounter;
   }
 
   getSavedContent(tabId: string): string {
@@ -259,7 +259,6 @@ export class EditorServiceImpl {
     }
     return {
       activeTabId,
-      untitledCounter: this.untitledCounter,
       tabs,
     };
   }
@@ -280,14 +279,12 @@ export class EditorServiceImpl {
     this.initialized = true;
 
     if (!snapshot || snapshot.tabs.length === 0) {
-      this.untitledCounter = Math.max(1, snapshot?.untitledCounter ?? 1);
       this.openUntitled();
       this.updateContextKeys();
       this.fireDidChange();
       return;
     }
 
-    this.untitledCounter = Math.max(1, snapshot.untitledCounter);
     for (const item of snapshot.tabs) {
       if (isExcludedFromEditorSession(item.uri)) continue;
       const tab: EditorTab = {
@@ -442,10 +439,8 @@ export class EditorServiceImpl {
       this.activeTabId = nextTab?.id ?? null;
     }
 
-    if (this.tabs.length === 0) {
-      this.openUntitled();
-    }
-
+    // Emptying out is allowed here — EditorGroupsService decides whether to
+    // close this group or backfill an Untitled tab (see closeTab wrapper).
     this.updateContextKeys();
     this.fireDidChange();
   }
@@ -465,7 +460,6 @@ export class EditorServiceImpl {
     this.activeTabId = null;
     this.savedContent.clear();
     this.viewStates.clear();
-    this.openUntitled();
     this.updateContextKeys();
     this.fireDidChange();
   }

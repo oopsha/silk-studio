@@ -51,7 +51,6 @@ export const EditorService = {
     focused().getActiveEditorSnapshot(),
 
   openUntitled: (languageId?: string): string => focused().openUntitled(languageId),
-  getUntitledCounter: (): number => focused().getUntitledCounter(),
   getSavedContent: (tabId: string): string => focused().getSavedContent(tabId),
 
   captureSessionSnapshot: (): EditorGroupContentSnapshot =>
@@ -74,9 +73,12 @@ export const EditorService = {
 
   closeSavedTabs: (): void => focused().closeSavedTabs(),
   setActiveTab: (id: string): void => focused().setActiveTab(id),
-  closeTab: (id: string): void => focused().closeTab(id),
-  closeActiveTab: (): void => focused().closeActiveTab(),
-  closeAllTabs: (): void => focused().closeAllTabs(),
+  closeTab: (id: string): void =>
+    EditorGroupsService.closeTab(EditorGroupsService.getFocusedGroupId(), id),
+  closeActiveTab: (): void =>
+    EditorGroupsService.closeActiveTab(EditorGroupsService.getFocusedGroupId()),
+  closeAllTabs: (): void =>
+    EditorGroupsService.closeAllTabsInGroup(EditorGroupsService.getFocusedGroupId()),
   closeOtherTabs: (keepId: string): void => focused().closeOtherTabs(keepId),
   closeTabsToRight: (fromId: string): void => focused().closeTabsToRight(fromId),
   moveTab: (tabId: string, toIndex: number): void => focused().moveTab(tabId, toIndex),
