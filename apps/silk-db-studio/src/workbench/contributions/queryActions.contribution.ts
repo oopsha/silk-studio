@@ -3,7 +3,9 @@ import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegist
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
-import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
+import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
+import { GroupPanelStateService } from "@silk-studio/workbench/services/layout/groupPanelStateService.ts";
 import { QueryExecutionService } from "../../services/query/queryExecutionService";
 import {
   extractExecutableSql,
@@ -22,7 +24,7 @@ CommandsRegistry.registerCommand("silk.query.execute", async () => {
     snapshot.selectionEnd,
   );
 
-  LayoutService.showPanel();
+  GroupPanelStateService.showPanel(EditorGroupsService.getFocusedGroupId());
   await QueryExecutionService.executeStatements(statements);
 });
 
@@ -38,7 +40,7 @@ CommandsRegistry.registerCommand("silk.query.executeScript", async () => {
     driverId,
   );
 
-  LayoutService.showPanel();
+  GroupPanelStateService.showPanel(EditorGroupsService.getFocusedGroupId());
   await QueryExecutionService.executeScript(statements);
 });
 
@@ -60,12 +62,13 @@ CommandsRegistry.registerCommand("silk.query.explain", async () => {
     snapshot.selectionEnd,
   );
 
-  LayoutService.showPanel();
+  GroupPanelStateService.showPanel(EditorGroupsService.getFocusedGroupId());
   await QueryExecutionService.explain(sql, { sourceRange: range });
 });
 
-CommandsRegistry.registerCommand("silk.query.cancel", async () => {
-  await QueryExecutionService.cancel();
+CommandsRegistry.registerCommand("silk.query.cancel", async (...args: unknown[]) => {
+  const groupId = (args[0] as EditorGroupId | undefined) ?? EditorGroupsService.getFocusedGroupId();
+  await QueryExecutionService.cancel(groupId);
 });
 
 MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {

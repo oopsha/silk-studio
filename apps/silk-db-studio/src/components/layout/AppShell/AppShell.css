@@ -63,29 +63,6 @@
   min-width: 0;
 }
 
-.app-shell__editor--hidden {
-  display: none;
-}
-
-.app-shell__panel {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  min-height: 0;
-  min-width: 0;
-}
-
-.app-shell__panel--maximized {
-  flex: 1;
-}
-
-.app-shell__panel .panel {
-  flex: 1;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-}
-
 .app-shell__auxiliary-bar {
   display: flex;
   flex-shrink: 0;
@@ -102,12 +79,4 @@
 
 .app-shell__editor-column > :not(:first-child):not(.workbench-sash) {
   border-top: 1px solid var(--color-workbench-separator);
-}
-
-.app-shell__editor-column--panel-maximized .app-shell__editor {
-  display: none;
-}
-
-.app-shell__workspace > .app-shell__panel {
-  border-left: 1px solid var(--color-border);
 }

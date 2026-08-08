@@ -13,6 +13,10 @@ import type {
 } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import WorkbenchSash from "@silk-studio/workbench/components/layout/WorkbenchSash/index.ts";
 import { useWorkbenchSashDrag } from "@silk-studio/workbench/services/layout/useWorkbenchSashDrag.ts";
+import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayoutState.ts";
+import { useGroupPanelState } from "@silk-studio/workbench/services/layout/useGroupPanelState.ts";
+import { GroupPanelStateService } from "@silk-studio/workbench/services/layout/groupPanelStateService.ts";
+import Panel from "../Panel";
 import {
   SILK_EDITOR_DROP_ATTR,
   SILK_EDITOR_DROP_GROUP_ATTR,
@@ -74,6 +78,7 @@ function renderLayoutNode(
         showFocusRing={showFocusRing}
         commands={commands}
         editorProps={editorProps}
+        startDrag={startDrag}
       />
     );
   }
@@ -97,13 +102,62 @@ function EditorGroupPane({
   showFocusRing,
   commands,
   editorProps,
+  startDrag,
 }: {
   groupId: EditorGroupId;
   isFocused: boolean;
   showFocusRing: boolean;
   commands: TabBarCommandAdapter;
   editorProps: EditorAreaSharedProps;
+  startDrag: StartDrag;
 }) {
+  const layout = useLayoutState();
+  const panelVisual = useGroupPanelState(groupId);
+  const panelOnBottom = layout.panelPosition === "bottom";
+  const showEditorHalf = !panelVisual.maximized;
+
+  const editorHalf = (
+    <div
+      className={`editor-groups-pane__editor${showEditorHalf ? "" : " editor-groups-pane__editor--hidden"}`}
+    >
+      <TabBar groupId={groupId} commands={commands} />
+      <EditorArea groupId={groupId} isFocusedGroup={isFocused} {...editorProps} />
+    </div>
+  );
+
+  const panelHalf = panelVisual.visible ? (
+    <div
+      className={`editor-groups-pane__panel${panelVisual.maximized ? " editor-groups-pane__panel--maximized" : ""}`}
+      style={
+        panelOnBottom
+          ? { height: panelVisual.maximized ? undefined : panelVisual.size }
+          : { width: panelVisual.maximized ? undefined : panelVisual.size }
+      }
+    >
+      <Panel groupId={groupId} />
+    </div>
+  ) : null;
+
+  const panelSash =
+    panelVisual.visible && showEditorHalf ? (
+      <WorkbenchSash
+        orientation={panelOnBottom ? "horizontal" : "vertical"}
+        onPointerDown={(event) => {
+          const startPosition = panelOnBottom ? event.clientY : event.clientX;
+          const startSize = panelVisual.size;
+          startDrag({
+            orientation: panelOnBottom ? "horizontal" : "vertical",
+            onResize: (clientPosition) => {
+              GroupPanelStateService.setPanelSize(
+                groupId,
+                startSize - (clientPosition - startPosition),
+              );
+            },
+          });
+        }}
+      />
+    ) : null;
+
   return (
     <div
       className={`editor-groups-pane${isFocused && showFocusRing ? " editor-groups-pane--focused" : ""}`}
@@ -113,8 +167,19 @@ function EditorGroupPane({
       }}
       onPointerDownCapture={() => EditorGroupsService.setFocusedGroup(groupId)}
     >
-      <TabBar groupId={groupId} commands={commands} />
-      <EditorArea groupId={groupId} isFocusedGroup={isFocused} {...editorProps} />
+      {panelOnBottom ? (
+        <>
+          {editorHalf}
+          {panelSash}
+          {panelHalf}
+        </>
+      ) : (
+        <div className="editor-groups-pane__row">
+          {editorHalf}
+          {panelSash}
+          {panelHalf}
+        </div>
+      )}
     </div>
   );
 }

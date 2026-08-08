@@ -5,16 +5,19 @@ import { CommandService } from "@silk-studio/workbench/platform/commands/command
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayoutState.ts";
+import { useGroupPanelState } from "@silk-studio/workbench/services/layout/useGroupPanelState.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { QueryExecutionService } from "../../../services/query/queryExecutionService";
 import { truncateSqlLabel } from "../../../services/query/queryResultTab";
 import { useQueryExecutionState } from "../../../services/query/useQueryExecutionState";
 import QueryResultGrid from "./QueryResultGrid";
 import QueryResultLog from "./QueryResultLog";
 
-function Panel() {
+function Panel({ groupId }: { groupId: EditorGroupId }) {
   const { t } = useI18n();
-  const queryState = useQueryExecutionState();
+  const queryState = useQueryExecutionState(groupId);
   const layout = useLayoutState();
+  const panelVisual = useGroupPanelState(groupId);
   const logPreRef = useRef<HTMLPreElement | null>(null);
   const isRunning = queryState.status === "running";
   const showErrorOrCancel =
@@ -45,7 +48,7 @@ function Panel() {
     layout.panelPosition === "bottom"
       ? t("workbench.commands.movePanelRight")
       : t("workbench.commands.movePanelBottom");
-  const maximizeLabel = layout.panelMaximized
+  const maximizeLabel = panelVisual.maximized
     ? t("workbench.commands.restorePanel")
     : t("workbench.commands.maximizePanel");
 
@@ -121,7 +124,7 @@ function Panel() {
               title={t("workbench.panel.cancelQuery")}
               aria-label={t("workbench.panel.cancelQuery")}
               onClick={() =>
-                void CommandService.executeCommand("silk.query.cancel")
+                void CommandService.executeCommand("silk.query.cancel", groupId)
               }
             >
               <Codicon name="debug-stop" />
@@ -145,7 +148,7 @@ function Panel() {
               title={t("workbench.panel.closeResult")}
               aria-label={t("workbench.panel.closeResult")}
               onClick={() =>
-                QueryExecutionService.closeTab(queryState.activeTabId!)
+                QueryExecutionService.closeTab(groupId, queryState.activeTabId!)
               }
             >
               <Codicon name="close" />
@@ -157,7 +160,7 @@ function Panel() {
               className="panel__action"
               title={t("workbench.panel.closeAllResults")}
               aria-label={t("workbench.panel.closeAllResults")}
-              onClick={() => QueryExecutionService.closeAllTabs()}
+              onClick={() => QueryExecutionService.closeAllTabs(groupId)}
             >
               <Codicon name="close-all" />
             </button>
@@ -191,12 +194,13 @@ function Panel() {
             onClick={() =>
               void CommandService.executeCommand(
                 "workbench.action.toggleMaximizedPanel",
+                groupId,
               )
             }
           >
             <Codicon
               name={
-                layout.panelMaximized ? "chevron-down" : "chevron-up"
+                panelVisual.maximized ? "chevron-down" : "chevron-up"
               }
             />
           </button>
@@ -219,11 +223,11 @@ function Panel() {
                 aria-selected={isActive}
                 tabIndex={isActive ? 0 : -1}
                 title={truncateSqlLabel(tab.sql)}
-                onClick={() => QueryExecutionService.setActiveTab(tab.id)}
+                onClick={() => QueryExecutionService.setActiveTab(groupId, tab.id)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    QueryExecutionService.setActiveTab(tab.id);
+                    QueryExecutionService.setActiveTab(groupId, tab.id);
                   }
                 }}
               >
@@ -235,7 +239,7 @@ function Panel() {
                   aria-label={`${t("workbench.panel.close")} ${tab.title}`}
                   onClick={(event) => {
                     event.stopPropagation();
-                    QueryExecutionService.closeTab(tab.id);
+                    QueryExecutionService.closeTab(groupId, tab.id);
                   }}
                 >
                   <Codicon name="close" />

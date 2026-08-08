@@ -14,6 +14,8 @@ import {
 } from "./editorGroupTypes";
 
 type EditorGroupsChangeListener = () => void;
+type GroupLifecycleAddListener = (id: EditorGroupId, sourceId?: EditorGroupId) => void;
+type GroupLifecycleRemoveListener = (id: EditorGroupId) => void;
 
 function createGroupId(): EditorGroupId {
   return `group-${crypto.randomUUID()}`;
@@ -27,6 +29,9 @@ class EditorGroupsServiceImpl {
   private readonly listeners = new Set<EditorGroupsChangeListener>();
   /** Fires for every group's change, not just the focused one — session persistence needs this. */
   private readonly anyGroupListeners = new Set<EditorGroupsChangeListener>();
+  /** Fires whenever a group is created/removed — lets other per-group state (e.g. panel layout) stay in sync without polling. */
+  private readonly addListeners = new Set<GroupLifecycleAddListener>();
+  private readonly removeListeners = new Set<GroupLifecycleRemoveListener>();
   private isRebuildingGroups = false;
 
   constructor() {
@@ -36,7 +41,11 @@ class EditorGroupsServiceImpl {
     this.registerGroup(initialId, new EditorServiceImpl());
   }
 
-  private registerGroup(id: EditorGroupId, instance: EditorServiceImpl): void {
+  private registerGroup(
+    id: EditorGroupId,
+    instance: EditorServiceImpl,
+    sourceId?: EditorGroupId,
+  ): void {
     this.groups.set(id, instance);
     // Must be configured before the group can possibly call openUntitled()
     // (e.g. ensureInitialTab()) — callers register before triggering that.
@@ -61,6 +70,9 @@ class EditorGroupsServiceImpl {
       unsubscribeHostSync();
       unsubscribeAnyGroup();
     });
+    for (const listener of this.addListeners) {
+      listener(id, sourceId);
+    }
   }
 
   private syncEditorHost(): void {
@@ -76,6 +88,9 @@ class EditorGroupsServiceImpl {
     this.groupUnsubs.get(id)?.();
     this.groupUnsubs.delete(id);
     this.groups.delete(id);
+    for (const listener of this.removeListeners) {
+      listener(id);
+    }
   }
 
   /**
@@ -140,7 +155,7 @@ class EditorGroupsServiceImpl {
     );
     // Register before ensureInitialTab(): it may call openUntitled(), which
     // needs the untitled-label factory registerGroup() configures.
-    this.registerGroup(newGroupId, newGroup);
+    this.registerGroup(newGroupId, newGroup, sourceId);
     newGroup.ensureInitialTab();
     this.layout = splitLeaf(this.layout, sourceId, splitDirection, newGroupId);
     this.focusedGroupId = newGroupId;
@@ -327,6 +342,18 @@ class EditorGroupsServiceImpl {
   onDidChangeAnyGroup(listener: EditorGroupsChangeListener): () => void {
     this.anyGroupListeners.add(listener);
     return () => this.anyGroupListeners.delete(listener);
+  }
+
+  /** Fires once a new group is registered (initial group, split, or session restore). */
+  onDidAddGroup(listener: GroupLifecycleAddListener): () => void {
+    this.addListeners.add(listener);
+    return () => this.addListeners.delete(listener);
+  }
+
+  /** Fires once a group is torn down (close, or session-restore rebuild). */
+  onDidRemoveGroup(listener: GroupLifecycleRemoveListener): () => void {
+    this.removeListeners.add(listener);
+    return () => this.removeListeners.delete(listener);
   }
 
   private fireDidChange(): void {

@@ -1,24 +1,35 @@
+import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { MenuId } from "../../platform/actions/menuId";
 import { MenuRegistry } from "../../platform/actions/menuRegistry";
 import { CommandsRegistry } from "../../platform/commands/commandRegistry";
 import { KeybindingsRegistry } from "../../platform/keybinding/keybindingRegistry";
 import { LayoutService } from "../../services/layout/layoutService";
+import { GroupPanelStateService } from "../../services/layout/groupPanelStateService";
 
 CommandsRegistry.registerCommand("workbench.action.toggleSidebarVisibility", () => {
   LayoutService.toggleSidebar();
 });
 
-CommandsRegistry.registerCommand("workbench.action.togglePanel", () => {
-  LayoutService.togglePanel();
-});
+CommandsRegistry.registerCommand(
+  "workbench.action.togglePanel",
+  (...args: unknown[]) => {
+    const groupId = args[0] as EditorGroupId | undefined;
+    GroupPanelStateService.togglePanel(groupId ?? EditorGroupsService.getFocusedGroupId());
+  },
+);
 
 CommandsRegistry.registerCommand("workbench.action.toggleAuxiliaryBar", () => {
   LayoutService.toggleAuxiliaryBar();
 });
 
-CommandsRegistry.registerCommand("workbench.action.toggleMaximizedPanel", () => {
-  LayoutService.togglePanelMaximized();
-});
+CommandsRegistry.registerCommand(
+  "workbench.action.toggleMaximizedPanel",
+  (...args: unknown[]) => {
+    const groupId = args[0] as EditorGroupId | undefined;
+    GroupPanelStateService.toggleMaximized(groupId ?? EditorGroupsService.getFocusedGroupId());
+  },
+);
 
 CommandsRegistry.registerCommand("workbench.action.togglePanelPosition", () => {
   LayoutService.togglePanelPosition();
