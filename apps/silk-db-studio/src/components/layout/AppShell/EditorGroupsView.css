@@ -11,6 +11,45 @@
   box-shadow: inset 0 2px 0 var(--color-focus-border);
 }
 
+.editor-groups-pane__row {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  min-width: 0;
+  min-height: 0;
+}
+
+.editor-groups-pane__editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.editor-groups-pane__editor--hidden {
+  display: none;
+}
+
+.editor-groups-pane__panel {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 0;
+  min-width: 0;
+}
+
+.editor-groups-pane__panel--maximized {
+  flex: 1;
+}
+
+.editor-groups-pane__panel .panel {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
 .editor-groups-split {
   display: flex;
   flex: 1;

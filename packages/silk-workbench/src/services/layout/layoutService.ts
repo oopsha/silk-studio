@@ -364,10 +364,9 @@ class LayoutServiceImpl {
   }
 
   private updateContextKeys(): void {
+    // panelVisible/panelMaximized are owned by GroupPanelStateService (per-group panel state).
     ContextKeyService.set("sideBarVisible", this.sidebarVisible);
-    ContextKeyService.set("panelVisible", this.panelVisible);
     ContextKeyService.set("auxiliaryBarVisible", this.auxiliaryBarVisible);
-    ContextKeyService.set("panelMaximized", this.panelMaximized);
     ContextKeyService.set(
       "panelPositionBottom",
       this.panelPosition === "bottom",

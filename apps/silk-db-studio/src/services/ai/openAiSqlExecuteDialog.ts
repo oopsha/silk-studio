@@ -1,7 +1,8 @@
 import type { QueryResultPayload } from "@silk-studio/db-protocol";
 import { AiChatService } from "@silk-studio/workbench/services/ai/aiChatService.ts";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
-import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
+import { GroupPanelStateService } from "@silk-studio/workbench/services/layout/groupPanelStateService.ts";
+import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import { QueryExecutionService } from "../query/queryExecutionService";
 import { isWriteSql } from "../query/sqlGuard";
 import { AiSqlExecuteDialogService } from "./aiSqlExecuteDialogService";
@@ -117,12 +118,13 @@ export async function openAiSqlExecuteDialog(sql: string): Promise<boolean> {
 
   if (!confirmed) return false;
 
-  LayoutService.showPanel();
+  const groupId = EditorGroupsService.getFocusedGroupId();
+  GroupPanelStateService.showPanel(groupId);
   await QueryExecutionService.execute(trimmed, {
     tabTitle: "AI Proposal",
   });
 
-  const state = QueryExecutionService.getState();
+  const state = QueryExecutionService.getState(groupId);
   const sample = formatSampleRows(state.result);
   const prompt = buildInterpretPrompt({
     sql: trimmed,

@@ -5,6 +5,8 @@ import {
   type QueryResultPayload,
 } from "@silk-studio/db-protocol";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
+import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { formatErrorMessage, reportError } from "../formatErrorMessage";
@@ -140,10 +142,10 @@ class QueryExecutionServiceImpl {
   /** Per editor-tab (or synthetic) result session — MC-E. */
   private readonly sessions = new Map<string, QueryExecutionState>();
   private readonly runtimes = new Map<string, SessionRuntime>();
-  /** Which session the panel currently shows. */
-  private viewOwnerId: string | null = null;
-  /** Last EditorService active tab — used to detect focus changes only. */
-  private lastActiveEditorId: string | null = null;
+  /** Which session each editor group's panel currently shows. */
+  private readonly viewOwnerIds = new Map<EditorGroupId, string>();
+  /** Last active tab per group — used to detect focus/tab changes only. */
+  private readonly lastActiveIdsByGroup = new Map<EditorGroupId, string | null>();
   private readonly listeners = new Set<QueryExecutionListener>();
   private tabSequence = 0;
   private started = false;
@@ -151,14 +153,18 @@ class QueryExecutionServiceImpl {
   start(): void {
     if (this.started) return;
     this.started = true;
-    EditorService.onDidChange(() => {
+    EditorGroupsService.onDidChangeAnyGroup(() => {
       this.syncWithEditorTabs();
+    });
+    EditorGroupsService.onDidRemoveGroup((groupId) => {
+      this.viewOwnerIds.delete(groupId);
+      this.lastActiveIdsByGroup.delete(groupId);
     });
     this.syncWithEditorTabs();
   }
 
-  getState(): QueryExecutionState {
-    const ownerId = this.viewOwnerId;
+  getState(groupId: EditorGroupId): QueryExecutionState {
+    const ownerId = this.viewOwnerIds.get(groupId) ?? null;
     if (!ownerId) {
       return { ...INITIAL_STATE, output: idleOutput() };
     }
@@ -169,17 +175,17 @@ class QueryExecutionServiceImpl {
     return session;
   }
 
-  /** Owner id for the panel's current session (editor tab or open-data). */
-  getViewOwnerId(): string | null {
-    return this.viewOwnerId;
+  /** Owner id for the given group's panel session (editor tab or open-data). */
+  getViewOwnerId(groupId: EditorGroupId): string | null {
+    return this.viewOwnerIds.get(groupId) ?? null;
   }
 
-  isRunning(): boolean {
-    return this.getState().status === "running";
+  isRunning(groupId: EditorGroupId): boolean {
+    return this.getState(groupId).status === "running";
   }
 
-  setActiveTab(tabId: string): void {
-    const ownerId = this.viewOwnerId;
+  setActiveTab(groupId: EditorGroupId, tabId: string): void {
+    const ownerId = this.viewOwnerIds.get(groupId);
     if (!ownerId) return;
     const session = this.sessions.get(ownerId);
     if (!session) return;
@@ -196,8 +202,8 @@ class QueryExecutionServiceImpl {
     });
   }
 
-  closeTab(tabId: string): void {
-    const ownerId = this.findOwnerForResultTab(tabId) ?? this.viewOwnerId;
+  closeTab(groupId: EditorGroupId, tabId: string): void {
+    const ownerId = this.findOwnerForResultTab(tabId) ?? this.viewOwnerIds.get(groupId);
     if (!ownerId) return;
     const session = this.sessions.get(ownerId);
     if (!session) return;
@@ -241,8 +247,8 @@ class QueryExecutionServiceImpl {
     });
   }
 
-  closeAllTabs(): void {
-    const ownerId = this.viewOwnerId;
+  closeAllTabs(groupId: EditorGroupId): void {
+    const ownerId = this.viewOwnerIds.get(groupId);
     if (!ownerId) return;
     const session = this.sessions.get(ownerId) ?? emptySession();
     QueryResultDirtyService.removeTabs(session.tabs.map((tab) => tab.id));
@@ -333,9 +339,10 @@ class QueryExecutionServiceImpl {
 
   async execute(sql: string, options?: QueryExecuteOptions): Promise<void> {
     const ownerId = this.resolveOwnerId(options);
+    const viewGroupId = EditorGroupsService.getFocusedGroupId();
     const statement = stripTrailingSemicolon(sql.trim());
     if (!statement) {
-      this.patchRunStatus(ownerId, {
+      this.patchRunStatus(viewGroupId, ownerId, {
         status: "error",
         output: tKey("app.query.emptyQuery"),
         lastSql: sql,
@@ -358,6 +365,7 @@ class QueryExecutionServiceImpl {
     options?: QueryExecuteOptions,
   ): Promise<void> {
     const ownerId = this.resolveOwnerId(options);
+    const viewGroupId = EditorGroupsService.getFocusedGroupId();
     const prepared = statements
       .map((item) => ({
         sql: stripTrailingSemicolon(item.sql.trim()),
@@ -366,7 +374,7 @@ class QueryExecutionServiceImpl {
       .filter((item) => item.sql.length > 0);
 
     if (prepared.length === 0) {
-      this.patchRunStatus(ownerId, {
+      this.patchRunStatus(viewGroupId, ownerId, {
         status: "error",
         output: tKey("app.query.emptyQuery"),
       });
@@ -391,7 +399,7 @@ class QueryExecutionServiceImpl {
     for (const item of prepared) {
       const resolved = await this.resolveStatementBinds(item.sql);
       if (resolved === "cancelled") {
-        this.patchRunStatus(ownerId, {
+        this.patchRunStatus(viewGroupId, ownerId, {
           status: "cancelled",
           output: tKey("app.query.parametersCancelled"),
           lastSql: item.sql,
@@ -415,6 +423,7 @@ class QueryExecutionServiceImpl {
 
     const total = boundList.length;
     this.beginRun(
+      viewGroupId,
       ownerId,
       boundList[0].sql,
       total === 1
@@ -480,7 +489,7 @@ class QueryExecutionServiceImpl {
 
         const item = boundList[index];
         if (total > 1) {
-          this.patchRunStatus(ownerId, {
+          this.patchRunStatus(viewGroupId, ownerId, {
             status: "running",
             output: `Executing ${index + 1}/${total}...`,
             lastSql: item.sql,
@@ -593,6 +602,7 @@ class QueryExecutionServiceImpl {
     options?: QueryExecuteOptions,
   ): Promise<void> {
     const ownerId = this.resolveOwnerId(options);
+    const viewGroupId = EditorGroupsService.getFocusedGroupId();
     const prepared = statements
       .map((item) => ({
         sql: stripTrailingSemicolon(item.sql.trim()),
@@ -601,7 +611,7 @@ class QueryExecutionServiceImpl {
       .filter((item) => item.sql.length > 0);
 
     if (prepared.length === 0) {
-      this.patchRunStatus(ownerId, {
+      this.patchRunStatus(viewGroupId, ownerId, {
         status: "error",
         output: tKey("app.query.emptyQuery"),
       });
@@ -625,7 +635,7 @@ class QueryExecutionServiceImpl {
     for (const item of prepared) {
       const resolved = await this.resolveStatementBinds(item.sql);
       if (resolved === "cancelled") {
-        this.patchRunStatus(ownerId, {
+        this.patchRunStatus(viewGroupId, ownerId, {
           status: "cancelled",
           output: tKey("app.query.parametersCancelled"),
           lastSql: item.sql,
@@ -656,6 +666,7 @@ class QueryExecutionServiceImpl {
         : scriptSql);
 
     this.beginRun(
+      viewGroupId,
       ownerId,
       boundList[0].sql,
       total === 1
@@ -772,7 +783,7 @@ class QueryExecutionServiceImpl {
 
         const item = boundList[index];
         if (total > 1) {
-          this.patchRunStatus(ownerId, {
+          this.patchRunStatus(viewGroupId, ownerId, {
             status: "running",
             output: tKey("app.query.executingScriptProgress")
               .replace("{current}", String(index + 1))
@@ -934,9 +945,10 @@ class QueryExecutionServiceImpl {
    */
   async explain(sql: string, options?: QueryExecuteOptions): Promise<void> {
     const ownerId = this.resolveOwnerId(options);
+    const viewGroupId = EditorGroupsService.getFocusedGroupId();
     const statement = stripTrailingSemicolon(sql.trim());
     if (!statement) {
-      this.patchRunStatus(ownerId, {
+      this.patchRunStatus(viewGroupId, ownerId, {
         status: "error",
         output: tKey("app.query.emptyExplain"),
         lastSql: sql,
@@ -946,7 +958,7 @@ class QueryExecutionServiceImpl {
 
     const bound = await this.resolveStatementBinds(statement);
     if (bound === "cancelled") {
-      this.patchRunStatus(ownerId, {
+      this.patchRunStatus(viewGroupId, ownerId, {
         status: "cancelled",
         output: tKey("app.query.parametersCancelled"),
         lastSql: statement,
@@ -968,7 +980,7 @@ class QueryExecutionServiceImpl {
     const driverId = resolveActiveDriverId(connectionId);
     const plan = buildExplainPlan(driverId, bound.sql);
     if (plan.steps.length === 0) {
-      this.patchRunStatus(ownerId, {
+      this.patchRunStatus(viewGroupId, ownerId, {
         status: "error",
         output: tKey("app.query.nothingToExplain"),
         lastSql: statement,
@@ -987,7 +999,7 @@ class QueryExecutionServiceImpl {
     const displaySql =
       plan.steps.find((step) => step.captureResult)?.sql ?? statement;
 
-    this.beginRun(ownerId, displaySql, `Running ${plan.label}...`);
+    this.beginRun(viewGroupId, ownerId, displaySql, `Running ${plan.label}...`);
 
     const teardownSql =
       plan.steps.find((step) => step.kind === "teardown")?.sql ?? null;
@@ -1132,8 +1144,8 @@ class QueryExecutionServiceImpl {
     }
   }
 
-  async cancel(): Promise<void> {
-    const ownerId = this.viewOwnerId;
+  async cancel(groupId: EditorGroupId): Promise<void> {
+    const ownerId = this.viewOwnerIds.get(groupId);
     if (!ownerId) return;
     const session = this.sessions.get(ownerId);
     if (!session || session.status !== "running") {
@@ -1142,7 +1154,7 @@ class QueryExecutionServiceImpl {
 
     const runtime = this.ensureRuntime(ownerId);
     runtime.cancelRequested = true;
-    this.patchRunStatus(ownerId, {
+    this.patchRunStatus(groupId, ownerId, {
       status: "running",
       output: tKey("app.query.cancelling"),
     });
@@ -1207,14 +1219,19 @@ class QueryExecutionServiceImpl {
     return null;
   }
 
-  private beginRun(ownerId: string, sql: string, output: string): void {
+  private beginRun(
+    viewGroupId: EditorGroupId,
+    ownerId: string,
+    sql: string,
+    output: string,
+  ): void {
     const prev = this.sessions.get(ownerId);
     if (prev?.tabs.length) {
       QueryResultDirtyService.removeTabs(prev.tabs.map((tab) => tab.id));
     }
     const runtime = this.ensureRuntime(ownerId);
     runtime.runTabOrdinal = 0;
-    this.viewOwnerId = ownerId;
+    this.viewOwnerIds.set(viewGroupId, ownerId);
     this.setSessionState(ownerId, {
       status: "running",
       output,
@@ -1334,6 +1351,7 @@ class QueryExecutionServiceImpl {
   }
 
   private patchRunStatus(
+    viewGroupId: EditorGroupId,
     ownerId: string,
     patch: {
       status: QueryExecutionStatus;
@@ -1341,7 +1359,7 @@ class QueryExecutionServiceImpl {
       lastSql?: string;
     },
   ): void {
-    this.viewOwnerId = ownerId;
+    this.viewOwnerIds.set(viewGroupId, ownerId);
     const session = this.sessions.get(ownerId) ?? emptySession();
     this.setSessionState(ownerId, {
       ...session,
@@ -1562,8 +1580,13 @@ class QueryExecutionServiceImpl {
   }
 
   private syncWithEditorTabs(): void {
-    const tabs = EditorService.getTabs();
-    const liveIds = new Set(tabs.map((tab) => tab.id));
+    const groupIds = EditorGroupsService.getGroupIds();
+    const liveIds = new Set<string>();
+    for (const groupId of groupIds) {
+      for (const tab of EditorGroupsService.getGroup(groupId).getTabs()) {
+        liveIds.add(tab.id);
+      }
+    }
     let changed = false;
 
     for (const ownerId of [...this.sessions.keys()]) {
@@ -1574,20 +1597,22 @@ class QueryExecutionServiceImpl {
       }
     }
 
-    const activeId = EditorService.getActiveTabId();
-    if (activeId !== this.lastActiveEditorId) {
-      this.lastActiveEditorId = activeId;
+    for (const groupId of groupIds) {
+      const activeId = EditorGroupsService.getGroup(groupId).getActiveTabId();
+      const lastActiveId = this.lastActiveIdsByGroup.get(groupId) ?? null;
+      if (activeId === lastActiveId) continue;
+      this.lastActiveIdsByGroup.set(groupId, activeId);
       if (activeId) {
-        if (this.viewOwnerId !== activeId) {
-          this.viewOwnerId = activeId;
+        if (this.viewOwnerIds.get(groupId) !== activeId) {
+          this.viewOwnerIds.set(groupId, activeId);
           changed = true;
         }
-      } else if (
-        this.viewOwnerId &&
-        !isSyntheticOwnerId(this.viewOwnerId)
-      ) {
-        this.viewOwnerId = null;
-        changed = true;
+      } else {
+        const current = this.viewOwnerIds.get(groupId);
+        if (current && !isSyntheticOwnerId(current)) {
+          this.viewOwnerIds.delete(groupId);
+          changed = true;
+        }
       }
     }
 

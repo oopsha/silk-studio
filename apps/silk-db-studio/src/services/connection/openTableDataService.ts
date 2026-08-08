@@ -1,4 +1,5 @@
-import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
+import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
+import { GroupPanelStateService } from "@silk-studio/workbench/services/layout/groupPanelStateService.ts";
 import type { ConnectionDriverId } from "./connectionTypes";
 import { ConnectionService } from "./connectionService";
 import type { ExplorerObjectRef } from "./explorerObjectActions";
@@ -38,7 +39,7 @@ export async function openTableData(ref: ExplorerObjectRef): Promise<void> {
   );
   const tabTitle = `${ref.schemaName}.${ref.object.name}`;
 
-  LayoutService.showPanel();
+  GroupPanelStateService.showPanel(EditorGroupsService.getFocusedGroupId());
   await QueryExecutionService.execute(sql, {
     relationKind: ref.object.kind,
     tabTitle,

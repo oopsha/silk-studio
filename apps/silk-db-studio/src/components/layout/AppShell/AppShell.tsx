@@ -3,7 +3,6 @@ import { useEffect } from "react";
 import ActivityBar from "@silk-studio/workbench/components/layout/ActivityBar/index.ts";
 import Sidebar from "@silk-studio/workbench/components/layout/Sidebar/index.ts";
 import EditorGroupsView from "./EditorGroupsView.tsx";
-import Panel from "../Panel";
 import SecondarySidebar from "@silk-studio/workbench/components/layout/SecondarySidebar/index.ts";
 import WorkbenchSash from "@silk-studio/workbench/components/layout/WorkbenchSash/index.ts";
 import StatusBar from "@silk-studio/workbench/components/layout/StatusBar/index.ts";
@@ -95,9 +94,6 @@ function AppShell() {
     return () => setExplorerObjectDropHandler(null);
   }, []);
 
-  const panelOnBottom = layout.panelPosition === "bottom";
-  const showEditor = !layout.panelMaximized;
-
   const connectionsActions = (
     <>
       <button
@@ -149,9 +145,7 @@ function AppShell() {
   );
 
   const editorArea = (
-    <div
-      className={`app-shell__editor${showEditor ? "" : " app-shell__editor--hidden"}`}
-    >
+    <div className="app-shell__editor">
       <EditorGroupsView
         commands={tabBarCommands}
         editorProps={{
@@ -196,57 +190,8 @@ function AppShell() {
     </div>
   );
 
-  const panelElement = layout.panel ? (
-  <div
-    className={`app-shell__panel${layout.panelMaximized ? " app-shell__panel--maximized" : ""}`}
-    style={
-      panelOnBottom
-        ? { height: layout.panelMaximized ? undefined : layout.panelSize }
-        : { width: layout.panelMaximized ? undefined : layout.panelSize }
-    }
-  >
-    <Panel />
-  </div>
-  ) : null;
-
   const editorColumn = (
-    <div
-      className={`app-shell__editor-column${
-        layout.panelMaximized && !panelOnBottom
-          ? " app-shell__editor-column--panel-maximized"
-          : ""
-      }`}
-    >
-      {panelOnBottom ? (
-        <>
-          {editorArea}
-          {layout.panel ? (
-            <>
-              {showEditor ? (
-                <WorkbenchSash
-                  orientation="horizontal"
-                  onPointerDown={(event) => {
-                    const startY = event.clientY;
-                    const startSize = layout.panelSize;
-                    startDrag({
-                      orientation: "horizontal",
-                      onResize: (clientY) => {
-                        LayoutService.setPanelSize(
-                          startSize - (clientY - startY),
-                        );
-                      },
-                    });
-                  }}
-                />
-              ) : null}
-              {panelElement}
-            </>
-          ) : null}
-        </>
-      ) : (
-        editorArea
-      )}
-    </div>
+    <div className="app-shell__editor-column">{editorArea}</div>
   );
 
   return (
@@ -291,29 +236,6 @@ function AppShell() {
               ) : null}
 
               {editorColumn}
-
-              {!panelOnBottom && layout.panel ? (
-                <>
-                  {showEditor ? (
-                    <WorkbenchSash
-                      orientation="vertical"
-                      onPointerDown={(event) => {
-                        const startX = event.clientX;
-                        const startSize = layout.panelSize;
-                        startDrag({
-                          orientation: "vertical",
-                          onResize: (clientX) => {
-                            LayoutService.setPanelSize(
-                              startSize - (clientX - startX),
-                            );
-                          },
-                        });
-                      }}
-                    />
-                  ) : null}
-                  {panelElement}
-                </>
-              ) : null}
 
               {layout.auxiliaryBar ? (
                 <>
