@@ -116,10 +116,14 @@ export type ConnectionMetadataResult = {
   currentCatalog?: string;
 };
 
-/** Column metadata for SQL autocomplete (`connection.columns`). */
+/** Column metadata for SQL autocomplete and the object editor's Columns section (`connection.columns`). */
 export type MetadataColumn = {
   name: string;
   typeName?: string;
+  /** Omitted when the driver doesn't know (JDBC `columnNullableUnknown`). */
+  nullable?: boolean;
+  defaultValue?: string;
+  comment?: string;
 };
 
 export type ConnectionColumnsParams = {
@@ -388,7 +392,10 @@ function isMetadataColumn(value: unknown): value is MetadataColumn {
   const entry = value as Record<string, unknown>;
   return (
     typeof entry.name === "string" &&
-    (entry.typeName === undefined || typeof entry.typeName === "string")
+    (entry.typeName === undefined || typeof entry.typeName === "string") &&
+    (entry.nullable === undefined || typeof entry.nullable === "boolean") &&
+    (entry.defaultValue === undefined || typeof entry.defaultValue === "string") &&
+    (entry.comment === undefined || typeof entry.comment === "string")
   );
 }
 

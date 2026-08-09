@@ -20,6 +20,7 @@ import java.sql.Types;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -339,7 +340,14 @@ public final class Main {
       }
 
       DbDialect dialect = DbDialects.forUrl(url);
-      Connection connection = DriverManager.getConnection(url, user, password);
+      Properties connProps = new Properties();
+      connProps.setProperty("user", user);
+      connProps.setProperty("password", password);
+      if (dialect instanceof OracleDialect) {
+        // Oracle's driver reports getColumns() REMARKS as NULL unless this is set.
+        connProps.setProperty("remarksReporting", "true");
+      }
+      Connection connection = DriverManager.getConnection(url, connProps);
       dialect.afterConnect(connection, params);
 
       Session session = new Session(connectionId);

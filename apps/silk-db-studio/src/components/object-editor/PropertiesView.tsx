@@ -4,6 +4,7 @@ import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import type { MessageKey } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
 import DdlPreview from "../ddl/DdlPreview";
+import ColumnsPreview from "./ColumnsPreview";
 import "./PropertiesView.css";
 
 type PropertiesRenderCtx = {
@@ -19,9 +20,14 @@ type PropertiesSection = {
   render: (ctx: PropertiesRenderCtx) => ReactNode;
 };
 
-// Future sections (columns, indexes, constraints) can be appended here once
-// the backend exposes that metadata — nothing else needs to change.
+// Future sections (indexes, constraints) can be appended here once the
+// backend exposes that metadata — nothing else needs to change.
 const PROPERTIES_SECTIONS: PropertiesSection[] = [
+  {
+    id: "columns",
+    labelKey: "app.objectEditor.columnsSection",
+    render: (ctx) => <ColumnsPreview objectRef={ctx.objectRef} />,
+  },
   {
     id: "ddl",
     labelKey: "app.objectEditor.ddlSection",
