@@ -20,6 +20,33 @@ type ColumnsPreviewProps = {
   objectRef: ObjectEditorRef;
 };
 
+const SIZED_CHAR_OR_BINARY_TYPE = /CHAR|TEXT|STRING|BINARY|RAW/;
+const SIZED_NUMERIC_TYPE = /^(NUMBER|NUMERIC|DECIMAL|DEC)/;
+const MAX_MEANINGFUL_COLUMN_SIZE = 1_000_000_000;
+
+function formatColumnType(column: MetadataColumn): string {
+  const { typeName, columnSize, decimalDigits } = column;
+  if (!typeName) return "";
+
+  const upperTypeName = typeName.toUpperCase();
+  const hasMeaningfulSize =
+    columnSize !== undefined &&
+    columnSize > 0 &&
+    columnSize < MAX_MEANINGFUL_COLUMN_SIZE;
+
+  if (hasMeaningfulSize && SIZED_NUMERIC_TYPE.test(upperTypeName)) {
+    return decimalDigits
+      ? `${typeName}(${columnSize},${decimalDigits})`
+      : `${typeName}(${columnSize})`;
+  }
+
+  if (hasMeaningfulSize && SIZED_CHAR_OR_BINARY_TYPE.test(upperTypeName)) {
+    return `${typeName}(${columnSize})`;
+  }
+
+  return typeName;
+}
+
 function ColumnsPreview({ objectRef }: ColumnsPreviewProps) {
   const { t } = useI18n();
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
@@ -101,7 +128,7 @@ function ColumnsPreview({ objectRef }: ColumnsPreviewProps) {
                   ? "✓"
                   : ""}
               </td>
-              <td>{column.typeName ?? ""}</td>
+              <td>{formatColumnType(column)}</td>
               <td>
                 {column.nullable === undefined
                   ? ""

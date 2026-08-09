@@ -22,6 +22,14 @@ final class MetadataColumns {
       if (typeName != null && !typeName.isBlank()) {
         column.put("typeName", typeName);
       }
+      Integer columnSize = rs.getObject("COLUMN_SIZE", Integer.class);
+      if (columnSize != null) {
+        column.put("columnSize", columnSize);
+      }
+      Integer decimalDigits = rs.getObject("DECIMAL_DIGITS", Integer.class);
+      if (decimalDigits != null) {
+        column.put("decimalDigits", decimalDigits);
+      }
       int nullable = rs.getInt("NULLABLE");
       if (nullable == DatabaseMetaData.columnNoNulls) {
         column.put("nullable", false);
