@@ -479,6 +479,13 @@ export const enMessages = {
       invalidTab: "Invalid DDL editor tab.",
       loadFailed: "Failed to load DDL.",
     },
+    objectEditor: {
+      propertiesTab: "Properties",
+      dataTab: "Data",
+      ddlSection: "DDL",
+      invalidTab: "Invalid object editor tab.",
+      dataLoadFailed: "Failed to load data.",
+    },
     query: {
       runStatement: "Run Statement",
       executeScript: "Execute Script",
@@ -574,6 +581,8 @@ export const enMessages = {
       cancelled: "Cancelled.",
       timedOut: "Query timed out after {seconds}s (Settings → Database → Query Timeout).",
       timedOutUnlimited: "Query timed out.",
+      goToDefinitionNotFound:
+        "No table, view, procedure, function, or package found for this identifier.",
       noConnection:
         "No active database connection. Connect a profile in the Connections explorer.",
       noConnectionTarget:

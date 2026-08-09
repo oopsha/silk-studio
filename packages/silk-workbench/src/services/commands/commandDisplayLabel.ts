@@ -45,7 +45,7 @@ export const COMMAND_ENGLISH_TITLES: Readonly<Record<string, string>> = {
   "silk.query.insertLastHistory": "Insert Last History",
   "silk.query.openLastHistoryInEditor": "Open Last History In Editor",
   "silk.query.openHistory": "Query History",
-  "silk.explorer.openData": "Open Data",
+  "silk.explorer.openObjectEditor": "Open Data",
   "silk.explorer.viewDdl": "View DDL",
   "silk.explorer.openSource": "Edit Spec",
   "silk.explorer.openPackageBody": "Edit Body",

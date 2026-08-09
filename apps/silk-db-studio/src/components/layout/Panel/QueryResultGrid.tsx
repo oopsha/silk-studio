@@ -597,6 +597,11 @@ function QueryResultGrid({
           columnDefs={columnDefs}
           rowData={rowData}
           defaultColDef={defaultColDef}
+          // SQL result column labels are always literal strings (e.g. an unaliased
+          // `PKG.FUNC('a')` call), never a dotted nested-object path — without this,
+          // AG Grid treats any "." in a field name as a nested-path accessor and
+          // silently renders such columns as blank/NULL.
+          suppressFieldDotNotation
           rowHeight={rowHeight}
           animateRows={false}
           rowBuffer={8}

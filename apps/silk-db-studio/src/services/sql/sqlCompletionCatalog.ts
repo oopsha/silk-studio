@@ -298,6 +298,66 @@ export function findTableInSchemas(
   return null;
 }
 
+/** Scans all group kinds (tables/views/procedures/functions/packages) for a name match. */
+export function findObjectInSchemas(
+  profileId: string,
+  objectName: string,
+  preferredSchema?: string | null,
+): { schema: string; object: MetadataObject } | null {
+  const caches = getExplorerSchemas(
+    ConnectionTreeService.getCache(profileId),
+  ).filter((schema) => schema.status === "loaded");
+  const ordered = preferredSchema
+    ? [
+        ...caches.filter(
+          (schema) =>
+            schema.name.toLowerCase() === preferredSchema.toLowerCase(),
+        ),
+        ...caches.filter(
+          (schema) =>
+            schema.name.toLowerCase() !== preferredSchema.toLowerCase(),
+        ),
+      ]
+    : caches;
+
+  for (const schema of ordered) {
+    for (const group of schema.groups) {
+      const match = group.objects.find(
+        (object) => object.name.toLowerCase() === objectName.toLowerCase(),
+      );
+      if (match) {
+        return { schema: schema.name, object: match };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Go-to-definition lookup for F4: resolves a bare or `schema.`-qualified identifier to
+ * whichever object (of any kind) matches, loading the relevant schema(s) on demand.
+ */
+export async function findObjectAcrossSchemas(
+  profileId: string,
+  objectName: string,
+  qualifierSchema?: string | null,
+): Promise<{ schema: string; object: MetadataObject } | null> {
+  if (qualifierSchema) {
+    const resolvedSchema =
+      findSchemaName(profileId, qualifierSchema) ?? qualifierSchema;
+    await ensureSchemaObjectsLoaded(profileId, resolvedSchema);
+    return findObjectInSchemas(profileId, objectName, resolvedSchema);
+  }
+
+  for (const schema of schemaCandidatesForCompletion()) {
+    await ensureSchemaObjectsLoaded(profileId, schema);
+    const found = findObjectInSchemas(profileId, objectName, schema);
+    if (found) return found;
+  }
+
+  return null;
+}
+
 /**
  * Resolve columns for `table.` — prefer explorer cache, then try JDBC against
  * defaultSchema / catalog / user until a non-empty list is returned.

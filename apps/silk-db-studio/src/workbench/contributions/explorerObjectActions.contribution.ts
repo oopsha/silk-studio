@@ -12,7 +12,7 @@ import {
 import { openPlsqlObjectSource } from "../../services/connection/plsqlEditorService";
 import { ExplorerSearchQuickPickService } from "../../services/connection/explorerSearchQuickPickService";
 import { ExplorerUiService } from "../../services/connection/explorerUiService";
-import { openTableData } from "../../services/connection/openTableDataService";
+import { openObjectEditor } from "../../services/connection/objectEditorService";
 import {
   EXPLORER_COMMANDS,
   formatQualifiedName,
@@ -20,11 +20,11 @@ import {
 } from "../../services/connection/explorerObjectActions";
 
 CommandsRegistry.registerCommand(
-  EXPLORER_COMMANDS.openData,
+  EXPLORER_COMMANDS.openObjectEditor,
   async (...args: unknown[]) => {
     const target = args[0] as ExplorerObjectRef | undefined;
     if (!target) return;
-    await openTableData(target);
+    openObjectEditor(target);
   },
 );
 

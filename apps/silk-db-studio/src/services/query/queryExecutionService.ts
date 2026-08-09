@@ -175,6 +175,15 @@ class QueryExecutionServiceImpl {
     return session;
   }
 
+  /** Read a session directly by its owner id, with no group indirection — for views (e.g. the object editor's Data tab) that own a fixed session independent of any split group. */
+  getSessionState(ownerId: string): QueryExecutionState {
+    const session = this.sessions.get(ownerId) ?? emptySession();
+    if (session.status === "idle" && session.tabs.length === 0) {
+      return { ...session, output: idleOutput() };
+    }
+    return session;
+  }
+
   /** Owner id for the given group's panel session (editor tab or open-data). */
   getViewOwnerId(groupId: EditorGroupId): string | null {
     return this.viewOwnerIds.get(groupId) ?? null;

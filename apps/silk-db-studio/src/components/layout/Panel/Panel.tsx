@@ -276,7 +276,7 @@ function Panel({ groupId }: { groupId: EditorGroupId }) {
   );
 }
 
-function toStatusLabel(
+export function toStatusLabel(
   status: "idle" | "running" | "success" | "error" | "cancelled",
   output: string,
   t: (key:

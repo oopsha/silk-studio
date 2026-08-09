@@ -7,6 +7,7 @@ import type { EditorConfigurationOptions } from "@silk-studio/editor/components/
 import type { EditorTab } from "@silk-studio/editor/services/editor/editorTypes.ts";
 import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import { useEditorGroupsLayout } from "@silk-studio/editor/services/editor/useEditorGroupsLayout.ts";
+import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import type {
   EditorGroupId,
   EditorLayoutNode,
@@ -17,6 +18,7 @@ import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayout
 import { useGroupPanelState } from "@silk-studio/workbench/services/layout/useGroupPanelState.ts";
 import { GroupPanelStateService } from "@silk-studio/workbench/services/layout/groupPanelStateService.ts";
 import Panel from "../Panel";
+import { isVirtualEditorTab } from "../../../services/editor/virtualEditorTab.ts";
 import {
   SILK_EDITOR_DROP_ATTR,
   SILK_EDITOR_DROP_GROUP_ATTR,
@@ -113,8 +115,14 @@ function EditorGroupPane({
 }) {
   const layout = useLayoutState();
   const panelVisual = useGroupPanelState(groupId);
+  const activeTab = useActiveEditor(groupId);
   const panelOnBottom = layout.panelPosition === "bottom";
-  const showEditorHalf = !panelVisual.maximized;
+  // The result panel has nothing relevant to show for a non-SQL virtual tab
+  // (DDL preview, object editor, settings, …) — keep it hidden there without
+  // touching the group's own visible/size/maximized toggle state, so it comes
+  // back exactly as the user left it when they return to a real SQL tab.
+  const showPanel = panelVisual.visible && !isVirtualEditorTab(activeTab?.uri);
+  const showEditorHalf = !(panelVisual.maximized && showPanel);
 
   const editorHalf = (
     <div
@@ -125,7 +133,7 @@ function EditorGroupPane({
     </div>
   );
 
-  const panelHalf = panelVisual.visible ? (
+  const panelHalf = showPanel ? (
     <div
       className={`editor-groups-pane__panel${panelVisual.maximized ? " editor-groups-pane__panel--maximized" : ""}`}
       style={
@@ -139,7 +147,7 @@ function EditorGroupPane({
   ) : null;
 
   const panelSash =
-    panelVisual.visible && showEditorHalf ? (
+    showPanel && showEditorHalf ? (
       <WorkbenchSash
         orientation={panelOnBottom ? "horizontal" : "vertical"}
         onPointerDown={(event) => {

@@ -207,8 +207,8 @@ function ProfileTree({
   async function handleObjectAction(ref: ExplorerObjectRef) {
     const action = defaultObjectAction(ref.object.kind, profile.driverId);
     const commandId =
-      action === "openData"
-        ? EXPLORER_COMMANDS.openData
+      action === "openObjectEditor"
+        ? EXPLORER_COMMANDS.openObjectEditor
         : action === "openSource"
           ? EXPLORER_COMMANDS.openSource
           : EXPLORER_COMMANDS.viewDdl;
@@ -996,7 +996,7 @@ function ConnectionsExplorer() {
     }
 
     if (
-      item.commandId === EXPLORER_COMMANDS.openData ||
+      item.commandId === EXPLORER_COMMANDS.openObjectEditor ||
       item.commandId === EXPLORER_COMMANDS.openSource ||
       item.commandId === EXPLORER_COMMANDS.openPackageBody ||
       item.commandId === EXPLORER_COMMANDS.viewDdl ||

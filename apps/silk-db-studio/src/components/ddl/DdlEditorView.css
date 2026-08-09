@@ -15,8 +15,3 @@
   color: var(--color-description);
   font-size: 12px;
 }
-
-.ddl-editor-view__body {
-  flex: 1;
-  min-height: 0;
-}
