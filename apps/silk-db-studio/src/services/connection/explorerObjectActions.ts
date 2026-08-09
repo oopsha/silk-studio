@@ -35,7 +35,7 @@ export type ExplorerMenuOptions = {
 };
 
 export const EXPLORER_COMMANDS = {
-  openData: "silk.explorer.openData",
+  openObjectEditor: "silk.explorer.openObjectEditor",
   viewDdl: "silk.explorer.viewDdl",
   refreshSchema: "silk.explorer.refreshSchema",
   useDatabase: "silk.explorer.useDatabase",
@@ -55,9 +55,9 @@ export const EXPLORER_COMMANDS = {
 export function defaultObjectAction(
   kind: MetadataObjectKind,
   driverId?: ConnectionDriverId,
-): "openData" | "viewDdl" | "openSource" {
+): "openObjectEditor" | "viewDdl" | "openSource" {
   if (kind === "table" || kind === "view") {
-    return "openData";
+    return "openObjectEditor";
   }
   if (driverId && supportsPlsqlSourceEdit(driverId, kind)) {
     return "openSource";
@@ -88,9 +88,9 @@ export function buildObjectMenuItems(
 
   return [
     {
-      id: "openData",
+      id: "openObjectEditor",
       label: t("app.explorer.openData"),
-      commandId: EXPLORER_COMMANDS.openData,
+      commandId: EXPLORER_COMMANDS.openObjectEditor,
       enabled: isRelation,
     },
     {

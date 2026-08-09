@@ -1,0 +1,56 @@
+.object-editor-properties {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.object-editor-properties__sidebar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 180px;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+}
+
+.object-editor-properties__nav {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.object-editor-properties__nav-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 10px;
+  color: var(--color-foreground);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.object-editor-properties__nav-item:hover {
+  background-color: var(--color-list-hover);
+}
+
+.object-editor-properties__nav-item--active {
+  background-color: var(--color-menu-selection-background);
+}
+
+.object-editor-properties__content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}

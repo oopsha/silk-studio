@@ -185,8 +185,8 @@ function ExplorerSearchQuickPick() {
         profile?.driverId,
       );
       let commandId =
-        primary === "openData"
-          ? EXPLORER_COMMANDS.openData
+        primary === "openObjectEditor"
+          ? EXPLORER_COMMANDS.openObjectEditor
           : primary === "openSource"
             ? EXPLORER_COMMANDS.openSource
             : EXPLORER_COMMANDS.viewDdl;
@@ -194,12 +194,12 @@ function ExplorerSearchQuickPick() {
       if (alternate) {
         // Opposite of the primary action (data ↔ DDL, source ↔ DDL).
         commandId =
-          primary === "openData"
+          primary === "openObjectEditor"
             ? EXPLORER_COMMANDS.viewDdl
             : primary === "openSource"
               ? EXPLORER_COMMANDS.viewDdl
               : pick.object.kind === "table" || pick.object.kind === "view"
-                ? EXPLORER_COMMANDS.openData
+                ? EXPLORER_COMMANDS.openObjectEditor
                 : EXPLORER_COMMANDS.viewDdl;
       }
 

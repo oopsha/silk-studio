@@ -478,6 +478,13 @@ export const koMessages = {
       invalidTab: "잘못된 DDL 편집기 탭입니다.",
       loadFailed: "DDL을 로드하지 못했습니다.",
     },
+    objectEditor: {
+      propertiesTab: "속성",
+      dataTab: "데이터",
+      ddlSection: "DDL",
+      invalidTab: "잘못된 개체 편집기 탭입니다.",
+      dataLoadFailed: "데이터를 불러오지 못했습니다.",
+    },
     query: {
       runStatement: "문 실행",
       executeScript: "스크립트 실행",
@@ -573,6 +580,8 @@ export const koMessages = {
       timedOut:
         "쿼리가 {seconds}초 제한 시간을 초과했습니다 (설정 → Database → 쿼리 제한 시간).",
       timedOutUnlimited: "쿼리 제한 시간을 초과했습니다.",
+      goToDefinitionNotFound:
+        "이 식별자에 해당하는 테이블·뷰·프로시저·함수·패키지를 찾을 수 없습니다.",
       noConnection:
         "활성 데이터베이스 연결이 없습니다. Connections 탐색기에서 프로필에 연결하세요.",
       noConnectionTarget:

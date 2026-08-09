@@ -30,10 +30,12 @@ import PlsqlSaveDialog from "../../plsql/PlsqlSaveDialog.tsx";
 import PlsqlSnapshotDialog from "../../plsql/PlsqlSnapshotDialog.tsx";
 import DdlEditorView from "../../ddl/DdlEditorView.tsx";
 import PlsqlEditorView from "../../plsql/PlsqlEditorView.tsx";
+import ObjectEditorView from "../../object-editor/ObjectEditorView.tsx";
 import QueryHistoryView from "../../query-history/QueryHistoryView.tsx";
 import { ConnectionEditorService } from "../../../services/connection/connectionEditorService.ts";
 import { isDdlEditorTab } from "../../../services/connection/ddlEditorConstants.ts";
 import { isPlsqlEditorTab } from "../../../services/connection/plsqlEditorConstants.ts";
+import { isObjectEditorTab } from "../../../services/connection/objectEditorConstants.ts";
 import {
   EXPLORER_COMMANDS,
   formatQualifiedName,
@@ -178,6 +180,9 @@ function AppShell() {
             }
             if (isPlsqlEditorTab(tab.uri)) {
               return <PlsqlEditorView />;
+            }
+            if (isObjectEditorTab(tab.uri)) {
+              return <ObjectEditorView />;
             }
             return null;
           },
