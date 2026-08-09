@@ -4,6 +4,8 @@
  * whitespace after `;` belongs to the previous statement).
  */
 
+import { stripSqlComments } from "./sqlTableReference";
+
 export type SqlExtractMode = "selection" | "statement";
 
 export type ExtractExecutableSqlResult = {
@@ -200,11 +202,39 @@ function firstNonWhitespaceInRange(
 
 type StatementRange = { start: number; end: number };
 
+function isWordChar(ch: string): boolean {
+  return (
+    (ch >= "A" && ch <= "Z") ||
+    (ch >= "a" && ch <= "z") ||
+    (ch >= "0" && ch <= "9") ||
+    ch === "_" ||
+    ch === "$" ||
+    ch === "#"
+  );
+}
+
+/** Reads the contiguous word starting at `index` (empty string if `index` isn't a word char). */
+function readWordAt(content: string, index: number): string {
+  let j = index;
+  while (j < content.length && isWordChar(content[j])) {
+    j += 1;
+  }
+  return content.slice(index, j);
+}
+
+const PLSQL_BLOCK_INCREMENT = /^(?:begin|case|loop|if)$/i;
+const PLSQL_END_TAG = /^(?:if|loop|case)$/i;
+
 /**
  * Splits SQL into statement ranges by `;`, skipping delimiters inside quotes or comments.
  * Ranges exclude the trailing semicolon. Leading whitespace after a `;` is still stored on
  * the *next* range for splitting simplicity; {@link findStatementRange} assigns that gap to
  * the previous statement for cursor ownership (DBeaver-style).
+ *
+ * An anonymous PL/SQL block (`DECLARE ...` or `BEGIN ...`) is treated as a single statement:
+ * `;` inside it is only a real terminator once BEGIN/CASE/IF/LOOP nesting has returned to zero
+ * after entering the block's own top-level BEGIN. Without this, e.g. a `DECLARE x VARCHAR2(10);`
+ * line would be mistaken for the end of the whole block.
  */
 export function splitSqlStatements(content: string): StatementRange[] {
   const ranges: StatementRange[] = [];
@@ -214,6 +244,19 @@ export function splitSqlStatements(content: string): StatementRange[] {
   let inDouble = false;
   let inLineComment = false;
   let inBlockComment = false;
+
+  let plsqlBlock = false;
+  let plsqlDepth = 0;
+  let plsqlEnteredBegin = false;
+  let statementOpenerChecked = false;
+
+  const resetStatementState = (nextStart: number) => {
+    statementStart = nextStart;
+    plsqlBlock = false;
+    plsqlDepth = 0;
+    plsqlEnteredBegin = false;
+    statementOpenerChecked = false;
+  };
 
   while (i < content.length) {
     const ch = content[i];
@@ -285,12 +328,66 @@ export function splitSqlStatements(content: string): StatementRange[] {
       continue;
     }
 
+    const atWordStart = isWordChar(ch) && (i === 0 || !isWordChar(content[i - 1]));
+
+    // Statement's first token: only DECLARE/BEGIN opens a PL/SQL block; anything else
+    // leaves plsqlBlock false and normal per-`;` splitting applies below, unchanged.
+    if (atWordStart && !plsqlBlock && !statementOpenerChecked) {
+      statementOpenerChecked = true;
+      const word = readWordAt(content, i);
+      const lower = word.toLowerCase();
+      if (lower === "begin") {
+        plsqlBlock = true;
+        plsqlDepth = 1;
+        plsqlEnteredBegin = true;
+        i += word.length;
+        continue;
+      }
+      if (lower === "declare") {
+        plsqlBlock = true;
+        i += word.length;
+        continue;
+      }
+    } else if (atWordStart && plsqlBlock) {
+      const word = readWordAt(content, i);
+      const lower = word.toLowerCase();
+      if (PLSQL_BLOCK_INCREMENT.test(lower)) {
+        plsqlDepth += 1;
+        plsqlEnteredBegin = true;
+        i += word.length;
+        continue;
+      }
+      if (lower === "end") {
+        plsqlDepth = Math.max(0, plsqlDepth - 1);
+        i += word.length;
+        // Consume an optional trailing IF/LOOP/CASE tag as part of the same END marker.
+        let j = i;
+        while (j < content.length && /\s/.test(content[j])) {
+          j += 1;
+        }
+        const trailing = readWordAt(content, j);
+        if (PLSQL_END_TAG.test(trailing)) {
+          i = j + trailing.length;
+        }
+        continue;
+      }
+      // Any other identifier/keyword: skip the whole word so we never re-test mid-word
+      // (a table/column named e.g. `XBEGIN` must not look like the keyword `BEGIN`).
+      i += word.length;
+      continue;
+    }
+
     if (ch === ";") {
+      if (plsqlBlock && !(plsqlEnteredBegin && plsqlDepth === 0)) {
+        // Inside an unfinished PL/SQL block — not the statement's real terminator.
+        i += 1;
+        continue;
+      }
       const body = content.slice(statementStart, i);
       if (body.trim().length > 0) {
         ranges.push({ start: statementStart, end: i });
       }
-      statementStart = i + 1;
+      resetStatementState(i + 1);
       i += 1;
       continue;
     }
@@ -308,9 +405,21 @@ export function splitSqlStatements(content: string): StatementRange[] {
   return ranges;
 }
 
-/** JDBC drivers generally reject a trailing statement terminator `;`. */
+/**
+ * JDBC drivers generally reject a trailing statement terminator `;` for plain SQL — but an
+ * anonymous PL/SQL block (`DECLARE`/`BEGIN ... END`) requires its own closing `;`; Oracle
+ * rejects `END` without one (PLS-00103, "end-of-file" expecting `;`). Keep it for those.
+ */
 export function stripTrailingSemicolon(sql: string): string {
-  return sql.replace(/;\s*$/, "").trimEnd();
+  const trimmed = sql.trim();
+  if (isAnonymousPlsqlBlock(trimmed)) {
+    return trimmed.endsWith(";") ? trimmed : `${trimmed};`;
+  }
+  return trimmed.replace(/;\s*$/, "").trimEnd();
+}
+
+function isAnonymousPlsqlBlock(sql: string): boolean {
+  return /^\s*(?:declare|begin)\b/i.test(stripSqlComments(sql));
 }
 
 function clamp(value: number, min: number, max: number): number {
