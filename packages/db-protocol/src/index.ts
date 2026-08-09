@@ -120,6 +120,10 @@ export type ConnectionMetadataResult = {
 export type MetadataColumn = {
   name: string;
   typeName?: string;
+  /** JDBC `COLUMN_SIZE`: precision for numeric types, max length for character/binary types. */
+  columnSize?: number;
+  /** JDBC `DECIMAL_DIGITS`: scale, applicable to numeric types. */
+  decimalDigits?: number;
   /** Omitted when the driver doesn't know (JDBC `columnNullableUnknown`). */
   nullable?: boolean;
   defaultValue?: string;
@@ -393,6 +397,8 @@ function isMetadataColumn(value: unknown): value is MetadataColumn {
   return (
     typeof entry.name === "string" &&
     (entry.typeName === undefined || typeof entry.typeName === "string") &&
+    (entry.columnSize === undefined || typeof entry.columnSize === "number") &&
+    (entry.decimalDigits === undefined || typeof entry.decimalDigits === "number") &&
     (entry.nullable === undefined || typeof entry.nullable === "boolean") &&
     (entry.defaultValue === undefined || typeof entry.defaultValue === "string") &&
     (entry.comment === undefined || typeof entry.comment === "string")
