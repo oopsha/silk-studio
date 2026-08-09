@@ -2,6 +2,7 @@ package com.silk.jdbcagent;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
@@ -20,6 +21,21 @@ final class MetadataColumns {
       String typeName = rs.getString("TYPE_NAME");
       if (typeName != null && !typeName.isBlank()) {
         column.put("typeName", typeName);
+      }
+      int nullable = rs.getInt("NULLABLE");
+      if (nullable == DatabaseMetaData.columnNoNulls) {
+        column.put("nullable", false);
+      } else if (nullable == DatabaseMetaData.columnNullable) {
+        column.put("nullable", true);
+      }
+      // columnNullableUnknown: leave the field out rather than guess.
+      String defaultValue = rs.getString("COLUMN_DEF");
+      if (defaultValue != null) {
+        column.put("defaultValue", defaultValue);
+      }
+      String remarks = rs.getString("REMARKS");
+      if (remarks != null && !remarks.isBlank()) {
+        column.put("comment", remarks);
       }
     }
   }
