@@ -11,6 +11,7 @@ commands.allow = [
   "connection_primary_keys",
   "connection_ddl",
   "connection_compile",
+  "connection_commit",
   "connection_rollback",
   "connection_set_catalog",
 ]

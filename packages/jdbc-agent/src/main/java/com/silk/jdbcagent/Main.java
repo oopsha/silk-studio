@@ -225,6 +225,10 @@ public final class Main {
           ObjectNode result = response.putObject("result");
           result.put("cancelled", cancelled);
         }
+        case "connection.commit" -> {
+          response.put("ok", true);
+          response.set("result", runtime.commitConnection(params));
+        }
         case "connection.rollback" -> {
           response.put("ok", true);
           response.set("result", runtime.rollbackConnection(params));
@@ -417,6 +421,29 @@ public final class Main {
       if (params.has("readOnly")) {
         session.connection.setReadOnly(params.path("readOnly").asBoolean(false));
       }
+    }
+
+    /**
+     * Commits the current JDBC transaction when auto-commit is off.
+     * When auto-commit is on, returns {@code committed:false, skipped:true} (nothing pending).
+     */
+    ObjectNode commitConnection(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      ObjectNode result = MAPPER.createObjectNode();
+      Connection connection = session.connection;
+      if (connection == null || connection.isClosed()) {
+        throw new SQLException("Connection is closed.");
+      }
+      if (connection.getAutoCommit()) {
+        result.put("committed", false);
+        result.put("skipped", true);
+        result.put("reason", "autoCommit");
+        return result;
+      }
+      connection.commit();
+      result.put("committed", true);
+      result.put("skipped", false);
+      return result;
     }
 
     /**

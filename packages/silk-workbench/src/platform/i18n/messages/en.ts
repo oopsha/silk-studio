@@ -409,6 +409,22 @@ export const enMessages = {
       sectionOther: "Other",
       databasesEmpty: "No databases to show.",
     },
+    transaction: {
+      pendingLabel: "Uncommitted",
+      pendingTooltip: "{name} has uncommitted changes — click to commit or roll back",
+      commit: "Commit",
+      commitTitle: "Commit {name}",
+      rollback: "Rollback",
+      rollbackTitle: "Roll back {name}",
+      rollbackConfirm:
+        "Roll back all uncommitted changes on {name}? This cannot be undone.",
+      committed: "Committed.",
+      nothingToCommit: "Nothing to commit.",
+      commitFailed: "Commit failed — {message}",
+      rolledBack: "Rolled back.",
+      nothingToRollback: "Nothing to roll back.",
+      rollbackFailed: "Rollback failed — {message}",
+    },
     explorer: {
       filterPlaceholder: "Filter schemas & objects…",
       filterAria: "Filter schemas and objects",
@@ -645,6 +661,8 @@ export const enMessages = {
         "Save {cells} edited cell(s) across {rows} row(s) on {table}?",
       confirmUpdateHint:
         "Review the generated SQL below. Nothing is written until you confirm.",
+      copySql: "Copy SQL",
+      sqlCopied: "SQL copied",
       executeUpdate: "Execute UPDATE",
       historyTab: "History",
       favoritesTab: "Favorites",

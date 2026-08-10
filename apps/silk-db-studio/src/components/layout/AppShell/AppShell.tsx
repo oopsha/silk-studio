@@ -7,6 +7,7 @@ import SecondarySidebar from "@silk-studio/workbench/components/layout/Secondary
 import WorkbenchSash from "@silk-studio/workbench/components/layout/WorkbenchSash/index.ts";
 import StatusBar from "@silk-studio/workbench/components/layout/StatusBar/index.ts";
 import ConnectionTargetStatusItem from "../StatusBar/ConnectionTargetStatusItem.tsx";
+import TransactionStatusItem from "../StatusBar/TransactionStatusItem.tsx";
 import TitleBar from "@silk-studio/workbench/components/layout/TitleBar/index.ts";
 import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
 import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayoutState.ts";
@@ -40,6 +41,7 @@ import {
   EXPLORER_COMMANDS,
   formatQualifiedName,
 } from "../../../services/connection/explorerObjectActions.ts";
+import { ConnectionService } from "../../../services/connection/connectionService.ts";
 import {
   setExplorerObjectDropHandler,
 } from "../../../services/dnd/explorerObjectDrag.ts";
@@ -89,8 +91,14 @@ function AppShell() {
       if (groupId) {
         EditorGroupsService.setFocusedGroup(groupId);
       }
+      const driverId = payload.profileId
+        ? ConnectionService.getProfile(payload.profileId)?.driverId
+        : undefined;
       insertSqlIntoActiveEditor(
-        formatQualifiedName(payload.schemaName, payload.objectName),
+        formatQualifiedName(payload.schemaName, payload.objectName, {
+          databaseName: payload.databaseName,
+          driverId,
+        }),
       );
     });
     return () => setExplorerObjectDropHandler(null);
@@ -271,7 +279,14 @@ function AppShell() {
           </div>
         </div>
 
-        <StatusBar leftExtra={<ConnectionTargetStatusItem />} />
+        <StatusBar
+          leftExtra={
+            <>
+              <ConnectionTargetStatusItem />
+              <TransactionStatusItem />
+            </>
+          }
+        />
       </div>
       <ExplorerSearchQuickPick />
       <CommandPalette />

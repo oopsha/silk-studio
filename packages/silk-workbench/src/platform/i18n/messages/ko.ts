@@ -407,6 +407,22 @@ export const koMessages = {
       sectionOther: "기타",
       databasesEmpty: "표시할 데이터베이스가 없습니다.",
     },
+    transaction: {
+      pendingLabel: "커밋 대기 중",
+      pendingTooltip: "{name}에 커밋되지 않은 변경사항이 있습니다 — 클릭해서 커밋 또는 롤백",
+      commit: "커밋",
+      commitTitle: "{name} 커밋",
+      rollback: "롤백",
+      rollbackTitle: "{name} 롤백",
+      rollbackConfirm:
+        "{name}의 커밋되지 않은 변경사항을 모두 롤백할까요? 되돌릴 수 없습니다.",
+      committed: "커밋했습니다.",
+      nothingToCommit: "커밋할 내용이 없습니다.",
+      commitFailed: "커밋 실패 — {message}",
+      rolledBack: "롤백했습니다.",
+      nothingToRollback: "롤백할 내용이 없습니다.",
+      rollbackFailed: "롤백 실패 — {message}",
+    },
     explorer: {
       filterPlaceholder: "스키마·개체 필터…",
       filterAria: "스키마 및 개체 필터",
@@ -643,6 +659,8 @@ export const koMessages = {
         "{table}에서 {rows}행에 걸친 편집 셀 {cells}개를 저장할까요?",
       confirmUpdateHint:
         "아래 생성된 SQL을 검토하세요. 확인하기 전까지는 기록되지 않습니다.",
+      copySql: "SQL 복사",
+      sqlCopied: "SQL을 복사했습니다",
       executeUpdate: "UPDATE 실행",
       historyTab: "기록",
       favoritesTab: "즐겨찾기",

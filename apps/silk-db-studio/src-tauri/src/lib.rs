@@ -99,6 +99,15 @@ fn query_cancel(
 }
 
 #[tauri::command]
+fn connection_commit(
+    connection_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    state.jdbc_agent.commit_connection(connection_id)
+}
+
+#[tauri::command]
 fn connection_rollback(
     connection_id: String,
     state: tauri::State<'_, AppState>,
@@ -294,6 +303,7 @@ pub fn run() {
             ensure_title_bar_overlay,
             query_execute,
             query_cancel,
+            connection_commit,
             connection_rollback,
             connection_set_catalog,
             connection_connect,

@@ -12,6 +12,7 @@ import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { formatErrorMessage, reportError } from "../formatErrorMessage";
 import { bridgeRollback } from "../connection/connectionBridge";
 import { ConnectionService } from "../connection/connectionService";
+import { ConnectionTransactionService } from "../connection/connectionTransactionService";
 import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import { resolveActiveDriverId } from "../sql/sqlDialect";
 import { QueryHistoryService } from "./queryHistoryService";
@@ -26,7 +27,7 @@ import {
   type QueryLogPart,
 } from "./queryLogNav";
 import { buildExplainPlan } from "./sqlExplain";
-import { assertReadOnlyQueryAllowed } from "./sqlGuard";
+import { assertReadOnlyQueryAllowed, isWriteSql } from "./sqlGuard";
 import { stripTrailingSemicolon } from "./sqlExecutable";
 import {
   buildQueryResultTabTitle,
@@ -344,6 +345,34 @@ class QueryExecutionServiceImpl {
       output: isActive ? active?.output ?? session.output : session.output,
       logParts: isActive ? active?.logParts ?? null : session.logParts,
     });
+  }
+
+  /**
+   * Best-effort refetch of every open SELECT result tab bound to `connectionId`
+   * (e.g. after a manual rollback from the status bar — those tabs are still
+   * showing the now-discarded edited values otherwise).
+   */
+  async refreshResultTabsForConnection(connectionId: string): Promise<void> {
+    const id = connectionId.trim();
+    if (!id) return;
+
+    const tabIds: string[] = [];
+    for (const session of this.sessions.values()) {
+      for (const tab of session.tabs) {
+        if (tab.connectionId?.trim() === id && tab.result?.kind === "resultSet") {
+          tabIds.push(tab.id);
+        }
+      }
+    }
+
+    for (const tabId of tabIds) {
+      try {
+        await this.refreshTabResult(tabId);
+        QueryResultDirtyService.clearTab(tabId);
+      } catch (error) {
+        console.warn("[query-execution] refresh after rollback failed", tabId, error);
+      }
+    }
   }
 
   async execute(sql: string, options?: QueryExecuteOptions): Promise<void> {
@@ -879,6 +908,7 @@ class QueryExecutionServiceImpl {
           try {
             const rollback = await bridgeRollback(connectionId!);
             if (rollback.rolledBack) {
+              ConnectionTransactionService.clear(connectionId!);
               appendMeta(tKey("app.query.scriptRolledBack"));
             } else {
               appendMeta(tKey("app.query.scriptRollbackSkippedAutoCommit"));
@@ -1418,7 +1448,7 @@ class QueryExecutionServiceImpl {
         ? queryTimeoutSecOverride
         : ConfigurationService.getValue("database.queryTimeoutSec");
     const autoCommit = ConfigurationService.getValue("database.autoCommit");
-    return invoke<unknown>("query_execute", {
+    const result = await invoke<unknown>("query_execute", {
       connectionId,
       sql,
       maxRows,
@@ -1427,6 +1457,10 @@ class QueryExecutionServiceImpl {
       readOnly,
       binds: binds && binds.length > 0 ? binds : null,
     });
+    if (!autoCommit && isWriteSql(sql)) {
+      ConnectionTransactionService.markDirty(connectionId);
+    }
+    return result;
   }
 
   private formatQueryFailureMessage(
