@@ -12,9 +12,33 @@ export type GroupPanelVisualState = {
 type InternalPanelState = GroupPanelVisualState & { sizeBeforeMaximize: number | null };
 type GroupPanelChangeListener = () => void;
 
+/** Last user-resized panel size, shared across groups so a restart (or a new
+ * split) keeps the size the user actually chose instead of the built-in default. */
+const PANEL_SIZE_STORAGE_KEY = "silk-workbench.groupPanelSize";
+
+function loadPersistedPanelSize(): number | null {
+  try {
+    const raw = localStorage.getItem(PANEL_SIZE_STORAGE_KEY);
+    if (!raw) return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedPanelSize(size: number): void {
+  try {
+    localStorage.setItem(PANEL_SIZE_STORAGE_KEY, String(size));
+  } catch {
+    // Ignore quota or private-mode errors.
+  }
+}
+
 class GroupPanelStateServiceImpl {
   private readonly states = new Map<EditorGroupId, InternalPanelState>();
   private readonly listeners = new Set<GroupPanelChangeListener>();
+  private persistedSize = loadPersistedPanelSize();
 
   constructor() {
     for (const id of EditorGroupsService.getGroupIds()) {
@@ -45,7 +69,7 @@ class GroupPanelStateServiceImpl {
     const source = sourceId ? this.states.get(sourceId) : undefined;
     this.states.set(id, {
       visible: source?.visible ?? LAYOUT_DEFAULTS.panel,
-      size: source?.size ?? LAYOUT_DEFAULTS.panelSize,
+      size: source?.size ?? this.persistedSize ?? LAYOUT_DEFAULTS.panelSize,
       maximized: false,
       sizeBeforeMaximize: null,
     });
@@ -95,6 +119,8 @@ class GroupPanelStateServiceImpl {
       state.maximized = false;
       state.sizeBeforeMaximize = null;
     }
+    this.persistedSize = next;
+    savePersistedPanelSize(next);
     this.commit(id);
   }
 
