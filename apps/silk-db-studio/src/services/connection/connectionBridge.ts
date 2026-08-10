@@ -123,6 +123,43 @@ export async function bridgeListPackageMembers(
   return payload;
 }
 
+export type ConnectionCommitResult = {
+  committed: boolean;
+  skipped: boolean;
+  reason?: string;
+};
+
+function isConnectionCommitResult(
+  value: unknown,
+): value is ConnectionCommitResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.committed === "boolean" &&
+    typeof record.skipped === "boolean"
+  );
+}
+
+/** Commits the open JDBC transaction when auto-commit is off. */
+export async function bridgeCommit(
+  connectionId: string,
+): Promise<ConnectionCommitResult> {
+  if (!isTauri()) {
+    return { committed: false, skipped: true, reason: "notDesktop" };
+  }
+  const id = connectionId.trim();
+  if (!id) {
+    throw new Error("connectionId is required.");
+  }
+  const payload = await invoke<unknown>("connection_commit", {
+    connectionId: id,
+  });
+  if (!isConnectionCommitResult(payload)) {
+    throw new Error("Invalid connection commit payload from desktop bridge.");
+  }
+  return payload;
+}
+
 export type ConnectionRollbackResult = {
   rolledBack: boolean;
   skipped: boolean;

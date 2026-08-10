@@ -1,0 +1,47 @@
+.status-bar__transaction-group {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  margin: 0 3px;
+  background-color: #a5750f;
+  color: #ffffff;
+}
+
+.status-bar__transaction-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding: 0 6px 0 8px;
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+}
+
+.status-bar__transaction-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 6px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.status-bar__transaction-action:last-child {
+  padding-right: 8px;
+}
+
+.status-bar__transaction-action:hover:not(:disabled) {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.status-bar__transaction-action:active:not(:disabled) {
+  background-color: rgba(0, 0, 0, 0.32);
+}
+
+.status-bar__transaction-action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
