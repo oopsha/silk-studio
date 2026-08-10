@@ -115,40 +115,72 @@ export function parseSingleTableFromSelect(sql: string): SqlTableReference | nul
     return null;
   }
 
-  const qualifiedPattern = new RegExp(
-    `^([\\"\`\\[]?)([\\w$#]+)\\1\\s*\\.\\s*([\\"\`\\[]?)([\\w$#]+)\\3${OPTIONAL_TABLE_ALIAS}`,
-    "i",
-  );
-  const qualifiedMatch = rest.match(qualifiedPattern);
-  if (qualifiedMatch) {
-    const remainder = rest.slice(qualifiedMatch[0].length).trim();
-    if (!isAllowedTableTail(remainder)) {
-      return null;
-    }
-    return {
-      schema: qualifiedMatch[2],
-      table: qualifiedMatch[4],
-    };
-  }
-
-  const barePattern = new RegExp(
-    `^([\\"\`\\[]?)([\\w$#]+)\\1${OPTIONAL_TABLE_ALIAS}`,
-    "i",
-  );
-  const bareMatch = rest.match(barePattern);
-  if (!bareMatch) {
+  // Up to 3 dotted parts: table, schema.table, or database.schema.table
+  // (SQL Server-style). The database segment is only ever used session-side
+  // (see ActiveDatabaseService) — it's discarded here, same as a 2-part
+  // reference already discards nothing beyond schema+table.
+  const chain = readDottedIdentifierChain(rest, 3);
+  if (!chain) {
     return null;
   }
 
-  const remainder = rest.slice(bareMatch[0].length).trim();
+  const afterIdent = rest.slice(chain.end);
+  const aliasMatch = afterIdent.match(new RegExp(`^${OPTIONAL_TABLE_ALIAS}`, "i"));
+  const remainder = afterIdent.slice(aliasMatch?.[0].length ?? 0).trim();
   if (!isAllowedTableTail(remainder)) {
     return null;
   }
 
+  const { parts } = chain;
   return {
-    schema: null,
-    table: bareMatch[2],
+    schema: parts.length >= 2 ? parts[parts.length - 2] : null,
+    table: parts[parts.length - 1],
   };
+}
+
+/**
+ * Reads a single (possibly quoted) identifier at `text[pos]`. Handles the
+ * asymmetric SQL Server `[ident]` bracket form as well as symmetric `"ident"`
+ * / `` `ident` `` quoting and bare identifiers.
+ */
+function readIdentifier(
+  text: string,
+  pos: number,
+): { value: string; end: number } | null {
+  const ch = text[pos];
+  if (ch === '"' || ch === "`") {
+    const close = text.indexOf(ch, pos + 1);
+    if (close === -1) return null;
+    return { value: text.slice(pos + 1, close), end: close + 1 };
+  }
+  if (ch === "[") {
+    const close = text.indexOf("]", pos + 1);
+    if (close === -1) return null;
+    return { value: text.slice(pos + 1, close), end: close + 1 };
+  }
+  const match = /^[\w$#]+/.exec(text.slice(pos));
+  if (!match) return null;
+  return { value: match[0], end: pos + match[0].length };
+}
+
+/** Reads up to `maxParts` dot-separated identifiers starting at index 0. */
+function readDottedIdentifierChain(
+  text: string,
+  maxParts: number,
+): { parts: string[]; end: number } | null {
+  const parts: string[] = [];
+  let pos = 0;
+  for (;;) {
+    const ident = readIdentifier(text, pos);
+    if (!ident) break;
+    parts.push(ident.value);
+    pos = ident.end;
+    if (parts.length >= maxParts) break;
+    const dotMatch = /^\s*\.\s*/.exec(text.slice(pos));
+    if (!dotMatch) break;
+    pos += dotMatch[0].length;
+  }
+  return parts.length > 0 ? { parts, end: pos } : null;
 }
 
 function isAllowedTableTail(remainder: string): boolean {
