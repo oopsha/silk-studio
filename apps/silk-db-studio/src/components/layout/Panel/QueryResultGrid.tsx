@@ -5,6 +5,7 @@ import {
   themeQuartz,
   type CellValueChangedEvent,
   type ColDef,
+  type ColumnState,
   type FirstDataRenderedEvent,
   type GridApi,
   type GridReadyEvent,
@@ -38,6 +39,18 @@ import "./QueryResultGrid.css";
 import "./QueryResultUpdateDialog.css";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+type GridUiState = {
+  filterModel: Record<string, unknown>;
+  sortState: ColumnState[];
+};
+
+/**
+ * Filter/sort survive a remount of the *same* result tab (e.g. the Object
+ * Editor's Data tab unmounting when the user switches to another editor tab
+ * and back) — ag-grid itself only keeps this in the DOM-mounted instance.
+ */
+const gridUiStateByTabId = new Map<string, GridUiState>();
 
 const GRID_THEME_PALETTES: Record<
   ColorThemeId,
@@ -296,6 +309,30 @@ function QueryResultGrid({
   const handleGridReady = (event: GridReadyEvent<QueryResultRow>) => {
     apiRef.current = event.api;
     QueryResultGridService.attach(event.api, result.columns, nullDisplay);
+
+    const savedUiState = gridUiStateByTabId.get(tabId);
+    if (savedUiState) {
+      event.api.setFilterModel(savedUiState.filterModel);
+      event.api.applyColumnState({
+        state: savedUiState.sortState,
+        defaultState: { sort: null },
+      });
+    }
+  };
+
+  // Captured live (rather than on unmount) — by the time this component's
+  // own unmount cleanup runs, AG Grid has already torn down the underlying
+  // grid (child effects clean up before the parent's), so reading the api
+  // there returns nothing useful.
+  const captureGridUiState = () => {
+    const api = apiRef.current;
+    if (!api) return;
+    gridUiStateByTabId.set(tabId, {
+      filterModel: api.getFilterModel(),
+      sortState: (api.getColumnState() ?? []).filter(
+        (column) => column.sort != null,
+      ),
+    });
   };
 
   const handleFirstDataRendered = (
@@ -620,8 +657,14 @@ function QueryResultGrid({
           onGridReady={handleGridReady}
           onFirstDataRendered={handleFirstDataRendered}
           onCellValueChanged={handleCellValueChanged}
-          onFilterChanged={() => QueryResultGridService.refreshSnapshot()}
-          onSortChanged={() => QueryResultGridService.refreshSnapshot()}
+          onFilterChanged={() => {
+            QueryResultGridService.refreshSnapshot();
+            captureGridUiState();
+          }}
+          onSortChanged={() => {
+            QueryResultGridService.refreshSnapshot();
+            captureGridUiState();
+          }}
           onModelUpdated={() => QueryResultGridService.refreshSnapshot()}
           onSelectionChanged={() => QueryResultGridService.refreshSnapshot()}
           onColumnResized={(event) => {
