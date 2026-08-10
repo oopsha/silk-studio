@@ -15,6 +15,38 @@ describe("parseSingleTableFromSelect", () => {
     ).toEqual({ schema: "SCHEMA1", table: "T1" });
   });
 
+  it("parses a database.schema.table (SQL Server 3-part) reference", () => {
+    expect(
+      parseSingleTableFromSelect("SELECT * FROM PSM.dbo.PST_PAYMENT_50"),
+    ).toEqual({ schema: "dbo", table: "PST_PAYMENT_50" });
+  });
+
+  it("parses a database.schema.table reference with a trailing WHERE", () => {
+    expect(
+      parseSingleTableFromSelect(
+        "SELECT * FROM PSM.dbo.PST_PAYMENT_50 WHERE ID = 1",
+      ),
+    ).toEqual({ schema: "dbo", table: "PST_PAYMENT_50" });
+  });
+
+  it("parses a SQL Server bracket-quoted schema.table reference", () => {
+    expect(
+      parseSingleTableFromSelect("SELECT * FROM [dbo].[POS_SETTING_XYZ]"),
+    ).toEqual({ schema: "dbo", table: "POS_SETTING_XYZ" });
+  });
+
+  it("parses a SQL Server bracket-quoted database.schema.table reference", () => {
+    expect(
+      parseSingleTableFromSelect("SELECT * FROM [PSM].[dbo].[PST_PAYMENT_50]"),
+    ).toEqual({ schema: "dbo", table: "PST_PAYMENT_50" });
+  });
+
+  it("parses a bracket-quoted table with an alias", () => {
+    expect(
+      parseSingleTableFromSelect("SELECT * FROM [dbo].[T1] T1 WHERE T1.X = 1"),
+    ).toEqual({ schema: "dbo", table: "T1" });
+  });
+
   it("allows a JOIN nested inside a WHERE subquery", () => {
     const sql = `SELECT T1.*
   FROM BBA020MS T1
