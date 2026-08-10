@@ -1,5 +1,7 @@
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import { useBackdropDismiss } from "@silk-studio/ui/hooks/useBackdropDismiss.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
+import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import "./QueryResultUpdateDialog.css";
 
 type QueryResultUpdateDialogProps = {
@@ -24,16 +26,24 @@ function QueryResultUpdateDialog({
   onConfirm,
 }: QueryResultUpdateDialogProps) {
   const { t } = useI18n();
+  const sqlText = statements.join("\n\n");
+  const backdropDismiss = useBackdropDismiss(onCancel, !executing);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(sqlText);
+      AppNotificationService.show(t("app.query.sqlCopied"), "success");
+    } catch (error) {
+      console.warn("[query-result-update-dialog] copy sql failed", error);
+      AppNotificationService.show(t("app.query.copyFailed"), "error");
+    }
+  };
 
   return (
     <div
       className="query-result-update-dialog__backdrop"
       role="presentation"
-      onClick={(event) => {
-        if (event.target === event.currentTarget && !executing) {
-          onCancel();
-        }
-      }}
+      {...backdropDismiss}
     >
       <div
         className="query-result-update-dialog"
@@ -66,9 +76,18 @@ function QueryResultUpdateDialog({
           <p className="query-result-update-dialog__hint">
             {t("app.query.confirmUpdateHint")}
           </p>
-          <pre className="query-result-update-dialog__sql">
-            {statements.join("\n\n")}
-          </pre>
+          <div className="query-result-update-dialog__sql-toolbar">
+            <button
+              type="button"
+              className="query-result-update-dialog__copy"
+              disabled={!sqlText}
+              onClick={() => void handleCopy()}
+            >
+              <Codicon name="copy" />
+              {t("app.query.copySql")}
+            </button>
+          </div>
+          <pre className="query-result-update-dialog__sql">{sqlText}</pre>
           {errorMessage ? (
             <p className="query-result-update-dialog__error" role="alert">
               {errorMessage}

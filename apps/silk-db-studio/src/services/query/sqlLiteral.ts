@@ -15,11 +15,22 @@ export function quoteIdentifier(
   }
 }
 
-export function formatSqlLiteral(value: string | null): string {
+/**
+ * SQL Server ignores its NVARCHAR column type for an unprefixed string literal:
+ * the literal is first read as the database's default (non-Unicode) collation
+ * codepage, so any character outside it (e.g. Korean under a Western collation)
+ * is silently replaced with `?` before the implicit NVARCHAR conversion even
+ * happens. The `N` prefix marks the literal as Unicode from the start.
+ */
+export function formatSqlLiteral(
+  value: string | null,
+  driverId?: ConnectionDriverId,
+): string {
   if (value === null) {
     return "NULL";
   }
-  return `'${value.replace(/'/g, "''")}'`;
+  const prefix = driverId === "sqlserver" ? "N" : "";
+  return `${prefix}'${value.replace(/'/g, "''")}'`;
 }
 
 export function qualifyTableName(

@@ -28,13 +28,13 @@ export function buildUpdateStatement(input: {
   const setClause = input.changes
     .map(
       (change) =>
-        `${quoteIdentifier(change.column, input.driverId)} = ${formatSqlLiteral(change.currentValue)}`,
+        `${quoteIdentifier(change.column, input.driverId)} = ${formatSqlLiteral(change.currentValue, input.driverId)}`,
     )
     .join(", ");
   const whereClause = input.primaryKeys
     .map((key) => {
       const value = input.originalRow[key] ?? null;
-      return `${quoteIdentifier(key, input.driverId)} = ${formatSqlLiteral(value)}`;
+      return `${quoteIdentifier(key, input.driverId)} = ${formatSqlLiteral(value, input.driverId)}`;
     })
     .join(" AND ");
 

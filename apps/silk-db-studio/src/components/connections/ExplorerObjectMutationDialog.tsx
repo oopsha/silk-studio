@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import { useBackdropDismiss } from "@silk-studio/ui/hooks/useBackdropDismiss.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { ExplorerObjectMutationDialogService } from "../../services/connection/explorerObjectMutationDialogService";
 import {
@@ -20,6 +21,13 @@ function ExplorerObjectMutationDialog() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
+
+  function close() {
+    if (executing) return;
+    ExplorerObjectMutationDialogService.close();
+  }
+
+  const backdropDismiss = useBackdropDismiss(close, !executing);
 
   useEffect(() => {
     return ExplorerObjectMutationDialogService.onDidChange(() => {
@@ -79,11 +87,6 @@ function ExplorerObjectMutationDialog() {
       newName.trim() !== request.ref.object.name &&
       !previewError);
 
-  function close() {
-    if (executing) return;
-    ExplorerObjectMutationDialogService.close();
-  }
-
   async function handleConfirm() {
     if (!request || !canConfirm || executing) return;
     const current = request;
@@ -107,11 +110,7 @@ function ExplorerObjectMutationDialog() {
     <div
       className="explorer-mutation-dialog__backdrop"
       role="presentation"
-      onClick={(event) => {
-        if (event.target === event.currentTarget && !executing) {
-          close();
-        }
-      }}
+      {...backdropDismiss}
     >
       <div
         className="explorer-mutation-dialog"
