@@ -169,6 +169,51 @@ final class SqlServerDialect implements DbDialect {
     try (ResultSet rs = metadata.getColumns(catalog, schemaName, tableName, "%")) {
       MetadataColumns.appendFromResultSet(rs, columns);
     }
+    applyColumnComments(connection, schemaName, tableName, columns);
+  }
+
+  /**
+   * mssql-jdbc's {@code getColumns()} never populates REMARKS — SQL Server has no built-in
+   * column comment, only an optional {@code MS_Description} extended property — so fetch and
+   * merge those in separately. Joins against {@code sys.objects} (not {@code sys.tables}) so
+   * this covers view columns too.
+   */
+  private void applyColumnComments(
+      Connection connection, String schemaName, String tableName, ArrayNode columns)
+      throws SQLException {
+    if (columns.isEmpty()) {
+      return;
+    }
+
+    String sql =
+        "SELECT c.name AS COLUMN_NAME, CAST(ep.value AS NVARCHAR(MAX)) AS REMARKS "
+            + "FROM sys.columns c "
+            + "JOIN sys.objects o ON o.object_id = c.object_id "
+            + "JOIN sys.schemas s ON s.schema_id = o.schema_id "
+            + "JOIN sys.extended_properties ep "
+            + "  ON ep.major_id = c.object_id AND ep.minor_id = c.column_id AND ep.name = 'MS_Description' "
+            + "WHERE s.name = ? AND o.name = ?";
+
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          String columnName = rs.getString("COLUMN_NAME");
+          String remarks = rs.getString("REMARKS");
+          if (columnName == null || remarks == null || remarks.isBlank()) {
+            continue;
+          }
+          for (JsonNode node : columns) {
+            if (node instanceof ObjectNode objectNode
+                && columnName.equals(objectNode.path("name").asText(null))) {
+              objectNode.put("comment", remarks);
+              break;
+            }
+          }
+        }
+      }
+    }
   }
 
   @Override
