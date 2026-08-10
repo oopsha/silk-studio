@@ -355,6 +355,7 @@ function ProfileTree({
                       key={definition.id}
                       profileId={profile.id}
                       schemaName={schema.name}
+                      databaseName={catalogName}
                       menuOptions={menuOptions}
                       groupId={definition.id}
                       title={definition.title}
@@ -713,6 +714,7 @@ function ProfileTree({
 function ObjectGroup({
   profileId,
   schemaName,
+  databaseName,
   groupId,
   title,
   icon,
@@ -729,6 +731,7 @@ function ObjectGroup({
 }: {
   profileId: string;
   schemaName: string;
+  databaseName?: string;
   menuOptions: ExplorerMenuOptions;
   groupId: MetadataGroupId;
   title: string;
@@ -808,13 +811,17 @@ function ObjectGroup({
                   aria-selected={selected}
                   onPointerDown={(event) => {
                     if (event.button !== 0) return;
-                    const qualified = formatQualifiedName(schemaName, item.name);
+                    const qualified = formatQualifiedName(schemaName, item.name, {
+                      databaseName,
+                      driverId: menuOptions.driverId,
+                    });
                     beginExplorerObjectPointerDrag({
                       payload: {
                         schemaName,
                         objectName: item.name,
                         kind: item.kind,
                         profileId,
+                        databaseName,
                       },
                       label: qualified,
                       pointerId: event.pointerId,

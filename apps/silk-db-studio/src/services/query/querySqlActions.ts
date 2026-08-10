@@ -46,6 +46,7 @@ export function insertSqlIntoActiveEditor(sql: string): void {
       },
     ]);
     instance.pushUndoStop();
+    instance.focus();
     return;
   }
 
