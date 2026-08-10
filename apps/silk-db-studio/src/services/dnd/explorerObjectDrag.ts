@@ -9,6 +9,8 @@ export type SilkExplorerObjectDragPayload = {
   objectName: string;
   kind?: string;
   profileId?: string;
+  /** Catalog/database name (SQL Server) the object belongs to, when known. */
+  databaseName?: string;
 };
 
 export function encodeExplorerObjectDrag(
@@ -30,6 +32,7 @@ export function decodeExplorerObjectDrag(
       objectName,
       kind: parsed.kind,
       profileId: parsed.profileId,
+      databaseName: parsed.databaseName,
     };
   } catch {
     return null;

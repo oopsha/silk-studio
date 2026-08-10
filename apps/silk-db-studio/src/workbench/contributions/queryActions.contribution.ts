@@ -26,6 +26,7 @@ CommandsRegistry.registerCommand("silk.query.execute", async () => {
 
   GroupPanelStateService.showPanel(EditorGroupsService.getFocusedGroupId());
   await QueryExecutionService.executeStatements(statements);
+  EditorService.getActiveTextEditor()?.focus();
 });
 
 CommandsRegistry.registerCommand("silk.query.executeScript", async () => {
@@ -42,6 +43,7 @@ CommandsRegistry.registerCommand("silk.query.executeScript", async () => {
 
   GroupPanelStateService.showPanel(EditorGroupsService.getFocusedGroupId());
   await QueryExecutionService.executeScript(statements);
+  EditorService.getActiveTextEditor()?.focus();
 });
 
 /** @deprecated Prefer silk.query.executeScript — kept as an alias for old bindings. */
@@ -64,6 +66,7 @@ CommandsRegistry.registerCommand("silk.query.explain", async () => {
 
   GroupPanelStateService.showPanel(EditorGroupsService.getFocusedGroupId());
   await QueryExecutionService.explain(sql, { sourceRange: range });
+  EditorService.getActiveTextEditor()?.focus();
 });
 
 CommandsRegistry.registerCommand("silk.query.cancel", async (...args: unknown[]) => {

@@ -204,6 +204,11 @@ export function buildGroupMenuItems(): ExplorerMenuItem[] {
 export function formatQualifiedName(
   schemaName: string,
   objectName: string,
+  options?: { databaseName?: string; driverId?: ConnectionDriverId },
 ): string {
+  const databaseName = options?.databaseName?.trim();
+  if (options?.driverId === "sqlserver" && databaseName) {
+    return `${databaseName}.${schemaName}.${objectName}`;
+  }
   return `${schemaName}.${objectName}`;
 }
