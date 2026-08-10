@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DiffEditor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import { useBackdropDismiss } from "@silk-studio/ui/hooks/useBackdropDismiss.ts";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
@@ -56,6 +57,13 @@ function PlsqlSnapshotDialog() {
   const [busy, setBusy] = useState(false);
   const configuration = useConfiguration();
 
+  function close() {
+    if (busy) return;
+    PlsqlSnapshotDialogService.close();
+  }
+
+  const backdropDismiss = useBackdropDismiss(close, !busy);
+
   useEffect(() => {
     return PlsqlSnapshotDialogService.onDidChange(() => {
       const next = PlsqlSnapshotDialogService.getRequest();
@@ -98,11 +106,6 @@ function PlsqlSnapshotDialog() {
 
   if (!request) {
     return null;
-  }
-
-  function close() {
-    if (busy) return;
-    PlsqlSnapshotDialogService.close();
   }
 
   function backToHistory() {
@@ -210,11 +213,7 @@ function PlsqlSnapshotDialog() {
     <div
       className="explorer-mutation-dialog__backdrop"
       role="presentation"
-      onClick={(event) => {
-        if (event.target === event.currentTarget && !busy) {
-          close();
-        }
-      }}
+      {...backdropDismiss}
     >
       <div
         className={`explorer-mutation-dialog plsql-snapshot-dialog${

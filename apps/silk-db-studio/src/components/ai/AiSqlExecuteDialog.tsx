@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import { useBackdropDismiss } from "@silk-studio/ui/hooks/useBackdropDismiss.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { AiSqlExecuteDialogService } from "../../services/ai/aiSqlExecuteDialogService";
 import "../connections/ExplorerObjectMutationDialog.css";
 import "./AiSqlExecuteDialog.css";
+
+function close() {
+  AiSqlExecuteDialogService.close(false);
+}
 
 function AiSqlExecuteDialog() {
   const { t } = useI18n();
@@ -11,6 +16,7 @@ function AiSqlExecuteDialog() {
     AiSqlExecuteDialogService.getRequest(),
   );
   const [writeAck, setWriteAck] = useState(false);
+  const backdropDismiss = useBackdropDismiss(close);
 
   useEffect(() => {
     return AiSqlExecuteDialogService.onDidChange(() => {
@@ -27,19 +33,11 @@ function AiSqlExecuteDialog() {
   const needsWriteAck = request.isWrite && !blocked;
   const canConfirm = !blocked && (!needsWriteAck || writeAck);
 
-  function close() {
-    AiSqlExecuteDialogService.close(false);
-  }
-
   return (
     <div
       className="explorer-mutation-dialog__backdrop"
       role="presentation"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) {
-          close();
-        }
-      }}
+      {...backdropDismiss}
     >
       <div
         className="explorer-mutation-dialog ai-sql-execute-dialog"

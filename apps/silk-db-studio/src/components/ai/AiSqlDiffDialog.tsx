@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { DiffEditor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import { useBackdropDismiss } from "@silk-studio/ui/hooks/useBackdropDismiss.ts";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
@@ -17,6 +18,10 @@ import "./AiSqlDiffDialog.css";
 
 type ReviewView = "diff" | "sql";
 
+function close() {
+  AiSqlDiffDialogService.close("cancel");
+}
+
 function AiSqlDiffDialog() {
   const { t } = useI18n();
   const [request, setRequest] = useState(() =>
@@ -24,6 +29,7 @@ function AiSqlDiffDialog() {
   );
   const [view, setView] = useState<ReviewView>("diff");
   const configuration = useConfiguration();
+  const backdropDismiss = useBackdropDismiss(close);
 
   useEffect(() => {
     return AiSqlDiffDialogService.onDidChange(() => {
@@ -34,10 +40,6 @@ function AiSqlDiffDialog() {
 
   if (!request) {
     return null;
-  }
-
-  function close() {
-    AiSqlDiffDialogService.close("cancel");
   }
 
   const handleBeforeMount = (monaco: Monaco) => {
@@ -52,11 +54,7 @@ function AiSqlDiffDialog() {
     <div
       className="explorer-mutation-dialog__backdrop"
       role="presentation"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) {
-          close();
-        }
-      }}
+      {...backdropDismiss}
     >
       <div
         className="explorer-mutation-dialog plsql-snapshot-dialog--diff ai-sql-diff-dialog"

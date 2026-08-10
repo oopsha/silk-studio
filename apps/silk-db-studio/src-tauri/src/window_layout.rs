@@ -177,15 +177,25 @@ pub fn window_layout_apply_and_show(
     let clamped = clamp_to_visible(&window, layout);
     let _ = apply_window_layout(&window, &clamped);
     let _ = save_window_layout(&app, &clamped);
+    // The frontend calls this again on every remount (e.g. a dev-mode HMR full
+    // reload), not just on first launch — only steal focus when the window was
+    // actually hidden, so a background re-invocation can't yank focus away from
+    // whatever app the user is currently in.
+    let was_visible = window.is_visible().unwrap_or(true);
     window.show().map_err(|e| e.to_string())?;
-    let _ = window.set_focus();
+    if !was_visible {
+        let _ = window.set_focus();
+    }
     Ok(())
 }
 
 #[tauri::command]
 pub fn window_layout_show(window: WebviewWindow) -> Result<(), String> {
+    let was_visible = window.is_visible().unwrap_or(true);
     window.show().map_err(|e| e.to_string())?;
-    let _ = window.set_focus();
+    if !was_visible {
+        let _ = window.set_focus();
+    }
     Ok(())
 }
 

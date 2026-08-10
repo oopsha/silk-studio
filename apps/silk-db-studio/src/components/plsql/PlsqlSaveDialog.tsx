@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { DiffEditor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import { useBackdropDismiss } from "@silk-studio/ui/hooks/useBackdropDismiss.ts";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
@@ -31,6 +32,13 @@ function PlsqlSaveDialog() {
   const [view, setView] = useState<SaveView>("diff");
   const configuration = useConfiguration();
 
+  function close() {
+    if (executing) return;
+    PlsqlSaveDialogService.close(false);
+  }
+
+  const backdropDismiss = useBackdropDismiss(close, !executing);
+
   useEffect(() => {
     return PlsqlSaveDialogService.onDidChange(() => {
       setRequest(PlsqlSaveDialogService.getRequest());
@@ -42,11 +50,6 @@ function PlsqlSaveDialog() {
 
   if (!request) {
     return null;
-  }
-
-  function close() {
-    if (executing) return;
-    PlsqlSaveDialogService.close(false);
   }
 
   async function handleConfirm() {
@@ -76,11 +79,7 @@ function PlsqlSaveDialog() {
     <div
       className="explorer-mutation-dialog__backdrop"
       role="presentation"
-      onClick={(event) => {
-        if (event.target === event.currentTarget && !executing) {
-          close();
-        }
-      }}
+      {...backdropDismiss}
     >
       <div
         className="explorer-mutation-dialog plsql-snapshot-dialog--diff plsql-save-dialog"

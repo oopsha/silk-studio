@@ -6,6 +6,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import { useBackdropDismiss } from "@silk-studio/ui/hooks/useBackdropDismiss.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import {
   SqlParameterDialogService,
@@ -17,6 +18,10 @@ import {
 import "../connections/ExplorerObjectMutationDialog.css";
 import "./SqlParameterDialog.css";
 
+function close() {
+  SqlParameterDialogService.close({ confirmed: false });
+}
+
 function SqlParameterDialog() {
   const { t } = useI18n();
   const [request, setRequest] = useState(() =>
@@ -26,6 +31,7 @@ function SqlParameterDialog() {
     () => new Map(),
   );
   const valueInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const backdropDismiss = useBackdropDismiss(close);
 
   useEffect(() => {
     return SqlParameterDialogService.onDidChange(() => {
@@ -56,12 +62,22 @@ function SqlParameterDialog() {
     valueInputRefs.current = valueInputRefs.current.slice(0, fields.length);
   }, [fields.length]);
 
+  // `autoFocus` alone isn't reliable here — the editor's Ctrl+Enter keybinding
+  // still holds DOM focus when this dialog mounts, so grab it explicitly once
+  // the dialog has actually painted (same pattern as the rename input in
+  // ExplorerObjectMutationDialog).
+  useEffect(() => {
+    if (!request) return;
+    const frameId = requestAnimationFrame(() => {
+      const input = valueInputRefs.current[firstEnabledIndex];
+      input?.focus();
+      input?.select();
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [request, firstEnabledIndex]);
+
   if (!request) {
     return null;
-  }
-
-  function close() {
-    SqlParameterDialogService.close({ confirmed: false });
   }
 
   function confirm() {
@@ -158,11 +174,7 @@ function SqlParameterDialog() {
     <div
       className="explorer-mutation-dialog__backdrop"
       role="presentation"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) {
-          close();
-        }
-      }}
+      {...backdropDismiss}
     >
       <div
         className="explorer-mutation-dialog sql-parameter-dialog"
@@ -232,7 +244,6 @@ function SqlParameterDialog() {
                       type="text"
                       value={entry.value}
                       disabled={entry.isNull}
-                      autoFocus={index === firstEnabledIndex}
                       onChange={(event) =>
                         updateField(field.kind, field.key, {
                           value: event.target.value,
