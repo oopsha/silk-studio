@@ -414,6 +414,8 @@ export const enMessages = {
       ssmTunnelToggle: "Connect via AWS SSM tunnel",
       ssmTunnelHint:
         "Tunnels through an SSM-managed EC2 instance in the same VPC (not a public bastion) to reach a private database. AWS SSO sign-in happens in your browser — no AWS CLI setup needed.",
+      ssmHostHint:
+        "With the SSM tunnel on, Host must be the real database address reachable from the target instance (e.g. the RDS endpoint) — not \"localhost\". The tunnel forwards from the target instance's point of view, so \"localhost\" here means the instance itself, not your computer.",
       ssmRegion: "AWS Region",
       ssmSsoStartUrl: "SSO Start URL",
       ssmSsoStartUrlPlaceholder: "https://my-org.awsapps.com/start",

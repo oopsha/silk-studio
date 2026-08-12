@@ -412,6 +412,8 @@ export const koMessages = {
       ssmTunnelToggle: "AWS SSM 터널로 연결",
       ssmTunnelHint:
         "같은 VPC 안의 SSM 관리 대상 EC2 인스턴스(공개 배스천이 아님)를 경유해서 사설 데이터베이스에 접속합니다. AWS SSO 로그인은 브라우저에서 진행되며, AWS CLI 설치가 필요 없습니다.",
+      ssmHostHint:
+        "SSM 터널을 켜면 호스트는 \"localhost\"가 아니라 대상 인스턴스에서 실제로 접근 가능한 데이터베이스 주소(예: RDS 엔드포인트)여야 합니다. 터널은 대상 인스턴스 입장에서 전달되므로, 여기 적힌 \"localhost\"는 내 컴퓨터가 아니라 그 인스턴스 자기 자신을 뜻하게 됩니다.",
       ssmRegion: "AWS 리전",
       ssmSsoStartUrl: "SSO Start URL",
       ssmSsoStartUrlPlaceholder: "https://my-org.awsapps.com/start",
