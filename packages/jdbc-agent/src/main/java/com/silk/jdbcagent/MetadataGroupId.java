@@ -16,7 +16,12 @@ enum MetadataGroupId {
   VIEWS("views", "view"),
   PACKAGES("packages", "package"),
   PROCEDURES("procedures", "procedure"),
-  FUNCTIONS("functions", "function");
+  FUNCTIONS("functions", "function"),
+  INDEXES("indexes", "index"),
+  SEQUENCES("sequences", "sequence"),
+  SYNONYMS("synonyms", "synonym"),
+  TRIGGERS("triggers", "trigger"),
+  TYPES("types", "type");
 
   /** Value sent over the wire as {@code group.id}; must match the frontend's MetadataGroupId. */
   final String id;

@@ -5,6 +5,11 @@ import type { MessageKey } from "@silk-studio/workbench/platform/i18n/i18nServic
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
 import DdlPreview from "../ddl/DdlPreview";
 import ColumnsPreview from "./ColumnsPreview";
+import IndexesPreview from "./IndexesPreview";
+import ForeignKeysPreview from "./ForeignKeysPreview";
+import ConstraintsPreview from "./ConstraintsPreview";
+import TriggersPreview from "./TriggersPreview";
+import DependenciesPreview from "./DependenciesPreview";
 import "./PropertiesView.css";
 
 type PropertiesRenderCtx = {
@@ -20,13 +25,36 @@ type PropertiesSection = {
   render: (ctx: PropertiesRenderCtx) => ReactNode;
 };
 
-// Future sections (indexes, constraints) can be appended here once the
-// backend exposes that metadata — nothing else needs to change.
 const PROPERTIES_SECTIONS: PropertiesSection[] = [
   {
     id: "columns",
     labelKey: "app.objectEditor.columnsSection",
     render: (ctx) => <ColumnsPreview objectRef={ctx.objectRef} />,
+  },
+  {
+    id: "indexes",
+    labelKey: "app.objectEditor.indexesSection",
+    render: (ctx) => <IndexesPreview objectRef={ctx.objectRef} />,
+  },
+  {
+    id: "foreignKeys",
+    labelKey: "app.objectEditor.foreignKeysSection",
+    render: (ctx) => <ForeignKeysPreview objectRef={ctx.objectRef} />,
+  },
+  {
+    id: "constraints",
+    labelKey: "app.objectEditor.constraintsSection",
+    render: (ctx) => <ConstraintsPreview objectRef={ctx.objectRef} />,
+  },
+  {
+    id: "triggers",
+    labelKey: "app.objectEditor.triggersSection",
+    render: (ctx) => <TriggersPreview objectRef={ctx.objectRef} />,
+  },
+  {
+    id: "dependencies",
+    labelKey: "app.objectEditor.dependenciesSection",
+    render: (ctx) => <DependenciesPreview objectRef={ctx.objectRef} />,
   },
   {
     id: "ddl",

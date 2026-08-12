@@ -43,6 +43,16 @@ function kindLabel(kind: MetadataObjectKind): string {
       return "Procedure";
     case "function":
       return "Function";
+    case "index":
+      return "Index";
+    case "sequence":
+      return "Sequence";
+    case "synonym":
+      return "Synonym";
+    case "trigger":
+      return "Trigger";
+    case "type":
+      return "Type";
     default:
       return kind;
   }
@@ -60,6 +70,16 @@ function iconForKind(kind: MetadataObjectKind): string {
       return getMetadataGroupDefinition("procedures").icon;
     case "function":
       return getMetadataGroupDefinition("functions").icon;
+    case "index":
+      return getMetadataGroupDefinition("indexes").icon;
+    case "sequence":
+      return getMetadataGroupDefinition("sequences").icon;
+    case "synonym":
+      return getMetadataGroupDefinition("synonyms").icon;
+    case "trigger":
+      return getMetadataGroupDefinition("triggers").icon;
+    case "type":
+      return getMetadataGroupDefinition("types").icon;
     default:
       return "symbol-misc";
   }

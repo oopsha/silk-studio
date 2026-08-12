@@ -55,7 +55,12 @@ final class OracleDialect implements DbDialect {
         MetadataGroupId.VIEWS,
         MetadataGroupId.PACKAGES,
         MetadataGroupId.PROCEDURES,
-        MetadataGroupId.FUNCTIONS);
+        MetadataGroupId.FUNCTIONS,
+        MetadataGroupId.INDEXES,
+        MetadataGroupId.SEQUENCES,
+        MetadataGroupId.SYNONYMS,
+        MetadataGroupId.TRIGGERS,
+        MetadataGroupId.TYPES);
   }
 
   @Override
@@ -94,6 +99,100 @@ final class OracleDialect implements DbDialect {
           MetadataColumns.appendFromResultSet(rs, columns);
         }
         if (columns.size() > 0) {
+          return;
+        }
+      }
+    }
+  }
+
+  @Override
+  public void collectTableIndexes(
+      Connection connection, String schemaName, String tableName, ArrayNode indexes)
+      throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    for (String schema : distinctCases(schemaName)) {
+      for (String table : distinctCases(tableName)) {
+        try (ResultSet rs = metadata.getIndexInfo(null, schema, table, false, true)) {
+          MetadataIndexes.appendFromResultSet(rs, indexes);
+        }
+        if (indexes.size() > 0) {
+          return;
+        }
+      }
+    }
+  }
+
+  @Override
+  public void collectTableForeignKeys(
+      Connection connection, String schemaName, String tableName, ArrayNode foreignKeys)
+      throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    for (String schema : distinctCases(schemaName)) {
+      for (String table : distinctCases(tableName)) {
+        try (ResultSet rs = metadata.getImportedKeys(null, schema, table)) {
+          MetadataForeignKeys.appendFromResultSet(rs, foreignKeys);
+        }
+        if (foreignKeys.size() > 0) {
+          return;
+        }
+      }
+    }
+  }
+
+  @Override
+  public void collectTableConstraints(
+      Connection connection, String schemaName, String tableName, ArrayNode constraints)
+      throws SQLException {
+    String sql =
+        "SELECT cc.CONSTRAINT_NAME AS NAME, c.CONSTRAINT_TYPE AS TYPE, "
+            + "cc.COLUMN_NAME AS COLUMN_NAME, NULL AS CHECK_CLAUSE, cc.POSITION AS POS "
+            + "FROM ALL_CONSTRAINTS c "
+            + "JOIN ALL_CONS_COLUMNS cc "
+            + "  ON cc.OWNER = c.OWNER AND cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME "
+            + "  AND cc.TABLE_NAME = c.TABLE_NAME "
+            + "WHERE c.OWNER = ? AND c.TABLE_NAME = ? AND c.CONSTRAINT_TYPE IN ('P', 'U') "
+            + "UNION ALL "
+            + "SELECT c.CONSTRAINT_NAME, c.CONSTRAINT_TYPE, NULL, c.SEARCH_CONDITION, 0 "
+            + "FROM ALL_CONSTRAINTS c "
+            // GENERATED = 'USER NAME' excludes Oracle's implicit NOT NULL checks.
+            + "WHERE c.OWNER = ? AND c.TABLE_NAME = ? AND c.CONSTRAINT_TYPE = 'C' "
+            + "  AND c.GENERATED = 'USER NAME'";
+    for (String schema : distinctCases(schemaName)) {
+      for (String table : distinctCases(tableName)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+          statement.setString(1, schema);
+          statement.setString(2, table);
+          statement.setString(3, schema);
+          statement.setString(4, table);
+          try (ResultSet rs = statement.executeQuery()) {
+            MetadataConstraints.appendFromResultSet(rs, constraints);
+          }
+        }
+        if (constraints.size() > 0) {
+          return;
+        }
+      }
+    }
+  }
+
+  @Override
+  public void collectTableTriggers(
+      Connection connection, String schemaName, String tableName, ArrayNode triggers)
+      throws SQLException {
+    String sql =
+        "SELECT TRIGGER_NAME AS NAME, TRIGGERING_EVENT AS EVENT, TRIGGER_TYPE AS TIMING, "
+            + "STATUS AS ENABLED "
+            + "FROM ALL_TRIGGERS WHERE TABLE_OWNER = ? AND TABLE_NAME = ?";
+    for (String schema : distinctCases(schemaName)) {
+      for (String table : distinctCases(tableName)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+          statement.setString(1, schema);
+          statement.setString(2, table);
+          try (ResultSet rs = statement.executeQuery()) {
+            MetadataTriggers.appendFromResultSet(rs, triggers);
+          }
+        }
+        if (triggers.size() > 0) {
           return;
         }
       }
@@ -349,11 +448,13 @@ final class OracleDialect implements DbDialect {
       ArrayNode dependencies)
       throws SQLException {
     String normalizedKind = kind.trim().toLowerCase(java.util.Locale.ROOT);
-    if (!normalizedKind.equals("procedure")
+    if (!normalizedKind.equals("table")
+        && !normalizedKind.equals("view")
+        && !normalizedKind.equals("procedure")
         && !normalizedKind.equals("function")
         && !normalizedKind.equals("package")) {
       throw new RuntimeException(
-          "Dependencies are only supported for procedure, function, and package.");
+          "Dependencies are only supported for table, view, procedure, function, and package.");
     }
 
     java.util.List<String> oracleTypes =
@@ -364,6 +465,83 @@ final class OracleDialect implements DbDialect {
         collectAllDependencies(connection, schema, object, oracleTypes, dependencies);
         if (dependencies.size() > 0) {
           break outer;
+        }
+      }
+    }
+  }
+
+  @Override
+  public void collectObjectDependents(
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody,
+      ArrayNode dependents)
+      throws SQLException {
+    String normalizedKind = kind.trim().toLowerCase(java.util.Locale.ROOT);
+    if (!normalizedKind.equals("table")
+        && !normalizedKind.equals("view")
+        && !normalizedKind.equals("procedure")
+        && !normalizedKind.equals("function")
+        && !normalizedKind.equals("package")) {
+      throw new RuntimeException(
+          "Dependents are only supported for table, view, procedure, function, and package.");
+    }
+
+    java.util.List<String> oracleTypes =
+        MetadataDdl.oracleDependencyTypes(normalizedKind, packageBody);
+  outer:
+    for (String schema : distinctCases(schemaName)) {
+      for (String object : distinctCases(objectName)) {
+        collectAllDependents(connection, schema, object, oracleTypes, dependents);
+        if (dependents.size() > 0) {
+          break outer;
+        }
+      }
+    }
+  }
+
+  private static void collectAllDependents(
+      Connection connection,
+      String schema,
+      String object,
+      java.util.List<String> oracleTypes,
+      ArrayNode dependents)
+      throws SQLException {
+    String placeholders =
+        String.join(", ", java.util.Collections.nCopies(oracleTypes.size(), "?"));
+    String sql =
+        "SELECT DISTINCT OWNER, NAME, TYPE, DEPENDENCY_TYPE "
+            + "FROM ALL_DEPENDENCIES "
+            + "WHERE REFERENCED_OWNER = ? AND REFERENCED_NAME = ? AND REFERENCED_TYPE IN ("
+            + placeholders
+            + ") "
+            + "ORDER BY TYPE, OWNER, NAME";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      int index = 1;
+      statement.setString(index++, schema);
+      statement.setString(index++, object);
+      for (String oracleType : oracleTypes) {
+        statement.setString(index++, oracleType);
+      }
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          String owner = rs.getString("OWNER");
+          String name = rs.getString("NAME");
+          String type = rs.getString("TYPE");
+          if (owner == null || owner.isBlank() || name == null || name.isBlank()
+              || type == null || type.isBlank()) {
+            continue;
+          }
+          ObjectNode entry = dependents.addObject();
+          entry.put("schema", owner.trim());
+          entry.put("name", name.trim());
+          entry.put("type", type.trim());
+          String dependencyType = rs.getString("DEPENDENCY_TYPE");
+          if (dependencyType != null && !dependencyType.isBlank()) {
+            entry.put("dependencyType", dependencyType.trim());
+          }
         }
       }
     }
@@ -556,6 +734,57 @@ final class OracleDialect implements DbDialect {
       ObjectNode object = objects.addObject();
       object.put("name", packageName);
       object.put("kind", "package");
+    }
+
+    appendSimpleObjects(
+        connection,
+        "SELECT INDEX_NAME AS NAME FROM ALL_INDEXES WHERE OWNER = ?",
+        schemaName,
+        "index",
+        objects);
+    appendSimpleObjects(
+        connection,
+        "SELECT SEQUENCE_NAME AS NAME FROM ALL_SEQUENCES WHERE SEQUENCE_OWNER = ?",
+        schemaName,
+        "sequence",
+        objects);
+    appendSimpleObjects(
+        connection,
+        "SELECT SYNONYM_NAME AS NAME FROM ALL_SYNONYMS WHERE OWNER = ?",
+        schemaName,
+        "synonym",
+        objects);
+    appendSimpleObjects(
+        connection,
+        "SELECT TRIGGER_NAME AS NAME FROM ALL_TRIGGERS WHERE OWNER = ?",
+        schemaName,
+        "trigger",
+        objects);
+    appendSimpleObjects(
+        connection,
+        "SELECT TYPE_NAME AS NAME FROM ALL_TYPES WHERE OWNER = ?",
+        schemaName,
+        "type",
+        objects);
+  }
+
+  /** Runs a single-column {@code (name) WHERE owner/schema = ?} query and appends {@code kind} objects. */
+  private static void appendSimpleObjects(
+      Connection connection, String sql, String schemaName, String kind, ArrayNode objects)
+      throws SQLException {
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          String name = rs.getString("NAME");
+          if (name == null || name.isBlank()) {
+            continue;
+          }
+          ObjectNode object = objects.addObject();
+          object.put("name", name);
+          object.put("kind", kind);
+        }
+      }
     }
   }
 

@@ -199,6 +199,22 @@ public final class Main {
           response.put("ok", true);
           response.set("result", runtime.listPrimaryKeys(params));
         }
+        case "connection.indexes" -> {
+          response.put("ok", true);
+          response.set("result", runtime.listIndexes(params));
+        }
+        case "connection.foreignKeys" -> {
+          response.put("ok", true);
+          response.set("result", runtime.listForeignKeys(params));
+        }
+        case "connection.constraints" -> {
+          response.put("ok", true);
+          response.set("result", runtime.listConstraints(params));
+        }
+        case "connection.triggers" -> {
+          response.put("ok", true);
+          response.set("result", runtime.listTriggers(params));
+        }
         case "connection.ddl" -> {
           response.put("ok", true);
           response.set("result", runtime.fetchObjectDdl(params));
@@ -210,6 +226,10 @@ public final class Main {
         case "connection.dependencies" -> {
           response.put("ok", true);
           response.set("result", runtime.listObjectDependencies(params));
+        }
+        case "connection.dependents" -> {
+          response.put("ok", true);
+          response.set("result", runtime.listObjectDependents(params));
         }
         case "query.execute" -> {
           String sql = params.path("sql").asText("").trim();
@@ -578,6 +598,84 @@ public final class Main {
       return result;
     }
 
+    ObjectNode listIndexes(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      String schemaName = params.path("schema").asText("").trim();
+      String tableName = params.path("table").asText("").trim();
+      if (schemaName.isEmpty()) {
+        throw new RuntimeException("Missing params.schema");
+      }
+      if (tableName.isEmpty()) {
+        throw new RuntimeException("Missing params.table");
+      }
+
+      ArrayNode indexes = MAPPER.createArrayNode();
+      session.dialect.collectTableIndexes(session.connection, schemaName, tableName, indexes);
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.set("indexes", indexes);
+      return result;
+    }
+
+    ObjectNode listForeignKeys(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      String schemaName = params.path("schema").asText("").trim();
+      String tableName = params.path("table").asText("").trim();
+      if (schemaName.isEmpty()) {
+        throw new RuntimeException("Missing params.schema");
+      }
+      if (tableName.isEmpty()) {
+        throw new RuntimeException("Missing params.table");
+      }
+
+      ArrayNode foreignKeys = MAPPER.createArrayNode();
+      session.dialect.collectTableForeignKeys(
+          session.connection, schemaName, tableName, foreignKeys);
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.set("foreignKeys", foreignKeys);
+      return result;
+    }
+
+    ObjectNode listConstraints(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      String schemaName = params.path("schema").asText("").trim();
+      String tableName = params.path("table").asText("").trim();
+      if (schemaName.isEmpty()) {
+        throw new RuntimeException("Missing params.schema");
+      }
+      if (tableName.isEmpty()) {
+        throw new RuntimeException("Missing params.table");
+      }
+
+      ArrayNode constraints = MAPPER.createArrayNode();
+      session.dialect.collectTableConstraints(
+          session.connection, schemaName, tableName, constraints);
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.set("constraints", constraints);
+      return result;
+    }
+
+    ObjectNode listTriggers(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      String schemaName = params.path("schema").asText("").trim();
+      String tableName = params.path("table").asText("").trim();
+      if (schemaName.isEmpty()) {
+        throw new RuntimeException("Missing params.schema");
+      }
+      if (tableName.isEmpty()) {
+        throw new RuntimeException("Missing params.table");
+      }
+
+      ArrayNode triggers = MAPPER.createArrayNode();
+      session.dialect.collectTableTriggers(session.connection, schemaName, tableName, triggers);
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.set("triggers", triggers);
+      return result;
+    }
+
     ObjectNode listPackageMembers(JsonNode params) throws SQLException {
       Session session = requireSession(params);
       String schemaName = params.path("schema").asText("").trim();
@@ -707,6 +805,35 @@ public final class Main {
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("dependencies", dependencies);
+      result.put("dialectId", session.dialect.id());
+      return result;
+    }
+
+    ObjectNode listObjectDependents(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      String schemaName = params.path("schema").asText("").trim();
+      String objectName = params.path("name").asText("").trim();
+      String kind = params.path("kind").asText("").trim().toLowerCase(java.util.Locale.ROOT);
+      if (schemaName.isEmpty()) {
+        throw new RuntimeException("Missing params.schema");
+      }
+      if (objectName.isEmpty()) {
+        throw new RuntimeException("Missing params.name");
+      }
+      if (kind.isEmpty()) {
+        throw new RuntimeException("Missing params.kind");
+      }
+      Boolean packageBody = null;
+      if (params.hasNonNull("packageBody")) {
+        packageBody = params.path("packageBody").asBoolean();
+      }
+
+      ArrayNode dependents = MAPPER.createArrayNode();
+      session.dialect.collectObjectDependents(
+          session.connection, schemaName, objectName, kind, packageBody, dependents);
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.set("dependents", dependents);
       result.put("dialectId", session.dialect.id());
       return result;
     }

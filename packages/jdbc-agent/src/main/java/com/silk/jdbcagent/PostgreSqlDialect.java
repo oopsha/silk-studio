@@ -55,12 +55,16 @@ final class PostgreSqlDialect implements DbDialect {
 
   @Override
   public List<MetadataGroupId> supportedGroups() {
-    // No PACKAGE concept on PostgreSQL.
+    // No PACKAGE or SYNONYM concept on PostgreSQL.
     return List.of(
         MetadataGroupId.TABLES,
         MetadataGroupId.VIEWS,
         MetadataGroupId.PROCEDURES,
-        MetadataGroupId.FUNCTIONS);
+        MetadataGroupId.FUNCTIONS,
+        MetadataGroupId.INDEXES,
+        MetadataGroupId.SEQUENCES,
+        MetadataGroupId.TRIGGERS,
+        MetadataGroupId.TYPES);
   }
 
   @Override
@@ -156,6 +160,57 @@ final class PostgreSqlDialect implements DbDialect {
       object.put("name", name);
       object.put("kind", "function");
     }
+
+    appendSimpleObjects(
+        connection,
+        "SELECT indexname AS NAME FROM pg_catalog.pg_indexes WHERE schemaname = ?",
+        schemaName,
+        "index",
+        objects);
+    appendSimpleObjects(
+        connection,
+        "SELECT sequence_name AS NAME FROM information_schema.sequences WHERE sequence_schema = ?",
+        schemaName,
+        "sequence",
+        objects);
+    appendSimpleObjects(
+        connection,
+        "SELECT DISTINCT trigger_name AS NAME FROM information_schema.triggers "
+            + "WHERE trigger_schema = ?",
+        schemaName,
+        "trigger",
+        objects);
+    appendSimpleObjects(
+        connection,
+        "SELECT t.typname AS NAME FROM pg_catalog.pg_type t "
+            + "JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace "
+            + "LEFT JOIN pg_catalog.pg_class c ON c.oid = t.typrelid "
+            + "WHERE n.nspname = ? AND (t.typrelid = 0 OR c.relkind = 'c') "
+            + "AND NOT EXISTS ("
+            + "  SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)",
+        schemaName,
+        "type",
+        objects);
+  }
+
+  /** Runs a single-column {@code (NAME) WHERE schema = ?} query and appends {@code kind} objects. */
+  private static void appendSimpleObjects(
+      Connection connection, String sql, String schemaName, String kind, ArrayNode objects)
+      throws SQLException {
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          String name = rs.getString("NAME");
+          if (name == null || name.isBlank()) {
+            continue;
+          }
+          ObjectNode object = objects.addObject();
+          object.put("name", name);
+          object.put("kind", kind);
+        }
+      }
+    }
   }
 
   @Override
@@ -166,6 +221,127 @@ final class PostgreSqlDialect implements DbDialect {
     String catalog = connection.getCatalog();
     try (ResultSet rs = metadata.getColumns(catalog, schemaName, tableName, "%")) {
       MetadataColumns.appendFromResultSet(rs, columns);
+    }
+  }
+
+  @Override
+  public void collectTableIndexes(
+      Connection connection, String schemaName, String tableName, ArrayNode indexes)
+      throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    String catalog = connection.getCatalog();
+    try (ResultSet rs = metadata.getIndexInfo(catalog, schemaName, tableName, false, true)) {
+      MetadataIndexes.appendFromResultSet(rs, indexes);
+    }
+  }
+
+  @Override
+  public void collectTableForeignKeys(
+      Connection connection, String schemaName, String tableName, ArrayNode foreignKeys)
+      throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    String catalog = connection.getCatalog();
+    try (ResultSet rs = metadata.getImportedKeys(catalog, schemaName, tableName)) {
+      MetadataForeignKeys.appendFromResultSet(rs, foreignKeys);
+    }
+  }
+
+  @Override
+  public void collectTableConstraints(
+      Connection connection, String schemaName, String tableName, ArrayNode constraints)
+      throws SQLException {
+    String sql =
+        "SELECT tc.constraint_name AS NAME, "
+            + "CASE tc.constraint_type "
+            + "  WHEN 'PRIMARY KEY' THEN 'P' WHEN 'UNIQUE' THEN 'U' ELSE 'C' END AS TYPE, "
+            + "kcu.column_name AS COLUMN_NAME, cc.check_clause AS CHECK_CLAUSE, "
+            + "COALESCE(kcu.ordinal_position, 0) AS POS "
+            + "FROM information_schema.table_constraints tc "
+            + "LEFT JOIN information_schema.key_column_usage kcu "
+            + "  ON kcu.constraint_name = tc.constraint_name "
+            + "  AND kcu.constraint_schema = tc.constraint_schema "
+            + "LEFT JOIN information_schema.check_constraints cc "
+            + "  ON cc.constraint_name = tc.constraint_name "
+            + "  AND cc.constraint_schema = tc.constraint_schema "
+            + "WHERE tc.table_schema = ? AND tc.table_name = ? "
+            + "  AND tc.constraint_type IN ('PRIMARY KEY', 'UNIQUE', 'CHECK')";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        MetadataConstraints.appendFromResultSet(rs, constraints);
+      }
+    }
+  }
+
+  @Override
+  public void collectTableTriggers(
+      Connection connection, String schemaName, String tableName, ArrayNode triggers)
+      throws SQLException {
+    String sql =
+        "SELECT trigger_name AS NAME, action_timing AS TIMING, event_manipulation AS EVENT "
+            + "FROM information_schema.triggers "
+            + "WHERE event_object_schema = ? AND event_object_table = ?";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        MetadataTriggers.appendFromResultSet(rs, triggers);
+      }
+    }
+  }
+
+  /**
+   * PostgreSQL has no routine dependency tracking equivalent to Oracle's ALL_DEPENDENCIES —
+   * only view-to-table usage is reliably queryable via {@code information_schema}.
+   */
+  @Override
+  public void collectObjectDependencies(
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody,
+      ArrayNode dependencies)
+      throws SQLException {
+    if (!"view".equals(kind)) {
+      return;
+    }
+    String sql =
+        "SELECT table_schema AS SCHEMA, table_name AS NAME, 'TABLE' AS TYPE "
+            + "FROM information_schema.view_table_usage "
+            + "WHERE view_schema = ? AND view_name = ?";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, objectName);
+      try (ResultSet rs = statement.executeQuery()) {
+        MetadataDependencies.appendFromResultSet(rs, dependencies);
+      }
+    }
+  }
+
+  @Override
+  public void collectObjectDependents(
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody,
+      ArrayNode dependents)
+      throws SQLException {
+    if (!"table".equals(kind) && !"view".equals(kind)) {
+      return;
+    }
+    String sql =
+        "SELECT view_schema AS SCHEMA, view_name AS NAME, 'VIEW' AS TYPE "
+            + "FROM information_schema.view_table_usage "
+            + "WHERE table_schema = ? AND table_name = ?";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, objectName);
+      try (ResultSet rs = statement.executeQuery()) {
+        MetadataDependencies.appendFromResultSet(rs, dependents);
+      }
     }
   }
 

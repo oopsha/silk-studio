@@ -233,6 +233,58 @@ fn connection_primary_keys(
 }
 
 #[tauri::command]
+fn connection_indexes(
+    connection_id: String,
+    schema: String,
+    table: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    state
+        .jdbc_agent
+        .list_indexes(connection_id, schema.trim(), table.trim())
+}
+
+#[tauri::command]
+fn connection_foreign_keys(
+    connection_id: String,
+    schema: String,
+    table: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    state
+        .jdbc_agent
+        .list_foreign_keys(connection_id, schema.trim(), table.trim())
+}
+
+#[tauri::command]
+fn connection_constraints(
+    connection_id: String,
+    schema: String,
+    table: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    state
+        .jdbc_agent
+        .list_constraints(connection_id, schema.trim(), table.trim())
+}
+
+#[tauri::command]
+fn connection_triggers(
+    connection_id: String,
+    schema: String,
+    table: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    state
+        .jdbc_agent
+        .list_triggers(connection_id, schema.trim(), table.trim())
+}
+
+#[tauri::command]
 fn connection_ddl(
     connection_id: String,
     schema: String,
@@ -289,6 +341,25 @@ fn connection_dependencies(
     )
 }
 
+#[tauri::command]
+fn connection_dependents(
+    connection_id: String,
+    schema: String,
+    name: String,
+    kind: String,
+    package_body: Option<bool>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    state.jdbc_agent.list_object_dependents(
+        connection_id,
+        schema.trim(),
+        name.trim(),
+        kind.trim(),
+        package_body,
+    )
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -313,9 +384,14 @@ pub fn run() {
             connection_columns,
             connection_package_members,
             connection_primary_keys,
+            connection_indexes,
+            connection_foreign_keys,
+            connection_constraints,
+            connection_triggers,
             connection_ddl,
             connection_compile,
             connection_dependencies,
+            connection_dependents,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_delete,
