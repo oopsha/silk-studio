@@ -11,7 +11,7 @@ import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
 import { EditorService } from "../../../services/editor/editorServiceFacade";
 import { useEnablePreviewEditors } from "../../../services/editor/useEnablePreviewEditors";
-import type { TabBarCommandAdapter } from "./TabBar";
+import type { TabBarCommandAdapter, TabBarLabels } from "./TabBar";
 import "./TabBarMenu.css";
 
 type MenuPosition = {
@@ -22,6 +22,7 @@ type MenuPosition = {
 type TabBarMoreMenuProps = {
   anchorRef: RefObject<HTMLElement | null>;
   commands: TabBarCommandAdapter;
+  labels: TabBarLabels;
   onClose: () => void;
   onShowOpenEditors: () => void;
 };
@@ -29,6 +30,7 @@ type TabBarMoreMenuProps = {
 function TabBarMoreMenu({
   anchorRef,
   commands,
+  labels,
   onClose,
   onShowOpenEditors,
 }: TabBarMoreMenuProps) {
@@ -149,19 +151,19 @@ function TabBarMoreMenu({
         }}
       >
         {renderCheckGutter()}
-        <span className="tab-bar-menu__label">Show Opened Editors</span>
+        <span className="tab-bar-menu__label">{labels.showOpenedEditors}</span>
       </button>
 
       <div className="tab-bar-menu__separator" role="separator" />
 
       {renderCommandItem(
         "close-all",
-        "Close All",
+        labels.closeAll,
         "workbench.action.closeAllEditors",
       )}
       {renderCommandItem(
         "close-saved",
-        "Close Saved",
+        labels.closeSaved,
         "workbench.action.closeAllSavedEditors",
       )}
 
@@ -177,18 +179,18 @@ function TabBarMoreMenu({
         }}
       >
         {renderCheckGutter(enablePreviewEditors)}
-        <span className="tab-bar-menu__label">Enable Preview Editors</span>
+        <span className="tab-bar-menu__label">{labels.enablePreviewEditors}</span>
       </button>
 
       <div className="tab-bar-menu__separator" role="separator" />
 
-      {renderCommandItem("lock-group", "Lock Group", "workbench.action.lockEditorGroup")}
+      {renderCommandItem("lock-group", labels.lockGroup, "workbench.action.lockEditorGroup")}
 
       <div className="tab-bar-menu__separator" role="separator" />
 
       {renderCommandItem(
         "configure-editors",
-        "Configure Editors",
+        labels.configureEditors,
         "workbench.action.configureEditors",
       )}
     </div>,

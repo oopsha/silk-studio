@@ -156,6 +156,10 @@ export const koMessages = {
     },
   },
   workbench: {
+    tabBar: {
+      moreActions: "추가 작업...",
+      closeTabAriaLabel: "{name} 닫기",
+    },
     activityBar: {
       ariaLabel: "작업 표시줄",
       explorer: "탐색기",
@@ -170,6 +174,9 @@ export const koMessages = {
       connections: "연결",
       openEditors: "열린 편집기",
       openEditorsGroup: "그룹 {n}",
+      openEditorsAria: "열린 편집기 표시",
+      openEditorsFilterAria: "열린 편집기 필터",
+      noMatchingEditors: "일치하는 편집기가 없습니다",
       outline: "개요",
       timeline: "타임라인",
       noOpenEditors: "열린 편집기 없음",

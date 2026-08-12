@@ -158,6 +158,10 @@ export const enMessages = {
     },
   },
   workbench: {
+    tabBar: {
+      moreActions: "More Actions...",
+      closeTabAriaLabel: "Close {name}",
+    },
     activityBar: {
       ariaLabel: "Activity Bar",
       explorer: "Explorer",
@@ -172,6 +176,9 @@ export const enMessages = {
       connections: "CONNECTIONS",
       openEditors: "Open Editors",
       openEditorsGroup: "Group {n}",
+      openEditorsAria: "Show Opened Editors",
+      openEditorsFilterAria: "Filter opened editors",
+      noMatchingEditors: "No matching editors",
       outline: "Outline",
       timeline: "Timeline",
       noOpenEditors: "No open editors",

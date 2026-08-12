@@ -1,7 +1,11 @@
 import { Fragment, useRef, type ReactNode } from "react";
 import type { Monaco } from "@monaco-editor/react";
 import TabBar from "@silk-studio/editor/components/layout/TabBar/index.ts";
-import type { TabBarCommandAdapter } from "@silk-studio/editor/components/layout/TabBar/TabBar.tsx";
+import type {
+  TabBarCommandAdapter,
+  TabBarLabels,
+} from "@silk-studio/editor/components/layout/TabBar/TabBar.tsx";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import EditorArea from "@silk-studio/editor/components/layout/EditorArea/index.ts";
 import type { EditorConfigurationOptions } from "@silk-studio/editor/components/layout/EditorArea/EditorArea.tsx";
 import type { EditorTab } from "@silk-studio/editor/services/editor/editorTypes.ts";
@@ -44,10 +48,29 @@ type EditorGroupsViewProps = {
 const MIN_PANE_RATIO = 0.15;
 
 function EditorGroupsView({ commands, editorProps }: EditorGroupsViewProps) {
+  const { t } = useI18n();
   const { layout, focusedGroupId } = useEditorGroupsLayout();
   const { startDrag } = useWorkbenchSashDrag();
   // Only draw the focus ring once there's something to distinguish between.
   const showFocusRing = layout.type === "split";
+
+  const labels: TabBarLabels = {
+    showOpenedEditors: t("workbench.commands.showAllEditors"),
+    closeAll: t("workbench.commands.closeAllEditors"),
+    closeSaved: t("workbench.commands.closeAllSavedEditors"),
+    enablePreviewEditors: t("workbench.commands.togglePreviewEditors"),
+    lockGroup: t("workbench.commands.lockEditorGroup"),
+    configureEditors: t("workbench.commands.configureEditors"),
+    close: t("workbench.commands.closeActiveEditor"),
+    closeOthers: t("workbench.commands.closeOtherEditors"),
+    closeToTheRight: t("workbench.commands.closeEditorsToTheRight"),
+    keepOpen: t("workbench.commands.pinEditor"),
+    splitEditorRight: t("workbench.commands.splitEditorRight"),
+    closeEditorGroup: t("workbench.commands.closeEditorGroup"),
+    moreActions: t("workbench.tabBar.moreActions"),
+    closeTabAriaLabel: (tabLabel) =>
+      t("workbench.tabBar.closeTabAriaLabel").replace("{name}", tabLabel),
+  };
 
   return (
     <>
@@ -56,6 +79,7 @@ function EditorGroupsView({ commands, editorProps }: EditorGroupsViewProps) {
         focusedGroupId,
         showFocusRing,
         commands,
+        labels,
         editorProps,
         startDrag,
       )}
@@ -68,6 +92,7 @@ function renderLayoutNode(
   focusedGroupId: EditorGroupId,
   showFocusRing: boolean,
   commands: TabBarCommandAdapter,
+  labels: TabBarLabels,
   editorProps: EditorAreaSharedProps,
   startDrag: StartDrag,
 ): ReactNode {
@@ -79,6 +104,7 @@ function renderLayoutNode(
         isFocused={node.id === focusedGroupId}
         showFocusRing={showFocusRing}
         commands={commands}
+        labels={labels}
         editorProps={editorProps}
         startDrag={startDrag}
       />
@@ -92,6 +118,7 @@ function renderLayoutNode(
       focusedGroupId={focusedGroupId}
       showFocusRing={showFocusRing}
       commands={commands}
+      labels={labels}
       editorProps={editorProps}
       startDrag={startDrag}
     />
@@ -103,6 +130,7 @@ function EditorGroupPane({
   isFocused,
   showFocusRing,
   commands,
+  labels,
   editorProps,
   startDrag,
 }: {
@@ -110,6 +138,7 @@ function EditorGroupPane({
   isFocused: boolean;
   showFocusRing: boolean;
   commands: TabBarCommandAdapter;
+  labels: TabBarLabels;
   editorProps: EditorAreaSharedProps;
   startDrag: StartDrag;
 }) {
@@ -128,7 +157,7 @@ function EditorGroupPane({
     <div
       className={`editor-groups-pane__editor${showEditorHalf ? "" : " editor-groups-pane__editor--hidden"}`}
     >
-      <TabBar groupId={groupId} commands={commands} />
+      <TabBar groupId={groupId} commands={commands} labels={labels} />
       <EditorArea groupId={groupId} isFocusedGroup={isFocused} {...editorProps} />
     </div>
   );
@@ -197,6 +226,7 @@ function EditorSplitPane({
   focusedGroupId,
   showFocusRing,
   commands,
+  labels,
   editorProps,
   startDrag,
 }: {
@@ -204,6 +234,7 @@ function EditorSplitPane({
   focusedGroupId: EditorGroupId;
   showFocusRing: boolean;
   commands: TabBarCommandAdapter;
+  labels: TabBarLabels;
   editorProps: EditorAreaSharedProps;
   startDrag: StartDrag;
 }) {
@@ -274,6 +305,7 @@ function EditorSplitPane({
                 focusedGroupId,
                 showFocusRing,
                 commands,
+                labels,
                 editorProps,
                 startDrag,
               )}

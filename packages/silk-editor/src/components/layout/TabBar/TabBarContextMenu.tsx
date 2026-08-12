@@ -8,7 +8,7 @@ import {
 import { createPortal } from "react-dom";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
 import { EditorService } from "../../../services/editor/editorServiceFacade";
-import type { TabBarCommandAdapter } from "./TabBar";
+import type { TabBarCommandAdapter, TabBarLabels } from "./TabBar";
 import "./TabBarMenu.css";
 
 type MenuPosition = {
@@ -20,6 +20,7 @@ type TabBarContextMenuProps = {
   tabId: string;
   anchor: MenuPosition;
   commands: TabBarCommandAdapter;
+  labels: TabBarLabels;
   onClose: () => void;
 };
 
@@ -34,6 +35,7 @@ function TabBarContextMenu({
   tabId,
   anchor,
   commands,
+  labels,
   onClose,
 }: TabBarContextMenuProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -44,27 +46,27 @@ function TabBarContextMenu({
   const items: MenuItem[] = [
     {
       id: "close",
-      label: "Close",
+      label: labels.close,
       command: "workbench.action.closeActiveEditor",
     },
     {
       id: "close-others",
-      label: "Close Others",
+      label: labels.closeOthers,
       command: "workbench.action.closeOtherEditors",
     },
     {
       id: "close-right",
-      label: "Close to the Right",
+      label: labels.closeToTheRight,
       command: "workbench.action.closeEditorsToTheRight",
     },
     {
       id: "close-all",
-      label: "Close All",
+      label: labels.closeAll,
       command: "workbench.action.closeAllEditors",
     },
     {
       id: "pin",
-      label: "Keep Open",
+      label: labels.keepOpen,
       command: "workbench.action.pinEditor",
       when: () => Boolean(tab?.isPreview),
     },
