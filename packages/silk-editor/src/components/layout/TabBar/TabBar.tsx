@@ -32,9 +32,32 @@ export type TabBarCommandAdapter = {
   lookupKeybinding: (commandId: string) => string | undefined;
 };
 
+/**
+ * Localized strings for the tab bar and its menus. This package cannot depend on
+ * @silk-studio/workbench's i18n (workbench already depends on this package, so that
+ * would be circular) — the app layer builds these via useI18n() and passes them down.
+ */
+export type TabBarLabels = {
+  showOpenedEditors: string;
+  closeAll: string;
+  closeSaved: string;
+  enablePreviewEditors: string;
+  lockGroup: string;
+  configureEditors: string;
+  close: string;
+  closeOthers: string;
+  closeToTheRight: string;
+  keepOpen: string;
+  splitEditorRight: string;
+  closeEditorGroup: string;
+  moreActions: string;
+  closeTabAriaLabel: (tabLabel: string) => string;
+};
+
 type TabBarProps = {
   groupId: EditorGroupId;
   commands: TabBarCommandAdapter;
+  labels: TabBarLabels;
 };
 
 type DropIndicator = {
@@ -55,7 +78,7 @@ type PointerDragSession = {
  * Pointer-based tab reorder (not HTML5 DnD).
  * Tauri keeps native OS file-drop; HTML5 DnD cannot coexist on Windows WebView2.
  */
-function TabBar({ groupId, commands }: TabBarProps) {
+function TabBar({ groupId, commands, labels }: TabBarProps) {
   const group = EditorGroupsService.getGroup(groupId);
   const tabs = useEditorTabs(groupId);
   const activeTab = useActiveEditor(groupId);
@@ -338,7 +361,7 @@ function TabBar({ groupId, commands }: TabBarProps) {
                   <button
                     type="button"
                     className="tab-bar__close"
-                    aria-label={`Close ${tab.label}`}
+                    aria-label={labels.closeTabAriaLabel(tab.label)}
                     onClick={(event) => handleCloseTab(event, tab.id)}
                     onPointerDown={(event) => event.stopPropagation()}
                   >
@@ -356,8 +379,8 @@ function TabBar({ groupId, commands }: TabBarProps) {
           <button
             type="button"
             className="tab-bar__action"
-            title="Split Editor Right"
-            aria-label="Split Editor Right"
+            title={labels.splitEditorRight}
+            aria-label={labels.splitEditorRight}
             onClick={() => {
               // The command reads the focused group — make sure it's this pane's,
               // even if the user clicked the button without focusing the pane first.
@@ -371,8 +394,8 @@ function TabBar({ groupId, commands }: TabBarProps) {
           <button
             type="button"
             className="tab-bar__action"
-            title="Close Editor Group"
-            aria-label="Close Editor Group"
+            title={labels.closeEditorGroup}
+            aria-label={labels.closeEditorGroup}
             onClick={() => {
               EditorGroupsService.setFocusedGroup(groupId);
               void commands.executeCommand("workbench.action.closeEditorGroup");
@@ -385,8 +408,8 @@ function TabBar({ groupId, commands }: TabBarProps) {
           ref={moreActionsRef}
           type="button"
           className={`tab-bar__action${moreMenuOpen ? " tab-bar__action--open" : ""}`}
-          title="More Actions..."
-          aria-label="More Actions..."
+          title={labels.moreActions}
+          aria-label={labels.moreActions}
           aria-expanded={moreMenuOpen}
           aria-haspopup="menu"
           onMouseDown={(event) => event.preventDefault()}
@@ -401,6 +424,7 @@ function TabBar({ groupId, commands }: TabBarProps) {
           tabId={contextMenu.tabId}
           anchor={{ top: contextMenu.top, left: contextMenu.left }}
           commands={commands}
+          labels={labels}
           onClose={() => setContextMenu(null)}
         />
       ) : null}
@@ -409,6 +433,7 @@ function TabBar({ groupId, commands }: TabBarProps) {
         <TabBarMoreMenu
           anchorRef={moreActionsRef}
           commands={commands}
+          labels={labels}
           onClose={() => setMoreMenuOpen(false)}
           onShowOpenEditors={showOpenEditorsMenu}
         />

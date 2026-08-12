@@ -1,36 +1,19 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
 import { codiconForLanguage } from "@silk-studio/editor/services/editor/languageFromPath.ts";
 import { useI18n } from "../../../../platform/i18n/useI18n";
+import {
+  placeOverSilkEditor,
+  TITLEBAR_QUICK_PICK_CLASS,
+} from "../../../../services/quickinput/titlebarQuickPickPlacement";
 import { useOpenEditorsQuickPick } from "./openEditorsQuickPickContext";
 import "./OpenEditorsQuickPick.css";
 
-type QuickPickPosition = {
-  top: number;
-  left: number;
-  width: number;
-};
-
-function getAnchorRect(): DOMRect | null {
-  const anchor =
-    document.querySelector<HTMLElement>("[data-open-editors-anchor]") ??
-    document.querySelector<HTMLElement>(".command-center__center") ??
-    document.querySelector<HTMLElement>(".title-bar__center");
-
-  return anchor?.getBoundingClientRect() ?? null;
-}
-
 function OpenEditorsQuickPick() {
   const rootRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<QuickPickPosition | null>(null);
+  const [placed, setPlaced] = useState(false);
   const { t } = useI18n();
   const {
     open,
@@ -47,32 +30,40 @@ function OpenEditorsQuickPick() {
   } = useOpenEditorsQuickPick();
   const showGroupHeaders = groupOrder.length > 1;
 
-  const updatePosition = useCallback(() => {
-    const anchor = getAnchorRect();
-    if (!anchor) return;
-
-    const width = Math.max(Math.round(anchor.width), 420);
-    const left = Math.round(anchor.left + (anchor.width - width) / 2);
-    const top = Math.round(anchor.top);
-
-    setPosition({ top, left, width });
-  }, []);
-
   useLayoutEffect(() => {
-    if (!open) return;
-    updatePosition();
-  }, [open, updatePosition, filteredTabs.length]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    function handleResize() {
-      updatePosition();
+    if (!open) {
+      document.documentElement.classList.remove(TITLEBAR_QUICK_PICK_CLASS);
+      return;
     }
 
+    const el = rootRef.current;
+    if (!el) return;
+
+    const place = () => {
+      if (placeOverSilkEditor(el)) setPlaced(true);
+    };
+
+    // Measure while silk-editor is visible, then hide it (same as CommandPalette).
+    place();
+    document.documentElement.classList.add(TITLEBAR_QUICK_PICK_CLASS);
+    place();
+
+    function handleResize() {
+      place();
+    }
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [open, updatePosition]);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      document.documentElement.classList.remove(TITLEBAR_QUICK_PICK_CLASS);
+    };
+  }, [open, filter, filteredTabs.length]);
+
+  useEffect(() => {
+    if (!open) {
+      setPlaced(false);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -98,17 +89,13 @@ function OpenEditorsQuickPick() {
       ref={rootRef}
       className="quick-input-widget"
       role="dialog"
-      aria-label="Show Opened Editors"
-      style={
-        position
-          ? {
-              top: position.top,
-              left: position.left,
-              width: position.width,
-              position: "fixed",
-            }
-          : { visibility: "hidden", position: "fixed" }
-      }
+      aria-modal="true"
+      aria-label={t("workbench.sidebar.openEditorsAria")}
+      style={{
+        position: "fixed",
+        opacity: placed ? 1 : 0,
+        pointerEvents: placed ? "auto" : "none",
+      }}
     >
       <div className="quick-input-header">
         <div className="quick-input-filter">
@@ -119,7 +106,7 @@ function OpenEditorsQuickPick() {
             value={filter}
             spellCheck={false}
             autoComplete="off"
-            aria-label="Filter opened editors"
+            aria-label={t("workbench.sidebar.openEditorsFilterAria")}
             onChange={(event) => setFilter(event.target.value)}
             onKeyDown={handleInputKeyDown}
           />
@@ -128,7 +115,9 @@ function OpenEditorsQuickPick() {
 
       <div className="quick-input-list">
         {filteredTabs.length === 0 ? (
-          <div className="quick-input-list__empty">No matching editors</div>
+          <div className="quick-input-list__empty">
+            {t("workbench.sidebar.noMatchingEditors")}
+          </div>
         ) : (
           filteredTabs.map((tab, index) => {
             const isFocused = index === focusedIndex;
