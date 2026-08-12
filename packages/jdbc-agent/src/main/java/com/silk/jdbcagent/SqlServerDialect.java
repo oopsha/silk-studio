@@ -54,7 +54,12 @@ final class SqlServerDialect implements DbDialect {
         MetadataGroupId.TABLES,
         MetadataGroupId.VIEWS,
         MetadataGroupId.PROCEDURES,
-        MetadataGroupId.FUNCTIONS);
+        MetadataGroupId.FUNCTIONS,
+        MetadataGroupId.INDEXES,
+        MetadataGroupId.SEQUENCES,
+        MetadataGroupId.SYNONYMS,
+        MetadataGroupId.TRIGGERS,
+        MetadataGroupId.TYPES);
   }
 
   @Override
@@ -158,6 +163,69 @@ final class SqlServerDialect implements DbDialect {
     }
 
     // SQL Server has no PACKAGE concept; nothing to add for the "package" kind.
+
+    appendSimpleObjects(
+        connection,
+        "SELECT DISTINCT i.name AS NAME FROM sys.indexes i "
+            + "JOIN sys.objects o ON o.object_id = i.object_id "
+            + "JOIN sys.schemas s ON s.schema_id = o.schema_id "
+            + "WHERE s.name = ? AND i.name IS NOT NULL AND o.is_ms_shipped = 0",
+        schemaName,
+        "index",
+        objects);
+    appendSimpleObjects(
+        connection,
+        "SELECT sq.name AS NAME FROM sys.sequences sq "
+            + "JOIN sys.schemas s ON s.schema_id = sq.schema_id "
+            + "WHERE s.name = ?",
+        schemaName,
+        "sequence",
+        objects);
+    appendSimpleObjects(
+        connection,
+        "SELECT syn.name AS NAME FROM sys.synonyms syn "
+            + "JOIN sys.schemas s ON s.schema_id = syn.schema_id "
+            + "WHERE s.name = ?",
+        schemaName,
+        "synonym",
+        objects);
+    appendSimpleObjects(
+        connection,
+        "SELECT tr.name AS NAME FROM sys.triggers tr "
+            + "JOIN sys.objects o ON o.object_id = tr.parent_id "
+            + "JOIN sys.schemas s ON s.schema_id = o.schema_id "
+            + "WHERE s.name = ? AND tr.parent_class = 1",
+        schemaName,
+        "trigger",
+        objects);
+    appendSimpleObjects(
+        connection,
+        "SELECT t.name AS NAME FROM sys.types t "
+            + "JOIN sys.schemas s ON s.schema_id = t.schema_id "
+            + "WHERE s.name = ? AND t.is_user_defined = 1",
+        schemaName,
+        "type",
+        objects);
+  }
+
+  /** Runs a single-column {@code (NAME) WHERE schema = ?} query and appends {@code kind} objects. */
+  private static void appendSimpleObjects(
+      Connection connection, String sql, String schemaName, String kind, ArrayNode objects)
+      throws SQLException {
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          String name = rs.getString("NAME");
+          if (name == null || name.isBlank()) {
+            continue;
+          }
+          ObjectNode object = objects.addObject();
+          object.put("name", name);
+          object.put("kind", kind);
+        }
+      }
+    }
   }
 
   @Override
@@ -170,6 +238,139 @@ final class SqlServerDialect implements DbDialect {
       MetadataColumns.appendFromResultSet(rs, columns);
     }
     applyColumnComments(connection, schemaName, tableName, columns);
+  }
+
+  @Override
+  public void collectTableIndexes(
+      Connection connection, String schemaName, String tableName, ArrayNode indexes)
+      throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    String catalog = connection.getCatalog();
+    try (ResultSet rs = metadata.getIndexInfo(catalog, schemaName, tableName, false, true)) {
+      MetadataIndexes.appendFromResultSet(rs, indexes);
+    }
+  }
+
+  @Override
+  public void collectTableForeignKeys(
+      Connection connection, String schemaName, String tableName, ArrayNode foreignKeys)
+      throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    String catalog = connection.getCatalog();
+    try (ResultSet rs = metadata.getImportedKeys(catalog, schemaName, tableName)) {
+      MetadataForeignKeys.appendFromResultSet(rs, foreignKeys);
+    }
+  }
+
+  @Override
+  public void collectTableConstraints(
+      Connection connection, String schemaName, String tableName, ArrayNode constraints)
+      throws SQLException {
+    String sql =
+        "SELECT k.name AS NAME, CASE WHEN k.type = 'PK' THEN 'P' ELSE 'U' END AS TYPE, "
+            + "c.name AS COLUMN_NAME, NULL AS CHECK_CLAUSE, ic.key_ordinal AS POS "
+            + "FROM sys.key_constraints k "
+            + "JOIN sys.tables t ON t.object_id = k.parent_object_id "
+            + "JOIN sys.schemas s ON s.schema_id = t.schema_id "
+            + "JOIN sys.index_columns ic "
+            + "  ON ic.object_id = k.parent_object_id AND ic.index_id = k.unique_index_id "
+            + "JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id "
+            + "WHERE s.name = ? AND t.name = ? "
+            + "UNION ALL "
+            + "SELECT cc.name, 'C', NULL, cc.definition, 0 "
+            + "FROM sys.check_constraints cc "
+            + "JOIN sys.tables t ON t.object_id = cc.parent_object_id "
+            + "JOIN sys.schemas s ON s.schema_id = t.schema_id "
+            + "WHERE s.name = ? AND t.name = ?";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      statement.setString(3, schemaName);
+      statement.setString(4, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        MetadataConstraints.appendFromResultSet(rs, constraints);
+      }
+    }
+  }
+
+  @Override
+  public void collectTableTriggers(
+      Connection connection, String schemaName, String tableName, ArrayNode triggers)
+      throws SQLException {
+    String sql =
+        "SELECT tr.name AS NAME, te.type_desc AS EVENT, "
+            + "CASE WHEN tr.is_instead_of_trigger = 1 THEN 'INSTEAD OF' ELSE 'AFTER' END AS TIMING, "
+            + "CAST(CASE WHEN tr.is_disabled = 1 THEN 0 ELSE 1 END AS BIT) AS ENABLED "
+            + "FROM sys.triggers tr "
+            + "JOIN sys.objects o ON o.object_id = tr.parent_id "
+            + "JOIN sys.schemas s ON s.schema_id = o.schema_id "
+            + "LEFT JOIN sys.trigger_events te ON te.object_id = tr.object_id "
+            + "WHERE s.name = ? AND o.name = ? AND tr.parent_class = 1";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        MetadataTriggers.appendFromResultSet(rs, triggers);
+      }
+    }
+  }
+
+  /**
+   * {@code sys.sql_expression_dependencies} only covers modules with a definition
+   * (views/procedures/functions/triggers) — plain tables have essentially no outgoing
+   * dependencies here, which is expected (their only cross-object references are FK constraints,
+   * already covered by the Foreign Keys section).
+   */
+  @Override
+  public void collectObjectDependencies(
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody,
+      ArrayNode dependencies)
+      throws SQLException {
+    String sql =
+        "SELECT DISTINCT rs.name AS SCHEMA, ro.name AS NAME, ro.type_desc AS TYPE "
+            + "FROM sys.sql_expression_dependencies d "
+            + "JOIN sys.objects o ON o.object_id = d.referencing_id "
+            + "JOIN sys.schemas s ON s.schema_id = o.schema_id "
+            + "JOIN sys.objects ro ON ro.object_id = d.referenced_id "
+            + "JOIN sys.schemas rs ON rs.schema_id = ro.schema_id "
+            + "WHERE s.name = ? AND o.name = ?";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, objectName);
+      try (ResultSet rs = statement.executeQuery()) {
+        MetadataDependencies.appendFromResultSet(rs, dependencies);
+      }
+    }
+  }
+
+  @Override
+  public void collectObjectDependents(
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody,
+      ArrayNode dependents)
+      throws SQLException {
+    String sql =
+        "SELECT DISTINCT s2.name AS SCHEMA, o2.name AS NAME, o2.type_desc AS TYPE "
+            + "FROM sys.sql_expression_dependencies d "
+            + "JOIN sys.objects o2 ON o2.object_id = d.referencing_id "
+            + "JOIN sys.schemas s2 ON s2.schema_id = o2.schema_id "
+            + "JOIN sys.objects ot ON ot.object_id = d.referenced_id "
+            + "JOIN sys.schemas st ON st.schema_id = ot.schema_id "
+            + "WHERE st.name = ? AND ot.name = ?";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, objectName);
+      try (ResultSet rs = statement.executeQuery()) {
+        MetadataDependencies.appendFromResultSet(rs, dependents);
+      }
+    }
   }
 
   /**

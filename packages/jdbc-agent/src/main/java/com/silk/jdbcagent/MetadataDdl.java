@@ -66,6 +66,8 @@ final class MetadataDdl {
 
   static java.util.List<String> oracleDependencyTypes(String kind, Boolean packageBody) {
     return switch (kind) {
+      case "table" -> java.util.List.of("TABLE");
+      case "view" -> java.util.List.of("VIEW");
       case "procedure" -> java.util.List.of("PROCEDURE");
       case "function" -> java.util.List.of("FUNCTION");
       case "package" -> {

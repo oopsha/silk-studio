@@ -1,0 +1,20 @@
+.dependencies-preview {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+}
+
+.dependencies-preview__group {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dependencies-preview__group-title {
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-description);
+  background-color: var(--color-surface);
+  position: sticky;
+  top: 0;
+}

@@ -27,15 +27,39 @@ function dropKeyword(kind: MetadataObjectKind): string {
       return "FUNCTION";
     case "package":
       return "PACKAGE";
+    case "index":
+      return "INDEX";
+    case "sequence":
+      return "SEQUENCE";
+    case "synonym":
+      return "SYNONYM";
+    case "trigger":
+      return "TRIGGER";
+    case "type":
+      return "TYPE";
     default:
       return "TABLE";
   }
+}
+
+/** Kinds added for read-only listing (v1) — drop/rename syntax varies too much per driver to enable yet. */
+function isListingOnlyKind(kind: MetadataObjectKind): boolean {
+  return (
+    kind === "index" ||
+    kind === "sequence" ||
+    kind === "synonym" ||
+    kind === "trigger" ||
+    kind === "type"
+  );
 }
 
 export function supportsDropObject(
   kind: MetadataObjectKind,
   driverId: ConnectionDriverId,
 ): boolean {
+  if (isListingOnlyKind(kind)) {
+    return false;
+  }
   if (kind === "package") {
     return driverId === "oracle";
   }
@@ -47,6 +71,9 @@ export function supportsRenameObject(
   kind: MetadataObjectKind,
   driverId: ConnectionDriverId,
 ): boolean {
+  if (isListingOnlyKind(kind)) {
+    return false;
+  }
   if (driverId === "oracle") {
     return true;
   }

@@ -60,7 +60,12 @@ export type MetadataObjectKind =
   | "view"
   | "procedure"
   | "function"
-  | "package";
+  | "package"
+  | "index"
+  | "sequence"
+  | "synonym"
+  | "trigger"
+  | "type";
 
 export type MetadataObject = {
   name: string;
@@ -79,7 +84,12 @@ export type MetadataGroupId =
   | "views"
   | "procedures"
   | "functions"
-  | "packages";
+  | "packages"
+  | "indexes"
+  | "sequences"
+  | "synonyms"
+  | "triggers"
+  | "types";
 
 export type MetadataGroup = {
   id: MetadataGroupId;
@@ -179,6 +189,88 @@ export type ConnectionPrimaryKeysResult = {
   relationKind?: QueryRelationKind;
 };
 
+/** Index metadata for a single table (`connection.indexes`). */
+export type MetadataIndex = {
+  name: string;
+  unique: boolean;
+  /** Column names in index key order. */
+  columns: string[];
+};
+
+export type ConnectionIndexesParams = {
+  connectionId: string;
+  schema: string;
+  table: string;
+};
+
+export type ConnectionIndexesResult = {
+  indexes: MetadataIndex[];
+};
+
+/** Foreign key metadata for a single table (this table as the referencing/child side). */
+export type MetadataForeignKey = {
+  name: string;
+  /** FK columns on this table, in key sequence order. */
+  columns: string[];
+  referencedSchema?: string;
+  referencedTable: string;
+  /** Referenced columns, aligned by position with `columns`. */
+  referencedColumns: string[];
+  /** JDBC rule name, e.g. `"CASCADE"`, `"SET NULL"`, `"SET DEFAULT"`, `"RESTRICT"`, `"NO ACTION"`. */
+  updateRule?: string;
+  deleteRule?: string;
+};
+
+export type ConnectionForeignKeysParams = {
+  connectionId: string;
+  schema: string;
+  table: string;
+};
+
+export type ConnectionForeignKeysResult = {
+  foreignKeys: MetadataForeignKey[];
+};
+
+/** Primary key / unique / check constraint metadata for a single table (`connection.constraints`). */
+export type MetadataConstraint = {
+  name: string;
+  type: "primaryKey" | "unique" | "check";
+  /** Column names, for `primaryKey`/`unique`. */
+  columns?: string[];
+  /** Check expression text, for `check`. */
+  expression?: string;
+};
+
+export type ConnectionConstraintsParams = {
+  connectionId: string;
+  schema: string;
+  table: string;
+};
+
+export type ConnectionConstraintsResult = {
+  constraints: MetadataConstraint[];
+};
+
+/** Trigger metadata for a single table (`connection.triggers`). */
+export type MetadataTrigger = {
+  name: string;
+  /** e.g. `"BEFORE"`, `"AFTER"`, `"INSTEAD OF"`. */
+  timing?: string;
+  /** e.g. `"INSERT"`, or a comma-joined list for multi-event triggers. */
+  event?: string;
+  enabled?: boolean;
+};
+
+export type ConnectionTriggersParams = {
+  connectionId: string;
+  schema: string;
+  table: string;
+};
+
+export type ConnectionTriggersResult = {
+  triggers: MetadataTrigger[];
+};
+
 export type ConnectionDdlParams = {
   connectionId: string;
   schema: string;
@@ -232,14 +324,14 @@ export type ConnectionCompileResult = {
   errors: ConnectionCompileError[];
 };
 
-/** Compile-time object reference (`connection.dependencies`). Oracle v1. */
+/** Compile-time object reference (`connection.dependencies` / `connection.dependents`). */
 export type ConnectionDependency = {
-  /** Referenced object owner/schema. */
+  /** Referenced (or referencing, for dependents) object owner/schema. */
   schema: string;
   name: string;
-  /** Oracle `REFERENCED_TYPE`, e.g. TABLE / VIEW / PACKAGE. */
+  /** e.g. `TABLE` / `VIEW` / `PACKAGE` / driver-specific object type text. */
   type: string;
-  /** Oracle `DEPENDENCY_TYPE`, e.g. HARD / SOFT. */
+  /** Oracle `DEPENDENCY_TYPE`, e.g. HARD / SOFT. Omitted on other drivers. */
   dependencyType?: string;
 };
 
@@ -259,6 +351,14 @@ export type ConnectionDependenciesParams = {
 
 export type ConnectionDependenciesResult = {
   dependencies: ConnectionDependency[];
+  dialectId: string;
+};
+
+/** Reverse of `connection.dependencies` — objects that reference this one. */
+export type ConnectionDependentsParams = ConnectionDependenciesParams;
+
+export type ConnectionDependentsResult = {
+  dependents: ConnectionDependency[];
   dialectId: string;
 };
 
@@ -338,6 +438,11 @@ const KNOWN_METADATA_GROUP_IDS = new Set<MetadataGroupId>([
   "procedures",
   "functions",
   "packages",
+  "indexes",
+  "sequences",
+  "synonyms",
+  "triggers",
+  "types",
 ]);
 
 function isMetadataObject(value: unknown): value is MetadataObject {
@@ -349,7 +454,12 @@ function isMetadataObject(value: unknown): value is MetadataObject {
       entry.kind === "view" ||
       entry.kind === "procedure" ||
       entry.kind === "function" ||
-      entry.kind === "package")
+      entry.kind === "package" ||
+      entry.kind === "index" ||
+      entry.kind === "sequence" ||
+      entry.kind === "synonym" ||
+      entry.kind === "trigger" ||
+      entry.kind === "type")
   );
 }
 
@@ -465,6 +575,102 @@ export function isConnectionPrimaryKeysResult(
   );
 }
 
+function isMetadataIndex(value: unknown): value is MetadataIndex {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.name === "string" &&
+    typeof entry.unique === "boolean" &&
+    Array.isArray(entry.columns) &&
+    entry.columns.every((column) => typeof column === "string")
+  );
+}
+
+export function isConnectionIndexesResult(
+  value: unknown,
+): value is ConnectionIndexesResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Array.isArray(record.indexes) && record.indexes.every(isMetadataIndex)
+  );
+}
+
+function isMetadataForeignKey(value: unknown): value is MetadataForeignKey {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.name === "string" &&
+    Array.isArray(entry.columns) &&
+    entry.columns.every((column) => typeof column === "string") &&
+    typeof entry.referencedTable === "string" &&
+    Array.isArray(entry.referencedColumns) &&
+    entry.referencedColumns.every((column) => typeof column === "string") &&
+    (entry.referencedSchema === undefined ||
+      typeof entry.referencedSchema === "string") &&
+    (entry.updateRule === undefined || typeof entry.updateRule === "string") &&
+    (entry.deleteRule === undefined || typeof entry.deleteRule === "string")
+  );
+}
+
+export function isConnectionForeignKeysResult(
+  value: unknown,
+): value is ConnectionForeignKeysResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Array.isArray(record.foreignKeys) &&
+    record.foreignKeys.every(isMetadataForeignKey)
+  );
+}
+
+function isMetadataConstraint(value: unknown): value is MetadataConstraint {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.name === "string" &&
+    (entry.type === "primaryKey" ||
+      entry.type === "unique" ||
+      entry.type === "check") &&
+    (entry.columns === undefined ||
+      (Array.isArray(entry.columns) &&
+        entry.columns.every((column) => typeof column === "string"))) &&
+    (entry.expression === undefined || typeof entry.expression === "string")
+  );
+}
+
+export function isConnectionConstraintsResult(
+  value: unknown,
+): value is ConnectionConstraintsResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Array.isArray(record.constraints) &&
+    record.constraints.every(isMetadataConstraint)
+  );
+}
+
+function isMetadataTrigger(value: unknown): value is MetadataTrigger {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.name === "string" &&
+    (entry.timing === undefined || typeof entry.timing === "string") &&
+    (entry.event === undefined || typeof entry.event === "string") &&
+    (entry.enabled === undefined || typeof entry.enabled === "boolean")
+  );
+}
+
+export function isConnectionTriggersResult(
+  value: unknown,
+): value is ConnectionTriggersResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Array.isArray(record.triggers) && record.triggers.every(isMetadataTrigger)
+  );
+}
+
 export function isConnectionDdlResult(
   value: unknown,
 ): value is ConnectionDdlResult {
@@ -525,5 +731,17 @@ export function isConnectionDependenciesResult(
     typeof record.dialectId === "string" &&
     Array.isArray(record.dependencies) &&
     record.dependencies.every(isConnectionDependency)
+  );
+}
+
+export function isConnectionDependentsResult(
+  value: unknown,
+): value is ConnectionDependentsResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.dialectId === "string" &&
+    Array.isArray(record.dependents) &&
+    record.dependents.every(isConnectionDependency)
   );
 }

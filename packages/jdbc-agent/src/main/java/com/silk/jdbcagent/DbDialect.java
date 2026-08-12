@@ -67,6 +67,38 @@ interface DbDialect {
       throws SQLException;
 
   /**
+   * Populates {@code indexes} with index descriptors ({@code name}, {@code unique}, {@code
+   * columns}) for {@code tableName}. Object Editor "Indexes" section.
+   */
+  void collectTableIndexes(
+      Connection connection, String schemaName, String tableName, ArrayNode indexes)
+      throws SQLException;
+
+  /**
+   * Populates {@code foreignKeys} with foreign-key descriptors for {@code tableName} as the
+   * referencing (child) side. Object Editor "Foreign Keys" section.
+   */
+  void collectTableForeignKeys(
+      Connection connection, String schemaName, String tableName, ArrayNode foreignKeys)
+      throws SQLException;
+
+  /**
+   * Populates {@code constraints} with primary-key/unique/check constraint descriptors for
+   * {@code tableName}. Object Editor "Constraints" section.
+   */
+  void collectTableConstraints(
+      Connection connection, String schemaName, String tableName, ArrayNode constraints)
+      throws SQLException;
+
+  /**
+   * Populates {@code triggers} with trigger descriptors for {@code tableName}. Object Editor
+   * "Triggers" section.
+   */
+  void collectTableTriggers(
+      Connection connection, String schemaName, String tableName, ArrayNode triggers)
+      throws SQLException;
+
+  /**
    * Populates {@code members} with package procedure/function descriptors ({@code name}, {@code
    * kind}) for SQL autocomplete ({@code PKG.member}). Default: no members (non-Oracle dialects).
    */
@@ -154,6 +186,24 @@ interface DbDialect {
       String kind,
       Boolean packageBody,
       ArrayNode dependencies)
+      throws SQLException {
+    // no-op
+  }
+
+  /**
+   * Populates {@code dependents} with objects that reference this one (the reverse of {@link
+   * #collectObjectDependencies}). Default: no dependents (non-supporting dialects).
+   *
+   * <p>{@code packageBody} is only meaningful for {@code kind=package}:
+   * {@code true} → body, {@code false} → spec, {@code null} → both spec and body.
+   */
+  default void collectObjectDependents(
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody,
+      ArrayNode dependents)
       throws SQLException {
     // no-op
   }

@@ -51,18 +51,33 @@ export const EXPLORER_COMMANDS = {
   openPackageBody: "silk.explorer.openPackageBody",
 } as const;
 
+/**
+ * Indexes/sequences/synonyms/triggers/types are listed in the Explorer (v1) but have no DDL
+ * fetch wired up in the jdbc-agent yet — every dialect's `fetchObjectDdl` only handles
+ * table/view/procedure/function/package.
+ */
+export function supportsDdlView(kind: MetadataObjectKind): boolean {
+  return (
+    kind !== "index" &&
+    kind !== "sequence" &&
+    kind !== "synonym" &&
+    kind !== "trigger" &&
+    kind !== "type"
+  );
+}
+
 /** Default double-click / Enter action for an object kind. */
 export function defaultObjectAction(
   kind: MetadataObjectKind,
   driverId?: ConnectionDriverId,
-): "openObjectEditor" | "viewDdl" | "openSource" {
+): "openObjectEditor" | "viewDdl" | "openSource" | null {
   if (kind === "table" || kind === "view") {
     return "openObjectEditor";
   }
   if (driverId && supportsPlsqlSourceEdit(driverId, kind)) {
     return "openSource";
   }
-  return "viewDdl";
+  return supportsDdlView(kind) ? "viewDdl" : null;
 }
 
 export function buildObjectMenuItems(
@@ -117,7 +132,8 @@ export function buildObjectMenuItems(
       id: "viewDdl",
       label: t("app.explorer.viewDdl"),
       commandId: EXPLORER_COMMANDS.viewDdl,
-      enabled: true,
+      enabled: supportsDdlView(kind),
+      stubMessage: supportsDdlView(kind) ? undefined : t("app.explorer.stubViewDdl"),
     },
     {
       id: "copyName",
