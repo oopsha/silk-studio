@@ -1,5 +1,6 @@
 import type { ConnectionDriverId, ConnectionProfile } from "./connectionTypes";
 import { CONNECTION_DRIVERS } from "./connectionTypes";
+import { normalizeSsmTunnelConfig, type SsmTunnelConfig } from "./ssmTunnelTypes";
 
 const PROFILES_KEY = "silk-db-studio.connection.profiles";
 const ACTIVE_PROFILE_KEY = "silk-db-studio.connection.activeProfileId";
@@ -22,6 +23,7 @@ export type StoredConnectionProfile = {
   catalog?: string;
   defaultSchema?: string;
   showSystemObjects?: boolean;
+  ssmTunnel?: SsmTunnelConfig;
   createdAt: number;
   updatedAt: number;
 };
@@ -50,6 +52,7 @@ export function saveConnectionProfiles(profiles: ConnectionProfile[]): void {
     catalog: profile.catalog,
     defaultSchema: profile.defaultSchema,
     showSystemObjects: profile.showSystemObjects,
+    ssmTunnel: profile.ssmTunnel,
     createdAt: profile.createdAt,
     updatedAt: profile.updatedAt,
   }));
@@ -128,6 +131,7 @@ function normalizeStoredProfile(value: unknown): ConnectionProfile | null {
     defaultSchema:
       typeof record.defaultSchema === "string" ? record.defaultSchema : "",
     showSystemObjects: record.showSystemObjects === true,
+    ssmTunnel: normalizeSsmTunnelConfig(record.ssmTunnel),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };

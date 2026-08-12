@@ -3,6 +3,7 @@ mod app_log;
 mod open_external;
 mod runtime_paths;
 mod secrets;
+mod ssm_tunnel;
 mod window_layout;
 
 use serde_json::Value;
@@ -322,6 +323,13 @@ pub fn run() {
             secrets::ai_secret_set,
             secrets::ai_secret_get,
             secrets::ai_secret_delete,
+            ssm_tunnel::ssm_sso_start_login,
+            ssm_tunnel::ssm_sso_poll_login,
+            ssm_tunnel::ssm_sso_is_signed_in,
+            ssm_tunnel::ssm_list_instances,
+            ssm_tunnel::ssm_tunnel_open,
+            ssm_tunnel::ssm_tunnel_close,
+            ssm_tunnel::ssm_tunnel_status,
             ai_http::ai_http_fetch,
             open_external::open_external_url,
             window_layout::window_layout_save,
@@ -340,6 +348,9 @@ pub fn run() {
                     paths.agent_jar.clone(),
                     paths.java_bin.clone(),
                 ),
+            });
+            app.manage(ssm_tunnel::SsmTunnelState {
+                tunnels: ssm_tunnel_client::TunnelManager::new(paths.ssm_plugin_bin.clone()),
             });
 
             let handle = app.handle().clone();

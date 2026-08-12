@@ -2,5 +2,6 @@
 members = [
   "apps/silk-db-studio/src-tauri",
   "crates/silk-db-agent-client",
+  "crates/ssm-tunnel-client",
 ]
 resolver = "2"

@@ -11,6 +11,10 @@
  * Env overrides:
  *   SILK_JRE_OS=mac|windows|linux
  *   SILK_JRE_ARCH=x64|aarch64
+ *
+ * NOTE: the AWS session-manager-plugin binary used by the SSM tunnel feature is NOT staged
+ * here yet — see the comment above stageSsmPlugin() below for why (AWS only distributes it
+ * via an installer that requires Administrator rights, unlike the plain JRE archive).
  */
 
 import { createWriteStream } from "node:fs";
@@ -46,6 +50,7 @@ const RESOURCES = join(
 );
 const OUT_AGENT = join(RESOURCES, "jdbc-agent");
 const OUT_JRE = join(RESOURCES, "jre");
+const OUT_SSM_PLUGIN = join(RESOURCES, "ssm-plugin");
 
 const args = new Set(process.argv.slice(2));
 const skipJre = args.has("--skip-jre");
@@ -266,6 +271,43 @@ async function stageJre() {
   }
 }
 
+function ssmPluginBinExists(root) {
+  return (
+    existsSync(join(root, "session-manager-plugin.exe")) ||
+    existsSync(join(root, "session-manager-plugin"))
+  );
+}
+
+/**
+ * NOT YET IMPLEMENTED — see docs/bundled-runtime.md "session-manager-plugin: known gap".
+ *
+ * Unlike the JRE (a plain archive of a portable binary), AWS's Windows
+ * `SessionManagerPlugin.zip` contains an *installer* (`SessionManagerPluginSetup.exe`), and
+ * AWS's own docs state that installer requires Administrator rights
+ * (https://docs.aws.amazon.com/systems-manager/latest/userguide/install-plugin-windows.html).
+ * The runnable plugin binary this app actually needs is `session-manager-plugin.exe`, which
+ * only exists after that installer has been run — there is no plain-archive download of it.
+ * Silently extracting/copying files out of the installer package would not produce a working
+ * binary, so this function deliberately does nothing yet rather than stage something broken.
+ *
+ * Until this is solved (silently running the elevated installer into a build-controlled
+ * directory, or finding an alternative unprivileged distribution of the binary), the SSM
+ * tunnel feature only works when the user has separately installed the official Session
+ * Manager plugin themselves (same one-time step AWS's own docs describe) and it's on `PATH` —
+ * `runtime_paths.rs`'s dev/PATH fallback already covers that case.
+ */
+async function stageSsmPlugin() {
+  if (ssmPluginBinExists(OUT_SSM_PLUGIN)) {
+    log(`Bundled session-manager-plugin already present: ${OUT_SSM_PLUGIN}`);
+    ensureTreeWritable(OUT_SSM_PLUGIN);
+    return;
+  }
+  log(
+    "Skipping session-manager-plugin staging — not implemented yet (needs an elevated installer run; see the comment above stageSsmPlugin in this file). " +
+      "The SSM tunnel feature will fall back to a PATH-installed copy of the plugin at runtime.",
+  );
+}
+
 function writeResourcesReadme() {
   mkdirSync(RESOURCES, { recursive: true });
   const readme = join(RESOURCES, "README.md");
@@ -279,6 +321,7 @@ Populated by \`scripts/prepare-runtime-resources.mjs\` (not committed).
 | --- | --- |
 | \`jdbc-agent/\` | \`jdbc-agent-all.jar\` + \`lib/\` (+ notices) |
 | \`jre/\` | Eclipse Temurin JRE 17 for the **build host** OS/arch |
+| \`ssm-plugin/\` | AWS \`session-manager-plugin\` binary — not staged automatically yet, see \`docs/bundled-runtime.md\` |
 
 See [\`docs/bundled-runtime.md\`](../../../../docs/bundled-runtime.md).
 `,
@@ -294,6 +337,7 @@ async function main() {
   } else {
     await stageJre();
   }
+  await stageSsmPlugin();
   log("Done.");
 }
 

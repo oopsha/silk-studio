@@ -37,6 +37,8 @@ pub struct AppRuntimeInfo {
     pub agent_bundled: bool,
     pub java_bin_path: String,
     pub java_bundled: bool,
+    pub ssm_plugin_bin_path: String,
+    pub ssm_plugin_bundled: bool,
     pub log_dir: String,
     pub log_file: String,
 }
@@ -245,14 +247,15 @@ pub fn write_startup_banner(app: &AppHandle, state: &AppLogState, paths: &Runtim
         state,
         "info",
         &format!(
-            "Silk DB Studio {} starting (Tauri {}, OS {}/{}, agent bundled={}, java bundled={}, agent present={})",
+            "Silk DB Studio {} starting (Tauri {}, OS {}/{}, agent bundled={}, java bundled={}, agent present={}, ssm plugin bundled={})",
             info.app_version,
             info.tauri_version,
             info.os,
             info.arch,
             info.agent_bundled,
             info.java_bundled,
-            info.agent_jar_present
+            info.agent_jar_present,
+            info.ssm_plugin_bundled
         ),
     );
     let _ = append_line(
@@ -288,6 +291,8 @@ fn build_runtime_info(app: &AppHandle, paths: &RuntimePaths) -> Result<AppRuntim
         agent_bundled: paths.agent_bundled,
         java_bin_path: paths.java_bin.display().to_string(),
         java_bundled: paths.java_bundled,
+        ssm_plugin_bin_path: paths.ssm_plugin_bin.display().to_string(),
+        ssm_plugin_bundled: paths.ssm_plugin_bundled,
         log_dir: log_dir.display().to_string(),
         log_file: log_file.display().to_string(),
     })

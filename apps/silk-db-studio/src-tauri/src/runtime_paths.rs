@@ -6,6 +6,7 @@ use tauri::{AppHandle, Manager};
 const AGENT_JAR_NAME: &str = "jdbc-agent-all.jar";
 const AGENT_DIR_NAME: &str = "jdbc-agent";
 const JRE_DIR_NAME: &str = "jre";
+const SSM_PLUGIN_DIR_NAME: &str = "ssm-plugin";
 
 #[derive(Debug, Clone)]
 pub struct RuntimePaths {
@@ -13,17 +14,22 @@ pub struct RuntimePaths {
     pub java_bin: PathBuf,
     pub agent_bundled: bool,
     pub java_bundled: bool,
+    pub ssm_plugin_bin: PathBuf,
+    pub ssm_plugin_bundled: bool,
 }
 
 pub fn resolve_runtime_paths(app: &AppHandle) -> RuntimePaths {
     let resource_dir = app.path().resource_dir().ok();
     let (agent_jar, agent_bundled) = resolve_agent_jar(resource_dir.as_deref());
     let (java_bin, java_bundled) = resolve_java_bin(resource_dir.as_deref());
+    let (ssm_plugin_bin, ssm_plugin_bundled) = resolve_ssm_plugin_bin(resource_dir.as_deref());
     RuntimePaths {
         agent_jar,
         java_bin,
         agent_bundled,
         java_bundled,
+        ssm_plugin_bin,
+        ssm_plugin_bundled,
     }
 }
 
@@ -82,6 +88,28 @@ fn java_bin_path(home: &Path) -> PathBuf {
     } else {
         home.join("bin").join("java")
     }
+}
+
+fn resolve_ssm_plugin_bin(resource_dir: Option<&Path>) -> (PathBuf, bool) {
+    // AWS's actual installed binary is always lowercase-hyphenated, even on Windows
+    // (`C:\Program Files\Amazon\SessionManagerPlugin\bin\session-manager-plugin.exe`) — the
+    // PascalCase "SessionManagerPlugin.exe" name only appears on the *installer* inside the
+    // downloadable zip, not the runnable plugin itself. See the staging-script note below.
+    let bin_name = if cfg!(target_os = "windows") {
+        "session-manager-plugin.exe"
+    } else {
+        "session-manager-plugin"
+    };
+
+    if let Some(dir) = resource_dir {
+        let packaged = dir.join(SSM_PLUGIN_DIR_NAME).join(bin_name);
+        if packaged.is_file() {
+            return (packaged, true);
+        }
+    }
+
+    // Dev fallback: rely on PATH, same convention as the unbundled java fallback.
+    (PathBuf::from(bin_name), false)
 }
 
 pub fn smoke_check(paths: &RuntimePaths) -> Result<(), String> {

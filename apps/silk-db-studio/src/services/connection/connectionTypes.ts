@@ -1,3 +1,5 @@
+import type { SsmTunnelConfig } from "./ssmTunnelTypes";
+
 export type ConnectionDriverId =
   | "oracle"
   | "sqlserver"
@@ -28,6 +30,12 @@ export type ConnectionProfile = {
    * (e.g. SQL Server master/tempdb, MySQL mysql/sys, PG pg_catalog, Oracle SYS).
    */
   showSystemObjects: boolean;
+  /**
+   * Optional AWS SSM Session Manager tunnel, opened before the JDBC connect when
+   * `enabled`. The tunnel's remote target is this profile's own host/port (from `url`) —
+   * `url` itself always keeps showing the real remote endpoint, never the local tunnel port.
+   */
+  ssmTunnel?: SsmTunnelConfig;
   createdAt: number;
   updatedAt: number;
 };
@@ -41,6 +49,7 @@ export type ConnectionProfileInput = {
   catalog: string;
   defaultSchema: string;
   showSystemObjects: boolean;
+  ssmTunnel: SsmTunnelConfig;
 };
 
 export type ConnectionStatus =

@@ -29,6 +29,16 @@ import {
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { reportError } from "../formatErrorMessage";
 import { ConnectionTreeService } from "./connectionTreeService";
+import {
+  EMPTY_SSM_TUNNEL_CONFIG,
+  isSsmTunnelConfigComplete,
+  tunnelSessionKey,
+} from "./ssmTunnelTypes";
+import {
+  closeSsmTunnel,
+  openSsmTunnelForConnect,
+  type TunnelProgress,
+} from "./ssmTunnelService";
 
 type ConnectionListener = () => void;
 
@@ -112,6 +122,7 @@ class ConnectionServiceImpl {
       catalog: input.catalog.trim(),
       defaultSchema: resolveDefaultSchema(input),
       showSystemObjects: input.showSystemObjects === true,
+      ssmTunnel: input.ssmTunnel,
       createdAt: now,
       updatedAt: now,
     };
@@ -139,6 +150,7 @@ class ConnectionServiceImpl {
         catalog: input.catalog.trim(),
         defaultSchema: resolveDefaultSchema(input),
         showSystemObjects: input.showSystemObjects === true,
+        ssmTunnel: input.ssmTunnel,
         updatedAt: Date.now(),
       };
     });
@@ -199,6 +211,7 @@ class ConnectionServiceImpl {
       catalog: source.catalog,
       defaultSchema: source.defaultSchema,
       showSystemObjects: source.showSystemObjects,
+      ssmTunnel: source.ssmTunnel ?? EMPTY_SSM_TUNNEL_CONFIG,
     });
   }
 
@@ -229,7 +242,7 @@ class ConnectionServiceImpl {
 
   async connect(
     profileId: string,
-    options: { silent?: boolean } = {},
+    options: { silent?: boolean; onProgress?: TunnelProgress } = {},
   ): Promise<void> {
     const profile = this.getProfile(profileId);
     if (!profile) {
@@ -243,10 +256,27 @@ class ConnectionServiceImpl {
       errorMessage: null,
     });
 
+    const tunnel = profile.ssmTunnel;
+    const tunnelEnabled = tunnel ? isSsmTunnelConfigComplete(tunnel) : false;
+
     try {
       const password = await this.getPassword(profileId);
+
+      let effectiveUrl = profile.url;
+      if (tunnelEnabled && tunnel) {
+        effectiveUrl = await openSsmTunnelForConnect(
+          profileId,
+          profileId,
+          profile.driverId,
+          profile.url,
+          tunnel,
+          options.onProgress,
+        );
+      }
+
+      options.onProgress?.({ phase: "connectingDatabase" });
       await bridgeConnect(profileId, {
-        url: profile.url,
+        url: effectiveUrl,
         user: profile.user,
         password,
         // Explicit Default Schema only — empty Oracle means session login schema (no ALTER).
@@ -278,6 +308,9 @@ class ConnectionServiceImpl {
         this.preloadDefaultSchema(profileId),
       );
     } catch (error) {
+      if (tunnelEnabled) {
+        await closeSsmTunnel(profileId).catch(() => {});
+      }
       const message = reportError(error, "connection.connect", "Failed to connect.");
       const stillConnected = this.state.connectedProfileIds.filter(
         (id) => id !== profileId,
@@ -373,6 +406,7 @@ class ConnectionServiceImpl {
         await bridgeDisconnect(targetId);
       }
     } finally {
+      await closeSsmTunnel(targetId).catch(() => {});
       ConnectionTreeService.removeConnectedProfile(targetId);
       ConnectionTreeService.invalidate(targetId);
       const connectedProfileIds = this.state.connectedProfileIds.filter(
@@ -396,20 +430,57 @@ class ConnectionServiceImpl {
     }
 
     const password = await this.getPassword(profileId);
-    await this.testCredentials({
-      name: profile.name,
-      driverId: profile.driverId,
-      url: profile.url,
-      user: profile.user,
-      password,
-      catalog: profile.catalog,
-      defaultSchema: profile.defaultSchema,
-      showSystemObjects: profile.showSystemObjects,
-    });
+    await this.testCredentials(
+      {
+        name: profile.name,
+        driverId: profile.driverId,
+        url: profile.url,
+        user: profile.user,
+        password,
+        catalog: profile.catalog,
+        defaultSchema: profile.defaultSchema,
+        showSystemObjects: profile.showSystemObjects,
+        ssmTunnel: profile.ssmTunnel ?? EMPTY_SSM_TUNNEL_CONFIG,
+      },
+      { profileId },
+    );
   }
 
-  async testCredentials(input: ConnectionProfileInput): Promise<void> {
-    await bridgeTestConnection(this.toCredentials(input));
+  /**
+   * `profileId` is only available for an already-saved profile (the editor's Test button also
+   * calls this before the profile has ever been saved, i.e. before an id exists) — when
+   * omitted, a stable key derived from the tunnel's own SSO config is used instead, so
+   * repeated test clicks while still editing a new profile reuse the same cached SSO session
+   * rather than forcing a fresh browser login every time.
+   */
+  async testCredentials(
+    input: ConnectionProfileInput,
+    options: { profileId?: string; onProgress?: TunnelProgress } = {},
+  ): Promise<void> {
+    const tunnel = input.ssmTunnel;
+    const tunnelEnabled = isSsmTunnelConfigComplete(tunnel);
+    const tunnelKey = tunnelSessionKey(options.profileId, tunnel);
+
+    if (!tunnelEnabled) {
+      options.onProgress?.({ phase: "connectingDatabase" });
+      await bridgeTestConnection(this.toCredentials(input));
+      return;
+    }
+
+    const tunnelUrl = await openSsmTunnelForConnect(
+      tunnelKey,
+      tunnelKey,
+      input.driverId,
+      input.url.trim() || defaultUrlForDriver(input.driverId),
+      tunnel,
+      options.onProgress,
+    );
+    try {
+      options.onProgress?.({ phase: "connectingDatabase" });
+      await bridgeTestConnection(this.toCredentials({ ...input, url: tunnelUrl }));
+    } finally {
+      await closeSsmTunnel(tunnelKey).catch(() => {});
+    }
   }
 
   private toCredentials(
