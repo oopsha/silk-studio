@@ -1,12 +1,20 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   isConnectionColumnsResult,
+  isConnectionConstraintsResult,
+  isConnectionForeignKeysResult,
+  isConnectionIndexesResult,
   isConnectionMetadataResult,
   isConnectionPackageMembersResult,
+  isConnectionTriggersResult,
   type ConnectionColumnsResult,
+  type ConnectionConstraintsResult,
   type ConnectionCredentials,
+  type ConnectionForeignKeysResult,
+  type ConnectionIndexesResult,
   type ConnectionMetadataResult,
   type ConnectionPackageMembersResult,
+  type ConnectionTriggersResult,
 } from "@silk-studio/db-protocol";
 
 export async function bridgeConnect(
@@ -94,6 +102,98 @@ export async function bridgeListColumns(
   });
   if (!isConnectionColumnsResult(payload)) {
     throw new Error("Invalid connection columns payload from desktop bridge.");
+  }
+  return payload;
+}
+
+export async function bridgeListIndexes(
+  connectionId: string,
+  schema: string,
+  table: string,
+): Promise<ConnectionIndexesResult> {
+  if (!isTauri()) {
+    throw new Error("Database metadata is available in the desktop app only.");
+  }
+  const id = connectionId.trim();
+  if (!id) {
+    throw new Error("connectionId is required.");
+  }
+  const payload = await invoke<unknown>("connection_indexes", {
+    connectionId: id,
+    schema: schema.trim(),
+    table: table.trim(),
+  });
+  if (!isConnectionIndexesResult(payload)) {
+    throw new Error("Invalid connection indexes payload from desktop bridge.");
+  }
+  return payload;
+}
+
+export async function bridgeListForeignKeys(
+  connectionId: string,
+  schema: string,
+  table: string,
+): Promise<ConnectionForeignKeysResult> {
+  if (!isTauri()) {
+    throw new Error("Database metadata is available in the desktop app only.");
+  }
+  const id = connectionId.trim();
+  if (!id) {
+    throw new Error("connectionId is required.");
+  }
+  const payload = await invoke<unknown>("connection_foreign_keys", {
+    connectionId: id,
+    schema: schema.trim(),
+    table: table.trim(),
+  });
+  if (!isConnectionForeignKeysResult(payload)) {
+    throw new Error("Invalid connection foreign keys payload from desktop bridge.");
+  }
+  return payload;
+}
+
+export async function bridgeListConstraints(
+  connectionId: string,
+  schema: string,
+  table: string,
+): Promise<ConnectionConstraintsResult> {
+  if (!isTauri()) {
+    throw new Error("Database metadata is available in the desktop app only.");
+  }
+  const id = connectionId.trim();
+  if (!id) {
+    throw new Error("connectionId is required.");
+  }
+  const payload = await invoke<unknown>("connection_constraints", {
+    connectionId: id,
+    schema: schema.trim(),
+    table: table.trim(),
+  });
+  if (!isConnectionConstraintsResult(payload)) {
+    throw new Error("Invalid connection constraints payload from desktop bridge.");
+  }
+  return payload;
+}
+
+export async function bridgeListTriggers(
+  connectionId: string,
+  schema: string,
+  table: string,
+): Promise<ConnectionTriggersResult> {
+  if (!isTauri()) {
+    throw new Error("Database metadata is available in the desktop app only.");
+  }
+  const id = connectionId.trim();
+  if (!id) {
+    throw new Error("connectionId is required.");
+  }
+  const payload = await invoke<unknown>("connection_triggers", {
+    connectionId: id,
+    schema: schema.trim(),
+    table: table.trim(),
+  });
+  if (!isConnectionTriggersResult(payload)) {
+    throw new Error("Invalid connection triggers payload from desktop bridge.");
   }
   return payload;
 }

@@ -22,6 +22,11 @@ const METADATA_GROUP_KEYS: Record<
   packages: { titleKey: "app.groups.packages", icon: "package" },
   procedures: { titleKey: "app.groups.procedures", icon: "symbol-method" },
   functions: { titleKey: "app.groups.functions", icon: "symbol-function" },
+  indexes: { titleKey: "app.groups.indexes", icon: "symbol-key" },
+  sequences: { titleKey: "app.groups.sequences", icon: "symbol-numeric" },
+  synonyms: { titleKey: "app.groups.synonyms", icon: "references" },
+  triggers: { titleKey: "app.groups.triggers", icon: "zap" },
+  types: { titleKey: "app.groups.types", icon: "symbol-structure" },
 };
 
 /** Controls the order groups render in the Explorer, independent of jdbc-agent response order. */
@@ -31,6 +36,11 @@ export const METADATA_GROUP_ORDER: MetadataGroupId[] = [
   "packages",
   "procedures",
   "functions",
+  "indexes",
+  "sequences",
+  "synonyms",
+  "triggers",
+  "types",
 ];
 
 export function getMetadataGroupDefinition(
