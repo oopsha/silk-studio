@@ -429,6 +429,11 @@ function ConnectionEditor() {
                 />
               </label>
             </div>
+            {form.ssmTunnel.enabled ? (
+              <span className="connection-editor__hint">
+                {t("app.connection.ssmHostHint")}
+              </span>
+            ) : null}
             {form.driverId === "oracle" ? (
               <>
                 <label className="connection-editor__field">

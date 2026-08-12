@@ -6,19 +6,29 @@ use crate::ssm_api::StartSessionResult;
 use serde_json::json;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// How long to wait for the plugin to actually start accepting local connections before
-/// giving up. The plugin has to open a WebSocket to AWS and complete the SSM handshake first,
-/// so this is not instantaneous — but a JDBC connect attempt that races ahead of it fails with
-/// a confusing "no listener" error instead of a clear tunnel-startup error.
+/// How long to wait for the plugin to signal it's ready before giving up. The plugin has to
+/// open a WebSocket to AWS and complete the SSM handshake first, so this is not instantaneous
+/// — but a JDBC connect attempt that races ahead of it fails with a confusing "no listener" (or
+/// worse, a connect-then-immediately-EOF) error instead of a clear tunnel-startup error.
 const READY_TIMEOUT: Duration = Duration::from_secs(15);
-const POLL_INTERVAL: Duration = Duration::from_millis(250);
+const POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Substring of the line `session-manager-plugin` prints to stdout once its local listener is
+/// bound and it's ready to accept connections (confirmed in the plugin's own source, the
+/// `AWS-StartPortForwardingSession*` session handlers). Deliberately NOT a TCP probe-connect —
+/// `AWS-StartPortForwardingSessionToRemoteHost` sessions only reliably support one forwarded
+/// connection at a time, and probing by opening-then-dropping a raw TCP connection was
+/// interfering with the real connection made right after (surfaced as Oracle's ORA-17800 /
+/// "got -1 from a read call", i.e. the real connection being torn down almost immediately).
+const READY_MARKER: &str = "Waiting for connections";
 
 struct TunnelHandle {
     child: Child,
@@ -86,12 +96,17 @@ impl TunnelManager {
             .map_err(|e| format!("Failed to spawn session-manager-plugin: {e}"))?;
 
         // Drain stdout/stderr on background threads (the plugin can block writing to a full
-        // pipe otherwise) and keep stderr's tail around for diagnostics if readiness fails.
+        // pipe otherwise). stdout is watched for the readiness marker; stderr's tail is kept
+        // around purely for diagnostics if readiness fails or times out.
+        let ready = Arc::new(AtomicBool::new(false));
         let stderr_tail = Arc::new(Mutex::new(String::new()));
         if let Some(stdout) = child.stdout.take() {
+            let ready = Arc::clone(&ready);
             thread::spawn(move || {
                 for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                    let _ = line;
+                    if line.contains(READY_MARKER) {
+                        ready.store(true, Ordering::SeqCst);
+                    }
                 }
             });
         }
@@ -107,7 +122,7 @@ impl TunnelManager {
             });
         }
 
-        if let Err(error) = wait_until_ready(&mut child, local_port, &stderr_tail) {
+        if let Err(error) = wait_until_ready(&mut child, &ready, &stderr_tail) {
             let _ = child.kill();
             let _ = child.wait();
             return Err(error);
@@ -138,22 +153,18 @@ impl TunnelManager {
     }
 }
 
-/// Polls `127.0.0.1:{local_port}` until it accepts a connection, the child process exits, or
-/// `READY_TIMEOUT` elapses. Not a general health check — just "has the plugin bound the port
-/// yet" — so a successful connect here is closed immediately without sending anything.
+/// Polls `ready` (set by the stdout-watching thread once the plugin prints [`READY_MARKER`])
+/// until it flips true, the child process exits, or `READY_TIMEOUT` elapses.
 fn wait_until_ready(
     child: &mut Child,
-    local_port: u16,
+    ready: &Arc<AtomicBool>,
     stderr_tail: &Arc<Mutex<String>>,
 ) -> Result<(), String> {
-    let addr = format!("127.0.0.1:{local_port}");
     let deadline = Instant::now() + READY_TIMEOUT;
 
     loop {
-        if let Ok(parsed) = addr.parse() {
-            if TcpStream::connect_timeout(&parsed, Duration::from_millis(300)).is_ok() {
-                return Ok(());
-            }
+        if ready.load(Ordering::SeqCst) {
+            return Ok(());
         }
 
         if let Ok(Some(status)) = child.try_wait() {
@@ -167,7 +178,7 @@ fn wait_until_ready(
         if Instant::now() >= deadline {
             let tail = stderr_tail.lock().map(|g| g.clone()).unwrap_or_default();
             return Err(format!(
-                "Timed out waiting for the SSM tunnel to open on 127.0.0.1:{local_port} after {}s.{}",
+                "Timed out waiting for the SSM tunnel to become ready after {}s.{}",
                 READY_TIMEOUT.as_secs(),
                 stderr_suffix(&tail),
             ));
@@ -261,18 +272,20 @@ mod tests {
     }
 
     #[test]
-    fn wait_until_ready_returns_ok_once_port_is_listening() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        thread::spawn(move || {
-            for stream in listener.incoming() {
-                let _ = stream;
-            }
-        });
-
+    fn wait_until_ready_returns_ok_once_marker_flag_is_set() {
+        // Mirrors what the stdout-watching thread in `open()` does — set the flag directly
+        // rather than spawning a process that prints the marker, to keep this test fast and
+        // not depend on shell-quoting the exact marker string across platforms.
         let mut child = spawn_long_lived_process();
+        let ready = Arc::new(AtomicBool::new(false));
+        let ready_setter = Arc::clone(&ready);
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(50));
+            ready_setter.store(true, Ordering::SeqCst);
+        });
         let tail = Arc::new(Mutex::new(String::new()));
-        let result = wait_until_ready(&mut child, port, &tail);
+
+        let result = wait_until_ready(&mut child, &ready, &tail);
         let _ = child.kill();
         let _ = child.wait();
 
@@ -280,13 +293,13 @@ mod tests {
     }
 
     #[test]
-    fn wait_until_ready_errors_when_child_exits_before_port_opens() {
-        let port = TunnelManager::pick_free_local_port().unwrap(); // nothing ever listens here
+    fn wait_until_ready_errors_when_child_exits_before_marker_is_seen() {
         let mut child = spawn_short_lived_process();
         let _ = child.wait(); // ensure it has actually exited before polling
+        let ready = Arc::new(AtomicBool::new(false)); // never set
         let tail = Arc::new(Mutex::new(String::from("some diagnostic output")));
 
-        let result = wait_until_ready(&mut child, port, &tail);
+        let result = wait_until_ready(&mut child, &ready, &tail);
 
         assert!(result.is_err());
         let message = result.unwrap_err();
