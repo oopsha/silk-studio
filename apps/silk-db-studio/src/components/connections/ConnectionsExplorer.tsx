@@ -68,6 +68,16 @@ function objectIcon(kind: MetadataObjectKind): string {
       return "symbol-function";
     case "package":
       return "package";
+    case "index":
+      return "symbol-key";
+    case "sequence":
+      return "symbol-numeric";
+    case "synonym":
+      return "references";
+    case "trigger":
+      return "zap";
+    case "type":
+      return "symbol-structure";
     default:
       return "table";
   }
@@ -206,6 +216,7 @@ function ProfileTree({
 
   async function handleObjectAction(ref: ExplorerObjectRef) {
     const action = defaultObjectAction(ref.object.kind, profile.driverId);
+    if (!action) return;
     const commandId =
       action === "openObjectEditor"
         ? EXPLORER_COMMANDS.openObjectEditor
@@ -403,9 +414,17 @@ function ProfileTree({
           className="connections-explorer__twistie"
           aria-label={profileExpanded ? t("common.collapse") : t("common.expand")}
           onClick={() => {
+            if (!isConnected) {
+              void run(async () => {
+                await ConnectionService.connect(profile.id);
+                setExpandedValue(`profile:${profile.id}`, true);
+                await ConnectionTreeService.loadSchemas(profile.id);
+              });
+              return;
+            }
             const next = !profileExpanded;
             setExpandedValue(`profile:${profile.id}`, next);
-            if (next && isConnected && tree.status === "idle") {
+            if (next && tree.status === "idle") {
               void run(() => ConnectionTreeService.loadSchemas(profile.id));
             }
           }}
