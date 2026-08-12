@@ -23,7 +23,25 @@ import {
   getConnectionDriver,
 } from "../../services/connection/connectionTypes";
 import { showSystemObjectsHint } from "../../services/connection/systemNamespaces";
+import type {
+  OracleConnectType,
+  StructuredConnectionFields,
+} from "../../services/connection/connectionUrlBuilder";
+import {
+  DEFAULT_PORT_BY_DRIVER,
+  buildJdbcUrl,
+  parseJdbcUrl,
+} from "../../services/connection/connectionUrlBuilder";
 import "./ConnectionEditor.css";
+
+type HostPortState = { host: string; port: string };
+type OracleFieldsState = { database: string; oracleConnectType: OracleConnectType };
+
+const EMPTY_HOST_PORT: HostPortState = { host: "", port: "" };
+const EMPTY_ORACLE_FIELDS: OracleFieldsState = {
+  database: "",
+  oracleConnectType: "service",
+};
 
 const EMPTY_FORM: ConnectionProfileInput = {
   name: "",
@@ -52,7 +70,57 @@ function ConnectionEditor() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [rawMode, setRawMode] = useState(false);
+  const [rawModeHint, setRawModeHint] = useState<string | null>(null);
+  const [hostPort, setHostPort] = useState<HostPortState>(EMPTY_HOST_PORT);
+  const [oracleFields, setOracleFields] = useState<OracleFieldsState>(EMPTY_ORACLE_FIELDS);
   const driver = getConnectionDriver(form.driverId);
+
+  /**
+   * Parses `url` for `driverId` and syncs host/port/Oracle-database state from it.
+   * On success, seeds `catalogSeed` (non-Oracle "database") into the given setter and
+   * enters structured mode; on failure, clears structured state and forces Raw mode —
+   * an existing URL that can't be losslessly represented must never be silently rebuilt.
+   */
+  function syncStructuredFromUrl(
+    driverId: ConnectionDriverId,
+    url: string,
+    onCatalogSeed?: (database: string) => void,
+  ): StructuredConnectionFields | null {
+    const parsed = parseJdbcUrl(driverId, url);
+    if (parsed) {
+      setHostPort({ host: parsed.host, port: parsed.port });
+      setOracleFields({
+        database: parsed.database,
+        oracleConnectType: parsed.oracleConnectType,
+      });
+      setRawMode(false);
+      setRawModeHint(null);
+      if (driverId !== "oracle") {
+        onCatalogSeed?.(parsed.database);
+      }
+      return parsed;
+    }
+    setHostPort(EMPTY_HOST_PORT);
+    setOracleFields(EMPTY_ORACLE_FIELDS);
+    setRawMode(true);
+    setRawModeHint(null);
+    return null;
+  }
+
+  function buildUrlFromCurrentFields(
+    driverId: ConnectionDriverId,
+    nextHostPort: HostPortState,
+    nextCatalog: string,
+    nextOracleFields: OracleFieldsState,
+  ): string {
+    return buildJdbcUrl(driverId, {
+      host: nextHostPort.host,
+      port: nextHostPort.port,
+      database: driverId === "oracle" ? nextOracleFields.database : nextCatalog,
+      oracleConnectType: nextOracleFields.oracleConnectType,
+    });
+  }
 
   const schemaOptions = useMemo(() => {
     const names = getExplorerSchemas(tree).map((schema) => schema.name);
@@ -73,6 +141,7 @@ function ConnectionEditor() {
       setError(null);
       if (id === "new") {
         setForm(EMPTY_FORM);
+        syncStructuredFromUrl(EMPTY_FORM.driverId, EMPTY_FORM.url);
         return;
       }
 
@@ -80,6 +149,7 @@ function ConnectionEditor() {
       if (!profile) {
         setError(I18nService.t("app.connection.notFound"));
         setForm(EMPTY_FORM);
+        syncStructuredFromUrl(EMPTY_FORM.driverId, EMPTY_FORM.url);
         return;
       }
 
@@ -93,6 +163,7 @@ function ConnectionEditor() {
         defaultSchema: profile.defaultSchema,
         showSystemObjects: profile.showSystemObjects,
       });
+      syncStructuredFromUrl(profile.driverId, profile.url);
       const password = await ConnectionService.getPassword(id);
       if (!cancelled) {
         setForm((current) => ({ ...current, password }));
@@ -191,23 +262,37 @@ function ConnectionEditor() {
             value={form.driverId}
             onChange={(event) => {
               const nextDriverId = event.target.value as ConnectionDriverId;
-              setForm((current) => {
-                const previousDefault = getConnectionDriver(
-                  current.driverId,
-                ).defaultUrl;
-                const nextDefault = getConnectionDriver(nextDriverId).defaultUrl;
-                const urlIsUnset =
-                  current.url.trim() === "" ||
-                  current.url.trim() === previousDefault;
-                return {
-                  ...current,
-                  driverId: nextDriverId,
-                  url: urlIsUnset ? nextDefault : current.url,
-                  catalog: getConnectionDriver(nextDriverId).supportsCatalog
-                    ? current.catalog
-                    : "",
-                };
-              });
+              const previousDefault = getConnectionDriver(form.driverId).defaultUrl;
+              const nextDefault = getConnectionDriver(nextDriverId).defaultUrl;
+              const urlIsUnset =
+                form.url.trim() === "" || form.url.trim() === previousDefault;
+              const nextUrl = urlIsUnset ? nextDefault : form.url;
+
+              const parsed = parseJdbcUrl(nextDriverId, nextUrl);
+              const nextCatalog = getConnectionDriver(nextDriverId).supportsCatalog
+                ? (parsed && nextDriverId !== "oracle" ? parsed.database : form.catalog)
+                : "";
+
+              if (parsed) {
+                setHostPort({ host: parsed.host, port: parsed.port });
+                setOracleFields({
+                  database: parsed.database,
+                  oracleConnectType: parsed.oracleConnectType,
+                });
+                setRawMode(false);
+              } else {
+                setHostPort(EMPTY_HOST_PORT);
+                setOracleFields(EMPTY_ORACLE_FIELDS);
+                setRawMode(true);
+              }
+              setRawModeHint(null);
+
+              setForm((current) => ({
+                ...current,
+                driverId: nextDriverId,
+                url: nextUrl,
+                catalog: nextCatalog,
+              }));
             }}
           >
             {CONNECTION_DRIVERS.map((option) => (
@@ -217,16 +302,205 @@ function ConnectionEditor() {
             ))}
           </select>
         </label>
-        <label className="connection-editor__field">
-          <span>{t("app.connection.jdbcUrl")}</span>
-          <input
-            className="connection-editor__input"
-            value={form.url}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, url: event.target.value }))
-            }
-          />
+        <label className="connection-editor__field connection-editor__field--checkbox">
+          <span className="connection-editor__checkbox-row">
+            <input
+              type="checkbox"
+              checked={rawMode}
+              onChange={(event) => {
+                if (event.target.checked) {
+                  setRawMode(true);
+                  setRawModeHint(null);
+                  return;
+                }
+                const parsed = parseJdbcUrl(form.driverId, form.url);
+                if (!parsed) {
+                  setRawModeHint(t("app.connection.rawUrlCannotSimplify"));
+                  return;
+                }
+                setHostPort({ host: parsed.host, port: parsed.port });
+                setOracleFields({
+                  database: parsed.database,
+                  oracleConnectType: parsed.oracleConnectType,
+                });
+                setRawMode(false);
+                setRawModeHint(null);
+                if (form.driverId !== "oracle") {
+                  setForm((current) => ({ ...current, catalog: parsed.database }));
+                }
+              }}
+            />
+            <span>{t("app.connection.rawUrlToggle")}</span>
+          </span>
+          {rawModeHint ? (
+            <span className="connection-editor__hint">{rawModeHint}</span>
+          ) : null}
         </label>
+        {rawMode ? (
+          <label className="connection-editor__field">
+            <span>{t("app.connection.jdbcUrl")}</span>
+            <input
+              className="connection-editor__input"
+              value={form.url}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, url: event.target.value }))
+              }
+            />
+          </label>
+        ) : (
+          <>
+            <div className="connection-editor__host-row">
+              <label className="connection-editor__field connection-editor__field--host">
+                <span>{t("app.connection.host")}</span>
+                <input
+                  className="connection-editor__input"
+                  value={hostPort.host}
+                  onChange={(event) => {
+                    const nextHostPort = { ...hostPort, host: event.target.value };
+                    setHostPort(nextHostPort);
+                    setForm((current) => ({
+                      ...current,
+                      url: buildUrlFromCurrentFields(
+                        current.driverId,
+                        nextHostPort,
+                        current.catalog,
+                        oracleFields,
+                      ),
+                    }));
+                  }}
+                />
+              </label>
+              <label className="connection-editor__field connection-editor__field--port">
+                <span>{t("app.connection.port")}</span>
+                <input
+                  className="connection-editor__input"
+                  value={hostPort.port}
+                  placeholder={String(DEFAULT_PORT_BY_DRIVER[form.driverId])}
+                  onChange={(event) => {
+                    const nextHostPort = { ...hostPort, port: event.target.value };
+                    setHostPort(nextHostPort);
+                    setForm((current) => ({
+                      ...current,
+                      url: buildUrlFromCurrentFields(
+                        current.driverId,
+                        nextHostPort,
+                        current.catalog,
+                        oracleFields,
+                      ),
+                    }));
+                  }}
+                />
+              </label>
+            </div>
+            {form.driverId === "oracle" ? (
+              <>
+                <label className="connection-editor__field">
+                  <span>{driver.catalogLabel}</span>
+                  <input
+                    className="connection-editor__input"
+                    value={oracleFields.database}
+                    onChange={(event) => {
+                      const nextOracleFields = {
+                        ...oracleFields,
+                        database: event.target.value,
+                      };
+                      setOracleFields(nextOracleFields);
+                      setForm((current) => ({
+                        ...current,
+                        url: buildUrlFromCurrentFields(
+                          current.driverId,
+                          hostPort,
+                          current.catalog,
+                          nextOracleFields,
+                        ),
+                      }));
+                    }}
+                    spellCheck={false}
+                  />
+                </label>
+                <label className="connection-editor__field">
+                  <span>{t("app.connection.oracleConnectType")}</span>
+                  <span className="connection-editor__checkbox-row">
+                    <label>
+                      <input
+                        type="radio"
+                        name="oracleConnectType"
+                        checked={oracleFields.oracleConnectType === "service"}
+                        onChange={() => {
+                          const nextOracleFields = {
+                            ...oracleFields,
+                            oracleConnectType: "service" as const,
+                          };
+                          setOracleFields(nextOracleFields);
+                          setForm((current) => ({
+                            ...current,
+                            url: buildUrlFromCurrentFields(
+                              current.driverId,
+                              hostPort,
+                              current.catalog,
+                              nextOracleFields,
+                            ),
+                          }));
+                        }}
+                      />{" "}
+                      {t("app.connection.oracleServiceName")}
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name="oracleConnectType"
+                        checked={oracleFields.oracleConnectType === "sid"}
+                        onChange={() => {
+                          const nextOracleFields = {
+                            ...oracleFields,
+                            oracleConnectType: "sid" as const,
+                          };
+                          setOracleFields(nextOracleFields);
+                          setForm((current) => ({
+                            ...current,
+                            url: buildUrlFromCurrentFields(
+                              current.driverId,
+                              hostPort,
+                              current.catalog,
+                              nextOracleFields,
+                            ),
+                          }));
+                        }}
+                      />{" "}
+                      {t("app.connection.oracleSid")}
+                    </label>
+                  </span>
+                </label>
+              </>
+            ) : driver.supportsCatalog ? (
+              <label className="connection-editor__field">
+                <span>{driver.catalogLabel}</span>
+                <input
+                  className="connection-editor__input"
+                  value={form.catalog}
+                  onChange={(event) => {
+                    const nextCatalog = event.target.value;
+                    setForm((current) => ({
+                      ...current,
+                      catalog: nextCatalog,
+                      url: buildUrlFromCurrentFields(
+                        current.driverId,
+                        hostPort,
+                        nextCatalog,
+                        oracleFields,
+                      ),
+                    }));
+                  }}
+                  placeholder={t("app.connection.catalogPlaceholder")}
+                  spellCheck={false}
+                />
+                {driver.catalogHint ? (
+                  <span className="connection-editor__hint">{driver.catalogHint}</span>
+                ) : null}
+              </label>
+            ) : null}
+          </>
+        )}
         <label className="connection-editor__field">
           <span>{t("app.connection.user")}</span>
           <input
@@ -252,26 +526,6 @@ function ConnectionEditor() {
             }
           />
         </label>
-        {driver.supportsCatalog ? (
-          <label className="connection-editor__field">
-            <span>{driver.catalogLabel}</span>
-            <input
-              className="connection-editor__input"
-              value={form.catalog}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  catalog: event.target.value,
-                }))
-              }
-              placeholder={t("app.connection.catalogPlaceholder")}
-              spellCheck={false}
-            />
-            {driver.catalogHint ? (
-              <span className="connection-editor__hint">{driver.catalogHint}</span>
-            ) : null}
-          </label>
-        ) : null}
         {driver.showSchemaField ? (
           <label className="connection-editor__field">
             <span>{driver.schemaLabel}</span>
