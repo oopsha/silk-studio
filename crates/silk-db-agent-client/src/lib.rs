@@ -224,6 +224,106 @@ impl JdbcAgentClient {
         )
     }
 
+    pub fn list_indexes(
+        &self,
+        connection_id: &str,
+        schema: &str,
+        table: &str,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let schema = schema.trim();
+        let table = table.trim();
+        if schema.is_empty() {
+            return Err("schema is required.".into());
+        }
+        if table.is_empty() {
+            return Err("table is required.".into());
+        }
+        self.send_request(
+            "connection.indexes",
+            json!({
+                "connectionId": connection_id.trim(),
+                "schema": schema,
+                "table": table
+            }),
+        )
+    }
+
+    pub fn list_foreign_keys(
+        &self,
+        connection_id: &str,
+        schema: &str,
+        table: &str,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let schema = schema.trim();
+        let table = table.trim();
+        if schema.is_empty() {
+            return Err("schema is required.".into());
+        }
+        if table.is_empty() {
+            return Err("table is required.".into());
+        }
+        self.send_request(
+            "connection.foreignKeys",
+            json!({
+                "connectionId": connection_id.trim(),
+                "schema": schema,
+                "table": table
+            }),
+        )
+    }
+
+    pub fn list_constraints(
+        &self,
+        connection_id: &str,
+        schema: &str,
+        table: &str,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let schema = schema.trim();
+        let table = table.trim();
+        if schema.is_empty() {
+            return Err("schema is required.".into());
+        }
+        if table.is_empty() {
+            return Err("table is required.".into());
+        }
+        self.send_request(
+            "connection.constraints",
+            json!({
+                "connectionId": connection_id.trim(),
+                "schema": schema,
+                "table": table
+            }),
+        )
+    }
+
+    pub fn list_triggers(
+        &self,
+        connection_id: &str,
+        schema: &str,
+        table: &str,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let schema = schema.trim();
+        let table = table.trim();
+        if schema.is_empty() {
+            return Err("schema is required.".into());
+        }
+        if table.is_empty() {
+            return Err("table is required.".into());
+        }
+        self.send_request(
+            "connection.triggers",
+            json!({
+                "connectionId": connection_id.trim(),
+                "schema": schema,
+                "table": table
+            }),
+        )
+    }
+
     pub fn fetch_object_ddl(
         &self,
         connection_id: &str,
@@ -321,6 +421,39 @@ impl JdbcAgentClient {
             params["packageBody"] = json!(package_body);
         }
         self.send_request("connection.dependencies", params)
+    }
+
+    pub fn list_object_dependents(
+        &self,
+        connection_id: &str,
+        schema: &str,
+        name: &str,
+        kind: &str,
+        package_body: Option<bool>,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let schema = schema.trim();
+        let name = name.trim();
+        let kind = kind.trim();
+        if schema.is_empty() {
+            return Err("schema is required.".into());
+        }
+        if name.is_empty() {
+            return Err("object name is required.".into());
+        }
+        if kind.is_empty() {
+            return Err("object kind is required.".into());
+        }
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "schema": schema,
+            "name": name,
+            "kind": kind
+        });
+        if let Some(package_body) = package_body {
+            params["packageBody"] = json!(package_body);
+        }
+        self.send_request("connection.dependents", params)
     }
 
     pub fn execute_query(
