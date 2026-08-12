@@ -134,6 +134,21 @@
   min-width: 0;
 }
 
+.connection-editor__host-row {
+  display: flex;
+  gap: 8px;
+}
+
+.connection-editor__host-row .connection-editor__field--host {
+  flex: 2;
+  min-width: 0;
+}
+
+.connection-editor__host-row .connection-editor__field--port {
+  flex: 1;
+  min-width: 0;
+}
+
 .connection-editor__hint {
   color: var(--color-description);
   font-size: 11px;
