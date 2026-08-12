@@ -39,7 +39,8 @@
     ],
     "resources": [
       "resources/jdbc-agent",
-      "resources/jre"
+      "resources/jre",
+      "resources/ssm-plugin"
     ]
   },
   "plugins": {

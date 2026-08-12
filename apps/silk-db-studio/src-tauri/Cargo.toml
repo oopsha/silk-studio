@@ -31,3 +31,4 @@ keyring = { version = "3.6", default-features = false, features = ["apple-native
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 url = "2"
 silk-db-agent-client = { path = "../../../crates/silk-db-agent-client" }
+ssm-tunnel-client = { path = "../../../crates/ssm-tunnel-client" }

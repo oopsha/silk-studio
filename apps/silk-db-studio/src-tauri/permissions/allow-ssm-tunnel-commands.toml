@@ -1,0 +1,12 @@
+[[permission]]
+identifier = "allow-ssm-tunnel-commands"
+description = "Allows AWS SSO login and SSM Session Manager tunnel lifecycle management."
+commands.allow = [
+  "ssm_sso_start_login",
+  "ssm_sso_poll_login",
+  "ssm_sso_is_signed_in",
+  "ssm_list_instances",
+  "ssm_tunnel_open",
+  "ssm_tunnel_close",
+  "ssm_tunnel_status",
+]

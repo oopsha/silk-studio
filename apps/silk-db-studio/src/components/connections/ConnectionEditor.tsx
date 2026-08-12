@@ -32,6 +32,15 @@ import {
   buildJdbcUrl,
   parseJdbcUrl,
 } from "../../services/connection/connectionUrlBuilder";
+import {
+  EMPTY_SSM_TUNNEL_CONFIG,
+  tunnelSessionKey,
+  type SsmTunnelConfig,
+  type TunnelProgressPhase,
+} from "../../services/connection/ssmTunnelTypes";
+import { listSsmInstances } from "../../services/connection/ssmTunnelService";
+import type { SsmInstanceSummary } from "../../services/connection/ssmTunnelBridge";
+import { AWS_REGIONS } from "../../services/connection/awsRegions";
 import "./ConnectionEditor.css";
 
 type HostPortState = { host: string; port: string };
@@ -52,6 +61,7 @@ const EMPTY_FORM: ConnectionProfileInput = {
   catalog: "",
   defaultSchema: "",
   showSystemObjects: false,
+  ssmTunnel: EMPTY_SSM_TUNNEL_CONFIG,
 };
 
 function ConnectionEditor() {
@@ -74,7 +84,33 @@ function ConnectionEditor() {
   const [rawModeHint, setRawModeHint] = useState<string | null>(null);
   const [hostPort, setHostPort] = useState<HostPortState>(EMPTY_HOST_PORT);
   const [oracleFields, setOracleFields] = useState<OracleFieldsState>(EMPTY_ORACLE_FIELDS);
+  const [ssmInstances, setSsmInstances] = useState<SsmInstanceSummary[]>([]);
   const driver = getConnectionDriver(form.driverId);
+
+  function tunnelProgressMessage(progress: TunnelProgressPhase): string {
+    switch (progress.phase) {
+      case "openingBrowser":
+        return t("app.connection.ssmProgressOpeningBrowser");
+      case "waitingForSignIn":
+        return t("app.connection.ssmProgressWaitingForSignIn").replace(
+          "{code}",
+          progress.userCode,
+        );
+      case "loadingInstances":
+        return t("app.connection.ssmProgressLoadingInstances");
+      case "startingTunnel":
+        return t("app.connection.ssmProgressStartingTunnel");
+      case "connectingDatabase":
+        return t("app.connection.ssmProgressConnectingDatabase");
+    }
+  }
+
+  function updateSsmTunnel(patch: Partial<SsmTunnelConfig>) {
+    setForm((current) => ({
+      ...current,
+      ssmTunnel: { ...current.ssmTunnel, ...patch },
+    }));
+  }
 
   /**
    * Parses `url` for `driverId` and syncs host/port/Oracle-database state from it.
@@ -162,6 +198,7 @@ function ConnectionEditor() {
         catalog: profile.catalog,
         defaultSchema: profile.defaultSchema,
         showSystemObjects: profile.showSystemObjects,
+        ssmTunnel: profile.ssmTunnel ?? EMPTY_SSM_TUNNEL_CONFIG,
       });
       syncStructuredFromUrl(profile.driverId, profile.url);
       const password = await ConnectionService.getPassword(id);
@@ -597,6 +634,103 @@ function ConnectionEditor() {
             {showSystemObjectsHint(form.driverId)}
           </span>
         </label>
+        <label className="connection-editor__field connection-editor__field--checkbox">
+          <span className="connection-editor__checkbox-row">
+            <input
+              type="checkbox"
+              checked={form.ssmTunnel.enabled}
+              onChange={(event) => updateSsmTunnel({ enabled: event.target.checked })}
+            />
+            <span>{t("app.connection.ssmTunnelToggle")}</span>
+          </span>
+          <span className="connection-editor__hint">{t("app.connection.ssmTunnelHint")}</span>
+        </label>
+        {form.ssmTunnel.enabled ? (
+          <>
+            <label className="connection-editor__field">
+              <span>{t("app.connection.ssmRegion")}</span>
+              <input
+                className="connection-editor__input"
+                list="connection-editor-aws-regions"
+                value={form.ssmTunnel.region}
+                onChange={(event) => updateSsmTunnel({ region: event.target.value })}
+                spellCheck={false}
+              />
+              <datalist id="connection-editor-aws-regions">
+                {AWS_REGIONS.map((region) => (
+                  <option key={region} value={region} />
+                ))}
+              </datalist>
+            </label>
+            <label className="connection-editor__field">
+              <span>{t("app.connection.ssmSsoStartUrl")}</span>
+              <input
+                className="connection-editor__input"
+                value={form.ssmTunnel.ssoStartUrl}
+                onChange={(event) => updateSsmTunnel({ ssoStartUrl: event.target.value })}
+                placeholder={t("app.connection.ssmSsoStartUrlPlaceholder")}
+                spellCheck={false}
+              />
+            </label>
+            <label className="connection-editor__field">
+              <span>{t("app.connection.ssmTargetInstance")}</span>
+              <div className="connection-editor__schema-row">
+                <input
+                  className="connection-editor__input"
+                  list="connection-editor-ssm-instances"
+                  value={form.ssmTunnel.targetInstanceId}
+                  onChange={(event) =>
+                    updateSsmTunnel({ targetInstanceId: event.target.value })
+                  }
+                  placeholder={t("app.connection.ssmTargetInstancePlaceholder")}
+                  spellCheck={false}
+                />
+                <datalist id="connection-editor-ssm-instances">
+                  {ssmInstances.map((instance) => (
+                    <option key={instance.instanceId} value={instance.instanceId}>
+                      {[instance.name, instance.pingStatus]
+                        .filter((part) => part)
+                        .join(" — ")}
+                    </option>
+                  ))}
+                </datalist>
+                <button
+                  type="button"
+                  className="connection-editor__button"
+                  disabled={
+                    busy ||
+                    !form.ssmTunnel.region.trim() ||
+                    !form.ssmTunnel.ssoStartUrl.trim()
+                  }
+                  title={t("app.connection.ssmLoadInstancesTitle")}
+                  onClick={() =>
+                    void run(async () => {
+                      const key = tunnelSessionKey(
+                        profileId !== "new" ? profileId : undefined,
+                        form.ssmTunnel,
+                      );
+                      const result = await listSsmInstances(
+                        key,
+                        form.ssmTunnel.region,
+                        form.ssmTunnel.ssoStartUrl,
+                        (progress) => setMessage(tunnelProgressMessage(progress)),
+                      );
+                      setSsmInstances(result);
+                      setMessage(
+                        t("app.connection.ssmInstancesLoaded").replace(
+                          "{n}",
+                          String(result.length),
+                        ),
+                      );
+                    })
+                  }
+                >
+                  {t("app.connection.ssmLoadInstances")}
+                </button>
+              </div>
+            </label>
+          </>
+        ) : null}
         <div className="connection-editor__actions">
           <button
             type="submit"
@@ -611,7 +745,10 @@ function ConnectionEditor() {
             disabled={busy}
             onClick={() =>
               void run(async () => {
-                await ConnectionService.testCredentials(form);
+                await ConnectionService.testCredentials(form, {
+                  profileId: profileId !== "new" ? profileId : undefined,
+                  onProgress: (progress) => setMessage(tunnelProgressMessage(progress)),
+                });
                 setMessage(t("app.connection.testPassed"));
               })
             }
@@ -625,7 +762,9 @@ function ConnectionEditor() {
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  await ConnectionService.connect(profileId);
+                  await ConnectionService.connect(profileId, {
+                    onProgress: (progress) => setMessage(tunnelProgressMessage(progress)),
+                  });
                   setMessage(t("app.connection.connected"));
                 })
               }
