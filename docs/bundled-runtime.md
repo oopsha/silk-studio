@@ -1,16 +1,16 @@
-# Bundled jdbc-agent + JRE (+ session-manager-plugin, partial)
+# Bundled jdbc-agent + JRE + session-manager-plugin
 
-Silk DB Studio ships a **jdbc-agent** thin jar (+ `lib/` drivers) and an **Eclipse Temurin
-JRE 17**, so installers can connect and run SQL **without any system Java**. It can also open
-an **AWS SSM tunnel**, but — unlike the JRE — the **session-manager-plugin binary is not
-auto-staged yet**; see "session-manager-plugin: known gap" below.
+Silk DB Studio ships a **jdbc-agent** thin jar (+ `lib/` drivers), an **Eclipse Temurin
+JRE 17**, and (Windows builds) the **AWS session-manager-plugin** binary, so installers can
+connect and run SQL — including through an AWS SSM tunnel — **without any system Java, AWS
+CLI, or manually-installed SSM plugin**.
 
 ## Layout (inside the app package)
 
 | Platform | Resource root | Agent | JRE | SSM plugin |
 | --- | --- | --- | --- | --- |
-| macOS | `Silk DB Studio.app/Contents/Resources/` | `jdbc-agent/jdbc-agent-all.jar` + `lib/` | `jre/bin/java` | not staged (see gap below) |
-| Windows | next to the `.exe` | same | `jre/bin/java.exe` | not staged (see gap below) |
+| macOS | `Silk DB Studio.app/Contents/Resources/` | `jdbc-agent/jdbc-agent-all.jar` + `lib/` | `jre/bin/java` | not staged yet (V2, see below) |
+| Windows | next to the `.exe` | same | `jre/bin/java.exe` | `ssm-plugin/session-manager-plugin.exe` |
 
 At runtime Rust resolves:
 
@@ -22,22 +22,20 @@ The SSM plugin is only used by the optional AWS SSM tunnel connection feature �
 does not affect any other functionality (`ssm_plugin_bundled` surfaces its presence for
 diagnostics, same as `agent_bundled`/`java_bundled`).
 
-### session-manager-plugin: known gap
+### session-manager-plugin staging (Windows)
 
-Unlike the JRE (a plain archive containing a portable binary), AWS only distributes the
-Windows plugin as an **installer** (`SessionManagerPluginSetup.exe`, or the equivalent
-`SessionManagerPlugin.zip`) that AWS's own docs say **requires Administrator rights** to run.
-The actual binary this app needs, `session-manager-plugin.exe`, only exists on disk after that
-installer has been run — there's no plain download of it to copy the way `stageJre()` does.
+`SessionManagerPlugin.zip` looks like an installer package (it ships `install.bat` /
+`uninstall.bat`), but `install.bat` only does two things once you read it: copy
+`package.zip`'s contents into `%PROGRAMFILES%`, and register a Windows service. `package.zip`
+itself is a **plain, unprivileged zip** containing the actual portable
+`bin/session-manager-plugin.exe`. Since Silk spawns the plugin as an ad-hoc per-tunnel
+subprocess (it doesn't need or want the Windows service), `stageSsmPlugin()` in
+`scripts/prepare-runtime-resources.mjs` downloads `SessionManagerPlugin.zip`, extracts
+`package.zip` directly, and copies the binary + license notices into `resources/ssm-plugin/` —
+no installer execution, no Administrator rights, same unprivileged shape as `stageJre()`.
 
-`scripts/prepare-runtime-resources.mjs`'s `stageSsmPlugin()` currently does **nothing** but log
-a warning — it deliberately does not fake success by copying the installer and pretending it's
-the binary. Until this is resolved (running the installer silently/elevated into a
-build-controlled directory, or finding an alternative unprivileged distribution), the SSM
-tunnel feature only works when **the user has separately installed the official Session
-Manager plugin themselves** (the normal one-time step from AWS's docs) with its install
-directory on `PATH` — the dev/PATH fallback above already covers that case, packaged builds do
-not have it bundled.
+macOS/Linux staging is not implemented yet (V1 is Windows-only for the SSM tunnel feature); the
+`PATH` fallback above covers a locally-installed plugin on those platforms in dev.
 
 ## Prepare before `tauri build`
 
@@ -51,6 +49,7 @@ Options:
 
 - `--skip-jre` — stage agent only (dev convenience; **not** for release)  
 - `--force-jre` — re-download even if `resources/jre` exists  
+- `--force-ssm-plugin` — re-download even if `resources/ssm-plugin` exists  
 
 Env overrides for cross-prep (advanced):
 
@@ -78,6 +77,6 @@ cd packages/jdbc-agent && ./gradlew build
 
 - JDBC drivers — [`packages/jdbc-agent/THIRD_PARTY_NOTICES.md`](../packages/jdbc-agent/THIRD_PARTY_NOTICES.md)  
 - Temurin JRE 17 — GPLv2 with Classpath Exception ([Adoptium](https://adoptium.net/docs/faq/)); notice file written to `resources/jre/SILK_JRE_SOURCE.txt` when prepared  
-- AWS session-manager-plugin — Apache-2.0 ([github.com/aws/session-manager-plugin](https://github.com/aws/session-manager-plugin)); not auto-staged yet (see the known gap above), so no notice file is generated for it currently
+- AWS session-manager-plugin — Apache-2.0 ([github.com/aws/session-manager-plugin](https://github.com/aws/session-manager-plugin)); notice file written to `resources/ssm-plugin/SILK_SSM_PLUGIN_SOURCE.txt` when prepared (Windows builds)
 
 When redistributing installers, keep agent jars unmodified (thin jar + external `lib/`) and retain these notices.
