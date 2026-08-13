@@ -9,6 +9,14 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+/// Prevents a console window from flashing up for the spawned child on Windows —
+/// this is a GUI app with no console of its own to inherit into.
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 type PendingMap = Arc<Mutex<HashMap<u64, Sender<Result<Value, String>>>>>;
 
 struct AgentIo {
@@ -593,7 +601,8 @@ For local development, install JDK/JRE 17+ and ensure `java` is on PATH.",
             ));
         }
 
-        let mut child = Command::new(&self.java_bin)
+        let mut command = Command::new(&self.java_bin);
+        command
             .arg("-Dfile.encoding=UTF-8")
             .arg("-Dsun.jnu.encoding=UTF-8")
             .arg("-jar")
@@ -601,7 +610,10 @@ For local development, install JDK/JRE 17+ and ensure `java` is on PATH.",
             .arg("--serve")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stderr(Stdio::inherit());
+        #[cfg(target_os = "windows")]
+        command.creation_flags(CREATE_NO_WINDOW);
+        let mut child = command
             .spawn()
             .map_err(|error| {
                 format!(

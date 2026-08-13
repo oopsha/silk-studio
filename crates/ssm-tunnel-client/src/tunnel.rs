@@ -14,6 +14,14 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+/// Prevents a console window from flashing up for the spawned plugin on Windows —
+/// this is a GUI app with no console of its own to inherit into.
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 /// How long to wait for the plugin to signal it's ready before giving up. The plugin has to
 /// open a WebSocket to AWS and complete the SSM handshake first, so this is not instantaneous
 /// — but a JDBC connect attempt that races ahead of it fails with a confusing "no listener" (or
@@ -82,7 +90,8 @@ impl TunnelManager {
         // start-session` itself invokes under the hood): <plugin> <start-session-response-json>
         // <region> "StartSession" <profile:empty, credentials come from our own signed call>
         // <start-session-request-json> <ssm-endpoint>.
-        let mut child = Command::new(&self.plugin_bin)
+        let mut command = Command::new(&self.plugin_bin);
+        command
             .arg(session_json)
             .arg(region)
             .arg("StartSession")
@@ -91,7 +100,10 @@ impl TunnelManager {
             .arg(endpoint)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(target_os = "windows")]
+        command.creation_flags(CREATE_NO_WINDOW);
+        let mut child = command
             .spawn()
             .map_err(|e| format!("Failed to spawn session-manager-plugin: {e}"))?;
 
