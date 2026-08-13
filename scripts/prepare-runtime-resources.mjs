@@ -12,9 +12,9 @@
  *   SILK_JRE_OS=mac|windows|linux
  *   SILK_JRE_ARCH=x64|aarch64
  *
- * NOTE: the AWS session-manager-plugin binary used by the SSM tunnel feature is NOT staged
- * here yet — see the comment above stageSsmPlugin() below for why (AWS only distributes it
- * via an installer that requires Administrator rights, unlike the plain JRE archive).
+ * Also stages the AWS session-manager-plugin binary (Windows only for now) used by the SSM
+ * tunnel feature — see the comment above stageSsmPlugin() below for how it avoids needing an
+ * elevated installer run.
  */
 
 import { createWriteStream } from "node:fs";
@@ -55,6 +55,7 @@ const OUT_SSM_PLUGIN = join(RESOURCES, "ssm-plugin");
 const args = new Set(process.argv.slice(2));
 const skipJre = args.has("--skip-jre");
 const forceJre = args.has("--force-jre");
+const forceSsmPlugin = args.has("--force-ssm-plugin");
 
 function log(message) {
   console.log(`[prepare-runtime] ${message}`);
@@ -278,34 +279,114 @@ function ssmPluginBinExists(root) {
   );
 }
 
+/** Breadth-first search for the first file named exactly `name` under `root`. */
+function findFileNamed(root, name) {
+  const queue = [root];
+  while (queue.length > 0) {
+    const dir = queue.shift();
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isFile() && entry.name === name) return full;
+      if (entry.isDirectory()) queue.push(full);
+    }
+  }
+  return null;
+}
+
 /**
- * NOT YET IMPLEMENTED — see docs/bundled-runtime.md "session-manager-plugin: known gap".
+ * Stages the AWS session-manager-plugin binary — the small open-source (Apache-2.0) Go binary
+ * that implements the SSM WebSocket data channel for the built-in tunnel feature. Deliberately
+ * NOT the full AWS CLI (see the ssm-tunnel feature plan for why).
  *
- * Unlike the JRE (a plain archive of a portable binary), AWS's Windows
- * `SessionManagerPlugin.zip` contains an *installer* (`SessionManagerPluginSetup.exe`), and
- * AWS's own docs state that installer requires Administrator rights
- * (https://docs.aws.amazon.com/systems-manager/latest/userguide/install-plugin-windows.html).
- * The runnable plugin binary this app actually needs is `session-manager-plugin.exe`, which
- * only exists after that installer has been run — there is no plain-archive download of it.
- * Silently extracting/copying files out of the installer package would not produce a working
- * binary, so this function deliberately does nothing yet rather than stage something broken.
- *
- * Until this is solved (silently running the elevated installer into a build-controlled
- * directory, or finding an alternative unprivileged distribution of the binary), the SSM
- * tunnel feature only works when the user has separately installed the official Session
- * Manager plugin themselves (same one-time step AWS's own docs describe) and it's on `PATH` —
- * `runtime_paths.rs`'s dev/PATH fallback already covers that case.
+ * `SessionManagerPlugin.zip` looks like an installer package (it ships `install.bat` /
+ * `uninstall.bat`), but inspecting it shows `install.bat` only does two privileged things —
+ * copies `package.zip`'s contents into `%PROGRAMFILES%` and registers a Windows service — and
+ * `package.zip` itself is a **plain, unprivileged zip** containing the actual portable
+ * `bin/session-manager-plugin.exe`. We don't want the Windows-service registration anyway
+ * (Silk spawns the plugin as an ad-hoc per-tunnel subprocess), so this extracts `package.zip`
+ * directly and skips `install.bat` entirely — no installer execution, no Administrator rights.
+ * Windows-only for V1; other hosts are skipped, not failed (see docs/bundled-runtime.md).
  */
 async function stageSsmPlugin() {
-  if (ssmPluginBinExists(OUT_SSM_PLUGIN)) {
+  if (!forceSsmPlugin && ssmPluginBinExists(OUT_SSM_PLUGIN)) {
     log(`Bundled session-manager-plugin already present: ${OUT_SSM_PLUGIN}`);
     ensureTreeWritable(OUT_SSM_PLUGIN);
     return;
   }
-  log(
-    "Skipping session-manager-plugin staging — not implemented yet (needs an elevated installer run; see the comment above stageSsmPlugin in this file). " +
-      "The SSM tunnel feature will fall back to a PATH-installed copy of the plugin at runtime.",
-  );
+
+  const os = detectOs();
+  if (os !== "windows") {
+    log(
+      `Skipping session-manager-plugin staging on ${os} (Windows-only for now — see docs/bundled-runtime.md).`,
+    );
+    return;
+  }
+
+  // A stable "latest" pointer (not a versioned API like Adoptium's) — re-verify against AWS's
+  // official "Install the Session Manager plugin" docs before a release if it's been a while.
+  const url =
+    "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/windows/SessionManagerPlugin.zip";
+
+  const tmp = mkdtempSync(join(tmpdir(), "silk-ssm-plugin-"));
+  try {
+    const archivePath = join(tmp, "SessionManagerPlugin.zip");
+    await download(url, archivePath);
+
+    const outerRoot = join(tmp, "outer");
+    extractArchive(archivePath, outerRoot);
+
+    const packageZip = findFileNamed(outerRoot, "package.zip");
+    if (!packageZip) {
+      fail("Could not locate package.zip inside SessionManagerPlugin.zip (AWS may have changed the package layout — see stageSsmPlugin's comment).");
+    }
+
+    const innerRoot = join(tmp, "inner");
+    extractArchive(packageZip, innerRoot);
+
+    const exePath = findFileNamed(innerRoot, "session-manager-plugin.exe");
+    if (!exePath) {
+      fail("Could not locate bin/session-manager-plugin.exe inside package.zip.");
+    }
+
+    rmSync(OUT_SSM_PLUGIN, { recursive: true, force: true });
+    mkdirSync(OUT_SSM_PLUGIN, { recursive: true });
+    cpSync(exePath, join(OUT_SSM_PLUGIN, "session-manager-plugin.exe"));
+    for (const notice of ["LICENSE", "NOTICE", "THIRD-PARTY"]) {
+      const noticePath = findFileNamed(innerRoot, notice);
+      if (noticePath) {
+        cpSync(noticePath, join(OUT_SSM_PLUGIN, notice));
+      }
+    }
+    ensureTreeWritable(OUT_SSM_PLUGIN);
+
+    writeFileSync(
+      join(OUT_SSM_PLUGIN, "SILK_SSM_PLUGIN_SOURCE.txt"),
+      [
+        "AWS Session Manager Plugin",
+        `Fetched via: ${url}`,
+        `Host: ${os}`,
+        `Prepared: ${new Date().toISOString()}`,
+        "License: Apache-2.0 — see https://github.com/aws/session-manager-plugin",
+        "Extracted directly from the package's package.zip (bypassing install.bat's Program",
+        "Files copy + Windows service registration, which this app doesn't use or need).",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    if (!ssmPluginBinExists(OUT_SSM_PLUGIN)) {
+      fail(`session-manager-plugin staged but binary missing under ${OUT_SSM_PLUGIN}`);
+    }
+    log(`Staged session-manager-plugin → ${OUT_SSM_PLUGIN}`);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 function writeResourcesReadme() {
@@ -321,7 +402,7 @@ Populated by \`scripts/prepare-runtime-resources.mjs\` (not committed).
 | --- | --- |
 | \`jdbc-agent/\` | \`jdbc-agent-all.jar\` + \`lib/\` (+ notices) |
 | \`jre/\` | Eclipse Temurin JRE 17 for the **build host** OS/arch |
-| \`ssm-plugin/\` | AWS \`session-manager-plugin\` binary — not staged automatically yet, see \`docs/bundled-runtime.md\` |
+| \`ssm-plugin/\` | AWS \`session-manager-plugin\` binary (Windows build host only for now), see \`docs/bundled-runtime.md\` |
 
 See [\`docs/bundled-runtime.md\`](../../../../docs/bundled-runtime.md).
 `,
