@@ -7,6 +7,15 @@ const AGENT_JAR_NAME: &str = "jdbc-agent-all.jar";
 const AGENT_DIR_NAME: &str = "jdbc-agent";
 const JRE_DIR_NAME: &str = "jre";
 const SSM_PLUGIN_DIR_NAME: &str = "ssm-plugin";
+const RESOURCES_DIR_NAME: &str = "resources";
+
+/// Bundled resources declared in `tauri.conf.json` (e.g. `resources/ssm-plugin`) are staged
+/// under a `resources/` subfolder relative to the exe on Windows — `resource_dir()` there
+/// returns the exe's own directory, not that subfolder (see `tauri-utils`'s
+/// `resource_dir_from`), so callers must check both layouts.
+fn resource_search_roots(resource_dir: &Path) -> [PathBuf; 2] {
+    [resource_dir.join(RESOURCES_DIR_NAME), resource_dir.to_path_buf()]
+}
 
 #[derive(Debug, Clone)]
 pub struct RuntimePaths {
@@ -19,7 +28,14 @@ pub struct RuntimePaths {
 }
 
 pub fn resolve_runtime_paths(app: &AppHandle) -> RuntimePaths {
-    let resource_dir = app.path().resource_dir().ok();
+    // `resource_dir()` can come back `\\?\`-prefixed (extended-length/verbatim) on Windows.
+    // The bundled `java.exe` cannot open a jar through that prefix ("파일을 열려고 시도하는
+    // 중 예기치 않은 오류가 발생했습니다"), so normalize it to a plain path before use.
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|dir| dunce::simplified(&dir).to_path_buf());
     let (agent_jar, agent_bundled) = resolve_agent_jar(resource_dir.as_deref());
     let (java_bin, java_bundled) = resolve_java_bin(resource_dir.as_deref());
     let (ssm_plugin_bin, ssm_plugin_bundled) = resolve_ssm_plugin_bin(resource_dir.as_deref());
@@ -35,9 +51,11 @@ pub fn resolve_runtime_paths(app: &AppHandle) -> RuntimePaths {
 
 fn resolve_agent_jar(resource_dir: Option<&Path>) -> (PathBuf, bool) {
     if let Some(dir) = resource_dir {
-        let packaged = dir.join(AGENT_DIR_NAME).join(AGENT_JAR_NAME);
-        if packaged.is_file() {
-            return (packaged, true);
+        for root in resource_search_roots(dir) {
+            let packaged = root.join(AGENT_DIR_NAME).join(AGENT_JAR_NAME);
+            if packaged.is_file() {
+                return (packaged, true);
+            }
         }
     }
 
@@ -55,9 +73,11 @@ fn resolve_agent_jar(resource_dir: Option<&Path>) -> (PathBuf, bool) {
 
 fn resolve_java_bin(resource_dir: Option<&Path>) -> (PathBuf, bool) {
     if let Some(dir) = resource_dir {
-        let jre_root = dir.join(JRE_DIR_NAME);
-        if let Some(bin) = find_java_bin(&jre_root) {
-            return (bin, true);
+        for root in resource_search_roots(dir) {
+            let jre_root = root.join(JRE_DIR_NAME);
+            if let Some(bin) = find_java_bin(&jre_root) {
+                return (bin, true);
+            }
         }
     }
 
@@ -102,9 +122,11 @@ fn resolve_ssm_plugin_bin(resource_dir: Option<&Path>) -> (PathBuf, bool) {
     };
 
     if let Some(dir) = resource_dir {
-        let packaged = dir.join(SSM_PLUGIN_DIR_NAME).join(bin_name);
-        if packaged.is_file() {
-            return (packaged, true);
+        for root in resource_search_roots(dir) {
+            let packaged = root.join(SSM_PLUGIN_DIR_NAME).join(bin_name);
+            if packaged.is_file() {
+                return (packaged, true);
+            }
         }
     }
 
