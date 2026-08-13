@@ -1,4 +1,5 @@
 import type { SsmTunnelConfig } from "./ssmTunnelTypes";
+import type { SshTunnelConfig } from "./sshTunnelTypes";
 
 export type ConnectionDriverId =
   | "oracle"
@@ -36,6 +37,11 @@ export type ConnectionProfile = {
    * `url` itself always keeps showing the real remote endpoint, never the local tunnel port.
    */
   ssmTunnel?: SsmTunnelConfig;
+  /**
+   * Optional SSH jump-host tunnel — mutually exclusive with `ssmTunnel` on the same profile
+   * (enforced in the editor UI and defensively in `connectionService.ts`).
+   */
+  sshTunnel?: SshTunnelConfig;
   createdAt: number;
   updatedAt: number;
 };
@@ -50,6 +56,7 @@ export type ConnectionProfileInput = {
   defaultSchema: string;
   showSystemObjects: boolean;
   ssmTunnel: SsmTunnelConfig;
+  sshTunnel: SshTunnelConfig;
 };
 
 export type ConnectionStatus =

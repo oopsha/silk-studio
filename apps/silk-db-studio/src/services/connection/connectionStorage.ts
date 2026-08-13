@@ -1,6 +1,7 @@
 import type { ConnectionDriverId, ConnectionProfile } from "./connectionTypes";
 import { CONNECTION_DRIVERS } from "./connectionTypes";
 import { normalizeSsmTunnelConfig, type SsmTunnelConfig } from "./ssmTunnelTypes";
+import { normalizeSshTunnelConfig, type SshTunnelConfig } from "./sshTunnelTypes";
 
 const PROFILES_KEY = "silk-db-studio.connection.profiles";
 const ACTIVE_PROFILE_KEY = "silk-db-studio.connection.activeProfileId";
@@ -24,6 +25,7 @@ export type StoredConnectionProfile = {
   defaultSchema?: string;
   showSystemObjects?: boolean;
   ssmTunnel?: SsmTunnelConfig;
+  sshTunnel?: SshTunnelConfig;
   createdAt: number;
   updatedAt: number;
 };
@@ -53,6 +55,7 @@ export function saveConnectionProfiles(profiles: ConnectionProfile[]): void {
     defaultSchema: profile.defaultSchema,
     showSystemObjects: profile.showSystemObjects,
     ssmTunnel: profile.ssmTunnel,
+    sshTunnel: profile.sshTunnel,
     createdAt: profile.createdAt,
     updatedAt: profile.updatedAt,
   }));
@@ -132,6 +135,7 @@ function normalizeStoredProfile(value: unknown): ConnectionProfile | null {
       typeof record.defaultSchema === "string" ? record.defaultSchema : "",
     showSystemObjects: record.showSystemObjects === true,
     ssmTunnel: normalizeSsmTunnelConfig(record.ssmTunnel),
+    sshTunnel: normalizeSshTunnelConfig(record.sshTunnel),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };

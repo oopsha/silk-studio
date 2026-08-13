@@ -33,12 +33,23 @@ import {
   EMPTY_SSM_TUNNEL_CONFIG,
   isSsmTunnelConfigComplete,
   tunnelSessionKey,
+  type TunnelProgressPhase,
 } from "./ssmTunnelTypes";
 import {
   closeSsmTunnel,
   openSsmTunnelForConnect,
-  type TunnelProgress,
 } from "./ssmTunnelService";
+import {
+  EMPTY_SSH_TUNNEL_CONFIG,
+  isSshTunnelConfigComplete,
+  type SshTunnelProgressPhase,
+} from "./sshTunnelTypes";
+import { closeSshTunnel, openSshTunnelForConnect } from "./sshTunnelService";
+
+/** Accepts progress phases from either tunnel type — a connection uses at most one. */
+export type ConnectProgress = (
+  progress: TunnelProgressPhase | SshTunnelProgressPhase,
+) => void;
 
 type ConnectionListener = () => void;
 
@@ -123,6 +134,7 @@ class ConnectionServiceImpl {
       defaultSchema: resolveDefaultSchema(input),
       showSystemObjects: input.showSystemObjects === true,
       ssmTunnel: input.ssmTunnel,
+      sshTunnel: input.sshTunnel,
       createdAt: now,
       updatedAt: now,
     };
@@ -151,6 +163,7 @@ class ConnectionServiceImpl {
         defaultSchema: resolveDefaultSchema(input),
         showSystemObjects: input.showSystemObjects === true,
         ssmTunnel: input.ssmTunnel,
+        sshTunnel: input.sshTunnel,
         updatedAt: Date.now(),
       };
     });
@@ -212,6 +225,7 @@ class ConnectionServiceImpl {
       defaultSchema: source.defaultSchema,
       showSystemObjects: source.showSystemObjects,
       ssmTunnel: source.ssmTunnel ?? EMPTY_SSM_TUNNEL_CONFIG,
+      sshTunnel: source.sshTunnel ?? EMPTY_SSH_TUNNEL_CONFIG,
     });
   }
 
@@ -242,7 +256,7 @@ class ConnectionServiceImpl {
 
   async connect(
     profileId: string,
-    options: { silent?: boolean; onProgress?: TunnelProgress } = {},
+    options: { silent?: boolean; onProgress?: ConnectProgress } = {},
   ): Promise<void> {
     const profile = this.getProfile(profileId);
     if (!profile) {
@@ -258,6 +272,11 @@ class ConnectionServiceImpl {
 
     const tunnel = profile.ssmTunnel;
     const tunnelEnabled = tunnel ? isSsmTunnelConfigComplete(tunnel) : false;
+    const sshTunnel = profile.sshTunnel;
+    const sshTunnelEnabled = sshTunnel ? isSshTunnelConfigComplete(sshTunnel) : false;
+    if (tunnelEnabled && sshTunnelEnabled) {
+      throw new Error("A connection can use only one tunnel type at a time.");
+    }
 
     try {
       const password = await this.getPassword(profileId);
@@ -270,6 +289,14 @@ class ConnectionServiceImpl {
           profile.driverId,
           profile.url,
           tunnel,
+          options.onProgress,
+        );
+      } else if (sshTunnelEnabled && sshTunnel) {
+        effectiveUrl = await openSshTunnelForConnect(
+          profileId,
+          profile.driverId,
+          profile.url,
+          sshTunnel,
           options.onProgress,
         );
       }
@@ -310,6 +337,9 @@ class ConnectionServiceImpl {
     } catch (error) {
       if (tunnelEnabled) {
         await closeSsmTunnel(profileId).catch(() => {});
+      }
+      if (sshTunnelEnabled) {
+        await closeSshTunnel(profileId).catch(() => {});
       }
       const message = reportError(error, "connection.connect", "Failed to connect.");
       const stillConnected = this.state.connectedProfileIds.filter(
@@ -407,6 +437,7 @@ class ConnectionServiceImpl {
       }
     } finally {
       await closeSsmTunnel(targetId).catch(() => {});
+      await closeSshTunnel(targetId).catch(() => {});
       ConnectionTreeService.removeConnectedProfile(targetId);
       ConnectionTreeService.invalidate(targetId);
       const connectedProfileIds = this.state.connectedProfileIds.filter(
@@ -441,6 +472,7 @@ class ConnectionServiceImpl {
         defaultSchema: profile.defaultSchema,
         showSystemObjects: profile.showSystemObjects,
         ssmTunnel: profile.ssmTunnel ?? EMPTY_SSM_TUNNEL_CONFIG,
+        sshTunnel: profile.sshTunnel ?? EMPTY_SSH_TUNNEL_CONFIG,
       },
       { profileId },
     );
@@ -455,31 +487,53 @@ class ConnectionServiceImpl {
    */
   async testCredentials(
     input: ConnectionProfileInput,
-    options: { profileId?: string; onProgress?: TunnelProgress } = {},
+    options: { profileId?: string; onProgress?: ConnectProgress } = {},
   ): Promise<void> {
     const tunnel = input.ssmTunnel;
     const tunnelEnabled = isSsmTunnelConfigComplete(tunnel);
-    const tunnelKey = tunnelSessionKey(options.profileId, tunnel);
+    const sshTunnel = input.sshTunnel;
+    const sshTunnelEnabled = isSshTunnelConfigComplete(sshTunnel);
+    if (tunnelEnabled && sshTunnelEnabled) {
+      throw new Error("A connection can use only one tunnel type at a time.");
+    }
 
-    if (!tunnelEnabled) {
+    if (!tunnelEnabled && !sshTunnelEnabled) {
       options.onProgress?.({ phase: "connectingDatabase" });
       await bridgeTestConnection(this.toCredentials(input));
       return;
     }
 
-    const tunnelUrl = await openSsmTunnelForConnect(
-      tunnelKey,
-      tunnelKey,
-      input.driverId,
-      input.url.trim() || defaultUrlForDriver(input.driverId),
-      tunnel,
-      options.onProgress,
-    );
+    // No profile id yet for a not-yet-saved profile being edited — fall back to a stable
+    // per-tunnel-type key so repeated Test clicks reuse the same cached session/tunnel slot.
+    const tunnelKey = tunnelEnabled
+      ? tunnelSessionKey(options.profileId, tunnel)
+      : (options.profileId ?? "pending-ssh");
+
+    const tunnelUrl = tunnelEnabled
+      ? await openSsmTunnelForConnect(
+          tunnelKey,
+          tunnelKey,
+          input.driverId,
+          input.url.trim() || defaultUrlForDriver(input.driverId),
+          tunnel,
+          options.onProgress,
+        )
+      : await openSshTunnelForConnect(
+          tunnelKey,
+          input.driverId,
+          input.url.trim() || defaultUrlForDriver(input.driverId),
+          sshTunnel,
+          options.onProgress,
+        );
     try {
       options.onProgress?.({ phase: "connectingDatabase" });
       await bridgeTestConnection(this.toCredentials({ ...input, url: tunnelUrl }));
     } finally {
-      await closeSsmTunnel(tunnelKey).catch(() => {});
+      if (tunnelEnabled) {
+        await closeSsmTunnel(tunnelKey).catch(() => {});
+      } else {
+        await closeSshTunnel(tunnelKey).catch(() => {});
+      }
     }
   }
 

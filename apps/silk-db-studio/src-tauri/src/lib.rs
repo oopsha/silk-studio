@@ -3,6 +3,7 @@ mod app_log;
 mod open_external;
 mod runtime_paths;
 mod secrets;
+mod ssh_tunnel;
 mod ssm_tunnel;
 mod window_layout;
 
@@ -406,6 +407,9 @@ pub fn run() {
             ssm_tunnel::ssm_tunnel_open,
             ssm_tunnel::ssm_tunnel_close,
             ssm_tunnel::ssm_tunnel_status,
+            ssh_tunnel::ssh_tunnel_open,
+            ssh_tunnel::ssh_tunnel_close,
+            ssh_tunnel::ssh_tunnel_status,
             ai_http::ai_http_fetch,
             open_external::open_external_url,
             window_layout::window_layout_save,
@@ -427,6 +431,9 @@ pub fn run() {
             });
             app.manage(ssm_tunnel::SsmTunnelState {
                 tunnels: ssm_tunnel_client::TunnelManager::new(paths.ssm_plugin_bin.clone()),
+            });
+            app.manage(ssh_tunnel::SshTunnelState {
+                tunnels: ssh_tunnel_client::TunnelManager::new(),
             });
 
             let handle = app.handle().clone();
