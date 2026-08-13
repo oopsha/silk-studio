@@ -41,6 +41,16 @@ import {
 import { listSsmInstances } from "../../services/connection/ssmTunnelService";
 import type { SsmInstanceSummary } from "../../services/connection/ssmTunnelBridge";
 import { AWS_REGIONS } from "../../services/connection/awsRegions";
+import {
+  EMPTY_SSH_TUNNEL_CONFIG,
+  type SshAuthMethod,
+  type SshTunnelConfig,
+} from "../../services/connection/sshTunnelTypes";
+import {
+  sshSecretGet,
+  sshSecretSet,
+} from "../../services/connection/sshTunnelSecretBridge";
+import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import "./ConnectionEditor.css";
 
 type HostPortState = { host: string; port: string };
@@ -62,6 +72,7 @@ const EMPTY_FORM: ConnectionProfileInput = {
   defaultSchema: "",
   showSystemObjects: false,
   ssmTunnel: EMPTY_SSM_TUNNEL_CONFIG,
+  sshTunnel: EMPTY_SSH_TUNNEL_CONFIG,
 };
 
 function ConnectionEditor() {
@@ -85,6 +96,8 @@ function ConnectionEditor() {
   const [hostPort, setHostPort] = useState<HostPortState>(EMPTY_HOST_PORT);
   const [oracleFields, setOracleFields] = useState<OracleFieldsState>(EMPTY_ORACLE_FIELDS);
   const [ssmInstances, setSsmInstances] = useState<SsmInstanceSummary[]>([]);
+  const [sshPassword, setSshPassword] = useState("");
+  const [sshPassphrase, setSshPassphrase] = useState("");
   const driver = getConnectionDriver(form.driverId);
 
   function tunnelProgressMessage(progress: TunnelProgressPhase): string {
@@ -109,6 +122,13 @@ function ConnectionEditor() {
     setForm((current) => ({
       ...current,
       ssmTunnel: { ...current.ssmTunnel, ...patch },
+    }));
+  }
+
+  function updateSshTunnel(patch: Partial<SshTunnelConfig>) {
+    setForm((current) => ({
+      ...current,
+      sshTunnel: { ...current.sshTunnel, ...patch },
     }));
   }
 
@@ -178,6 +198,8 @@ function ConnectionEditor() {
       if (id === "new") {
         setForm(EMPTY_FORM);
         syncStructuredFromUrl(EMPTY_FORM.driverId, EMPTY_FORM.url);
+        setSshPassword("");
+        setSshPassphrase("");
         return;
       }
 
@@ -186,6 +208,8 @@ function ConnectionEditor() {
         setError(I18nService.t("app.connection.notFound"));
         setForm(EMPTY_FORM);
         syncStructuredFromUrl(EMPTY_FORM.driverId, EMPTY_FORM.url);
+        setSshPassword("");
+        setSshPassphrase("");
         return;
       }
 
@@ -199,11 +223,18 @@ function ConnectionEditor() {
         defaultSchema: profile.defaultSchema,
         showSystemObjects: profile.showSystemObjects,
         ssmTunnel: profile.ssmTunnel ?? EMPTY_SSM_TUNNEL_CONFIG,
+        sshTunnel: profile.sshTunnel ?? EMPTY_SSH_TUNNEL_CONFIG,
       });
       syncStructuredFromUrl(profile.driverId, profile.url);
       const password = await ConnectionService.getPassword(id);
+      const [loadedSshPassword, loadedSshPassphrase] = await Promise.all([
+        sshSecretGet(id, "password"),
+        sshSecretGet(id, "passphrase"),
+      ]);
       if (!cancelled) {
         setForm((current) => ({ ...current, password }));
+        setSshPassword(loadedSshPassword);
+        setSshPassphrase(loadedSshPassphrase);
       }
     }
 
@@ -269,6 +300,10 @@ function ConnectionEditor() {
           void run(async () => {
             if (profileId === "new") {
               const created = await ConnectionService.createProfile(form);
+              await Promise.all([
+                sshSecretSet(created.id, "password", sshPassword),
+                sshSecretSet(created.id, "passphrase", sshPassphrase),
+              ]);
               setMessage(t("app.connection.created"));
               if (activeTab) {
                 EditorService.closeTab(activeTab.id);
@@ -277,6 +312,10 @@ function ConnectionEditor() {
               return;
             }
             await ConnectionService.updateProfile(profileId, form);
+            await Promise.all([
+              sshSecretSet(profileId, "password", sshPassword),
+              sshSecretSet(profileId, "passphrase", sshPassphrase),
+            ]);
             setMessage(t("app.connection.saved"));
           });
         }}
@@ -644,7 +683,11 @@ function ConnectionEditor() {
             <input
               type="checkbox"
               checked={form.ssmTunnel.enabled}
-              onChange={(event) => updateSsmTunnel({ enabled: event.target.checked })}
+              onChange={(event) => {
+                const enabled = event.target.checked;
+                updateSsmTunnel({ enabled });
+                if (enabled) updateSshTunnel({ enabled: false });
+              }}
             />
             <span>{t("app.connection.ssmTunnelToggle")}</span>
           </span>
@@ -736,6 +779,120 @@ function ConnectionEditor() {
             </label>
           </>
         ) : null}
+        <label className="connection-editor__field connection-editor__field--checkbox">
+          <span className="connection-editor__checkbox-row">
+            <input
+              type="checkbox"
+              checked={form.sshTunnel.enabled}
+              onChange={(event) => {
+                const enabled = event.target.checked;
+                updateSshTunnel({ enabled });
+                if (enabled) updateSsmTunnel({ enabled: false });
+              }}
+            />
+            <span>{t("app.connection.sshTunnelToggle")}</span>
+          </span>
+          <span className="connection-editor__hint">{t("app.connection.sshTunnelHint")}</span>
+        </label>
+        {form.sshTunnel.enabled ? (
+          <>
+            <label className="connection-editor__field">
+              <span>{t("app.connection.sshJumpHost")}</span>
+              <input
+                className="connection-editor__input"
+                value={form.sshTunnel.host}
+                onChange={(event) => updateSshTunnel({ host: event.target.value })}
+                spellCheck={false}
+              />
+            </label>
+            <label className="connection-editor__field">
+              <span>{t("app.connection.sshJumpPort")}</span>
+              <input
+                className="connection-editor__input"
+                value={form.sshTunnel.port}
+                onChange={(event) => updateSshTunnel({ port: event.target.value })}
+                spellCheck={false}
+              />
+            </label>
+            <label className="connection-editor__field">
+              <span>{t("app.connection.sshUsername")}</span>
+              <input
+                className="connection-editor__input"
+                value={form.sshTunnel.username}
+                onChange={(event) => updateSshTunnel({ username: event.target.value })}
+                spellCheck={false}
+              />
+            </label>
+            <label className="connection-editor__field">
+              <span>{t("app.connection.sshAuthMethod")}</span>
+              <select
+                className="connection-editor__input"
+                value={form.sshTunnel.authMethod}
+                onChange={(event) =>
+                  updateSshTunnel({ authMethod: event.target.value as SshAuthMethod })
+                }
+              >
+                <option value="password">{t("app.connection.sshAuthPassword")}</option>
+                <option value="privateKey">{t("app.connection.sshAuthPrivateKey")}</option>
+              </select>
+            </label>
+            {form.sshTunnel.authMethod === "password" ? (
+              <label className="connection-editor__field">
+                <span>{t("app.connection.sshPassword")}</span>
+                <input
+                  className="connection-editor__input"
+                  type="password"
+                  autoComplete="off"
+                  value={sshPassword}
+                  onChange={(event) => setSshPassword(event.target.value)}
+                />
+              </label>
+            ) : (
+              <>
+                <label className="connection-editor__field">
+                  <span>{t("app.connection.sshPrivateKeyPath")}</span>
+                  <div className="connection-editor__schema-row">
+                    <input
+                      className="connection-editor__input"
+                      value={form.sshTunnel.privateKeyPath ?? ""}
+                      onChange={(event) =>
+                        updateSshTunnel({ privateKeyPath: event.target.value })
+                      }
+                      spellCheck={false}
+                    />
+                    <button
+                      type="button"
+                      className="connection-editor__button"
+                      onClick={() =>
+                        void run(async () => {
+                          const path = await openFilePicker({
+                            multiple: false,
+                            directory: false,
+                          });
+                          if (typeof path === "string") {
+                            updateSshTunnel({ privateKeyPath: path });
+                          }
+                        })
+                      }
+                    >
+                      {t("app.connection.sshBrowse")}
+                    </button>
+                  </div>
+                </label>
+                <label className="connection-editor__field">
+                  <span>{t("app.connection.sshPassphrase")}</span>
+                  <input
+                    className="connection-editor__input"
+                    type="password"
+                    autoComplete="off"
+                    value={sshPassphrase}
+                    onChange={(event) => setSshPassphrase(event.target.value)}
+                  />
+                </label>
+              </>
+            )}
+          </>
+        ) : null}
         <div className="connection-editor__actions">
           <button
             type="submit"
@@ -750,6 +907,16 @@ function ConnectionEditor() {
             disabled={busy}
             onClick={() =>
               void run(async () => {
+                if (form.sshTunnel.enabled) {
+                  // Test can run before Save — persist the in-progress password/passphrase
+                  // under the same key testCredentials() will look them up with, since
+                  // SshTunnelConfig itself never carries secrets (see sshTunnelTypes.ts).
+                  const sshTunnelKey = profileId !== "new" ? profileId : "pending-ssh";
+                  await Promise.all([
+                    sshSecretSet(sshTunnelKey, "password", sshPassword),
+                    sshSecretSet(sshTunnelKey, "passphrase", sshPassphrase),
+                  ]);
+                }
                 await ConnectionService.testCredentials(form, {
                   profileId: profileId !== "new" ? profileId : undefined,
                   onProgress: (progress) => setMessage(tunnelProgressMessage(progress)),

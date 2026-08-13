@@ -1,0 +1,14 @@
+[package]
+name = "ssh-tunnel-client"
+version = "0.1.0"
+description = "Pure-Rust SSH jump-host tunnel client for Silk's built-in SSH tunnel feature"
+edition = "2021"
+
+[dependencies]
+# aws-lc-rs (russh's default crypto backend) needs NASM to build its assembly on Windows,
+# which isn't available in this build environment — use the pure-Rust `ring` backend instead.
+russh = { version = "0.62", default-features = false, features = ["flate2", "ring", "rsa"] }
+tokio = { version = "1", features = ["net", "rt", "sync", "io-util", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

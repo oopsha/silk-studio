@@ -3,5 +3,6 @@ members = [
   "apps/silk-db-studio/src-tauri",
   "crates/silk-db-agent-client",
   "crates/ssm-tunnel-client",
+  "crates/ssh-tunnel-client",
 ]
 resolver = "2"
