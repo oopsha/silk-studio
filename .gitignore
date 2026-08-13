@@ -31,9 +31,8 @@ target-release-build/
 
 # Bundled runtime (staged by scripts/prepare-runtime-resources.mjs)
 apps/silk-db-studio/src-tauri/resources/jdbc-agent/**
-!apps/silk-db-studio/src-tauri/resources/jdbc-agent/.gitkeep
 apps/silk-db-studio/src-tauri/resources/jre/**
-!apps/silk-db-studio/src-tauri/resources/jre/.gitkeep
+apps/silk-db-studio/src-tauri/resources/ssm-plugin/**
 
 # Updater signing private keys (never commit)
 .secrets/
