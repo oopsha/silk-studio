@@ -45,6 +45,7 @@ import {
   type SshTunnelProgressPhase,
 } from "./sshTunnelTypes";
 import { closeSshTunnel, openSshTunnelForConnect } from "./sshTunnelService";
+import { ConnectionPasswordPromptService } from "./connectionPasswordPromptService";
 
 /** Accepts progress phases from either tunnel type — a connection uses at most one. */
 export type ConnectProgress = (
@@ -119,8 +120,14 @@ class ConnectionServiceImpl {
     return secretGet(profileId);
   }
 
+  /**
+   * @param options.savePassword Defaults to `true`. Pass `false` (the editor's "이 비밀번호
+   * 저장" checkbox, unchecked) to leave the OS credential store untouched — `input.password`
+   * is still used for an immediate Test/Connect in the same session, it just isn't persisted.
+   */
   async createProfile(
     input: ConnectionProfileInput,
+    options: { savePassword?: boolean } = {},
   ): Promise<ConnectionProfile> {
     const now = Date.now();
     const profile: ConnectionProfile = {
@@ -139,16 +146,20 @@ class ConnectionServiceImpl {
       updatedAt: now,
     };
 
-    await secretSet(profile.id, input.password);
+    if (options.savePassword !== false) {
+      await secretSet(profile.id, input.password);
+    }
     const profiles = [...this.state.profiles, profile];
     this.persistProfiles(profiles);
     this.setActiveProfile(profile.id);
     return profile;
   }
 
+  /** See `createProfile`'s `options.savePassword` doc — same meaning here. */
   async updateProfile(
     profileId: string,
     input: ConnectionProfileInput,
+    options: { savePassword?: boolean } = {},
   ): Promise<ConnectionProfile> {
     const profiles = this.state.profiles.map((profile) => {
       if (profile.id !== profileId) return profile;
@@ -173,11 +184,13 @@ class ConnectionServiceImpl {
       throw new Error("Connection profile not found.");
     }
 
-    await secretSet(profileId, input.password);
+    if (options.savePassword !== false) {
+      await secretSet(profileId, input.password);
+    }
     this.persistProfiles(profiles);
 
     if (this.isConnected(profileId)) {
-      await this.connect(profileId);
+      await this.connect(profileId, { promptForPassword: false });
     }
 
     return updated;
@@ -256,11 +269,36 @@ class ConnectionServiceImpl {
 
   async connect(
     profileId: string,
-    options: { silent?: boolean; onProgress?: ConnectProgress } = {},
+    options: {
+      silent?: boolean;
+      onProgress?: ConnectProgress;
+      /**
+       * Set to `false` for connect calls that are a side effect of something else (e.g. the
+       * editor reconnecting an already-connected profile right after Save) rather than the
+       * user directly clicking Connect — those shouldn't interrupt the flow with a modal.
+       * Defaults to `true` (prompt) whenever the connect isn't `silent`.
+       */
+      promptForPassword?: boolean;
+    } = {},
   ): Promise<void> {
     const profile = this.getProfile(profileId);
     if (!profile) {
       throw new Error("Connection profile not found.");
+    }
+
+    // Imported profiles never carry a password (see connectionExportService.ts) — rather than
+    // let the connect attempt fail with a confusing DB-level auth error, ask for it up front.
+    // Only for user-initiated connects: a silent auto-connect (app startup, running a query
+    // against a disconnected profile) or a non-interactive reconnect (see `promptForPassword`
+    // above) must not pop up a modal unprompted — it just fails as before.
+    let password = await this.getPassword(profileId);
+    if (!password && !options.silent && options.promptForPassword !== false) {
+      const promptResult = await ConnectionPasswordPromptService.open(profile.name);
+      if (!promptResult.confirmed) return;
+      password = promptResult.password;
+      if (promptResult.save) {
+        await secretSet(profileId, password);
+      }
     }
 
     this.setActiveProfile(profileId);
@@ -279,8 +317,6 @@ class ConnectionServiceImpl {
     }
 
     try {
-      const password = await this.getPassword(profileId);
-
       let effectiveUrl = profile.url;
       if (tunnelEnabled && tunnel) {
         effectiveUrl = await openSsmTunnelForConnect(

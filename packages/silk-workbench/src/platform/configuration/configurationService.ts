@@ -29,6 +29,30 @@ class ConfigurationServiceImpl {
     return this.values;
   }
 
+  /** Full settings export payload — safe to write to disk as-is (no secrets live here). */
+  exportAll(): { formatVersion: 1; exportedAt: string; settings: WorkbenchConfiguration } {
+    return {
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      settings: this.values,
+    };
+  }
+
+  /**
+   * Replaces current settings with `data` (expected to be a `WorkbenchConfiguration`-shaped
+   * object, e.g. from an imported export file). Every individual key is defended by
+   * `mergeAndValidate` — this only guards the top-level shape. Returns `false` (no-op) if
+   * `data` isn't an object at all.
+   */
+  importAll(data: unknown): boolean {
+    if (!data || typeof data !== "object") return false;
+    this.values = this.mergeAndValidate(data as Partial<WorkbenchConfiguration>);
+    applyWorkbenchConfiguration(this.values);
+    saveConfiguration(this.values);
+    this.fireDidChange();
+    return true;
+  }
+
   updateValue<K extends ConfigurationKey>(
     key: K,
     value: WorkbenchConfiguration[K],
@@ -46,160 +70,172 @@ class ConfigurationServiceImpl {
   }
 
   private restoreFromStorage(): void {
-    const stored = loadConfiguration();
+    this.values = this.mergeAndValidate(loadConfiguration() ?? undefined);
+  }
+
+  /**
+   * Merges `stored` (a possibly-partial, possibly-untrusted `WorkbenchConfiguration`) over
+   * `CONFIGURATION_DEFAULTS`, validating/clamping every key. Shared by `restoreFromStorage`
+   * (reading from localStorage) and `importAll` (reading from an imported export file) — both
+   * inputs are equally untrusted, so both need the same defensive merge.
+   */
+  private mergeAndValidate(
+    stored: Partial<WorkbenchConfiguration> | null | undefined,
+  ): WorkbenchConfiguration {
     if (!stored) {
-      this.values = {
+      return {
         ...CONFIGURATION_DEFAULTS,
         "workbench.locale": detectDefaultLocale(),
       };
-      return;
     }
 
-    this.values = { ...CONFIGURATION_DEFAULTS };
+    const values: WorkbenchConfiguration = { ...CONFIGURATION_DEFAULTS };
     for (const key of Object.keys(CONFIGURATION_DEFAULTS) as ConfigurationKey[]) {
       if (stored[key] !== undefined) {
-        (this.values as WorkbenchConfiguration)[key] = stored[key] as never;
+        (values as WorkbenchConfiguration)[key] = stored[key] as never;
       }
     }
 
     if (stored["workbench.locale"] === undefined) {
-      this.values["workbench.locale"] = detectDefaultLocale();
-    } else if (!isLocaleId(this.values["workbench.locale"])) {
-      this.values["workbench.locale"] = detectDefaultLocale();
+      values["workbench.locale"] = detectDefaultLocale();
+    } else if (!isLocaleId(values["workbench.locale"])) {
+      values["workbench.locale"] = detectDefaultLocale();
     }
 
     if (
-      this.values["workbench.colorTheme"] !== "dark-2026" &&
-      this.values["workbench.colorTheme"] !== "dark-plus"
+      values["workbench.colorTheme"] !== "dark-2026" &&
+      values["workbench.colorTheme"] !== "dark-plus"
     ) {
-      this.values["workbench.colorTheme"] = CONFIGURATION_DEFAULTS["workbench.colorTheme"];
+      values["workbench.colorTheme"] = CONFIGURATION_DEFAULTS["workbench.colorTheme"];
     }
 
-    this.values["workbench.fontSize"] = clampNumber(
-      this.values["workbench.fontSize"],
+    values["workbench.fontSize"] = clampNumber(
+      values["workbench.fontSize"],
       10,
       20,
       CONFIGURATION_DEFAULTS["workbench.fontSize"],
     );
-    this.values["editor.fontSize"] = clampNumber(
-      this.values["editor.fontSize"],
+    values["editor.fontSize"] = clampNumber(
+      values["editor.fontSize"],
       10,
       24,
       CONFIGURATION_DEFAULTS["editor.fontSize"],
     );
-    this.values["editor.tabSize"] = clampNumber(
-      this.values["editor.tabSize"],
+    values["editor.tabSize"] = clampNumber(
+      values["editor.tabSize"],
       2,
       8,
       CONFIGURATION_DEFAULTS["editor.tabSize"],
     );
-    this.values["queryResult.rowHeight"] = clampNumber(
-      this.values["queryResult.rowHeight"],
+    values["queryResult.rowHeight"] = clampNumber(
+      values["queryResult.rowHeight"],
       22,
       48,
       CONFIGURATION_DEFAULTS["queryResult.rowHeight"],
     );
-    this.values["queryResult.fontSize"] = clampNumber(
-      this.values["queryResult.fontSize"],
+    values["queryResult.fontSize"] = clampNumber(
+      values["queryResult.fontSize"],
       10,
       16,
       CONFIGURATION_DEFAULTS["queryResult.fontSize"],
     );
-    this.values["queryResult.maxRows"] = clampNumber(
-      this.values["queryResult.maxRows"],
+    values["queryResult.maxRows"] = clampNumber(
+      values["queryResult.maxRows"],
       1,
       5000,
       CONFIGURATION_DEFAULTS["queryResult.maxRows"],
     );
-    if (typeof this.values["queryResult.nullDisplay"] !== "string") {
-      this.values["queryResult.nullDisplay"] =
+    if (typeof values["queryResult.nullDisplay"] !== "string") {
+      values["queryResult.nullDisplay"] =
         CONFIGURATION_DEFAULTS["queryResult.nullDisplay"];
     } else {
-      this.values["queryResult.nullDisplay"] =
-        this.values["queryResult.nullDisplay"].slice(0, 32);
+      values["queryResult.nullDisplay"] =
+        values["queryResult.nullDisplay"].slice(0, 32);
     }
-    if (typeof this.values["queryResult.filterEnabled"] !== "boolean") {
-      this.values["queryResult.filterEnabled"] =
+    if (typeof values["queryResult.filterEnabled"] !== "boolean") {
+      values["queryResult.filterEnabled"] =
         CONFIGURATION_DEFAULTS["queryResult.filterEnabled"];
     }
-    this.values["database.queryTimeoutSec"] = clampNumber(
-      this.values["database.queryTimeoutSec"],
+    values["database.queryTimeoutSec"] = clampNumber(
+      values["database.queryTimeoutSec"],
       0,
       3600,
       CONFIGURATION_DEFAULTS["database.queryTimeoutSec"],
     );
-    if (typeof this.values["database.autoCommit"] !== "boolean") {
-      this.values["database.autoCommit"] =
+    if (typeof values["database.autoCommit"] !== "boolean") {
+      values["database.autoCommit"] =
         CONFIGURATION_DEFAULTS["database.autoCommit"];
     }
-    if (typeof this.values["database.readOnly"] !== "boolean") {
-      this.values["database.readOnly"] =
+    if (typeof values["database.readOnly"] !== "boolean") {
+      values["database.readOnly"] =
         CONFIGURATION_DEFAULTS["database.readOnly"];
     }
-    if (typeof this.values["database.explorer.preloadDefaultSchema"] !== "boolean") {
-      this.values["database.explorer.preloadDefaultSchema"] =
+    if (typeof values["database.explorer.preloadDefaultSchema"] !== "boolean") {
+      values["database.explorer.preloadDefaultSchema"] =
         CONFIGURATION_DEFAULTS["database.explorer.preloadDefaultSchema"];
     }
-    if (typeof this.values["sql.parameters.anonymousEnabled"] !== "boolean") {
-      this.values["sql.parameters.anonymousEnabled"] =
+    if (typeof values["sql.parameters.anonymousEnabled"] !== "boolean") {
+      values["sql.parameters.anonymousEnabled"] =
         CONFIGURATION_DEFAULTS["sql.parameters.anonymousEnabled"];
     }
-    if (typeof this.values["sql.parameters.namedEnabled"] !== "boolean") {
-      this.values["sql.parameters.namedEnabled"] =
+    if (typeof values["sql.parameters.namedEnabled"] !== "boolean") {
+      values["sql.parameters.namedEnabled"] =
         CONFIGURATION_DEFAULTS["sql.parameters.namedEnabled"];
     }
-    if (typeof this.values["ai.enabled"] !== "boolean") {
-      this.values["ai.enabled"] = CONFIGURATION_DEFAULTS["ai.enabled"];
+    if (typeof values["ai.enabled"] !== "boolean") {
+      values["ai.enabled"] = CONFIGURATION_DEFAULTS["ai.enabled"];
     }
     if (
-      this.values["ai.provider"] !== "gemini" &&
-      this.values["ai.provider"] !== "openai" &&
-      this.values["ai.provider"] !== "anthropic" &&
-      this.values["ai.provider"] !== "custom"
+      values["ai.provider"] !== "gemini" &&
+      values["ai.provider"] !== "openai" &&
+      values["ai.provider"] !== "anthropic" &&
+      values["ai.provider"] !== "custom"
     ) {
-      this.values["ai.provider"] = CONFIGURATION_DEFAULTS["ai.provider"];
+      values["ai.provider"] = CONFIGURATION_DEFAULTS["ai.provider"];
     }
-    if (typeof this.values["ai.model"] !== "string") {
-      this.values["ai.model"] = CONFIGURATION_DEFAULTS["ai.model"];
+    if (typeof values["ai.model"] !== "string") {
+      values["ai.model"] = CONFIGURATION_DEFAULTS["ai.model"];
     } else {
-      this.values["ai.model"] = resolveAiModelForProvider(
-        this.values["ai.provider"],
-        this.values["ai.model"].slice(0, 128),
+      values["ai.model"] = resolveAiModelForProvider(
+        values["ai.provider"],
+        values["ai.model"].slice(0, 128),
       );
     }
-    if (typeof this.values["ai.customBaseUrl"] !== "string") {
-      this.values["ai.customBaseUrl"] =
+    if (typeof values["ai.customBaseUrl"] !== "string") {
+      values["ai.customBaseUrl"] =
         CONFIGURATION_DEFAULTS["ai.customBaseUrl"];
     } else {
-      this.values["ai.customBaseUrl"] = this.values["ai.customBaseUrl"].slice(
+      values["ai.customBaseUrl"] = values["ai.customBaseUrl"].slice(
         0,
         512,
       );
     }
-    if (typeof this.values["ai.context.includeSchema"] !== "boolean") {
-      this.values["ai.context.includeSchema"] =
+    if (typeof values["ai.context.includeSchema"] !== "boolean") {
+      values["ai.context.includeSchema"] =
         CONFIGURATION_DEFAULTS["ai.context.includeSchema"];
     }
-    if (typeof this.values["ai.context.includeSelection"] !== "boolean") {
-      this.values["ai.context.includeSelection"] =
+    if (typeof values["ai.context.includeSelection"] !== "boolean") {
+      values["ai.context.includeSelection"] =
         CONFIGURATION_DEFAULTS["ai.context.includeSelection"];
     }
-    if (typeof this.values["ai.context.includeQueryHistory"] !== "boolean") {
-      this.values["ai.context.includeQueryHistory"] =
+    if (typeof values["ai.context.includeQueryHistory"] !== "boolean") {
+      values["ai.context.includeQueryHistory"] =
         CONFIGURATION_DEFAULTS["ai.context.includeQueryHistory"];
     }
-    if (typeof this.values["ai.context.includePlsqlDeps"] !== "boolean") {
-      this.values["ai.context.includePlsqlDeps"] =
+    if (typeof values["ai.context.includePlsqlDeps"] !== "boolean") {
+      values["ai.context.includePlsqlDeps"] =
         CONFIGURATION_DEFAULTS["ai.context.includePlsqlDeps"];
     }
-    if (typeof this.values["ai.allowExecute"] !== "boolean") {
-      this.values["ai.allowExecute"] =
+    if (typeof values["ai.allowExecute"] !== "boolean") {
+      values["ai.allowExecute"] =
         CONFIGURATION_DEFAULTS["ai.allowExecute"];
     }
-    if (typeof this.values["ai.debug.dumpHttp"] !== "boolean") {
-      this.values["ai.debug.dumpHttp"] =
+    if (typeof values["ai.debug.dumpHttp"] !== "boolean") {
+      values["ai.debug.dumpHttp"] =
         CONFIGURATION_DEFAULTS["ai.debug.dumpHttp"];
     }
+
+    return values;
   }
 
   private fireDidChange(): void {

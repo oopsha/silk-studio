@@ -98,6 +98,7 @@ function ConnectionEditor() {
   const [ssmInstances, setSsmInstances] = useState<SsmInstanceSummary[]>([]);
   const [sshPassword, setSshPassword] = useState("");
   const [sshPassphrase, setSshPassphrase] = useState("");
+  const [savePassword, setSavePassword] = useState(true);
   const driver = getConnectionDriver(form.driverId);
 
   function tunnelProgressMessage(progress: TunnelProgressPhase): string {
@@ -200,6 +201,7 @@ function ConnectionEditor() {
         syncStructuredFromUrl(EMPTY_FORM.driverId, EMPTY_FORM.url);
         setSshPassword("");
         setSshPassphrase("");
+        setSavePassword(true);
         return;
       }
 
@@ -210,6 +212,7 @@ function ConnectionEditor() {
         syncStructuredFromUrl(EMPTY_FORM.driverId, EMPTY_FORM.url);
         setSshPassword("");
         setSshPassphrase("");
+        setSavePassword(true);
         return;
       }
 
@@ -235,6 +238,7 @@ function ConnectionEditor() {
         setForm((current) => ({ ...current, password }));
         setSshPassword(loadedSshPassword);
         setSshPassphrase(loadedSshPassphrase);
+        setSavePassword(true);
       }
     }
 
@@ -299,11 +303,13 @@ function ConnectionEditor() {
           event.preventDefault();
           void run(async () => {
             if (profileId === "new") {
-              const created = await ConnectionService.createProfile(form);
-              await Promise.all([
-                sshSecretSet(created.id, "password", sshPassword),
-                sshSecretSet(created.id, "passphrase", sshPassphrase),
-              ]);
+              const created = await ConnectionService.createProfile(form, { savePassword });
+              if (savePassword) {
+                await Promise.all([
+                  sshSecretSet(created.id, "password", sshPassword),
+                  sshSecretSet(created.id, "passphrase", sshPassphrase),
+                ]);
+              }
               setMessage(t("app.connection.created"));
               if (activeTab) {
                 EditorService.closeTab(activeTab.id);
@@ -311,11 +317,13 @@ function ConnectionEditor() {
               ConnectionEditorService.openConnection(created.id);
               return;
             }
-            await ConnectionService.updateProfile(profileId, form);
-            await Promise.all([
-              sshSecretSet(profileId, "password", sshPassword),
-              sshSecretSet(profileId, "passphrase", sshPassphrase),
-            ]);
+            await ConnectionService.updateProfile(profileId, form, { savePassword });
+            if (savePassword) {
+              await Promise.all([
+                sshSecretSet(profileId, "password", sshPassword),
+                sshSecretSet(profileId, "passphrase", sshPassphrase),
+              ]);
+            }
             setMessage(t("app.connection.saved"));
           });
         }}
@@ -606,6 +614,19 @@ function ConnectionEditor() {
               }))
             }
           />
+        </label>
+        <label className="connection-editor__field connection-editor__field--checkbox">
+          <span className="connection-editor__checkbox-row">
+            <input
+              type="checkbox"
+              checked={savePassword}
+              onChange={(event) => setSavePassword(event.target.checked)}
+            />
+            <span>{t("app.connection.savePassword")}</span>
+          </span>
+          <span className="connection-editor__hint">
+            {t("app.connection.savePasswordHint")}
+          </span>
         </label>
         {driver.showSchemaField ? (
           <label className="connection-editor__field">

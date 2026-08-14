@@ -24,6 +24,9 @@ import ExplorerObjectMutationDialog from "../../connections/ExplorerObjectMutati
 import AiSqlDiffDialog from "../../ai/AiSqlDiffDialog.tsx";
 import AiSqlExecuteDialog from "../../ai/AiSqlExecuteDialog.tsx";
 import SqlParameterDialog from "../../query/SqlParameterDialog.tsx";
+import ConnectionExportDialog from "../../connections/ConnectionExportDialog.tsx";
+import ConnectionImportDialog from "../../connections/ConnectionImportDialog.tsx";
+import ConnectionPasswordPromptDialog from "../../connections/ConnectionPasswordPromptDialog.tsx";
 import AboutDialog from "@silk-studio/workbench/components/diagnostics/AboutDialog.tsx";
 import AiAuditLogDialog from "@silk-studio/workbench/components/ai/AiAuditLogDialog.tsx";
 import AppToast from "@silk-studio/workbench/components/diagnostics/AppToast.tsx";
@@ -59,6 +62,17 @@ import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/
 import { useConnectionState } from "../../../services/connection/useConnectionState.ts";
 import { registerSqlLanguages } from "../../../services/sql/registerSqlLanguages.ts";
 import { registerSqlCompletion } from "../../../services/sql/registerSqlCompletion.ts";
+import {
+  exportConnectionProfiles,
+  importConnectionProfiles,
+} from "../../../services/connection/connectionExportService.ts";
+import { ConnectionExportDialogService } from "../../../services/connection/connectionExportDialogService.ts";
+import {
+  exportSettings,
+  importSettings,
+} from "../../../services/settings/settingsExportService.ts";
+import { formatErrorMessage } from "../../../services/formatErrorMessage.ts";
+import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import type { Monaco } from "@monaco-editor/react";
 
 const tabBarCommands = {
@@ -103,6 +117,50 @@ function AppShell() {
     });
     return () => setExplorerObjectDropHandler(null);
   }, []);
+
+  async function handleExportConnections(): Promise<void> {
+    const result = await ConnectionExportDialogService.open(
+      connection.profiles.map((profile) => ({
+        id: profile.id,
+        name: profile.name,
+        driverId: profile.driverId,
+      })),
+    );
+    if (!result.confirmed) return;
+
+    try {
+      const ok = await exportConnectionProfiles(result.profileIds);
+      if (ok) AppNotificationService.show(t("app.connection.exportSuccess"), "success");
+    } catch (error) {
+      AppNotificationService.show(
+        formatErrorMessage(error, t("app.connection.exportFailed")),
+        "error",
+      );
+    }
+  }
+
+  async function handleImportConnections(): Promise<void> {
+    try {
+      const result = await importConnectionProfiles();
+      if (!result) return;
+      AppNotificationService.show(
+        result.skipped > 0
+          ? t("app.connection.importSummaryWithSkipped")
+              .replace("{imported}", String(result.imported))
+              .replace("{skipped}", String(result.skipped))
+          : t("app.connection.importSummary").replace(
+              "{imported}",
+              String(result.imported),
+            ),
+        result.imported > 0 ? "success" : "info",
+      );
+    } catch (error) {
+      AppNotificationService.show(
+        formatErrorMessage(error, t("app.connection.importFailed")),
+        "error",
+      );
+    }
+  }
 
   const connectionsActions = (
     <>
@@ -151,6 +209,25 @@ function AppShell() {
       >
         <Codicon name="refresh" />
       </button>
+      <button
+        type="button"
+        className="accordion-panel__action"
+        title={t("app.connection.exportTitle")}
+        aria-label={t("app.connection.exportTitle")}
+        disabled={connection.profiles.length === 0}
+        onClick={() => void handleExportConnections()}
+      >
+        <Codicon name="export" />
+      </button>
+      <button
+        type="button"
+        className="accordion-panel__action"
+        title={t("app.connection.importTitle")}
+        aria-label={t("app.connection.importTitle")}
+        onClick={() => void handleImportConnections()}
+      >
+        <Codicon name="cloud-upload" />
+      </button>
     </>
   );
 
@@ -172,7 +249,12 @@ function AppShell() {
           beforeMount: handleEditorBeforeMount,
           renderAlternative: (tab) => {
             if (SettingsService.isSettingsTab(tab.uri)) {
-              return <SettingsEditor />;
+              return (
+                <SettingsEditor
+                  onExportSettings={exportSettings}
+                  onImportSettings={importSettings}
+                />
+              );
             }
             if (KeybindingsEditorService.isKeybindingsTab(tab.uri)) {
               return <KeybindingsEditor />;
@@ -294,6 +376,9 @@ function AppShell() {
       <AiSqlDiffDialog />
       <AiSqlExecuteDialog />
       <SqlParameterDialog />
+      <ConnectionExportDialog />
+      <ConnectionImportDialog />
+      <ConnectionPasswordPromptDialog />
       <PlsqlSaveDialog />
       <PlsqlSnapshotDialog />
       <AboutDialog />
