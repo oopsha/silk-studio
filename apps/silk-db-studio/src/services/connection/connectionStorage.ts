@@ -10,7 +10,7 @@ const KNOWN_DRIVER_IDS = new Set<string>(
   CONNECTION_DRIVERS.map((driver) => driver.id),
 );
 
-function isKnownDriverId(value: unknown): value is ConnectionDriverId {
+export function isKnownDriverId(value: unknown): value is ConnectionDriverId {
   return typeof value === "string" && KNOWN_DRIVER_IDS.has(value);
 }
 

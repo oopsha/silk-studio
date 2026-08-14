@@ -825,9 +825,50 @@ function AiSettings() {
   );
 }
 
-function SettingsEditor() {
+type SettingsEditorProps = {
+  /** Absent → the Export/Import buttons are hidden (e.g. host app has no file-I/O support). */
+  onExportSettings?: () => Promise<boolean>;
+  onImportSettings?: () => Promise<boolean>;
+};
+
+function SettingsEditor({ onExportSettings, onImportSettings }: SettingsEditorProps) {
   const category = useSettingsCategory();
   const { t } = useI18n();
+  const [ioMessage, setIoMessage] = useState<string | null>(null);
+  const [ioTone, setIoTone] = useState<"info" | "error" | "success">("info");
+  const [ioBusy, setIoBusy] = useState(false);
+
+  async function handleExport(): Promise<void> {
+    if (!onExportSettings) return;
+    setIoBusy(true);
+    setIoMessage(null);
+    try {
+      const ok = await onExportSettings();
+      setIoTone(ok ? "success" : "info");
+      setIoMessage(ok ? t("settings.exportSuccess") : null);
+    } catch (error) {
+      setIoTone("error");
+      setIoMessage(error instanceof Error ? error.message : t("settings.exportFailed"));
+    } finally {
+      setIoBusy(false);
+    }
+  }
+
+  async function handleImport(): Promise<void> {
+    if (!onImportSettings) return;
+    setIoBusy(true);
+    setIoMessage(null);
+    try {
+      const ok = await onImportSettings();
+      setIoTone(ok ? "success" : "info");
+      setIoMessage(ok ? t("settings.importSuccess") : null);
+    } catch (error) {
+      setIoTone("error");
+      setIoMessage(error instanceof Error ? error.message : t("settings.importFailed"));
+    } finally {
+      setIoBusy(false);
+    }
+  }
 
   return (
     <main className="settings-editor" data-testid="settings-editor">
@@ -856,6 +897,35 @@ function SettingsEditor() {
             );
           })}
         </nav>
+        {onExportSettings || onImportSettings ? (
+          <div className="settings-editor__sidebar-footer">
+            {onExportSettings ? (
+              <button
+                type="button"
+                className="settings-button"
+                disabled={ioBusy}
+                onClick={() => void handleExport()}
+              >
+                {t("settings.export")}
+              </button>
+            ) : null}
+            {onImportSettings ? (
+              <button
+                type="button"
+                className="settings-button"
+                disabled={ioBusy}
+                onClick={() => void handleImport()}
+              >
+                {t("settings.import")}
+              </button>
+            ) : null}
+            {ioMessage ? (
+              <p className={`settings-editor__sidebar-status settings-editor__sidebar-status--${ioTone}`}>
+                {ioMessage}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </aside>
       <div className="settings-editor__content">
         {category === "appearance" ? <AppearanceSettings /> : null}

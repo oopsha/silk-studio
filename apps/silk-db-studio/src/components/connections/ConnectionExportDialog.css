@@ -1,0 +1,48 @@
+.connection-export-dialog {
+  width: min(480px, 100%);
+}
+
+.connection-export-dialog__radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-foreground);
+  cursor: pointer;
+}
+
+.connection-export-dialog__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  margin-top: 4px;
+  padding: 6px 0;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.connection-export-dialog__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--color-foreground);
+  cursor: pointer;
+}
+
+.connection-export-dialog__item:hover {
+  background-color: var(--color-list-hover);
+}
+
+.connection-export-dialog__item--all {
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 600;
+}
+
+.connection-export-dialog__item-driver {
+  margin-left: auto;
+  color: var(--color-description);
+}
