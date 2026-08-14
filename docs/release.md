@@ -23,15 +23,25 @@ pnpm exec tauri signer generate -w ../../.secrets/tauri-updater.key --ci -p ""
 - **Private key** (`.key`): store only in a password manager / CI secret.  
   **Never commit** (see `.gitignore`: `.secrets/`, `*.key`).
 
-Local release builds that produce updater artifacts need:
+Local release builds that produce updater artifacts need the private key set as
+`TAURI_SIGNING_PRIVATE_KEY`. Rather than setting it by hand every time, use:
 
 ```bash
-# PowerShell
+pnpm --filter @silk-studio/db-studio tauri:build
+```
+
+This runs [`scripts/tauri-build-signed.mjs`](../scripts/tauri-build-signed.mjs), which
+auto-loads `.secrets/tauri-updater.key` into `TAURI_SIGNING_PRIVATE_KEY` (if the env var
+isn't already set) before invoking `tauri build` — no manual `$env:...` step needed as long
+as the key file exists locally. If it's missing, the script warns and proceeds with an
+unsigned build instead of failing.
+
+To set the env var manually instead (e.g. for `tauri dev`, or a one-off `tauri build` call):
+
+```powershell
 $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content -Raw .secrets/tauri-updater.key
 # optional if you set a password when generating:
 # $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "..."
-
-pnpm --filter @silk-studio/db-studio tauri build
 ```
 
 Without the private key, `createUpdaterArtifacts: true` builds may fail when creating `.sig` files.
