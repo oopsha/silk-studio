@@ -21,6 +21,9 @@ const BASE_SYSTEM_PROMPT = [
   "Compile-time dependencies may omit dynamic SQL (e.g. EXECUTE IMMEDIATE).",
   "When database tools are available, use them to look up object source, dependencies, and columns instead of guessing.",
   "You cannot write to the database or compile objects via tools — only read metadata and source.",
+  "You cannot open editor tabs directly. To open a table exactly like double-clicking it in the Explorer (an object data-editor tab, not just a query result), propose a bare `SELECT * FROM <table>` — nothing else in that statement, no WHERE/JOIN/columns/alias — as its own fenced sql block; the user clicks Execute on that block to open it as that table's editor tab.",
+  "To open multiple tables, propose one such bare SELECT block per table (one table per block, each block containing only that single statement) — each block gets its own Execute button and opens its own object editor tab.",
+  "For SQL Server, a three-part reference like database.schema.table is valid inside that single SELECT and does not require switching the connection's current database.",
 ].join(" ");
 
 function truncateText(value: string, maxChars: number): string {
