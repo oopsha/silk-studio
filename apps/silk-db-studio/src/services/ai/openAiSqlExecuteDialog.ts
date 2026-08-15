@@ -3,12 +3,57 @@ import { AiChatService } from "@silk-studio/workbench/services/ai/aiChatService.
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { GroupPanelStateService } from "@silk-studio/workbench/services/layout/groupPanelStateService.ts";
 import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
-import { QueryExecutionService } from "../query/queryExecutionService";
+import {
+  buildOpenDataOwnerId,
+  QueryExecutionService,
+} from "../query/queryExecutionService";
+import { resolveExecutionConnectionId } from "../query/resolveExecutionConnection";
 import { isWriteSql } from "../query/sqlGuard";
 import { AiSqlExecuteDialogService } from "./aiSqlExecuteDialogService";
 
 const SAMPLE_ROWS = 5;
 const SAMPLE_CELL_CHARS = 40;
+
+const IDENT = `(?:[\\w$#]+|"[^"]+"|\\[[^\\]]+\\])`;
+const FROM_TABLE_PATTERN = new RegExp(
+  `\\bfrom\\s+(${IDENT}(?:\\s*\\.\\s*${IDENT}){0,2})`,
+  "i",
+);
+/** A bare "SELECT * FROM <table>" with no WHERE/JOIN/etc — same shape Explorer's Open Data emits. */
+const OPEN_TABLE_SQL_PATTERN = new RegExp(
+  `^select\\s+\\*\\s+from\\s+(${IDENT}(?:\\s*\\.\\s*${IDENT}){0,2})\\s*;?\\s*$`,
+  "i",
+);
+
+function stripIdentQuotes(part: string): string {
+  return part.trim().replace(/^["[]|["\]]$/g, "");
+}
+
+/** Best-effort tab title from the first FROM target, e.g. `SW_TRLOG.dbo.TRAN_LOG` -> `TRAN_LOG`. */
+function deriveTabTitle(sql: string): string {
+  const match = FROM_TABLE_PATTERN.exec(sql);
+  if (!match) return "AI Proposal";
+  const parts = match[1].split(".").map(stripIdentQuotes);
+  return parts[parts.length - 1] || "AI Proposal";
+}
+
+type OpenTableTarget = { schemaName: string; objectName: string; label: string };
+
+/**
+ * When the proposed SQL is exactly "SELECT * FROM <table>", treat it as an
+ * "open this table" request and route it through the same tab identity
+ * (ownerId/relationKind) Explorer's double-click Open Data uses, instead of
+ * a generic ad-hoc query result tab.
+ */
+function parseOpenTableSql(sql: string): OpenTableTarget | null {
+  const match = OPEN_TABLE_SQL_PATTERN.exec(sql.trim());
+  if (!match) return null;
+  const parts = match[1].split(".").map(stripIdentQuotes);
+  if (parts.some((part) => !part)) return null;
+  const objectName = parts[parts.length - 1];
+  const schemaName = parts.length >= 2 ? parts[parts.length - 2] : "";
+  return { schemaName, objectName, label: parts.join(".") };
+}
 
 function buildWarnings(isWrite: boolean, readOnly: boolean): string[] {
   const warnings: string[] = [];
@@ -120,9 +165,33 @@ export async function openAiSqlExecuteDialog(sql: string): Promise<boolean> {
 
   const groupId = EditorGroupsService.getFocusedGroupId();
   GroupPanelStateService.showPanel(groupId);
-  await QueryExecutionService.execute(trimmed, {
-    tabTitle: "AI Proposal",
-  });
+
+  const openTableTarget = parseOpenTableSql(trimmed);
+  let connectionId: string | null = null;
+  if (openTableTarget) {
+    try {
+      connectionId = resolveExecutionConnectionId();
+    } catch {
+      connectionId = null;
+    }
+  }
+
+  if (openTableTarget && connectionId) {
+    await QueryExecutionService.execute(trimmed, {
+      relationKind: "table",
+      tabTitle: openTableTarget.label,
+      connectionId,
+      ownerId: buildOpenDataOwnerId(
+        connectionId,
+        openTableTarget.schemaName,
+        openTableTarget.objectName,
+      ),
+    });
+  } else {
+    await QueryExecutionService.execute(trimmed, {
+      tabTitle: deriveTabTitle(trimmed),
+    });
+  }
 
   const state = QueryExecutionService.getState(groupId);
   const sample = formatSampleRows(state.result);
