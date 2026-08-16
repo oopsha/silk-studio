@@ -1,6 +1,6 @@
 import { secretDelete, secretGet, secretSet } from "./connectionSecretBridge";
 
-export type SshSecretKind = "password" | "passphrase";
+export type SshSecretKind = "password" | "passphrase" | "targetPassword" | "targetPassphrase";
 
 /**
  * Reuses the existing OS-keyring-backed `secretSet/Get/Delete` (same store as the DB password)

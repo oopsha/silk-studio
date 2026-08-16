@@ -35,6 +35,25 @@ export async function openSshTunnelForConnect(
   const passphrase =
     tunnel.authMethod === "privateKey" ? await sshSecretGet(connectionId, "passphrase") : undefined;
 
+  const secondHopConfig = tunnel.secondHop.enabled ? tunnel.secondHop : undefined;
+  const secondHop = secondHopConfig
+    ? {
+        targetHost: secondHopConfig.host,
+        targetPort: Number(secondHopConfig.port) || 22,
+        targetUsername: secondHopConfig.username,
+        targetAuthMethod: secondHopConfig.authMethod,
+        targetPassword:
+          secondHopConfig.authMethod === "password"
+            ? (await sshSecretGet(connectionId, "targetPassword")) || undefined
+            : undefined,
+        targetPrivateKeyPath: secondHopConfig.privateKeyPath,
+        targetPassphrase:
+          secondHopConfig.authMethod === "privateKey"
+            ? (await sshSecretGet(connectionId, "targetPassphrase")) || undefined
+            : undefined,
+      }
+    : undefined;
+
   onProgress?.({ phase: "startingTunnel" });
   const result = await bridgeSshTunnelOpen(
     connectionId,
@@ -45,6 +64,7 @@ export async function openSshTunnelForConnect(
     password || undefined,
     tunnel.privateKeyPath,
     passphrase || undefined,
+    secondHop,
     parsed.host,
     remotePort,
   );

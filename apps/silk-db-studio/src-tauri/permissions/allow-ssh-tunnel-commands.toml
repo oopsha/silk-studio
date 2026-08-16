@@ -1,0 +1,8 @@
+[[permission]]
+identifier = "allow-ssh-tunnel-commands"
+description = "Allows opening/closing/checking the built-in SSH jump-host tunnel."
+commands.allow = [
+  "ssh_tunnel_open",
+  "ssh_tunnel_close",
+  "ssh_tunnel_status",
+]

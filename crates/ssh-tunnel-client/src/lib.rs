@@ -8,4 +8,4 @@
 
 pub mod tunnel;
 
-pub use tunnel::{SshAuth, TunnelManager};
+pub use tunnel::{SecondHop, SshAuth, TunnelManager};
