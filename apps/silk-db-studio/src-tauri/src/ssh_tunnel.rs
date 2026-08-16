@@ -3,7 +3,7 @@
 //! so this module is much smaller than `ssm_tunnel.rs`.
 
 use serde::Serialize;
-use ssh_tunnel_client::{SshAuth, TunnelManager};
+use ssh_tunnel_client::{SecondHop, SshAuth, TunnelManager};
 use std::path::PathBuf;
 use tauri::State;
 
@@ -19,6 +19,27 @@ fn require_nonempty(value: &str, field: &str) -> Result<String, String> {
     Ok(trimmed.to_string())
 }
 
+fn parse_auth(
+    auth_method: &str,
+    password: Option<String>,
+    private_key_path: Option<String>,
+    passphrase: Option<String>,
+) -> Result<SshAuth, String> {
+    match auth_method {
+        "password" => {
+            let password = password.filter(|value| !value.is_empty()).ok_or("password is required.")?;
+            Ok(SshAuth::Password(password))
+        }
+        "privateKey" => {
+            let key_path = private_key_path
+                .filter(|value| !value.trim().is_empty())
+                .ok_or("private_key_path is required.")?;
+            Ok(SshAuth::PrivateKey { key_path: PathBuf::from(key_path.trim()), passphrase })
+        }
+        other => Err(format!("Unsupported auth method: {other}")),
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SshTunnelOpenResultDto {
@@ -26,6 +47,7 @@ pub struct SshTunnelOpenResultDto {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn ssh_tunnel_open(
     connection_id: String,
     jump_host: String,
@@ -35,6 +57,15 @@ pub async fn ssh_tunnel_open(
     password: Option<String>,
     private_key_path: Option<String>,
     passphrase: Option<String>,
+    // Second hop (see `SecondHop`'s doc) — omitted/empty `target_host` means "no second hop,
+    // forward directly from the jump host" (the original single-hop behavior).
+    target_host: Option<String>,
+    target_port: Option<u16>,
+    target_username: Option<String>,
+    target_auth_method: Option<String>,
+    target_password: Option<String>,
+    target_private_key_path: Option<String>,
+    target_passphrase: Option<String>,
     remote_host: String,
     remote_port: u16,
     state: State<'_, SshTunnelState>,
@@ -43,25 +74,45 @@ pub async fn ssh_tunnel_open(
     let jump_host = require_nonempty(&jump_host, "jump_host")?;
     let username = require_nonempty(&username, "username")?;
     let remote_host = require_nonempty(&remote_host, "remote_host")?;
+    let auth = parse_auth(&auth_method, password, private_key_path, passphrase)?;
 
-    let auth = match auth_method.as_str() {
-        "password" => {
-            let password = password.filter(|value| !value.is_empty()).ok_or("password is required.")?;
-            SshAuth::Password(password)
-        }
-        "privateKey" => {
-            let key_path = private_key_path
+    let second_hop = match target_host.filter(|value| !value.trim().is_empty()) {
+        Some(host) => {
+            let target_username = target_username
                 .filter(|value| !value.trim().is_empty())
-                .ok_or("private_key_path is required.")?;
-            SshAuth::PrivateKey { key_path: PathBuf::from(key_path.trim()), passphrase }
+                .ok_or("target_username is required when a target host is set.")?;
+            let target_auth_method = target_auth_method
+                .ok_or("target_auth_method is required when a target host is set.")?;
+            let auth = parse_auth(
+                &target_auth_method,
+                target_password,
+                target_private_key_path,
+                target_passphrase,
+            )?;
+            Some(SecondHop {
+                host: host.trim().to_string(),
+                port: target_port.unwrap_or(22),
+                username: target_username.trim().to_string(),
+                auth,
+            })
         }
-        other => return Err(format!("Unsupported auth method: {other}")),
+        None => None,
     };
 
     let local_port = TunnelManager::pick_free_local_port()?;
     state
         .tunnels
-        .open(&connection_id, &jump_host, jump_port, &username, auth, &remote_host, remote_port, local_port)
+        .open(
+            &connection_id,
+            &jump_host,
+            jump_port,
+            &username,
+            auth,
+            second_hop,
+            &remote_host,
+            remote_port,
+            local_port,
+        )
         .await?;
     Ok(SshTunnelOpenResultDto { local_port })
 }

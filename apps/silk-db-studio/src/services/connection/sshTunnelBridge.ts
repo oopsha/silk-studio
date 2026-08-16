@@ -5,6 +5,17 @@ export type SshTunnelOpenResult = {
   localPort: number;
 };
 
+/** Present only when a second SSH hop (see `SecondHopConfig`) is chained through the jump host. */
+export type SshTunnelSecondHopParams = {
+  targetHost: string;
+  targetPort: number;
+  targetUsername: string;
+  targetAuthMethod: SshAuthMethod;
+  targetPassword: string | undefined;
+  targetPrivateKeyPath: string | undefined;
+  targetPassphrase: string | undefined;
+};
+
 export async function bridgeSshTunnelOpen(
   connectionId: string,
   jumpHost: string,
@@ -14,6 +25,7 @@ export async function bridgeSshTunnelOpen(
   password: string | undefined,
   privateKeyPath: string | undefined,
   passphrase: string | undefined,
+  secondHop: SshTunnelSecondHopParams | undefined,
   remoteHost: string,
   remotePort: number,
 ): Promise<SshTunnelOpenResult> {
@@ -29,6 +41,13 @@ export async function bridgeSshTunnelOpen(
     password,
     privateKeyPath,
     passphrase,
+    targetHost: secondHop?.targetHost.trim(),
+    targetPort: secondHop?.targetPort,
+    targetUsername: secondHop?.targetUsername.trim(),
+    targetAuthMethod: secondHop?.targetAuthMethod,
+    targetPassword: secondHop?.targetPassword,
+    targetPrivateKeyPath: secondHop?.targetPrivateKeyPath,
+    targetPassphrase: secondHop?.targetPassphrase,
     remoteHost: remoteHost.trim(),
     remotePort,
   });

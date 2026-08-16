@@ -436,8 +436,8 @@ export const koMessages = {
       ssmProgressOpeningBrowser: "브라우저에서 AWS SSO 로그인 창을 여는 중…",
       ssmProgressWaitingForSignIn: "로그인 완료를 기다리는 중 (코드 {code})…",
       ssmProgressLoadingInstances: "SSM 관리 대상 인스턴스를 불러오는 중…",
-      ssmProgressStartingTunnel: "SSM 터널을 시작하는 중…",
-      ssmProgressConnectingDatabase: "데이터베이스에 연결하는 중…",
+      tunnelProgressStartingTunnel: "터널을 시작하는 중…",
+      tunnelProgressConnectingDatabase: "데이터베이스에 연결하는 중…",
       sshTunnelToggle: "SSH 점프 호스트로 연결",
       sshTunnelHint:
         "SSH 점프 호스트(배스천)를 경유해서 사설 데이터베이스에 접속합니다. 호스트/포트 필드는 점프 호스트가 아니라 점프 호스트 입장에서 실제로 접근 가능한 데이터베이스 주소여야 합니다.",
@@ -451,6 +451,10 @@ export const koMessages = {
       sshPrivateKeyPath: "개인키 파일 경로",
       sshBrowse: "찾아보기",
       sshPassphrase: "키 패스프레이즈 (선택)",
+      sshSecondHopToggle: "2단 SSH 로그인 체이닝 (ProxyJump)",
+      sshSecondHopHint:
+        "자기 자신에게 직접 로그인해야만 닿는 데이터베이스용입니다(예: loopback에만 바인딩). 점프 호스트를 거쳐 이 호스트에 SSH로 로그인한 뒤 여기서 포워딩합니다 — 위 호스트/포트 필드는 이 호스트 입장에서 접근 가능한 주소여야 합니다(대개 \"127.0.0.1\").",
+      sshSecondHopHost: "타겟 호스트",
       exportTitle: "연결 내보내기",
       exportSuccess: "연결을 내보냈습니다.",
       exportFailed: "연결 내보내기에 실패했습니다.",

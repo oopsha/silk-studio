@@ -53,6 +53,7 @@
     "allow-query-execute",
     "allow-connection-commands",
     "allow-ssm-tunnel-commands",
+    "allow-ssh-tunnel-commands",
     "allow-secret-commands",
     "allow-ai-http-commands",
     "allow-open-external-url",

@@ -438,8 +438,8 @@ export const enMessages = {
       ssmProgressOpeningBrowser: "Opening AWS SSO sign-in in your browser…",
       ssmProgressWaitingForSignIn: "Waiting for sign-in to complete (code {code})…",
       ssmProgressLoadingInstances: "Loading SSM-managed instances…",
-      ssmProgressStartingTunnel: "Starting SSM tunnel…",
-      ssmProgressConnectingDatabase: "Connecting to database…",
+      tunnelProgressStartingTunnel: "Starting tunnel…",
+      tunnelProgressConnectingDatabase: "Connecting to database…",
       sshTunnelToggle: "Connect via SSH jump host",
       sshTunnelHint:
         "Connects through an SSH jump host (bastion) to reach a private database. The host/port fields must be the database address as reachable from the jump host, not the jump host itself.",
@@ -453,6 +453,10 @@ export const enMessages = {
       sshPrivateKeyPath: "Private key file path",
       sshBrowse: "Browse",
       sshPassphrase: "Key passphrase (optional)",
+      sshSecondHopToggle: "Chain a second SSH login (ProxyJump)",
+      sshSecondHopHint:
+        "For databases only reachable by logging into their own host (e.g. bound to loopback only). Logs into this host through the jump host, then forwards from here — the Host/Port fields above must be reachable from THIS host's point of view (often \"127.0.0.1\").",
+      sshSecondHopHost: "Target host",
       exportTitle: "Export Connections",
       exportSuccess: "Connections exported.",
       exportFailed: "Failed to export connections.",
