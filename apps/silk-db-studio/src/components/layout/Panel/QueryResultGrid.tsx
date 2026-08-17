@@ -121,6 +121,12 @@ function QueryResultGrid({
     () => QueryResultDirtyService.getDirtyCount(tabId),
   );
 
+  const deletedRowCount = useSyncExternalStore(
+    (onStoreChange) => QueryResultDirtyService.onDidChange(onStoreChange),
+    () => QueryResultDirtyService.getDeletedRowCount(tabId),
+    () => QueryResultDirtyService.getDeletedRowCount(tabId),
+  );
+
   const snapshot = useSyncExternalStore(
     (onStoreChange) => QueryResultGridService.onDidChangeSnapshot(onStoreChange),
     () => QueryResultGridService.getSnapshot(),
@@ -239,11 +245,15 @@ function QueryResultGrid({
         headerName: column,
         filter: filterEnabled ? "agTextColumnFilter" : false,
         floatingFilter: filterEnabled,
-        // Editing is always allowed; only known PK columns stay read-only.
-        editable:
-          primaryKeys == null || primaryKeys.length === 0
-            ? true
-            : !primaryKeySet.has(column),
+        // Editing is always allowed except for known PK columns — and never on a row marked
+        // for deletion (it won't exist after Save, so an edit there would be pointless/lost).
+        editable: (params: { data?: QueryResultRow }) => {
+          if (primaryKeys != null && primaryKeys.length > 0 && primaryKeySet.has(column)) {
+            return false;
+          }
+          const rowIndex = params.data ? getQueryResultRowIndex(params.data) : null;
+          return rowIndex == null || !QueryResultDirtyService.isRowDeleted(tabId, rowIndex);
+        },
         sortable: true,
         resizable: true,
         unSortIcon: true,
@@ -252,7 +262,7 @@ function QueryResultGrid({
         valueFormatter: formatCellValue,
       })),
     ],
-    [filterEnabled, formatCellValue, primaryKeySet, primaryKeys, result.columns],
+    [filterEnabled, formatCellValue, primaryKeySet, primaryKeys, result.columns, tabId],
   );
 
   const rowData = useMemo(
@@ -375,6 +385,33 @@ function QueryResultGrid({
     }
   };
 
+  /**
+   * Toggles the pending-delete mark on every selected row (mixed selections un-mark already-
+   * marked rows and mark the rest — matches how most grids treat a repeat action on a mixed
+   * selection). Only flips the row's own `dirty`/style state; the actual DELETE only runs after
+   * Save is confirmed.
+   */
+  const handleToggleDeleteRows = () => {
+    const api = apiRef.current;
+    const selectedRows = api?.getSelectedRows() ?? [];
+    if (selectedRows.length === 0) {
+      flashMessage(t("app.query.selectRowFirst"));
+      return;
+    }
+    for (const row of selectedRows) {
+      QueryResultDirtyService.toggleRowDeleted(tabId, getQueryResultRowIndex(row));
+    }
+    // rowClassRules is a fresh object identity every render, but AG Grid doesn't re-evaluate it
+    // just because a prop changed reference — force it explicitly so the strikethrough/background
+    // shows immediately instead of waiting for some unrelated redraw (sort, filter, resize...).
+    if (api) {
+      const rowNodes = selectedRows
+        .map((row) => api.getRowNode(String(getQueryResultRowIndex(row))))
+        .filter((node) => node != null);
+      api.redrawRows({ rowNodes });
+    }
+  };
+
   const handleCopyAll = async () => {
     try {
       const ok = await QueryResultGridService.copy("all");
@@ -414,11 +451,13 @@ function QueryResultGrid({
     QueryResultGridService.markColumnLayoutDirty();
   };
 
+  const pendingChangeCount = dirtyCount + deletedRowCount;
+
   const saveHint =
     saveBlockedReason ??
-    getSaveBlockedReason(sql, dirtyCount, { relationKind });
+    getSaveBlockedReason(sql, pendingChangeCount, { relationKind });
 
-  const canAttemptSave = dirtyCount > 0 && !saveBlockedReason;
+  const canAttemptSave = pendingChangeCount > 0 && !saveBlockedReason;
 
   const handleOpenSavePreview = async () => {
     if (!canAttemptSave) {
@@ -501,6 +540,17 @@ function QueryResultGrid({
               {t("app.query.badgeUnsaved").replace("{n}", String(dirtyCount))}
             </span>
           ) : null}
+          {deletedRowCount > 0 ? (
+            <span
+              className="query-result-grid__badge query-result-grid__badge--deleted"
+              title={t("app.query.deletedRowsTitle").replace(
+                "{n}",
+                String(deletedRowCount),
+              )}
+            >
+              {t("app.query.badgeDeleted").replace("{n}", String(deletedRowCount))}
+            </span>
+          ) : null}
           {truncated ? (
             <span
               className="query-result-grid__badge query-result-grid__badge--warn"
@@ -559,6 +609,15 @@ function QueryResultGrid({
             onClick={() => void handleOpenSavePreview()}
           >
             <Codicon name="save" />
+          </button>
+          <button
+            type="button"
+            className="query-result-grid__action"
+            title={t("app.query.deleteRowTitle")}
+            aria-label={t("app.query.deleteRow")}
+            onClick={handleToggleDeleteRows}
+          >
+            <Codicon name="trash" />
           </button>
           <button
             type="button"
@@ -647,6 +706,15 @@ function QueryResultGrid({
           getRowId={(params) =>
             params.data ? String(getQueryResultRowIndex(params.data)) : "0"
           }
+          rowClassRules={{
+            "query-result-grid__row--deleted": (params) => {
+              if (!params.data) return false;
+              return QueryResultDirtyService.isRowDeleted(
+                tabId,
+                getQueryResultRowIndex(params.data),
+              );
+            },
+          }}
           cellSelection
           rowSelection={{
             mode: "multiRow",
@@ -683,6 +751,7 @@ function QueryResultGrid({
           tableLabel={tableLabel}
           dirtyRowCount={preview.dirtyRowCount}
           dirtyCellCount={preview.dirtyCellCount}
+          deletedRowCount={preview.deletedRowCount}
           statements={preview.statements}
           errorMessage={previewError}
           executing={executingUpdates}

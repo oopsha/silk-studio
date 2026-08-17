@@ -61,24 +61,24 @@ function ObjectEditorHeader({ objectRef }: ObjectEditorHeaderProps) {
       <div className="object-editor-header__row">
         <div className="object-editor-header__field object-editor-header__field--name">
           <span className="object-editor-header__label">{t("app.general.name")}</span>
-          <span className="object-editor-header__value">{objectRef.objectName}</span>
+          <span className="object-editor-header__box">{objectRef.objectName}</span>
         </div>
-        <div className="object-editor-header__field">
+        <div className="object-editor-header__field object-editor-header__field--type">
           <span className="object-editor-header__label">{t("app.general.type")}</span>
-          <span className="object-editor-header__value">{t(KIND_LABEL_KEYS[objectRef.kind])}</span>
+          <span className="object-editor-header__box">{t(KIND_LABEL_KEYS[objectRef.kind])}</span>
         </div>
-        <div className="object-editor-header__field">
+        <div className="object-editor-header__field object-editor-header__field--schema">
           <span className="object-editor-header__label">{t("app.general.schema")}</span>
-          <span className="object-editor-header__value">{objectRef.schemaName}</span>
+          <span className="object-editor-header__box">{objectRef.schemaName}</span>
         </div>
       </div>
       <div className="object-editor-header__field object-editor-header__field--comment">
         <span className="object-editor-header__label">{t("app.general.comment")}</span>
-        <p className="object-editor-header__comment">
+        <span className="object-editor-header__box object-editor-header__box--comment">
           {commentState.status === "loading"
             ? ""
             : (commentState.comment ?? t("app.general.noComment"))}
-        </p>
+        </span>
       </div>
     </div>
   );

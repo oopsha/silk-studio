@@ -55,6 +55,11 @@
   color: #f48771;
 }
 
+.query-result-grid__badge--deleted {
+  background-color: color-mix(in srgb, #f14c4c 26%, transparent);
+  color: #f48771;
+}
+
 .query-result-grid__action-msg {
   color: #89d185;
 }
@@ -128,6 +133,17 @@
 .query-result-grid .ag-header-row-column-filter {
   background-color: #1a1b1c;
   border-bottom: 1px solid var(--color-border);
+}
+
+/* Pending-delete row (marked, not yet saved) */
+.query-result-grid .ag-row.query-result-grid__row--deleted {
+  background-color: color-mix(in srgb, #f14c4c 14%, transparent);
+}
+
+.query-result-grid .ag-row.query-result-grid__row--deleted .ag-cell {
+  text-decoration: line-through;
+  text-decoration-color: #f48771;
+  opacity: 0.75;
 }
 
 /* AG Grid scroll containers — match VS Code slider tones */
