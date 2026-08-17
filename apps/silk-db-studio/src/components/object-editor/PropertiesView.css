@@ -1,3 +1,11 @@
+.object-editor-properties-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .object-editor-properties {
   display: flex;
   flex: 1;

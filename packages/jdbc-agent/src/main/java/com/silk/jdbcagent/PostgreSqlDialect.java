@@ -225,6 +225,30 @@ final class PostgreSqlDialect implements DbDialect {
   }
 
   @Override
+  public String fetchTableComment(Connection connection, String schemaName, String tableName)
+      throws SQLException {
+    // objsubid = 0 selects the relation's own comment (COMMENT ON TABLE/VIEW ...), not a
+    // column's — pg_description rows for columns carry objsubid = column's attnum.
+    String sql =
+        "SELECT d.description AS COMMENT "
+            + "FROM pg_catalog.pg_class c "
+            + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            + "LEFT JOIN pg_catalog.pg_description d ON d.objoid = c.oid AND d.objsubid = 0 "
+            + "WHERE n.nspname = ? AND c.relname = ?";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        if (rs.next()) {
+          String comment = rs.getString("COMMENT");
+          return (comment == null || comment.isBlank()) ? null : comment;
+        }
+      }
+    }
+    return null;
+  }
+
+  @Override
   public void collectTableIndexes(
       Connection connection, String schemaName, String tableName, ArrayNode indexes)
       throws SQLException {
@@ -243,6 +267,17 @@ final class PostgreSqlDialect implements DbDialect {
     String catalog = connection.getCatalog();
     try (ResultSet rs = metadata.getImportedKeys(catalog, schemaName, tableName)) {
       MetadataForeignKeys.appendFromResultSet(rs, foreignKeys);
+    }
+  }
+
+  @Override
+  public void collectTableReferences(
+      Connection connection, String schemaName, String tableName, ArrayNode references)
+      throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    String catalog = connection.getCatalog();
+    try (ResultSet rs = metadata.getExportedKeys(catalog, schemaName, tableName)) {
+      MetadataReferences.appendFromResultSet(rs, references);
     }
   }
 

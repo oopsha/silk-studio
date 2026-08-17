@@ -152,6 +152,7 @@ function DdlPreview({ objectRef: ref, tabId, tabUri, bufferedContent }: DdlPrevi
           fontSize: configuration["editor.fontSize"],
           tabSize: configuration["editor.tabSize"],
           insertSpaces: configuration["editor.insertSpaces"],
+          detectIndentation: false,
           lineNumbers: configuration["editor.lineNumbers"],
           renderLineHighlight: "line",
           minimap: { enabled: configuration["editor.minimap.enabled"] },

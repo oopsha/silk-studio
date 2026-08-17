@@ -324,6 +324,8 @@ function PlsqlEditorView() {
             fontSize: configuration["editor.fontSize"],
             tabSize: configuration["editor.tabSize"],
             insertSpaces: configuration["editor.insertSpaces"],
+            // See EditorArea.tsx's identical option for why this must be off.
+            detectIndentation: false,
             lineNumbers: configuration["editor.lineNumbers"],
             renderLineHighlight: "line",
             minimap: { enabled: configuration["editor.minimap.enabled"] },

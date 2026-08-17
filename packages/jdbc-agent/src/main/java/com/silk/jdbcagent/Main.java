@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -203,9 +205,17 @@ public final class Main {
           response.put("ok", true);
           response.set("result", runtime.listIndexes(params));
         }
+        case "connection.tableComment" -> {
+          response.put("ok", true);
+          response.set("result", runtime.getTableComment(params));
+        }
         case "connection.foreignKeys" -> {
           response.put("ok", true);
           response.set("result", runtime.listForeignKeys(params));
+        }
+        case "connection.references" -> {
+          response.put("ok", true);
+          response.set("result", runtime.listReferences(params));
         }
         case "connection.constraints" -> {
           response.put("ok", true);
@@ -598,6 +608,26 @@ public final class Main {
       return result;
     }
 
+    ObjectNode getTableComment(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      String schemaName = params.path("schema").asText("").trim();
+      String tableName = params.path("table").asText("").trim();
+      if (schemaName.isEmpty()) {
+        throw new RuntimeException("Missing params.schema");
+      }
+      if (tableName.isEmpty()) {
+        throw new RuntimeException("Missing params.table");
+      }
+
+      String comment = session.dialect.fetchTableComment(session.connection, schemaName, tableName);
+
+      ObjectNode result = MAPPER.createObjectNode();
+      if (comment != null) {
+        result.put("comment", comment);
+      }
+      return result;
+    }
+
     ObjectNode listIndexes(JsonNode params) throws SQLException {
       Session session = requireSession(params);
       String schemaName = params.path("schema").asText("").trim();
@@ -634,6 +664,26 @@ public final class Main {
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("foreignKeys", foreignKeys);
+      return result;
+    }
+
+    ObjectNode listReferences(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      String schemaName = params.path("schema").asText("").trim();
+      String tableName = params.path("table").asText("").trim();
+      if (schemaName.isEmpty()) {
+        throw new RuntimeException("Missing params.schema");
+      }
+      if (tableName.isEmpty()) {
+        throw new RuntimeException("Missing params.table");
+      }
+
+      ArrayNode references = MAPPER.createArrayNode();
+      session.dialect.collectTableReferences(
+          session.connection, schemaName, tableName, references);
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.set("references", references);
       return result;
     }
 
@@ -1014,11 +1064,38 @@ public final class Main {
     }
   }
 
+  /**
+   * Matches one leading line comment or one leading block comment, anchored at the very start of
+   * the (remaining) input. {@link #stripLeadingComments} loops this to strip a whole run of
+   * comments/blank lines before the real statement.
+   */
+  private static final Pattern LEADING_COMMENT =
+      Pattern.compile("\\A\\s*(--[^\\n]*(\\n|\\z)|/\\*.*?\\*/)", Pattern.DOTALL);
+
+  /**
+   * Strips leading SQL comments/whitespace so {@link #isWriteSql} can see the real first
+   * keyword — a statement like {@code "-- note\nDELETE FROM t"} must still be classified as a
+   * write. This is the read-only-mode enforcement gate ({@code executeQuery}'s
+   * {@code readOnly && isWriteSql(sql)} check above), so under-detecting here is a real
+   * DML-bypass risk, not just a cosmetic miss.
+   */
+  private static String stripLeadingComments(String sql) {
+    String rest = sql;
+    while (true) {
+      Matcher matcher = LEADING_COMMENT.matcher(rest);
+      if (!matcher.find()) {
+        return rest;
+      }
+      rest = rest.substring(matcher.end());
+    }
+  }
+
   private static boolean isWriteSql(String sql) {
-    return sql.trim()
+    return stripLeadingComments(sql)
+        .trim()
         .toLowerCase()
         .matches(
-            "^(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|call|exec|execute)\\b.*");
+            "(?s)^(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|call|exec|execute)\\b.*");
   }
 
   private static String formatSqlError(SQLException error) {

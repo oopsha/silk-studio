@@ -263,6 +263,17 @@ final class SqlServerDialect implements DbDialect {
   }
 
   @Override
+  public void collectTableReferences(
+      Connection connection, String schemaName, String tableName, ArrayNode references)
+      throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    String catalog = connection.getCatalog();
+    try (ResultSet rs = metadata.getExportedKeys(catalog, schemaName, tableName)) {
+      MetadataReferences.appendFromResultSet(rs, references);
+    }
+  }
+
+  @Override
   public void collectTableConstraints(
       Connection connection, String schemaName, String tableName, ArrayNode constraints)
       throws SQLException {
@@ -371,6 +382,32 @@ final class SqlServerDialect implements DbDialect {
         MetadataDependencies.appendFromResultSet(rs, dependents);
       }
     }
+  }
+
+  @Override
+  public String fetchTableComment(Connection connection, String schemaName, String tableName)
+      throws SQLException {
+    // Same MS_Description extended-property mechanism as applyColumnComments below, but
+    // minor_id = 0 selects the property on the object itself rather than one of its columns.
+    // Joins sys.objects (not sys.tables) so this covers views too.
+    String sql =
+        "SELECT CAST(ep.value AS NVARCHAR(MAX)) AS COMMENT "
+            + "FROM sys.objects o "
+            + "JOIN sys.schemas s ON s.schema_id = o.schema_id "
+            + "LEFT JOIN sys.extended_properties ep "
+            + "  ON ep.major_id = o.object_id AND ep.minor_id = 0 AND ep.name = 'MS_Description' "
+            + "WHERE s.name = ? AND o.name = ?";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        if (rs.next()) {
+          String comment = rs.getString("COMMENT");
+          return (comment == null || comment.isBlank()) ? null : comment;
+        }
+      }
+    }
+    return null;
   }
 
   /**

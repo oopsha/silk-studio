@@ -99,6 +99,25 @@ interface DbDialect {
       throws SQLException;
 
   /**
+   * Returns the table/view-level comment (description), or {@code null} when the object has
+   * none. Object Editor "General" section. Default: unsupported (no comment concept exposed by
+   * this dialect's driver).
+   */
+  default String fetchTableComment(Connection connection, String schemaName, String tableName)
+      throws SQLException {
+    return null;
+  }
+
+  /**
+   * Populates {@code references} with descriptors for foreign keys that *other* tables hold
+   * pointing at {@code tableName} — the mirror image of {@link #collectTableForeignKeys}. Object
+   * Editor "References" section.
+   */
+  void collectTableReferences(
+      Connection connection, String schemaName, String tableName, ArrayNode references)
+      throws SQLException;
+
+  /**
    * Populates {@code members} with package procedure/function descriptors ({@code name}, {@code
    * kind}) for SQL autocomplete ({@code PKG.member}). Default: no members (non-Oracle dialects).
    */
