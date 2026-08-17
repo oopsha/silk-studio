@@ -7,6 +7,7 @@ type TabDirtyStore = {
   columns: string[];
   originalRows: Array<Record<string, string | null>>;
   dirtyByRow: Map<number, Map<string, DirtyCell>>;
+  deletedRows: Set<number>;
 };
 
 type DirtyListener = () => void;
@@ -32,6 +33,7 @@ class QueryResultDirtyServiceImpl {
       columns,
       originalRows,
       dirtyByRow: new Map(),
+      deletedRows: new Set(),
     });
     this.emit();
   }
@@ -56,11 +58,44 @@ class QueryResultDirtyServiceImpl {
 
   clearTab(tabId: string): void {
     const store = this.stores.get(tabId);
-    if (!store || store.dirtyByRow.size === 0) {
+    if (!store || (store.dirtyByRow.size === 0 && store.deletedRows.size === 0)) {
       return;
     }
     store.dirtyByRow.clear();
+    store.deletedRows.clear();
     this.emit();
+  }
+
+  /**
+   * Toggles whether `rowIndex` is marked for deletion. Marking a row deleted also drops any
+   * pending cell edits on it — the row won't exist after Save, so per-cell changes are moot and
+   * would otherwise still show up (confusingly) in the dirty-cell count/preview.
+   */
+  toggleRowDeleted(tabId: string, rowIndex: number): void {
+    const store = this.stores.get(tabId);
+    if (!store) return;
+
+    if (store.deletedRows.has(rowIndex)) {
+      store.deletedRows.delete(rowIndex);
+    } else {
+      store.deletedRows.add(rowIndex);
+      store.dirtyByRow.delete(rowIndex);
+    }
+    this.emit();
+  }
+
+  isRowDeleted(tabId: string, rowIndex: number): boolean {
+    return this.stores.get(tabId)?.deletedRows.has(rowIndex) ?? false;
+  }
+
+  getDeletedRowCount(tabId: string): number {
+    return this.stores.get(tabId)?.deletedRows.size ?? 0;
+  }
+
+  getDeletedRowIndexes(tabId: string): number[] {
+    const store = this.stores.get(tabId);
+    if (!store) return [];
+    return [...store.deletedRows].sort((a, b) => a - b);
   }
 
   setCell(
@@ -70,7 +105,9 @@ class QueryResultDirtyServiceImpl {
     currentValue: string | null,
   ): void {
     const store = this.stores.get(tabId);
-    if (!store) return;
+    // A row marked for deletion is not editable in the grid (see QueryResultGrid's `editable`
+    // callback), but guard here too in case a caller bypasses that.
+    if (!store || store.deletedRows.has(rowIndex)) return;
 
     const originalValue = store.originalRows[rowIndex]?.[column] ?? null;
     const normalizedCurrent = currentValue === undefined ? null : currentValue;

@@ -730,7 +730,12 @@ export const enMessages = {
         "Result limited to {n} rows (Settings → Query Result → Max Rows). More rows may exist.",
       saveChanges: "Save changes",
       saveChangesTitle:
-        "Preview and execute UPDATE statements for edited cells",
+        "Preview and execute UPDATE/DELETE statements for edited cells and deleted rows",
+      deleteRow: "Delete Row",
+      deleteRowTitle:
+        "Mark selected row(s) for deletion (not executed until Save) — click again on a marked row to undo",
+      badgeDeleted: "{n} to delete",
+      deletedRowsTitle: "{n} row(s) marked for deletion, not yet saved",
       copySelectionTitle: "Copy selection (cells, or rows)",
       copyRowsTitle: "Copy selected rows",
       copyFilteredTitle: "Copy all filtered rows (TSV)",
@@ -827,8 +832,8 @@ export const enMessages = {
       savePkMetadataFailed: "Failed to load primary key metadata.",
       savePkMissingInResult:
         'Primary key column "{column}" is not present in the result set. Include all PK columns in the SELECT list.',
-      saveNoEdits: "Edit a cell to mark rows as changed.",
-      saveNoEditedCells: "No edited cells to save.",
+      saveNoEdits: "Edit a cell or delete a row to mark changes.",
+      saveNoEditedCells: "No edited cells or deleted rows to save.",
       saveDesktopShort: "Saving is available in the desktop app only.",
       saveViewsShort: "Views are read-only.",
       saveMviewsShort: "Materialized views are read-only.",
@@ -836,10 +841,15 @@ export const enMessages = {
       saveSimpleSelectShort:
         "Only simple single-table SELECT results can be saved.",
       confirmUpdateTitle: "Confirm UPDATE",
+      confirmDeleteTitle: "Confirm DELETE",
+      confirmChangesTitle: "Confirm Changes",
       confirmUpdateSummary:
         "Save {cells} edited cell(s) across {rows} row(s) on {table}?",
+      confirmDeleteSummary: "Delete {rows} row(s) from {table}?",
       confirmUpdateHint:
         "Review the generated SQL below. Nothing is written until you confirm.",
+      executeDelete: "Execute DELETE",
+      executeChanges: "Execute Changes",
       copySql: "Copy SQL",
       sqlCopied: "SQL copied",
       executeUpdate: "Execute UPDATE",

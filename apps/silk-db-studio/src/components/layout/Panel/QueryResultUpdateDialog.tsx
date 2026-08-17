@@ -8,6 +8,7 @@ type QueryResultUpdateDialogProps = {
   tableLabel: string;
   dirtyRowCount: number;
   dirtyCellCount: number;
+  deletedRowCount: number;
   statements: string[];
   errorMessage: string | null;
   executing: boolean;
@@ -19,6 +20,7 @@ function QueryResultUpdateDialog({
   tableLabel,
   dirtyRowCount,
   dirtyCellCount,
+  deletedRowCount,
   statements,
   errorMessage,
   executing,
@@ -28,6 +30,20 @@ function QueryResultUpdateDialog({
   const { t } = useI18n();
   const sqlText = statements.join("\n\n");
   const backdropDismiss = useBackdropDismiss(onCancel, !executing);
+  const hasUpdates = dirtyRowCount > 0;
+  const hasDeletes = deletedRowCount > 0;
+  const titleKey =
+    hasUpdates && hasDeletes
+      ? "app.query.confirmChangesTitle"
+      : hasDeletes
+        ? "app.query.confirmDeleteTitle"
+        : "app.query.confirmUpdateTitle";
+  const confirmKey =
+    hasUpdates && hasDeletes
+      ? "app.query.executeChanges"
+      : hasDeletes
+        ? "app.query.executeDelete"
+        : "app.query.executeUpdate";
 
   const handleCopy = async () => {
     try {
@@ -53,7 +69,7 @@ function QueryResultUpdateDialog({
       >
         <header className="query-result-update-dialog__header">
           <h2 id="query-result-update-dialog-title">
-            {t("app.query.confirmUpdateTitle")}
+            {t(titleKey)}
           </h2>
           <button
             type="button"
@@ -67,12 +83,21 @@ function QueryResultUpdateDialog({
         </header>
 
         <div className="query-result-update-dialog__body">
-          <p className="query-result-update-dialog__summary">
-            {t("app.query.confirmUpdateSummary")
-              .replace("{cells}", String(dirtyCellCount))
-              .replace("{rows}", String(dirtyRowCount))
-              .replace("{table}", tableLabel)}
-          </p>
+          {dirtyRowCount > 0 ? (
+            <p className="query-result-update-dialog__summary">
+              {t("app.query.confirmUpdateSummary")
+                .replace("{cells}", String(dirtyCellCount))
+                .replace("{rows}", String(dirtyRowCount))
+                .replace("{table}", tableLabel)}
+            </p>
+          ) : null}
+          {deletedRowCount > 0 ? (
+            <p className="query-result-update-dialog__summary">
+              {t("app.query.confirmDeleteSummary")
+                .replace("{rows}", String(deletedRowCount))
+                .replace("{table}", tableLabel)}
+            </p>
+          ) : null}
           <p className="query-result-update-dialog__hint">
             {t("app.query.confirmUpdateHint")}
           </p>
@@ -110,7 +135,7 @@ function QueryResultUpdateDialog({
             disabled={executing || statements.length === 0}
             onClick={onConfirm}
           >
-            {executing ? t("common.executing") : t("app.query.executeUpdate")}
+            {executing ? t("common.executing") : t(confirmKey)}
           </button>
         </footer>
       </div>

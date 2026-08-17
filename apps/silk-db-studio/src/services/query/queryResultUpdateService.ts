@@ -13,7 +13,7 @@ import { formatErrorMessage } from "../formatErrorMessage";
 import { resolveActiveDriverId } from "../sql/sqlDialect";
 import { QueryExecutionService } from "./queryExecutionService";
 import { QueryResultDirtyService } from "./queryResultDirtyService";
-import { buildUpdateStatements } from "./safeUpdateSql";
+import { buildDeleteStatements, buildUpdateStatements } from "./safeUpdateSql";
 import { assertReadOnlyQueryAllowed } from "./sqlGuard";
 import { parseSingleTableFromSelect } from "./sqlTableReference";
 
@@ -38,6 +38,7 @@ export type UpdatePreview = {
   statements: string[];
   dirtyRowCount: number;
   dirtyCellCount: number;
+  deletedRowCount: number;
 };
 
 type UpdateEligibilityOptions = {
@@ -227,7 +228,8 @@ export async function buildUpdatePreview(
   options?: UpdateEligibilityOptions,
 ): Promise<UpdatePreview | { blocked: true; reason: string }> {
   const dirtyRows = QueryResultDirtyService.getDirtyRows(tabId);
-  if (dirtyRows.length === 0) {
+  const deletedRowIndexes = QueryResultDirtyService.getDeletedRowIndexes(tabId);
+  if (dirtyRows.length === 0 && deletedRowIndexes.length === 0) {
     return { blocked: true, reason: tKey("app.query.saveNoEditedCells") };
   }
 
@@ -240,14 +242,25 @@ export async function buildUpdatePreview(
     return { blocked: true, reason: eligibility.reason };
   }
 
-  const statements = buildUpdateStatements({
-    schema: eligibility.schema,
-    table: eligibility.table,
-    driverId: eligibility.driverId,
-    primaryKeys: eligibility.primaryKeys,
-    originalRows: QueryResultDirtyService.getOriginalRows(tabId),
-    dirtyRows,
-  });
+  const originalRows = QueryResultDirtyService.getOriginalRows(tabId);
+  const statements = [
+    ...buildUpdateStatements({
+      schema: eligibility.schema,
+      table: eligibility.table,
+      driverId: eligibility.driverId,
+      primaryKeys: eligibility.primaryKeys,
+      originalRows,
+      dirtyRows,
+    }),
+    ...buildDeleteStatements({
+      schema: eligibility.schema,
+      table: eligibility.table,
+      driverId: eligibility.driverId,
+      primaryKeys: eligibility.primaryKeys,
+      originalRows,
+      deletedRowIndexes,
+    }),
+  ];
 
   const dirtyCellCount = QueryResultDirtyService.getDirtyCount(tabId);
   return {
@@ -255,6 +268,7 @@ export async function buildUpdatePreview(
     statements,
     dirtyRowCount: dirtyRows.length,
     dirtyCellCount,
+    deletedRowCount: deletedRowIndexes.length,
   };
 }
 
@@ -264,7 +278,7 @@ export async function executeConfirmedUpdates(
   options?: { connectionId?: string | null },
 ): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
   if (statements.length === 0) {
-    return { ok: false, message: "No UPDATE statements to execute." };
+    return { ok: false, message: "No statements to execute." };
   }
 
   try {
@@ -280,12 +294,12 @@ export async function executeConfirmedUpdates(
     const count = statements.length;
     return {
       ok: true,
-      message: `${count} UPDATE statement${count === 1 ? "" : "s"} executed.`,
+      message: `${count} statement${count === 1 ? "" : "s"} executed.`,
     };
   } catch (error) {
     return {
       ok: false,
-      message: formatErrorMessage(error, "Failed to execute UPDATE statements."),
+      message: formatErrorMessage(error, "Failed to execute statements."),
     };
   }
 }
