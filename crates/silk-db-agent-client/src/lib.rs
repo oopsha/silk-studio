@@ -257,6 +257,31 @@ impl JdbcAgentClient {
         )
     }
 
+    pub fn get_table_comment(
+        &self,
+        connection_id: &str,
+        schema: &str,
+        table: &str,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let schema = schema.trim();
+        let table = table.trim();
+        if schema.is_empty() {
+            return Err("schema is required.".into());
+        }
+        if table.is_empty() {
+            return Err("table is required.".into());
+        }
+        self.send_request(
+            "connection.tableComment",
+            json!({
+                "connectionId": connection_id.trim(),
+                "schema": schema,
+                "table": table
+            }),
+        )
+    }
+
     pub fn list_foreign_keys(
         &self,
         connection_id: &str,
@@ -274,6 +299,31 @@ impl JdbcAgentClient {
         }
         self.send_request(
             "connection.foreignKeys",
+            json!({
+                "connectionId": connection_id.trim(),
+                "schema": schema,
+                "table": table
+            }),
+        )
+    }
+
+    pub fn list_references(
+        &self,
+        connection_id: &str,
+        schema: &str,
+        table: &str,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let schema = schema.trim();
+        let table = table.trim();
+        if schema.is_empty() {
+            return Err("schema is required.".into());
+        }
+        if table.is_empty() {
+            return Err("table is required.".into());
+        }
+        self.send_request(
+            "connection.references",
             json!({
                 "connectionId": connection_id.trim(),
                 "schema": schema,

@@ -18,6 +18,19 @@ describe("isWriteSql", () => {
     expect(isWriteSql("WITH x AS (SELECT 1) SELECT * FROM x")).toBe(false);
     expect(isWriteSql("EXPLAIN SELECT 1")).toBe(false);
   });
+
+  it("sees past a leading line comment", () => {
+    expect(isWriteSql("-- delete two stray rows\nDELETE FROM t WHERE id IN (1, 2)")).toBe(
+      true,
+    );
+    expect(isWriteSql("-- note\n-- another note\nUPDATE t SET a = 1")).toBe(true);
+    expect(isWriteSql("-- just a comment, no statement follows")).toBe(false);
+  });
+
+  it("sees past a leading block comment", () => {
+    expect(isWriteSql("/* cleanup */\nDELETE FROM t")).toBe(true);
+    expect(isWriteSql("/* multi\nline */ INSERT INTO t VALUES (1)")).toBe(true);
+  });
 });
 
 describe("assertReadOnlyQueryAllowed", () => {

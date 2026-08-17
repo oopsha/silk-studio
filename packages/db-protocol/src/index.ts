@@ -207,6 +207,17 @@ export type ConnectionIndexesResult = {
   indexes: MetadataIndex[];
 };
 
+export type ConnectionTableCommentParams = {
+  connectionId: string;
+  schema: string;
+  table: string;
+};
+
+export type ConnectionTableCommentResult = {
+  /** Absent (not empty string) when the object has no comment. */
+  comment?: string;
+};
+
 /** Foreign key metadata for a single table (this table as the referencing/child side). */
 export type MetadataForeignKey = {
   name: string;
@@ -229,6 +240,32 @@ export type ConnectionForeignKeysParams = {
 
 export type ConnectionForeignKeysResult = {
   foreignKeys: MetadataForeignKey[];
+};
+
+/**
+ * Foreign key metadata for a single table as the *referenced* (parent) side — i.e. an entry per
+ * other table's FK that points at this one. The mirror image of {@link MetadataForeignKey}.
+ */
+export type MetadataReference = {
+  name: string;
+  referencingSchema?: string;
+  referencingTable: string;
+  /** This table's columns being referenced, in key sequence order. */
+  columns: string[];
+  /** The referencing table's FK columns, aligned by position with `columns`. */
+  referencingColumns: string[];
+  updateRule?: string;
+  deleteRule?: string;
+};
+
+export type ConnectionReferencesParams = {
+  connectionId: string;
+  schema: string;
+  table: string;
+};
+
+export type ConnectionReferencesResult = {
+  references: MetadataReference[];
 };
 
 /** Primary key / unique / check constraint metadata for a single table (`connection.constraints`). */
@@ -596,6 +633,14 @@ export function isConnectionIndexesResult(
   );
 }
 
+export function isConnectionTableCommentResult(
+  value: unknown,
+): value is ConnectionTableCommentResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return record.comment === undefined || typeof record.comment === "string";
+}
+
 function isMetadataForeignKey(value: unknown): value is MetadataForeignKey {
   if (!value || typeof value !== "object") return false;
   const entry = value as Record<string, unknown>;
@@ -621,6 +666,34 @@ export function isConnectionForeignKeysResult(
   return (
     Array.isArray(record.foreignKeys) &&
     record.foreignKeys.every(isMetadataForeignKey)
+  );
+}
+
+function isMetadataReference(value: unknown): value is MetadataReference {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.name === "string" &&
+    typeof entry.referencingTable === "string" &&
+    Array.isArray(entry.columns) &&
+    entry.columns.every((column) => typeof column === "string") &&
+    Array.isArray(entry.referencingColumns) &&
+    entry.referencingColumns.every((column) => typeof column === "string") &&
+    (entry.referencingSchema === undefined ||
+      typeof entry.referencingSchema === "string") &&
+    (entry.updateRule === undefined || typeof entry.updateRule === "string") &&
+    (entry.deleteRule === undefined || typeof entry.deleteRule === "string")
+  );
+}
+
+export function isConnectionReferencesResult(
+  value: unknown,
+): value is ConnectionReferencesResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Array.isArray(record.references) &&
+    record.references.every(isMetadataReference)
   );
 }
 

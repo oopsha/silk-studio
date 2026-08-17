@@ -171,6 +171,27 @@ abstract class MySqlCompatibleDialect implements DbDialect {
   }
 
   @Override
+  public String fetchTableComment(Connection connection, String schemaName, String tableName)
+      throws SQLException {
+    // MySQL/MariaDB have no separate comment concept for views (TABLE_COMMENT is typically
+    // "VIEW" there, not a user comment) — this still returns whatever's actually stored.
+    String sql =
+        "SELECT TABLE_COMMENT AS COMMENT FROM information_schema.TABLES "
+            + "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        if (rs.next()) {
+          String comment = rs.getString("COMMENT");
+          return (comment == null || comment.isBlank()) ? null : comment;
+        }
+      }
+    }
+    return null;
+  }
+
+  @Override
   public void collectTableIndexes(
       Connection connection, String schemaName, String tableName, ArrayNode indexes)
       throws SQLException {
@@ -187,6 +208,16 @@ abstract class MySqlCompatibleDialect implements DbDialect {
     DatabaseMetaData metadata = connection.getMetaData();
     try (ResultSet rs = metadata.getImportedKeys(schemaName, null, tableName)) {
       MetadataForeignKeys.appendFromResultSet(rs, foreignKeys);
+    }
+  }
+
+  @Override
+  public void collectTableReferences(
+      Connection connection, String schemaName, String tableName, ArrayNode references)
+      throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    try (ResultSet rs = metadata.getExportedKeys(schemaName, null, tableName)) {
+      MetadataReferences.appendFromResultSet(rs, references);
     }
   }
 

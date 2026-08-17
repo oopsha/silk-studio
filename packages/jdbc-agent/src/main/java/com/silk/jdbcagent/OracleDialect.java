@@ -106,6 +106,30 @@ final class OracleDialect implements DbDialect {
   }
 
   @Override
+  public String fetchTableComment(Connection connection, String schemaName, String tableName)
+      throws SQLException {
+    // ALL_TAB_COMMENTS covers both tables and views (TABLE_TYPE differs, name doesn't).
+    String sql = "SELECT COMMENTS FROM ALL_TAB_COMMENTS WHERE OWNER = ? AND TABLE_NAME = ?";
+    for (String schema : distinctCases(schemaName)) {
+      for (String table : distinctCases(tableName)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+          statement.setString(1, schema);
+          statement.setString(2, table);
+          try (ResultSet rs = statement.executeQuery()) {
+            if (rs.next()) {
+              String comment = rs.getString("COMMENTS");
+              if (comment != null && !comment.isBlank()) {
+                return comment;
+              }
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  @Override
   public void collectTableIndexes(
       Connection connection, String schemaName, String tableName, ArrayNode indexes)
       throws SQLException {
@@ -133,6 +157,23 @@ final class OracleDialect implements DbDialect {
           MetadataForeignKeys.appendFromResultSet(rs, foreignKeys);
         }
         if (foreignKeys.size() > 0) {
+          return;
+        }
+      }
+    }
+  }
+
+  @Override
+  public void collectTableReferences(
+      Connection connection, String schemaName, String tableName, ArrayNode references)
+      throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    for (String schema : distinctCases(schemaName)) {
+      for (String table : distinctCases(tableName)) {
+        try (ResultSet rs = metadata.getExportedKeys(null, schema, table)) {
+          MetadataReferences.appendFromResultSet(rs, references);
+        }
+        if (references.size() > 0) {
           return;
         }
       }

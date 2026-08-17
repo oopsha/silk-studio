@@ -144,6 +144,11 @@ function EditorArea({
       fontSize: configuration.fontSize,
       tabSize: configuration.tabSize,
       insertSpaces: configuration.insertSpaces,
+      // Monaco defaults this to true, which makes it silently re-guess (and override)
+      // tabSize/insertSpaces per-document from existing content — e.g. a script with a few
+      // 2-space-aligned lines gets the whole buffer's Tab key switched to 2 spaces, with no
+      // visible indication that it now disagrees with the configured/status-bar tabSize.
+      detectIndentation: false,
       lineNumbers: configuration.lineNumbers,
       minimap: { enabled: configuration.minimapEnabled },
       stickyScroll: { enabled: configuration.stickyScrollEnabled },
@@ -200,6 +205,7 @@ function EditorArea({
           fontSize: configuration.fontSize,
           tabSize: configuration.tabSize,
           insertSpaces: configuration.insertSpaces,
+          detectIndentation: false,
           lineNumbers: configuration.lineNumbers,
           renderLineHighlight: "line",
           minimap: { enabled: configuration.minimapEnabled },

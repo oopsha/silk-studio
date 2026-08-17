@@ -4,9 +4,11 @@ import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import type { MessageKey } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
 import DdlPreview from "../ddl/DdlPreview";
+import ObjectEditorHeader from "./ObjectEditorHeader";
 import ColumnsPreview from "./ColumnsPreview";
 import IndexesPreview from "./IndexesPreview";
 import ForeignKeysPreview from "./ForeignKeysPreview";
+import ReferencesPreview from "./ReferencesPreview";
 import ConstraintsPreview from "./ConstraintsPreview";
 import TriggersPreview from "./TriggersPreview";
 import DependenciesPreview from "./DependenciesPreview";
@@ -40,6 +42,11 @@ const PROPERTIES_SECTIONS: PropertiesSection[] = [
     id: "foreignKeys",
     labelKey: "app.objectEditor.foreignKeysSection",
     render: (ctx) => <ForeignKeysPreview objectRef={ctx.objectRef} />,
+  },
+  {
+    id: "references",
+    labelKey: "app.objectEditor.referencesSection",
+    render: (ctx) => <ReferencesPreview objectRef={ctx.objectRef} />,
   },
   {
     id: "constraints",
@@ -85,27 +92,30 @@ function PropertiesView({ objectRef, tabId, tabUri, bufferedContent }: Propertie
     PROPERTIES_SECTIONS[0];
 
   return (
-    <div className="object-editor-properties">
-      <aside className="object-editor-properties__sidebar">
-        <nav className="object-editor-properties__nav">
-          {PROPERTIES_SECTIONS.map((section) => (
-            <button
-              key={section.id}
-              type="button"
-              className={`object-editor-properties__nav-item${
-                section.id === activeSectionId
-                  ? " object-editor-properties__nav-item--active"
-                  : ""
-              }`}
-              onClick={() => setActiveSectionId(section.id)}
-            >
-              {t(section.labelKey)}
-            </button>
-          ))}
-        </nav>
-      </aside>
-      <div className="object-editor-properties__content">
-        {active.render({ objectRef, tabId, tabUri, bufferedContent })}
+    <div className="object-editor-properties-page">
+      <ObjectEditorHeader objectRef={objectRef} />
+      <div className="object-editor-properties">
+        <aside className="object-editor-properties__sidebar">
+          <nav className="object-editor-properties__nav">
+            {PROPERTIES_SECTIONS.map((section) => (
+              <button
+                key={section.id}
+                type="button"
+                className={`object-editor-properties__nav-item${
+                  section.id === activeSectionId
+                    ? " object-editor-properties__nav-item--active"
+                    : ""
+                }`}
+                onClick={() => setActiveSectionId(section.id)}
+              >
+                {t(section.labelKey)}
+              </button>
+            ))}
+          </nav>
+        </aside>
+        <div className="object-editor-properties__content">
+          {active.render({ objectRef, tabId, tabUri, bufferedContent })}
+        </div>
       </div>
     </div>
   );

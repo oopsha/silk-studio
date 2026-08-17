@@ -248,6 +248,19 @@ fn connection_indexes(
 }
 
 #[tauri::command]
+fn connection_table_comment(
+    connection_id: String,
+    schema: String,
+    table: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    state
+        .jdbc_agent
+        .get_table_comment(connection_id, schema.trim(), table.trim())
+}
+
+#[tauri::command]
 fn connection_foreign_keys(
     connection_id: String,
     schema: String,
@@ -258,6 +271,19 @@ fn connection_foreign_keys(
     state
         .jdbc_agent
         .list_foreign_keys(connection_id, schema.trim(), table.trim())
+}
+
+#[tauri::command]
+fn connection_references(
+    connection_id: String,
+    schema: String,
+    table: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    state
+        .jdbc_agent
+        .list_references(connection_id, schema.trim(), table.trim())
 }
 
 #[tauri::command]
@@ -387,6 +413,8 @@ pub fn run() {
             connection_package_members,
             connection_primary_keys,
             connection_indexes,
+            connection_table_comment,
+            connection_references,
             connection_foreign_keys,
             connection_constraints,
             connection_triggers,

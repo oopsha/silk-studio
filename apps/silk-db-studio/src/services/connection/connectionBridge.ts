@@ -6,6 +6,8 @@ import {
   isConnectionIndexesResult,
   isConnectionMetadataResult,
   isConnectionPackageMembersResult,
+  isConnectionReferencesResult,
+  isConnectionTableCommentResult,
   isConnectionTriggersResult,
   type ConnectionColumnsResult,
   type ConnectionConstraintsResult,
@@ -14,6 +16,8 @@ import {
   type ConnectionIndexesResult,
   type ConnectionMetadataResult,
   type ConnectionPackageMembersResult,
+  type ConnectionReferencesResult,
+  type ConnectionTableCommentResult,
   type ConnectionTriggersResult,
 } from "@silk-studio/db-protocol";
 
@@ -129,6 +133,29 @@ export async function bridgeListIndexes(
   return payload;
 }
 
+export async function bridgeGetTableComment(
+  connectionId: string,
+  schema: string,
+  table: string,
+): Promise<ConnectionTableCommentResult> {
+  if (!isTauri()) {
+    throw new Error("Database metadata is available in the desktop app only.");
+  }
+  const id = connectionId.trim();
+  if (!id) {
+    throw new Error("connectionId is required.");
+  }
+  const payload = await invoke<unknown>("connection_table_comment", {
+    connectionId: id,
+    schema: schema.trim(),
+    table: table.trim(),
+  });
+  if (!isConnectionTableCommentResult(payload)) {
+    throw new Error("Invalid connection table comment payload from desktop bridge.");
+  }
+  return payload;
+}
+
 export async function bridgeListForeignKeys(
   connectionId: string,
   schema: string,
@@ -148,6 +175,29 @@ export async function bridgeListForeignKeys(
   });
   if (!isConnectionForeignKeysResult(payload)) {
     throw new Error("Invalid connection foreign keys payload from desktop bridge.");
+  }
+  return payload;
+}
+
+export async function bridgeListReferences(
+  connectionId: string,
+  schema: string,
+  table: string,
+): Promise<ConnectionReferencesResult> {
+  if (!isTauri()) {
+    throw new Error("Database metadata is available in the desktop app only.");
+  }
+  const id = connectionId.trim();
+  if (!id) {
+    throw new Error("connectionId is required.");
+  }
+  const payload = await invoke<unknown>("connection_references", {
+    connectionId: id,
+    schema: schema.trim(),
+    table: table.trim(),
+  });
+  if (!isConnectionReferencesResult(payload)) {
+    throw new Error("Invalid connection references payload from desktop bridge.");
   }
   return payload;
 }
