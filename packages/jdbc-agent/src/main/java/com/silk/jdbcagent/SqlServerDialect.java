@@ -342,7 +342,7 @@ final class SqlServerDialect implements DbDialect {
       ArrayNode dependencies)
       throws SQLException {
     String sql =
-        "SELECT DISTINCT rs.name AS SCHEMA, ro.name AS NAME, ro.type_desc AS TYPE "
+        "SELECT DISTINCT rs.name AS [SCHEMA], ro.name AS NAME, ro.type_desc AS TYPE "
             + "FROM sys.sql_expression_dependencies d "
             + "JOIN sys.objects o ON o.object_id = d.referencing_id "
             + "JOIN sys.schemas s ON s.schema_id = o.schema_id "
@@ -368,7 +368,7 @@ final class SqlServerDialect implements DbDialect {
       ArrayNode dependents)
       throws SQLException {
     String sql =
-        "SELECT DISTINCT s2.name AS SCHEMA, o2.name AS NAME, o2.type_desc AS TYPE "
+        "SELECT DISTINCT s2.name AS [SCHEMA], o2.name AS NAME, o2.type_desc AS TYPE "
             + "FROM sys.sql_expression_dependencies d "
             + "JOIN sys.objects o2 ON o2.object_id = d.referencing_id "
             + "JOIN sys.schemas s2 ON s2.schema_id = o2.schema_id "
