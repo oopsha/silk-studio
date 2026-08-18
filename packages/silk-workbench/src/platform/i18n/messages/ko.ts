@@ -799,6 +799,8 @@ export const koMessages = {
       timedOutUnlimited: "쿼리 제한 시간을 초과했습니다.",
       goToDefinitionNotFound:
         "이 식별자에 해당하는 테이블·뷰·프로시저·함수·패키지를 찾을 수 없습니다.",
+      goToDefinitionOtherDatabase:
+        "{database}는 이 커넥션에서 현재 사용 중인 데이터베이스가 아닙니다. 탐색기의 Databases 목록에서 해당 데이터베이스로 전환한 뒤 다시 시도하세요.",
       noConnection:
         "활성 데이터베이스 연결이 없습니다. Connections 탐색기에서 프로필에 연결하세요.",
       noConnectionTarget:
