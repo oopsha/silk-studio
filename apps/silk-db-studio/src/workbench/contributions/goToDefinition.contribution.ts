@@ -9,6 +9,7 @@ import { isObjectEditorTab } from "../../services/connection/objectEditorConstan
 import { openObjectDdl } from "../../services/connection/ddlEditorService";
 import { openObjectEditor } from "../../services/connection/objectEditorService";
 import type { ExplorerObjectRef } from "../../services/connection/explorerObjectActions";
+import { ConnectionService } from "../../services/connection/connectionService";
 import { isSqlLanguageId } from "../../services/sql/sqlDialect";
 import {
   resolveIdentifierAtPosition,
@@ -106,7 +107,20 @@ CommandsRegistry.registerCommand("silk.editor.goToDefinition", async () => {
   // rather than leaving F4 looking like it did nothing.
   AppNotificationService.show(t("app.query.goToDefinitionLookingUp"), "info", 20_000);
 
-  const found = await resolveGoToDefinitionTarget(profileId, identifier);
+  // Try the tab's bound connection first (fast path, no ambiguity when only one profile has
+  // the object), then fall back to every other connected profile — a bare identifier in SQL
+  // carries no hint about which open connection it lives on, and the user has no way to tell
+  // either without checking each one manually.
+  const otherProfileIds = ConnectionService.getState().connectedProfileIds.filter(
+    (id) => id !== profileId,
+  );
+  let resolvedProfileId = profileId;
+  let found = await resolveGoToDefinitionTarget(profileId, identifier);
+  for (const otherProfileId of otherProfileIds) {
+    if (found) break;
+    found = await resolveGoToDefinitionTarget(otherProfileId, identifier);
+    if (found) resolvedProfileId = otherProfileId;
+  }
   if (!found) {
     AppNotificationService.show(t("app.query.goToDefinitionNotFound"), "info");
     return;
@@ -114,7 +128,7 @@ CommandsRegistry.registerCommand("silk.editor.goToDefinition", async () => {
   AppNotificationService.dismiss();
 
   const ref: ExplorerObjectRef = {
-    profileId,
+    profileId: resolvedProfileId,
     schemaName: found.schema,
     object: found.object,
     catalogName: found.catalog,
