@@ -174,6 +174,10 @@ class ConfigurationServiceImpl {
       values["database.explorer.preloadDefaultSchema"] =
         CONFIGURATION_DEFAULTS["database.explorer.preloadDefaultSchema"];
     }
+    if (typeof values["explorer.search.prefetchAllDatabases"] !== "boolean") {
+      values["explorer.search.prefetchAllDatabases"] =
+        CONFIGURATION_DEFAULTS["explorer.search.prefetchAllDatabases"];
+    }
     if (typeof values["sql.parameters.anonymousEnabled"] !== "boolean") {
       values["sql.parameters.anonymousEnabled"] =
         CONFIGURATION_DEFAULTS["sql.parameters.anonymousEnabled"];

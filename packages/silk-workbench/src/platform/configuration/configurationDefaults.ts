@@ -34,6 +34,16 @@ export type WorkbenchConfiguration = {
   "database.autoCommit": boolean;
   "database.readOnly": boolean;
   "database.explorer.preloadDefaultSchema": boolean;
+  /**
+   * When enabled, background-loads every database/schema/object name for a connected
+   * profile so Ctrl+Shift+O can match db.schema.object / schema.object / bare object name
+   * even on databases never expanded in Explorer. Off by default: object metadata is cached
+   * in memory (~200 bytes/object), and legacy/ERP-style instances with thousands of tables
+   * per schema across dozens of databases can reach several hundred MB to ~1GB when fully
+   * prefetched. With this off, search still covers every catalog that has already been
+   * expanded/loaded — only the "prefetch everything up front" part is gated.
+   */
+  "explorer.search.prefetchAllDatabases": boolean;
   /** Prompt for `?` (or configured mark) placeholders before execute. */
   "sql.parameters.anonymousEnabled": boolean;
   /** Prompt for `:name` (or configured prefix) placeholders before execute. */
@@ -80,6 +90,7 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "database.autoCommit": true,
   "database.readOnly": false,
   "database.explorer.preloadDefaultSchema": true,
+  "explorer.search.prefetchAllDatabases": false,
   "sql.parameters.anonymousEnabled": false,
   "sql.parameters.namedEnabled": true,
   "sql.parameters.namedPrefix": ":",

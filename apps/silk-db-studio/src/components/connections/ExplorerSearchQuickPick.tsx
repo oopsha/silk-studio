@@ -25,7 +25,7 @@ import {
 } from "../../services/connection/explorerObjectActions";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { useConnectionState } from "../../services/connection/useConnectionState";
-import { useConnectionTree, getExplorerSchemas } from "../../services/connection/useConnectionTree";
+import { useConnectionTree } from "../../services/connection/useConnectionTree";
 import { EditorConnectionBindingService } from "../../services/connection/editorConnectionBindingService";
 import {
   placeOverSilkEditor,
@@ -80,15 +80,21 @@ function ExplorerSearchQuickPick() {
     });
   }, []);
 
-  const explorerSchemas = useMemo(
-    () => getExplorerSchemas(tree),
-    [tree],
-  );
-
   const picks = useMemo(() => {
     if (!profileId || !open) return [] as ExplorerSearchPick[];
-    return buildExplorerSearchPicks(profileId, explorerSchemas, filter);
-  }, [profileId, explorerSchemas, filter, open]);
+    return buildExplorerSearchPicks(profileId, tree, filter);
+  }, [profileId, tree, filter, open]);
+
+  // Prefetch progress (only meaningful for catalog-style dialects, e.g. SQL Server).
+  const prefetchProgress = useMemo(() => {
+    if (tree.catalogs.length === 0) return null;
+    const total = tree.catalogs.length;
+    const done = tree.catalogs.filter(
+      (catalog) => catalog.status === "loaded" || catalog.status === "error",
+    ).length;
+    if (done >= total) return null;
+    return { done, total };
+  }, [tree.catalogs]);
 
   useEffect(() => {
     setFocusedIndex((current) =>
@@ -154,17 +160,39 @@ function ExplorerSearchQuickPick() {
 
   const acceptPick = useCallback(
     async (pick: ExplorerSearchPick, alternate: boolean) => {
+      if (pick.type === "loadCatalog") {
+        setBusySchema(pick.catalogName);
+        setStatusMessage(`Loading ${pick.catalogName}…`);
+        try {
+          await ConnectionTreeService.loadCatalogSchemas(
+            pick.profileId,
+            pick.catalogName,
+            true,
+          );
+          setStatusMessage(`Loaded ${pick.catalogName}. Continue typing to filter.`);
+        } catch (error) {
+          setStatusMessage(formatErrorMessage(error, t("app.explorer.searchLoadFailed")));
+        } finally {
+          setBusySchema(null);
+          inputRef.current?.focus();
+        }
+        return;
+      }
+
       if (pick.type === "loadSchema") {
-        setBusySchema(pick.schemaName);
-        setStatusMessage(`Loading ${pick.schemaName}…`);
+        const busyKey = pick.catalogName
+          ? `${pick.catalogName}.${pick.schemaName}`
+          : pick.schemaName;
+        setBusySchema(busyKey);
+        setStatusMessage(`Loading ${busyKey}…`);
         try {
           await ConnectionTreeService.loadSchemaObjects(
             pick.profileId,
             pick.schemaName,
             true,
-            tree.currentCatalog ?? undefined,
+            pick.catalogName ?? (tree.catalogs.length === 0 ? undefined : tree.currentCatalog ?? undefined),
           );
-          setStatusMessage(`Loaded ${pick.schemaName}. Continue typing to filter.`);
+          setStatusMessage(`Loaded ${busyKey}. Continue typing to filter.`);
         } catch (error) {
           setStatusMessage(formatErrorMessage(error, t("app.explorer.searchLoadFailed")));
         } finally {
@@ -178,6 +206,7 @@ function ExplorerSearchQuickPick() {
         profileId: pick.profileId,
         schemaName: pick.schemaName,
         object: pick.object,
+        catalogName: pick.catalogName,
       };
       const profile = ConnectionService.getProfile(pick.profileId);
       const primary = defaultObjectAction(
@@ -251,7 +280,7 @@ function ExplorerSearchQuickPick() {
     ? t("app.explorer.searchNeedConnect")
     : tree.status === "loading"
       ? t("app.explorer.loadingSchemas")
-      : explorerSchemas.length === 0
+      : tree.catalogs.length === 0 && tree.schemas.length === 0
         ? t("app.explorer.searchNoSchemas")
         : filter.trim()
           ? t("app.explorer.searchNoMatch")
@@ -298,7 +327,12 @@ function ExplorerSearchQuickPick() {
           picks.map((pick, index) => {
             const isFocused = index === focusedIndex;
             const loading =
-              pick.type === "loadSchema" && busySchema === pick.schemaName;
+              (pick.type === "loadSchema" &&
+                busySchema ===
+                  (pick.catalogName
+                    ? `${pick.catalogName}.${pick.schemaName}`
+                    : pick.schemaName)) ||
+              (pick.type === "loadCatalog" && busySchema === pick.catalogName);
             return (
               <div
                 key={pick.id}
@@ -328,6 +362,10 @@ function ExplorerSearchQuickPick() {
       {statusMessage ? (
         <div className="explorer-search-quick-pick__status" role="status">
           {statusMessage}
+        </div>
+      ) : prefetchProgress ? (
+        <div className="explorer-search-quick-pick__status" role="status">
+          {`Loading databases in background: ${prefetchProgress.done}/${prefetchProgress.total}…`}
         </div>
       ) : null}
     </div>,

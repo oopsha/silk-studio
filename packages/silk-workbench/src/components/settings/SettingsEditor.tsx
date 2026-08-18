@@ -331,6 +331,24 @@ function DatabaseSettings() {
           <span>{t("settings.database.preloadDefaultSchemaHint")}</span>
         </label>
       </SettingRow>
+      <SettingRow
+        title={t("settings.database.prefetchAllDatabases")}
+        description={t("settings.database.prefetchAllDatabasesDescription")}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={configuration["explorer.search.prefetchAllDatabases"]}
+            onChange={(event) =>
+              ConfigurationService.updateValue(
+                "explorer.search.prefetchAllDatabases",
+                event.target.checked,
+              )
+            }
+          />
+          <span>{t("settings.database.prefetchAllDatabasesHint")}</span>
+        </label>
+      </SettingRow>
       <h3 className="settings-section__subtitle">
         {t("settings.database.sqlParameters")}
       </h3>
