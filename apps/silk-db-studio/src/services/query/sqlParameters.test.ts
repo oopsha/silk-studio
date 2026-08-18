@@ -70,6 +70,36 @@ describe("detectSqlParameterOccurrences", () => {
     expect(bound.binds).toEqual(["1", "001"]);
   });
 
+  it("recognizes MyBatis #{}/${} placeholders alongside :name when mybatisEnabled is set", () => {
+    const sql =
+      "SELECT * FROM t WHERE a = :biz AND b = #{ctorSeq} AND c = ${rawCol,jdbcType=VARCHAR}";
+    const occurrences = detectSqlParameterOccurrences(sql, {
+      anonymousEnabled: false,
+      namedEnabled: true,
+      mybatisEnabled: true,
+    });
+    expect(occurrences.map((item) => item.label)).toEqual([
+      ":biz",
+      "#{ctorSeq}",
+      "${rawCol}",
+    ]);
+    expect(occurrences.map((item) => item.key)).toEqual([
+      "biz",
+      "ctorSeq",
+      "rawCol",
+    ]);
+  });
+
+  it("mybatisEnabled works even when the : prefix is disabled", () => {
+    const sql = "SELECT * FROM t WHERE a = #{x} AND b = :y";
+    const occurrences = detectSqlParameterOccurrences(sql, {
+      anonymousEnabled: false,
+      namedEnabled: false,
+      mybatisEnabled: true,
+    });
+    expect(occurrences.map((item) => item.label)).toEqual(["#{x}"]);
+  });
+
   it("respects enable flags", () => {
     const sql = "SELECT :a, ?";
     expect(

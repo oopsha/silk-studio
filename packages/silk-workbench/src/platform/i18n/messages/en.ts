@@ -110,7 +110,11 @@ export const enMessages = {
       namedParametersHint: "Enable :name parameter prompts.",
       namedParameterPrefix: "Named Parameter Prefix",
       namedParameterPrefixDescription:
-        "Prefix for named placeholders. Default `:` matches `:name`. Set to `#` to recognize MyBatis-style `#{name}` (also `#{name,jdbcType=...}`) pasted from XML mappers.",
+        "Prefix for named placeholders. Default `:` matches `:name`. Independent of MyBatis Parameters below, so both can be enabled together.",
+      mybatisParameters: "MyBatis Parameters",
+      mybatisParametersDescription:
+        "When enabled, prompts for values of #{name} and ${name} placeholders (also #{name,jdbcType=...}) pasted from MyBatis XML mappers — regardless of the named parameter prefix above.",
+      mybatisParametersHint: "Enable #{name} and ${name} parameter prompts.",
     },
     queryResult: {
       title: "Query Result",

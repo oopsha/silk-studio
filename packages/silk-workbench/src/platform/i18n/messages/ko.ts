@@ -107,7 +107,11 @@ export const koMessages = {
       namedParametersHint: ":name 파라미터 입력 사용",
       namedParameterPrefix: "네임드 파라미터 접두사",
       namedParameterPrefixDescription:
-        "네임드 플레이스홀더의 접두사입니다. 기본값 `:`는 `:name` 형식을 인식합니다. `#`로 바꾸면 MyBatis XML에서 복사한 `#{name}`(`#{name,jdbcType=...}` 포함) 형식을 파라미터로 인식합니다.",
+        "네임드 플레이스홀더의 접두사입니다. 기본값 `:`는 `:name` 형식을 인식합니다. 아래 MyBatis 파라미터 설정과 독립적이라 둘 다 동시에 켤 수 있습니다.",
+      mybatisParameters: "MyBatis 파라미터",
+      mybatisParametersDescription:
+        "켜면 MyBatis XML 매퍼에서 복사한 `#{name}`, `${name}` 형식(`#{name,jdbcType=...}` 포함)의 플레이스홀더 값을 입력받습니다 — 위 네임드 파라미터 접두사 설정과 무관하게 동작합니다.",
+      mybatisParametersHint: "#{name}, ${name} 파라미터 입력 사용",
     },
     queryResult: {
       title: "쿼리 결과",

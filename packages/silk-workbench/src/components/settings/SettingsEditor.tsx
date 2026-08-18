@@ -405,6 +405,24 @@ function DatabaseSettings() {
           }
         />
       </SettingRow>
+      <SettingRow
+        title={t("settings.database.mybatisParameters")}
+        description={t("settings.database.mybatisParametersDescription")}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={configuration["sql.parameters.mybatisEnabled"]}
+            onChange={(event) =>
+              ConfigurationService.updateValue(
+                "sql.parameters.mybatisEnabled",
+                event.target.checked,
+              )
+            }
+          />
+          <span>{t("settings.database.mybatisParametersHint")}</span>
+        </label>
+      </SettingRow>
     </section>
   );
 }
