@@ -114,9 +114,14 @@ function matchesObject(
   return false;
 }
 
+function withProfilePrefix(description: string, profileLabel: string | undefined): string {
+  return profileLabel ? `[${profileLabel}] ${description}` : description;
+}
+
 /** Appends object/load-schema picks for one catalog's (or the flat, catalog-less) schema list. */
 function collectFromSchemas(
   profileId: string,
+  profileLabel: string | undefined,
   schemas: SchemaTreeNode[],
   needle: string,
   catalogName: string | undefined,
@@ -134,9 +139,12 @@ function collectFromSchemas(
             type: "object",
             id: `object:${profileId}:${catalogName ?? ""}:${schema.name}:${object.kind}:${object.name}`,
             label: object.name,
-            description: catalogName
-              ? `${catalogName}.${schema.name} · ${kindLabel(object.kind)}`
-              : `${schema.name} · ${kindLabel(object.kind)}`,
+            description: withProfilePrefix(
+              catalogName
+                ? `${catalogName}.${schema.name} · ${kindLabel(object.kind)}`
+                : `${schema.name} · ${kindLabel(object.kind)}`,
+              profileLabel,
+            ),
             icon: iconForKind(object.kind),
             profileId,
             schemaName: schema.name,
@@ -154,12 +162,14 @@ function collectFromSchemas(
         type: "loadSchema",
         id: `load:${profileId}:${catalogName ?? ""}:${schema.name}`,
         label: catalogName ? `${catalogName}.${schema.name}` : schema.name,
-        description:
+        description: withProfilePrefix(
           schema.status === "loading"
             ? "Loading…"
             : schema.status === "error"
               ? (schema.errorMessage ?? "Failed to load — retry")
               : "Not indexed yet — click to load this schema's objects for search",
+          profileLabel,
+        ),
         icon: "database",
         profileId,
         schemaName: schema.name,
@@ -170,15 +180,18 @@ function collectFromSchemas(
 }
 
 /**
- * Build Quick Pick items from the explorer tree cache — every catalog (not just the current
- * one), so `db.schema.object` / `schema.object` / bare object name all resolve regardless of
- * which database is "current" on the session. Catalogs/schemas never loaded yet become
- * "Load…" actions instead of being silently skipped.
+ * Build Quick Pick items from one profile's explorer tree cache — every catalog (not just the
+ * current one), so `db.schema.object` / `schema.object` / bare object name all resolve
+ * regardless of which database is "current" on the session. Catalogs/schemas never loaded yet
+ * become "Load…" actions instead of being silently skipped. `profileLabel`, when given, is
+ * prefixed onto every description (used when merging results across multiple connections —
+ * see {@link buildExplorerSearchPicksAcrossProfiles}).
  */
 export function buildExplorerSearchPicks(
   profileId: string,
   cache: ProfileTreeCache,
   filter: string,
+  profileLabel?: string,
 ): ExplorerSearchPick[] {
   const needle = filter.trim();
   const objects: ExplorerObjectSearchPick[] = [];
@@ -186,12 +199,28 @@ export function buildExplorerSearchPicks(
   const loadCatalogs: ExplorerLoadCatalogSearchPick[] = [];
 
   if (cache.catalogs.length === 0) {
-    collectFromSchemas(profileId, cache.schemas, needle, undefined, objects, loadSchemas);
+    collectFromSchemas(
+      profileId,
+      profileLabel,
+      cache.schemas,
+      needle,
+      undefined,
+      objects,
+      loadSchemas,
+    );
   } else {
     for (const catalog of cache.catalogs) {
       if (objects.length >= MAX_OBJECT_PICKS) break;
       if (catalog.status === "loaded" || catalog.status === "loading") {
-        collectFromSchemas(profileId, catalog.schemas, needle, catalog.name, objects, loadSchemas);
+        collectFromSchemas(
+          profileId,
+          profileLabel,
+          catalog.schemas,
+          needle,
+          catalog.name,
+          objects,
+          loadSchemas,
+        );
       }
       if (
         catalog.status !== "loaded" &&
@@ -202,12 +231,14 @@ export function buildExplorerSearchPicks(
           type: "loadCatalog",
           id: `loadCatalog:${profileId}:${catalog.name}`,
           label: catalog.name,
-          description:
+          description: withProfilePrefix(
             catalog.status === "loading"
               ? "Loading…"
               : catalog.status === "error"
                 ? (catalog.errorMessage ?? "Failed to load — retry")
                 : "Not indexed yet — click to load this database for search",
+            profileLabel,
+          ),
           icon: "database",
           profileId,
           catalogName: catalog.name,
@@ -219,18 +250,53 @@ export function buildExplorerSearchPicks(
   // Prefer object hits; only keep load-* picks when filtering by name or when nothing loaded yet.
   const includeLoadPicks = Boolean(needle) || objects.length === 0;
 
+  return [
+    ...objects.slice(0, MAX_OBJECT_PICKS),
+    ...(includeLoadPicks ? loadSchemas.slice(0, MAX_LOAD_SCHEMA_PICKS) : []),
+    ...(includeLoadPicks ? loadCatalogs.slice(0, MAX_LOAD_CATALOG_PICKS) : []),
+  ];
+}
+
+/**
+ * Merges {@link buildExplorerSearchPicks} across every connected profile so Ctrl+Shift+O finds
+ * an object regardless of which connection it lives on — not just the one bound to the active
+ * editor tab. Each profile's picks are prefixed with its connection name once more than one
+ * profile is connected, so results stay disambiguated.
+ */
+export function buildExplorerSearchPicksAcrossProfiles(
+  profiles: readonly { profileId: string; cache: ProfileTreeCache; label: string }[],
+  filter: string,
+): ExplorerSearchPick[] {
+  const showLabels = profiles.length > 1;
+  const objects: ExplorerObjectSearchPick[] = [];
+  const loadSchemas: ExplorerLoadSchemaSearchPick[] = [];
+  const loadCatalogs: ExplorerLoadCatalogSearchPick[] = [];
+
+  for (const { profileId, cache, label } of profiles) {
+    const picks = buildExplorerSearchPicks(
+      profileId,
+      cache,
+      filter,
+      showLabels ? label : undefined,
+    );
+    for (const pick of picks) {
+      if (pick.type === "object") objects.push(pick);
+      else if (pick.type === "loadSchema") loadSchemas.push(pick);
+      else loadCatalogs.push(pick);
+    }
+  }
+
   objects.sort((a, b) => {
     const byLabel = a.label.localeCompare(b.label);
     if (byLabel !== 0) return byLabel;
     return a.description.localeCompare(b.description);
   });
-
   loadSchemas.sort((a, b) => a.label.localeCompare(b.label));
   loadCatalogs.sort((a, b) => a.label.localeCompare(b.label));
 
   return [
     ...objects.slice(0, MAX_OBJECT_PICKS),
-    ...(includeLoadPicks ? loadSchemas.slice(0, MAX_LOAD_SCHEMA_PICKS) : []),
-    ...(includeLoadPicks ? loadCatalogs.slice(0, MAX_LOAD_CATALOG_PICKS) : []),
+    ...loadSchemas.slice(0, MAX_LOAD_SCHEMA_PICKS),
+    ...loadCatalogs.slice(0, MAX_LOAD_CATALOG_PICKS),
   ];
 }

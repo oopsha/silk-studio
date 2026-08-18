@@ -65,3 +65,24 @@ export function useConnectionTree(profileId: string | null): ProfileTreeCache {
 
   return cache;
 }
+
+/**
+ * Live tree cache for every profile id given (e.g. all connected profiles) — used where a
+ * feature must search/browse across every open connection at once, not just the one bound to
+ * the active editor tab (Ctrl+Shift+O). Re-renders whenever any profile's tree changes.
+ */
+export function useConnectionTrees(
+  profileIds: readonly string[],
+): Map<string, ProfileTreeCache> {
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    return ConnectionTreeService.onDidChange(() => setTick((tick) => tick + 1));
+  }, []);
+
+  const map = new Map<string, ProfileTreeCache>();
+  for (const profileId of profileIds) {
+    map.set(profileId, ConnectionTreeService.getCache(profileId));
+  }
+  return map;
+}

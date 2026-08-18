@@ -14,7 +14,7 @@ import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { ConnectionService } from "../../services/connection/connectionService";
 import { ConnectionTreeService } from "../../services/connection/connectionTreeService";
 import {
-  buildExplorerSearchPicks,
+  buildExplorerSearchPicksAcrossProfiles,
   type ExplorerSearchPick,
 } from "../../services/connection/explorerSearchItems";
 import { runWithConcurrency } from "../../services/connection/explorerSearchPrefetchService";
@@ -26,29 +26,13 @@ import {
 } from "../../services/connection/explorerObjectActions";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { useConnectionState } from "../../services/connection/useConnectionState";
-import { useConnectionTree } from "../../services/connection/useConnectionTree";
-import { EditorConnectionBindingService } from "../../services/connection/editorConnectionBindingService";
+import { useConnectionTrees } from "../../services/connection/useConnectionTree";
 import {
   placeOverSilkEditor,
   TITLEBAR_QUICK_PICK_CLASS,
 } from "@silk-studio/workbench/services/quickinput/titlebarQuickPickPlacement.ts";
 import "@silk-studio/workbench/components/layout/TitleBar/OpenEditorsQuickPick/OpenEditorsQuickPick.css";
 import "./ExplorerSearchQuickPick.css";
-
-function resolveSearchProfileId(
-  connectedProfileId: string | null,
-  connectedProfileIds: string[],
-): string | null {
-  const bindingId =
-    EditorConnectionBindingService.getActiveBinding().profileId?.trim() || null;
-  if (bindingId && connectedProfileIds.includes(bindingId)) {
-    return bindingId;
-  }
-  if (connectedProfileId && connectedProfileIds.includes(connectedProfileId)) {
-    return connectedProfileId;
-  }
-  return connectedProfileIds[0] ?? null;
-}
 
 function ExplorerSearchQuickPick() {
   const { t } = useI18n();
@@ -62,11 +46,10 @@ function ExplorerSearchQuickPick() {
   const rootRef = useRef<HTMLDivElement>(null);
 
   const connection = useConnectionState();
-  const profileId = resolveSearchProfileId(
-    connection.connectedProfileId,
-    connection.connectedProfileIds,
-  );
-  const tree = useConnectionTree(profileId);
+  // Every connected profile, not just the one bound to the active tab — a table can live on
+  // any open connection, and the user has no way to tell which one from the SQL alone.
+  const connectedProfileIds = connection.connectedProfileIds;
+  const trees = useConnectionTrees(connectedProfileIds);
 
   useEffect(() => {
     return ExplorerSearchQuickPickService.onDidChange(() => {
@@ -81,21 +64,42 @@ function ExplorerSearchQuickPick() {
     });
   }, []);
 
-  const picks = useMemo(() => {
-    if (!profileId || !open) return [] as ExplorerSearchPick[];
-    return buildExplorerSearchPicks(profileId, tree, filter);
-  }, [profileId, tree, filter, open]);
+  const profiles = useMemo(
+    () =>
+      connectedProfileIds.map((profileId) => ({
+        profileId,
+        cache: trees.get(profileId) ?? {
+          status: "idle" as const,
+          errorMessage: null,
+          catalogs: [],
+          currentCatalog: null,
+          schemas: [],
+        },
+        label: ConnectionService.getProfile(profileId)?.name?.trim() || profileId,
+      })),
+    [connectedProfileIds, trees],
+  );
 
-  // Prefetch progress (only meaningful for catalog-style dialects, e.g. SQL Server).
+  const picks = useMemo(() => {
+    if (profiles.length === 0 || !open) return [] as ExplorerSearchPick[];
+    return buildExplorerSearchPicksAcrossProfiles(profiles, filter);
+  }, [profiles, filter, open]);
+
+  // Prefetch progress (only meaningful for catalog-style dialects, e.g. SQL Server) — summed
+  // across every connected profile being searched.
   const prefetchProgress = useMemo(() => {
-    if (tree.catalogs.length === 0) return null;
-    const total = tree.catalogs.length;
-    const done = tree.catalogs.filter(
-      (catalog) => catalog.status === "loaded" || catalog.status === "error",
-    ).length;
-    if (done >= total) return null;
+    let total = 0;
+    let done = 0;
+    for (const { cache } of profiles) {
+      if (cache.catalogs.length === 0) continue;
+      total += cache.catalogs.length;
+      done += cache.catalogs.filter(
+        (catalog) => catalog.status === "loaded" || catalog.status === "error",
+      ).length;
+    }
+    if (total === 0 || done >= total) return null;
     return { done, total };
-  }, [tree.catalogs]);
+  }, [profiles]);
 
   useEffect(() => {
     setFocusedIndex((current) =>
@@ -218,7 +222,7 @@ function ExplorerSearchQuickPick() {
             pick.profileId,
             pick.schemaName,
             true,
-            pick.catalogName ?? (tree.catalogs.length === 0 ? undefined : tree.currentCatalog ?? undefined),
+            pick.catalogName,
           );
           setStatusMessage(`Loaded ${busyKey}. Continue typing to filter.`);
         } catch (error) {
@@ -267,7 +271,7 @@ function ExplorerSearchQuickPick() {
         console.error("[silk.explorer.search]", error);
       }
     },
-    [close, tree, t],
+    [close, t],
   );
 
   const handleInputKeyDown = (
@@ -302,13 +306,16 @@ function ExplorerSearchQuickPick() {
     return null;
   }
 
-  const connected =
-    Boolean(profileId) && ConnectionService.isConnected(profileId ?? undefined);
+  const connected = profiles.length > 0;
+  const anyLoading = profiles.some(({ cache }) => cache.status === "loading");
+  const anySchemasKnown = profiles.some(
+    ({ cache }) => cache.catalogs.length > 0 || cache.schemas.length > 0,
+  );
   const emptyHint = !connected
     ? t("app.explorer.searchNeedConnect")
-    : tree.status === "loading"
+    : anyLoading && !anySchemasKnown
       ? t("app.explorer.loadingSchemas")
-      : tree.catalogs.length === 0 && tree.schemas.length === 0
+      : !anySchemasKnown
         ? t("app.explorer.searchNoSchemas")
         : filter.trim()
           ? t("app.explorer.searchNoMatch")
