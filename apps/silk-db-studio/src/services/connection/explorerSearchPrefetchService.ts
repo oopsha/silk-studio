@@ -46,7 +46,7 @@ class ExplorerSearchPrefetchServiceImpl {
       ConnectionService.getState().connectedProfileIds,
     );
 
-    ConnectionService.onDidChange(() => {
+    const maybeStart = () => {
       const nowConnected = new Set(
         ConnectionService.getState().connectedProfileIds,
       );
@@ -67,7 +67,12 @@ class ExplorerSearchPrefetchServiceImpl {
         this.attempted.add(profileId);
         void this.prefetch(profileId);
       }
-    });
+    };
+
+    // Two triggers: a profile connecting, or the setting being turned on for profiles that
+    // are already connected (toggling it on mid-session used to do nothing until reconnect).
+    ConnectionService.onDidChange(maybeStart);
+    ConfigurationService.onDidChange(maybeStart);
   }
 
   private isLive(profileId: string): boolean {
@@ -103,6 +108,7 @@ class ExplorerSearchPrefetchServiceImpl {
         schemaName,
         false,
         catalogName,
+        false,
       );
     } catch {
       // Best-effort — a failed schema just stays unsearchable until manually retried.

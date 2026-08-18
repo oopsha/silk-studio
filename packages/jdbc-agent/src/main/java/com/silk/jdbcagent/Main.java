@@ -545,6 +545,7 @@ public final class Main {
       DbDialect dialect = session.dialect;
       String schemaFilter = params.path("schema").asText("").trim();
       String catalogFilter = readCatalog(params);
+      boolean includeSecondaryKinds = params.path("includeSecondaryKinds").asBoolean(true);
 
       // SQL Server (and similar): top-level request returns catalog/database names only.
       if (dialect.usesCatalogExplorer()
@@ -586,7 +587,8 @@ public final class Main {
 
         if (includeObjects) {
           ArrayNode objects = MAPPER.createArrayNode();
-          dialect.collectSchemaObjects(connection, catalogFilter, schemaName, objects);
+          dialect.collectSchemaObjects(
+              connection, catalogFilter, schemaName, includeSecondaryKinds, objects);
           populateGroups(groups, dialect.supportedGroups(), objects);
         }
 

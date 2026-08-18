@@ -63,9 +63,20 @@ interface DbDialect {
    * Populates {@code objects} with the tables/views/procedures/functions/packages visible under
    * {@code schemaName} (within {@code catalog}). Only kinds the database actually supports need
    * to be emitted (must be a subset of {@link #supportedGroups()}).
+   *
+   * <p>{@code includeSecondaryKinds} controls whether indexes/sequences/synonyms/triggers/
+   * user-defined types are also collected. Each of those is its own SQL round trip on top of
+   * the primary tables/views/procedures/functions query, so bulk callers that only need object
+   * *names* for search (Ctrl+Shift+O prefetch, quick-pick "load" actions) pass {@code false} to
+   * skip them; a single deliberate Explorer "expand this schema" click passes {@code true} for
+   * the full picture.
    */
   void collectSchemaObjects(
-      Connection connection, String catalog, String schemaName, ArrayNode objects)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      boolean includeSecondaryKinds,
+      ArrayNode objects)
       throws SQLException;
 
   /**

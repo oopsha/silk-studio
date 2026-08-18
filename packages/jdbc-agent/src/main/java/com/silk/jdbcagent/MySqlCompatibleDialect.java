@@ -85,7 +85,11 @@ abstract class MySqlCompatibleDialect implements DbDialect {
 
   @Override
   public void collectSchemaObjects(
-      Connection connection, String catalog, String schemaName, ArrayNode objects)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      boolean includeSecondaryKinds,
+      ArrayNode objects)
       throws SQLException {
     // `schemaName` here is a database name; pass it as the JDBC catalog and leave the schema
     // pattern null (no separate schema level).
@@ -132,6 +136,10 @@ abstract class MySqlCompatibleDialect implements DbDialect {
     }
 
     // No PACKAGE concept; nothing to add for the "package" kind.
+
+    if (!includeSecondaryKinds) {
+      return;
+    }
 
     appendSimpleObjects(
         connection,

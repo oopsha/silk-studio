@@ -87,20 +87,17 @@ final class SqlServerDialect implements DbDialect {
     return new ArrayList<>(names);
   }
 
-  /** {@code requested} when non-blank, else the connection's current catalog. */
-  private static String effectiveCatalog(Connection connection, String requested)
-      throws SQLException {
-    if (requested != null && !requested.isBlank()) {
-      return requested.trim();
-    }
-    return connection.getCatalog();
-  }
-
   @Override
   public List<String> listSchemaNames(Connection connection, String catalog) throws SQLException {
-    String effective = effectiveCatalog(connection, catalog);
+    if (catalog != null && !catalog.isBlank()) {
+      // mssql-jdbc's getSchemas(catalog, ...) empirically returns nothing for a catalog other
+      // than the connection's current one (contrary to the JDBC contract) — query sys.schemas
+      // directly via a 3-part reference instead, which works regardless of session catalog.
+      return listSchemaNamesInCatalog(connection, catalog);
+    }
+
     Set<String> names = new LinkedHashSet<>();
-    try (ResultSet schemas = connection.getMetaData().getSchemas(effective, null)) {
+    try (ResultSet schemas = connection.getMetaData().getSchemas(null, null)) {
       while (schemas.next()) {
         String name = schemas.getString("TABLE_SCHEM");
         if (name != null && !name.isBlank()) {
@@ -109,9 +106,7 @@ final class SqlServerDialect implements DbDialect {
       }
     }
 
-    if (names.isEmpty() && (catalog == null || catalog.isBlank())) {
-      // Only meaningful for the connection's own current catalog — a probe query can't target
-      // another catalog without qualifying it, and getSchemas() above already covers that case.
+    if (names.isEmpty()) {
       try (Statement statement = connection.createStatement();
           ResultSet rs = statement.executeQuery("SELECT SCHEMA_NAME()")) {
         if (rs.next()) {
@@ -126,57 +121,86 @@ final class SqlServerDialect implements DbDialect {
     return new ArrayList<>(names);
   }
 
+  private static List<String> listSchemaNamesInCatalog(Connection connection, String catalog)
+      throws SQLException {
+    String prefix = CatalogQualifier.prefix(catalog);
+    Set<String> names = new LinkedHashSet<>();
+    try (Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery("SELECT name AS NAME FROM " + prefix + "sys.schemas ORDER BY name")) {
+      while (rs.next()) {
+        String name = rs.getString("NAME");
+        if (name != null && !name.isBlank()) {
+          names.add(name);
+        }
+      }
+    }
+    return new ArrayList<>(names);
+  }
+
   @Override
   public void collectSchemaObjects(
-      Connection connection, String catalog, String schemaName, ArrayNode objects)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      boolean includeSecondaryKinds,
+      ArrayNode objects)
       throws SQLException {
-    DatabaseMetaData metadata = connection.getMetaData();
-    String effective = effectiveCatalog(connection, catalog);
-    String prefix = CatalogQualifier.prefix(catalog);
+    if (catalog != null && !catalog.isBlank()) {
+      // Same reasoning as listSchemaNamesInCatalog — getTables/getProcedures/getFunctions
+      // don't reliably see another catalog's objects, so query sys.objects directly.
+      collectSchemaObjectsInCatalog(connection, catalog, schemaName, objects);
+    } else {
+      DatabaseMetaData metadata = connection.getMetaData();
 
-    try (ResultSet tables =
-        metadata.getTables(effective, schemaName, "%", new String[] {"TABLE", "VIEW"})) {
-      while (tables.next()) {
-        String name = tables.getString("TABLE_NAME");
-        String type = tables.getString("TABLE_TYPE");
-        if (name == null || name.isBlank()) {
-          continue;
+      try (ResultSet tables =
+          metadata.getTables(null, schemaName, "%", new String[] {"TABLE", "VIEW"})) {
+        while (tables.next()) {
+          String name = tables.getString("TABLE_NAME");
+          String type = tables.getString("TABLE_TYPE");
+          if (name == null || name.isBlank()) {
+            continue;
+          }
+          ObjectNode object = objects.addObject();
+          object.put("name", name);
+          object.put(
+              "kind", type != null && type.toUpperCase(Locale.ROOT).contains("VIEW") ? "view" : "table");
         }
-        ObjectNode object = objects.addObject();
-        object.put("name", name);
-        object.put(
-            "kind", type != null && type.toUpperCase(Locale.ROOT).contains("VIEW") ? "view" : "table");
       }
-    }
 
-    try (ResultSet procedures = metadata.getProcedures(effective, schemaName, "%")) {
-      while (procedures.next()) {
-        String name = stripProcedureNumberSuffix(procedures.getString("PROCEDURE_NAME"));
-        if (name == null || name.isBlank()) {
-          continue;
+      try (ResultSet procedures = metadata.getProcedures(null, schemaName, "%")) {
+        while (procedures.next()) {
+          String name = stripProcedureNumberSuffix(procedures.getString("PROCEDURE_NAME"));
+          if (name == null || name.isBlank()) {
+            continue;
+          }
+          ObjectNode object = objects.addObject();
+          object.put("name", name);
+          object.put("kind", "procedure");
         }
-        ObjectNode object = objects.addObject();
-        object.put("name", name);
-        object.put("kind", "procedure");
       }
-    }
 
-    // getFunctions (JDBC 4.0+) reports scalar/table-valued functions separately from
-    // getProcedures, so no extra filtering is needed to tell them apart on SQL Server.
-    try (ResultSet functions = metadata.getFunctions(effective, schemaName, "%")) {
-      while (functions.next()) {
-        String name = functions.getString("FUNCTION_NAME");
-        if (name == null || name.isBlank()) {
-          continue;
+      // getFunctions (JDBC 4.0+) reports scalar/table-valued functions separately from
+      // getProcedures, so no extra filtering is needed to tell them apart on SQL Server.
+      try (ResultSet functions = metadata.getFunctions(null, schemaName, "%")) {
+        while (functions.next()) {
+          String name = functions.getString("FUNCTION_NAME");
+          if (name == null || name.isBlank()) {
+            continue;
+          }
+          ObjectNode object = objects.addObject();
+          object.put("name", name);
+          object.put("kind", "function");
         }
-        ObjectNode object = objects.addObject();
-        object.put("name", name);
-        object.put("kind", "function");
       }
     }
 
     // SQL Server has no PACKAGE concept; nothing to add for the "package" kind.
 
+    if (!includeSecondaryKinds) {
+      return;
+    }
+
+    String prefix = CatalogQualifier.prefix(catalog);
     appendSimpleObjects(
         connection,
         "SELECT DISTINCT i.name AS NAME FROM " + prefix + "sys.indexes i "
@@ -221,6 +245,49 @@ final class SqlServerDialect implements DbDialect {
         objects);
   }
 
+  /**
+   * Tables/views/procedures/functions for a non-current catalog, queried directly against
+   * {@code sys.objects} rather than {@code DatabaseMetaData.getTables/getProcedures/getFunctions}
+   * — see the comment in {@link #collectSchemaObjects}.
+   */
+  private static void collectSchemaObjectsInCatalog(
+      Connection connection, String catalog, String schemaName, ArrayNode objects)
+      throws SQLException {
+    String prefix = CatalogQualifier.prefix(catalog);
+    String sql =
+        "SELECT o.name AS NAME, o.type AS OBJ_TYPE "
+            + "FROM " + prefix + "sys.objects o "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
+            + "WHERE s.name = ? AND o.type IN ('U', 'V', 'P', 'FN', 'IF', 'TF') "
+            + "ORDER BY o.name";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          String name = rs.getString("NAME");
+          String objType = rs.getString("OBJ_TYPE");
+          if (name == null || name.isBlank() || objType == null) {
+            continue;
+          }
+          String kind =
+              switch (objType.trim()) {
+                case "U" -> "table";
+                case "V" -> "view";
+                case "P" -> "procedure";
+                case "FN", "IF", "TF" -> "function";
+                default -> null;
+              };
+          if (kind == null) {
+            continue;
+          }
+          ObjectNode object = objects.addObject();
+          object.put("name", name);
+          object.put("kind", kind);
+        }
+      }
+    }
+  }
+
   /** Runs a single-column {@code (NAME) WHERE schema = ?} query and appends {@code kind} objects. */
   private static void appendSimpleObjects(
       Connection connection, String sql, String schemaName, String kind, ArrayNode objects)
@@ -249,12 +316,42 @@ final class SqlServerDialect implements DbDialect {
       String tableName,
       ArrayNode columns)
       throws SQLException {
-    DatabaseMetaData metadata = connection.getMetaData();
-    String effective = effectiveCatalog(connection, catalog);
-    try (ResultSet rs = metadata.getColumns(effective, schemaName, tableName, "%")) {
-      MetadataColumns.appendFromResultSet(rs, columns);
+    if (catalog != null && !catalog.isBlank()) {
+      collectTableColumnsInCatalog(connection, catalog, schemaName, tableName, columns);
+    } else {
+      DatabaseMetaData metadata = connection.getMetaData();
+      try (ResultSet rs = metadata.getColumns(null, schemaName, tableName, "%")) {
+        MetadataColumns.appendFromResultSet(rs, columns);
+      }
     }
     applyColumnComments(connection, catalog, schemaName, tableName, columns);
+  }
+
+  private static void collectTableColumnsInCatalog(
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode columns)
+      throws SQLException {
+    String prefix = CatalogQualifier.prefix(catalog);
+    String sql =
+        "SELECT c.COLUMN_NAME AS COLUMN_NAME, c.DATA_TYPE AS TYPE_NAME, "
+            + "COALESCE(c.CHARACTER_MAXIMUM_LENGTH, c.NUMERIC_PRECISION, c.DATETIME_PRECISION) AS COLUMN_SIZE, "
+            + "c.NUMERIC_SCALE AS DECIMAL_DIGITS, "
+            + "CASE WHEN c.IS_NULLABLE = 'YES' THEN 1 ELSE 0 END AS NULLABLE, "
+            + "c.COLUMN_DEFAULT AS COLUMN_DEF, "
+            + "CAST(NULL AS NVARCHAR(4000)) AS REMARKS "
+            + "FROM " + prefix + "INFORMATION_SCHEMA.COLUMNS c "
+            + "WHERE c.TABLE_SCHEMA = ? AND c.TABLE_NAME = ? "
+            + "ORDER BY c.ORDINAL_POSITION";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        MetadataColumns.appendFromResultSet(rs, columns);
+      }
+    }
   }
 
   @Override
@@ -265,11 +362,58 @@ final class SqlServerDialect implements DbDialect {
       String tableName,
       ArrayNode indexes)
       throws SQLException {
+    if (catalog != null && !catalog.isBlank()) {
+      collectTableIndexesInCatalog(connection, catalog, schemaName, tableName, indexes);
+      return;
+    }
     DatabaseMetaData metadata = connection.getMetaData();
-    String effective = effectiveCatalog(connection, catalog);
-    try (ResultSet rs = metadata.getIndexInfo(effective, schemaName, tableName, false, true)) {
+    try (ResultSet rs = metadata.getIndexInfo(null, schemaName, tableName, false, true)) {
       MetadataIndexes.appendFromResultSet(rs, indexes);
     }
+  }
+
+  private static void collectTableIndexesInCatalog(
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode indexes)
+      throws SQLException {
+    String prefix = CatalogQualifier.prefix(catalog);
+    String sql =
+        "SELECT 1 AS TYPE, i.name AS INDEX_NAME, c.name AS COLUMN_NAME, "
+            + "CASE WHEN i.is_unique = 1 THEN 0 ELSE 1 END AS NON_UNIQUE, "
+            + "ic.key_ordinal AS ORDINAL_POSITION "
+            + "FROM " + prefix + "sys.indexes i "
+            + "JOIN " + prefix + "sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id "
+            + "JOIN " + prefix + "sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id "
+            + "JOIN " + prefix + "sys.objects o ON o.object_id = i.object_id "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
+            + "WHERE s.name = ? AND o.name = ? AND i.name IS NOT NULL AND ic.is_included_column = 0 "
+            + "ORDER BY i.name, ic.key_ordinal";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        MetadataIndexes.appendFromResultSet(rs, indexes);
+      }
+    }
+  }
+
+  /**
+   * Translates {@code sys.foreign_keys}' referential-action codes (0=NO_ACTION, 1=CASCADE,
+   * 2=SET_NULL, 3=SET_DEFAULT) to the {@link DatabaseMetaData} constants that {@link
+   * MetadataForeignKeys}/{@link MetadataReferences} expect (importedKeyCascade=0,
+   * importedKeySetNull=2, importedKeyNoAction=3, importedKeySetDefault=4) — the two numbering
+   * schemes don't match, so returning the raw sys.foreign_keys value would mislabel the rule.
+   */
+  private static String jdbcActionCase(String column) {
+    return "CASE " + column
+        + " WHEN 0 THEN 3"
+        + " WHEN 1 THEN 0"
+        + " WHEN 2 THEN 2"
+        + " WHEN 3 THEN 4"
+        + " ELSE 3 END";
   }
 
   @Override
@@ -280,10 +424,45 @@ final class SqlServerDialect implements DbDialect {
       String tableName,
       ArrayNode foreignKeys)
       throws SQLException {
+    if (catalog != null && !catalog.isBlank()) {
+      collectTableForeignKeysInCatalog(connection, catalog, schemaName, tableName, foreignKeys);
+      return;
+    }
     DatabaseMetaData metadata = connection.getMetaData();
-    String effective = effectiveCatalog(connection, catalog);
-    try (ResultSet rs = metadata.getImportedKeys(effective, schemaName, tableName)) {
+    try (ResultSet rs = metadata.getImportedKeys(null, schemaName, tableName)) {
       MetadataForeignKeys.appendFromResultSet(rs, foreignKeys);
+    }
+  }
+
+  private static void collectTableForeignKeysInCatalog(
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode foreignKeys)
+      throws SQLException {
+    String prefix = CatalogQualifier.prefix(catalog);
+    String sql =
+        "SELECT fk.name AS FK_NAME, fc.name AS FKCOLUMN_NAME, pc.name AS PKCOLUMN_NAME, "
+            + "ps.name AS PKTABLE_SCHEM, pt.name AS PKTABLE_NAME, fkc.constraint_column_id AS KEY_SEQ, "
+            + jdbcActionCase("fk.update_referential_action") + " AS UPDATE_RULE, "
+            + jdbcActionCase("fk.delete_referential_action") + " AS DELETE_RULE "
+            + "FROM " + prefix + "sys.foreign_keys fk "
+            + "JOIN " + prefix + "sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id "
+            + "JOIN " + prefix + "sys.objects fo ON fo.object_id = fk.parent_object_id "
+            + "JOIN " + prefix + "sys.schemas fs ON fs.schema_id = fo.schema_id "
+            + "JOIN " + prefix + "sys.columns fc ON fc.object_id = fkc.parent_object_id AND fc.column_id = fkc.parent_column_id "
+            + "JOIN " + prefix + "sys.objects pt ON pt.object_id = fk.referenced_object_id "
+            + "JOIN " + prefix + "sys.schemas ps ON ps.schema_id = pt.schema_id "
+            + "JOIN " + prefix + "sys.columns pc ON pc.object_id = fkc.referenced_object_id AND pc.column_id = fkc.referenced_column_id "
+            + "WHERE fs.name = ? AND fo.name = ? "
+            + "ORDER BY fk.name, fkc.constraint_column_id";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        MetadataForeignKeys.appendFromResultSet(rs, foreignKeys);
+      }
     }
   }
 
@@ -295,10 +474,45 @@ final class SqlServerDialect implements DbDialect {
       String tableName,
       ArrayNode references)
       throws SQLException {
+    if (catalog != null && !catalog.isBlank()) {
+      collectTableReferencesInCatalog(connection, catalog, schemaName, tableName, references);
+      return;
+    }
     DatabaseMetaData metadata = connection.getMetaData();
-    String effective = effectiveCatalog(connection, catalog);
-    try (ResultSet rs = metadata.getExportedKeys(effective, schemaName, tableName)) {
+    try (ResultSet rs = metadata.getExportedKeys(null, schemaName, tableName)) {
       MetadataReferences.appendFromResultSet(rs, references);
+    }
+  }
+
+  private static void collectTableReferencesInCatalog(
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode references)
+      throws SQLException {
+    String prefix = CatalogQualifier.prefix(catalog);
+    String sql =
+        "SELECT fk.name AS FK_NAME, fc.name AS FKCOLUMN_NAME, pc.name AS PKCOLUMN_NAME, "
+            + "fs.name AS FKTABLE_SCHEM, fo.name AS FKTABLE_NAME, fkc.constraint_column_id AS KEY_SEQ, "
+            + jdbcActionCase("fk.update_referential_action") + " AS UPDATE_RULE, "
+            + jdbcActionCase("fk.delete_referential_action") + " AS DELETE_RULE "
+            + "FROM " + prefix + "sys.foreign_keys fk "
+            + "JOIN " + prefix + "sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id "
+            + "JOIN " + prefix + "sys.objects fo ON fo.object_id = fk.parent_object_id "
+            + "JOIN " + prefix + "sys.schemas fs ON fs.schema_id = fo.schema_id "
+            + "JOIN " + prefix + "sys.columns fc ON fc.object_id = fkc.parent_object_id AND fc.column_id = fkc.parent_column_id "
+            + "JOIN " + prefix + "sys.objects pt ON pt.object_id = fk.referenced_object_id "
+            + "JOIN " + prefix + "sys.schemas ps ON ps.schema_id = pt.schema_id "
+            + "JOIN " + prefix + "sys.columns pc ON pc.object_id = fkc.referenced_object_id AND pc.column_id = fkc.referenced_column_id "
+            + "WHERE ps.name = ? AND pt.name = ? "
+            + "ORDER BY fk.name, fkc.constraint_column_id";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        MetadataReferences.appendFromResultSet(rs, references);
+      }
     }
   }
 
@@ -508,6 +722,9 @@ final class SqlServerDialect implements DbDialect {
       String tableName,
       ArrayNode keys)
       throws SQLException {
+    if (catalog != null && !catalog.isBlank()) {
+      return collectPrimaryKeysInCatalog(connection, catalog, schemaName, tableName, keys);
+    }
     List<String> candidates = new ArrayList<>();
     String currentSchema =
         MetadataTableScope.querySingleString(connection, "SELECT SCHEMA_NAME()");
@@ -516,7 +733,76 @@ final class SqlServerDialect implements DbDialect {
     }
     candidates.addAll(MetadataTableScope.sessionSchemaCandidates(connection));
     return MetadataTableScope.collectPrimaryKeys(
-        connection, schemaName, tableName, keys, candidates, effectiveCatalog(connection, catalog));
+        connection, schemaName, tableName, keys, candidates, null);
+  }
+
+  private static String collectPrimaryKeysInCatalog(
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode keys)
+      throws SQLException {
+    keys.removeAll();
+    String prefix = CatalogQualifier.prefix(catalog);
+    String effectiveSchema = schemaName == null ? "" : schemaName.trim();
+    String sql =
+        "SELECT c.name AS COLUMN_NAME, ic.key_ordinal AS KEY_SEQ, s.name AS SCHEMA_NAME "
+            + "FROM " + prefix + "sys.key_constraints k "
+            + "JOIN " + prefix + "sys.tables t ON t.object_id = k.parent_object_id "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = t.schema_id "
+            + "JOIN " + prefix + "sys.index_columns ic "
+            + "  ON ic.object_id = k.parent_object_id AND ic.index_id = k.unique_index_id "
+            + "JOIN " + prefix + "sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id "
+            + "WHERE k.type = 'PK' AND t.name = ?"
+            + (effectiveSchema.isBlank() ? "" : " AND s.name = ?")
+            + " ORDER BY ic.key_ordinal";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      int index = 1;
+      statement.setString(index++, tableName);
+      if (!effectiveSchema.isBlank()) {
+        statement.setString(index, effectiveSchema);
+      }
+      String resolvedSchema = null;
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          String columnName = rs.getString("COLUMN_NAME");
+          if (columnName == null || columnName.isBlank()) {
+            continue;
+          }
+          if (resolvedSchema == null) {
+            resolvedSchema = rs.getString("SCHEMA_NAME");
+          }
+          keys.addObject().put("name", columnName);
+        }
+      }
+      return resolvedSchema;
+    }
+  }
+
+  @Override
+  public String resolveRelationKind(
+      Connection connection, String catalog, String schemaName, String tableName)
+      throws SQLException {
+    if (catalog == null || catalog.isBlank()) {
+      return MetadataRelationKind.resolveViaJdbc(connection, null, schemaName, tableName);
+    }
+    String prefix = CatalogQualifier.prefix(catalog);
+    String sql =
+        "SELECT o.type AS OBJ_TYPE FROM " + prefix + "sys.objects o "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
+            + "WHERE s.name = ? AND o.name = ? AND o.type IN ('U', 'V')";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        if (rs.next()) {
+          String type = rs.getString("OBJ_TYPE");
+          return "V".equals(type == null ? null : type.trim()) ? "view" : "table";
+        }
+      }
+    }
+    return null;
   }
 
   @Override

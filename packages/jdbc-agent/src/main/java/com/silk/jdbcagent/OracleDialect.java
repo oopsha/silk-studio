@@ -762,7 +762,11 @@ final class OracleDialect implements DbDialect {
 
   @Override
   public void collectSchemaObjects(
-      Connection connection, String catalog, String schemaName, ArrayNode objects)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      boolean includeSecondaryKinds,
+      ArrayNode objects)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
 
@@ -815,6 +819,10 @@ final class OracleDialect implements DbDialect {
       ObjectNode object = objects.addObject();
       object.put("name", packageName);
       object.put("kind", "package");
+    }
+
+    if (!includeSecondaryKinds) {
+      return;
     }
 
     appendSimpleObjects(

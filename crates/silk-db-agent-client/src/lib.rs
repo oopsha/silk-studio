@@ -156,6 +156,7 @@ impl JdbcAgentClient {
         connection_id: &str,
         schema: Option<&str>,
         catalog: Option<&str>,
+        include_secondary_kinds: Option<bool>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let mut params = json!({ "connectionId": connection_id.trim() });
@@ -168,6 +169,9 @@ impl JdbcAgentClient {
             if !catalog.trim().is_empty() {
                 params["catalog"] = json!(catalog.trim());
             }
+        }
+        if let Some(include_secondary_kinds) = include_secondary_kinds {
+            params["includeSecondaryKinds"] = json!(include_secondary_kinds);
         }
         self.send_request("connection.metadata", params)
     }

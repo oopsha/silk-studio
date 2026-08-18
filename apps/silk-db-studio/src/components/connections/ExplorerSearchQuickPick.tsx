@@ -192,6 +192,7 @@ function ExplorerSearchQuickPick() {
                 schemaName,
                 false,
                 pick.catalogName,
+                false,
               );
             } catch {
               // Best-effort per schema — a failure here just leaves that one unsearchable.
@@ -223,6 +224,7 @@ function ExplorerSearchQuickPick() {
             pick.schemaName,
             true,
             pick.catalogName,
+            false,
           );
           setStatusMessage(`Loaded ${busyKey}. Continue typing to filter.`);
         } catch (error) {
