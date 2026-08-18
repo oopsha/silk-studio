@@ -101,6 +101,9 @@ export const koMessages = {
       namedParametersDescription:
         "켜면 쿼리 실행 전에 :name 플레이스홀더 값을 입력받습니다.",
       namedParametersHint: ":name 파라미터 입력 사용",
+      namedParameterPrefix: "네임드 파라미터 접두사",
+      namedParameterPrefixDescription:
+        "네임드 플레이스홀더의 접두사입니다. 기본값 `:`는 `:name` 형식을 인식합니다. `#`로 바꾸면 MyBatis XML에서 복사한 `#{name}`(`#{name,jdbcType=...}` 포함) 형식을 파라미터로 인식합니다.",
     },
     queryResult: {
       title: "쿼리 결과",

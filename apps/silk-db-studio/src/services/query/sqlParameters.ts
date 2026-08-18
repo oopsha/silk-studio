@@ -110,18 +110,35 @@ export function detectSqlParameterOccurrences(
       }
 
       const nameStart = i + namedPrefix.length;
-      const name = readParameterName(sql, nameStart);
-      if (name) {
-        const end = nameStart + name.length;
-        occurrences.push({
-          kind: "named",
-          key: name,
-          label: `${namedPrefix}${name}`,
-          start: i,
-          end,
-        });
-        i = end;
-        continue;
+      // MyBatis-style `#{name}` (also `#{name,jdbcType=...}`) — brace-delimited instead
+      // of a bare identifier run.
+      if (sql[nameStart] === "{") {
+        const braced = readBracedParameterName(sql, nameStart);
+        if (braced) {
+          occurrences.push({
+            kind: "named",
+            key: braced.name,
+            label: `${namedPrefix}{${braced.name}}`,
+            start: i,
+            end: braced.end,
+          });
+          i = braced.end;
+          continue;
+        }
+      } else {
+        const name = readParameterName(sql, nameStart);
+        if (name) {
+          const end = nameStart + name.length;
+          occurrences.push({
+            kind: "named",
+            key: name,
+            label: `${namedPrefix}${name}`,
+            start: i,
+            end,
+          });
+          i = end;
+          continue;
+        }
       }
     }
 
@@ -202,6 +219,22 @@ export function parameterValueKey(
   key: string,
 ): string {
   return kind === "named" ? `named:${key.toLowerCase()}` : `anonymous:${key}`;
+}
+
+/** Reads `{name}` or `{name,jdbcType=...}` starting at the `{`; returns the name and the index past `}`. */
+function readBracedParameterName(
+  sql: string,
+  braceStart: number,
+): { name: string; end: number } | null {
+  let i = braceStart + 1;
+  while (i < sql.length && sql[i] !== "}") {
+    i += 1;
+  }
+  if (i >= sql.length) return null;
+  const inner = sql.slice(braceStart + 1, i).trim();
+  const name = inner.split(",")[0].trim();
+  if (!name) return null;
+  return { name, end: i + 1 };
 }
 
 function readParameterName(sql: string, start: number): string | null {

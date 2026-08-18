@@ -370,6 +370,23 @@ function DatabaseSettings() {
           <span>{t("settings.database.namedParametersHint")}</span>
         </label>
       </SettingRow>
+      <SettingRow
+        title={t("settings.database.namedParameterPrefix")}
+        description={t("settings.database.namedParameterPrefixDescription")}
+      >
+        <input
+          className="settings-control"
+          type="text"
+          maxLength={4}
+          value={configuration["sql.parameters.namedPrefix"]}
+          onChange={(event) =>
+            ConfigurationService.updateValue(
+              "sql.parameters.namedPrefix",
+              event.target.value,
+            )
+          }
+        />
+      </SettingRow>
     </section>
   );
 }

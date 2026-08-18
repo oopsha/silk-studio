@@ -45,6 +45,31 @@ describe("detectSqlParameterOccurrences", () => {
     expect(occurrences.map((item) => item.label)).toEqual([":name"]);
   });
 
+  it("detects MyBatis-style #{name} placeholders with a custom named prefix", () => {
+    const sql =
+      "SELECT * FROM t WHERE a = #{CTOR_SEQ} AND b LIKE #{COM_CD,jdbcType=VARCHAR}";
+    const occurrences = detectSqlParameterOccurrences(sql, {
+      anonymousEnabled: false,
+      namedEnabled: true,
+      namedPrefix: "#",
+    });
+    expect(occurrences.map((item) => item.label)).toEqual([
+      "#{CTOR_SEQ}",
+      "#{COM_CD}",
+    ]);
+    expect(occurrences.map((item) => item.key)).toEqual(["CTOR_SEQ", "COM_CD"]);
+    const bound = bindSqlParameters(
+      sql,
+      occurrences,
+      new Map<string, SqlParameterValue>([
+        [parameterValueKey("named", "CTOR_SEQ"), { isNull: false, value: "1" }],
+        [parameterValueKey("named", "COM_CD"), { isNull: false, value: "001" }],
+      ]),
+    );
+    expect(bound.sql).toBe("SELECT * FROM t WHERE a = ? AND b LIKE ?");
+    expect(bound.binds).toEqual(["1", "001"]);
+  });
+
   it("respects enable flags", () => {
     const sql = "SELECT :a, ?";
     expect(

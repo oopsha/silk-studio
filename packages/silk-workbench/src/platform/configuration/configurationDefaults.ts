@@ -38,6 +38,8 @@ export type WorkbenchConfiguration = {
   "sql.parameters.anonymousEnabled": boolean;
   /** Prompt for `:name` (or configured prefix) placeholders before execute. */
   "sql.parameters.namedEnabled": boolean;
+  /** Prefix for named placeholders, e.g. `:` for `:name`, `#` for MyBatis `#{name}`. */
+  "sql.parameters.namedPrefix": string;
   "ai.enabled": boolean;
   "ai.provider": AiProviderId;
   "ai.model": string;
@@ -80,6 +82,7 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "database.explorer.preloadDefaultSchema": true,
   "sql.parameters.anonymousEnabled": false,
   "sql.parameters.namedEnabled": true,
+  "sql.parameters.namedPrefix": ":",
   "ai.enabled": false,
   "ai.provider": "gemini",
   "ai.model": "gemini-3.5-flash",
