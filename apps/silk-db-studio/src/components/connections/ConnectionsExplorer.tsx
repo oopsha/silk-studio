@@ -28,7 +28,6 @@ import {
   type ExplorerMenuOptions,
   type ExplorerObjectRef,
 } from "../../services/connection/explorerObjectActions";
-import { ActiveDatabaseService } from "../../services/connection/activeDatabaseService";
 import { ExplorerUiService } from "../../services/connection/explorerUiService";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import {
@@ -630,13 +629,15 @@ function ProfileTree({
                           const next = !catalogExpanded;
                           setExpandedValue(catalogKey, next);
                           if (!next) return;
-                          // Switch session + preload schemas/default objects (filter-ready).
-                          void run(async () => {
-                            await ActiveDatabaseService.useDatabase(
+                          // Pure read — does not switch the shared JDBC session's current
+                          // database. "Use this database" (context menu) does that explicitly.
+                          if (catalog.status !== "idle") return;
+                          void run(() =>
+                            ConnectionTreeService.loadCatalogSchemas(
                               profile.id,
                               catalog.name,
-                            );
-                          });
+                            ),
+                          );
                         }}
                       >
                         <Codicon
