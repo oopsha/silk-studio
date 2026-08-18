@@ -45,6 +45,20 @@ const MAX_OBJECT_PICKS = 100;
 const MAX_LOAD_SCHEMA_PICKS = 20;
 const MAX_LOAD_CATALOG_PICKS = 20;
 
+/**
+ * Ctrl+Shift+O is object *navigation* (open data/DDL), not a full metadata browser — so even
+ * when a schema's cache happens to hold indexes/sequences/synonyms/triggers/types (e.g. it was
+ * fully loaded via Explorer's manual "expand schema" before this search ran), those kinds are
+ * filtered out of the picks. Keeps results consistent regardless of how a schema got cached.
+ */
+const SEARCHABLE_KINDS: ReadonlySet<MetadataObjectKind> = new Set([
+  "table",
+  "view",
+  "package",
+  "procedure",
+  "function",
+]);
+
 function kindLabel(kind: MetadataObjectKind): string {
   switch (kind) {
     case "table":
@@ -134,6 +148,7 @@ function collectFromSchemas(
     if (schema.status === "loaded") {
       for (const group of schema.groups) {
         for (const object of group.objects) {
+          if (!SEARCHABLE_KINDS.has(object.kind)) continue;
           if (!matchesObject(needle, catalogName, schema.name, object.name)) continue;
           objects.push({
             type: "object",
