@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import type { MessageKey } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
@@ -84,9 +84,32 @@ type PropertiesViewProps = {
   bufferedContent: string | undefined;
 };
 
+/**
+ * Which Properties section (DDL/columns/…) was last shown for a given tab.
+ * Switching away to another editor tab and back unmounts/remounts this
+ * component (see EditorArea's `renderAlternative`), so React state alone
+ * doesn't survive — this keeps the choice per tab across that remount, same
+ * pattern as ObjectEditorView's own 속성/데이터 tab memory.
+ */
+const activeSectionIdByTabId = new Map<string, string>();
+
 function PropertiesView({ objectRef, tabId, tabUri, bufferedContent }: PropertiesViewProps) {
   const { t } = useI18n();
-  const [activeSectionId, setActiveSectionId] = useState(PROPERTIES_SECTIONS[0].id);
+  const [activeSectionId, setActiveSectionIdState] = useState(
+    () => activeSectionIdByTabId.get(tabId) ?? PROPERTIES_SECTIONS[0].id,
+  );
+
+  const setActiveSectionId = (id: string) => {
+    setActiveSectionIdState(id);
+    activeSectionIdByTabId.set(tabId, id);
+  };
+
+  // No remount when switching directly between two object-editor tabs (same
+  // component instance, different `tabId`) — resync from the per-tab map.
+  useEffect(() => {
+    setActiveSectionIdState(activeSectionIdByTabId.get(tabId) ?? PROPERTIES_SECTIONS[0].id);
+  }, [tabId]);
+
   const active =
     PROPERTIES_SECTIONS.find((section) => section.id === activeSectionId) ??
     PROPERTIES_SECTIONS[0];
