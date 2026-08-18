@@ -68,7 +68,10 @@ final class PostgreSqlDialect implements DbDialect {
   }
 
   @Override
-  public List<String> listSchemaNames(Connection connection) throws SQLException {
+  public List<String> listSchemaNames(Connection connection, String requestedCatalog)
+      throws SQLException {
+    // pgJDBC selects the database via the connect-time URL; `requestedCatalog` is intentionally
+    // unused since there's no way to switch or scope to another database post-connect.
     String catalog = connection.getCatalog();
     Set<String> names = new LinkedHashSet<>();
     try (ResultSet schemas = connection.getMetaData().getSchemas(catalog, null)) {
@@ -96,7 +99,8 @@ final class PostgreSqlDialect implements DbDialect {
   }
 
   @Override
-  public void collectSchemaObjects(Connection connection, String schemaName, ArrayNode objects)
+  public void collectSchemaObjects(
+      Connection connection, String requestedCatalog, String schemaName, ArrayNode objects)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
     String catalog = connection.getCatalog();
@@ -215,7 +219,11 @@ final class PostgreSqlDialect implements DbDialect {
 
   @Override
   public void collectTableColumns(
-      Connection connection, String schemaName, String tableName, ArrayNode columns)
+      Connection connection,
+      String requestedCatalog,
+      String schemaName,
+      String tableName,
+      ArrayNode columns)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
     String catalog = connection.getCatalog();
@@ -225,7 +233,8 @@ final class PostgreSqlDialect implements DbDialect {
   }
 
   @Override
-  public String fetchTableComment(Connection connection, String schemaName, String tableName)
+  public String fetchTableComment(
+      Connection connection, String catalog, String schemaName, String tableName)
       throws SQLException {
     // objsubid = 0 selects the relation's own comment (COMMENT ON TABLE/VIEW ...), not a
     // column's — pg_description rows for columns carry objsubid = column's attnum.
@@ -250,7 +259,11 @@ final class PostgreSqlDialect implements DbDialect {
 
   @Override
   public void collectTableIndexes(
-      Connection connection, String schemaName, String tableName, ArrayNode indexes)
+      Connection connection,
+      String requestedCatalog,
+      String schemaName,
+      String tableName,
+      ArrayNode indexes)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
     String catalog = connection.getCatalog();
@@ -261,7 +274,11 @@ final class PostgreSqlDialect implements DbDialect {
 
   @Override
   public void collectTableForeignKeys(
-      Connection connection, String schemaName, String tableName, ArrayNode foreignKeys)
+      Connection connection,
+      String requestedCatalog,
+      String schemaName,
+      String tableName,
+      ArrayNode foreignKeys)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
     String catalog = connection.getCatalog();
@@ -272,7 +289,11 @@ final class PostgreSqlDialect implements DbDialect {
 
   @Override
   public void collectTableReferences(
-      Connection connection, String schemaName, String tableName, ArrayNode references)
+      Connection connection,
+      String requestedCatalog,
+      String schemaName,
+      String tableName,
+      ArrayNode references)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
     String catalog = connection.getCatalog();
@@ -283,7 +304,11 @@ final class PostgreSqlDialect implements DbDialect {
 
   @Override
   public void collectTableConstraints(
-      Connection connection, String schemaName, String tableName, ArrayNode constraints)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode constraints)
       throws SQLException {
     String sql =
         "SELECT tc.constraint_name AS NAME, "
@@ -311,7 +336,11 @@ final class PostgreSqlDialect implements DbDialect {
 
   @Override
   public void collectTableTriggers(
-      Connection connection, String schemaName, String tableName, ArrayNode triggers)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode triggers)
       throws SQLException {
     String sql =
         "SELECT trigger_name AS NAME, action_timing AS TIMING, event_manipulation AS EVENT "
@@ -333,6 +362,7 @@ final class PostgreSqlDialect implements DbDialect {
   @Override
   public void collectObjectDependencies(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
@@ -358,6 +388,7 @@ final class PostgreSqlDialect implements DbDialect {
   @Override
   public void collectObjectDependents(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
@@ -382,7 +413,11 @@ final class PostgreSqlDialect implements DbDialect {
 
   @Override
   public String collectPrimaryKeys(
-      Connection connection, String schemaName, String tableName, ArrayNode keys)
+      Connection connection,
+      String requestedCatalog,
+      String schemaName,
+      String tableName,
+      ArrayNode keys)
       throws SQLException {
     List<String> candidates = new ArrayList<>();
     String currentSchema =
@@ -398,6 +433,7 @@ final class PostgreSqlDialect implements DbDialect {
   @Override
   public String fetchObjectDdl(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,

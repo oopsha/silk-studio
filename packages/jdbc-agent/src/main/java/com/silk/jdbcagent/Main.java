@@ -409,6 +409,21 @@ public final class Main {
       return session;
     }
 
+    /**
+     * Reads and validates {@code params.catalog} (present on most metadata RPCs). Returns
+     * {@code null} when absent — callers then fall back to the connection's current catalog,
+     * matching pre-catalog-parameter behavior. Never calls {@code connection.setCatalog()} —
+     * that would mutate this session for every other tab sharing the connection.
+     */
+    static String readCatalog(JsonNode params) {
+      String catalog = params.path("catalog").asText("").trim();
+      if (catalog.isEmpty()) {
+        return null;
+      }
+      CatalogQualifier.requireSafe(catalog);
+      return catalog;
+    }
+
     void closeConnection(String connectionId) {
       Session session = sessions.remove(connectionId);
       if (session != null) {
@@ -529,12 +544,12 @@ public final class Main {
       Connection connection = session.connection;
       DbDialect dialect = session.dialect;
       String schemaFilter = params.path("schema").asText("").trim();
-      String catalogFilter = params.path("catalog").asText("").trim();
+      String catalogFilter = readCatalog(params);
 
       // SQL Server (and similar): top-level request returns catalog/database names only.
       if (dialect.usesCatalogExplorer()
           && schemaFilter.isEmpty()
-          && catalogFilter.isEmpty()) {
+          && catalogFilter == null) {
         ArrayNode catalogs = MAPPER.createArrayNode();
         for (String catalogName : dialect.listCatalogNames(connection)) {
           catalogs.addObject().put("name", catalogName);
@@ -549,11 +564,10 @@ public final class Main {
         return result;
       }
 
-      if (!catalogFilter.isEmpty()) {
-        connection.setCatalog(catalogFilter);
-      }
-
-      List<String> schemaNames = dialect.listSchemaNames(connection);
+      // Never connection.setCatalog(catalogFilter) here — this Connection is shared by every
+      // tab bound to this profile, and this RPC is a read. Each dialect scopes its own
+      // getSchemas/getTables/raw-SQL calls to `catalogFilter` without touching session state.
+      List<String> schemaNames = dialect.listSchemaNames(connection, catalogFilter);
       if (!schemaFilter.isEmpty()) {
         schemaNames = schemaNames.stream()
             .filter((name) -> name.equalsIgnoreCase(schemaFilter))
@@ -572,7 +586,7 @@ public final class Main {
 
         if (includeObjects) {
           ArrayNode objects = MAPPER.createArrayNode();
-          dialect.collectSchemaObjects(connection, schemaName, objects);
+          dialect.collectSchemaObjects(connection, catalogFilter, schemaName, objects);
           populateGroups(groups, dialect.supportedGroups(), objects);
         }
 
@@ -590,6 +604,7 @@ public final class Main {
 
     ObjectNode listColumns(JsonNode params) throws SQLException {
       Session session = requireSession(params);
+      String catalog = readCatalog(params);
       String schemaName = params.path("schema").asText("").trim();
       String tableName = params.path("table").asText("").trim();
       if (schemaName.isEmpty()) {
@@ -601,7 +616,7 @@ public final class Main {
 
       ArrayNode columns = MAPPER.createArrayNode();
       session.dialect.collectTableColumns(
-          session.connection, schemaName, tableName, columns);
+          session.connection, catalog, schemaName, tableName, columns);
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("columns", columns);
@@ -610,6 +625,7 @@ public final class Main {
 
     ObjectNode getTableComment(JsonNode params) throws SQLException {
       Session session = requireSession(params);
+      String catalog = readCatalog(params);
       String schemaName = params.path("schema").asText("").trim();
       String tableName = params.path("table").asText("").trim();
       if (schemaName.isEmpty()) {
@@ -619,7 +635,8 @@ public final class Main {
         throw new RuntimeException("Missing params.table");
       }
 
-      String comment = session.dialect.fetchTableComment(session.connection, schemaName, tableName);
+      String comment =
+          session.dialect.fetchTableComment(session.connection, catalog, schemaName, tableName);
 
       ObjectNode result = MAPPER.createObjectNode();
       if (comment != null) {
@@ -630,6 +647,7 @@ public final class Main {
 
     ObjectNode listIndexes(JsonNode params) throws SQLException {
       Session session = requireSession(params);
+      String catalog = readCatalog(params);
       String schemaName = params.path("schema").asText("").trim();
       String tableName = params.path("table").asText("").trim();
       if (schemaName.isEmpty()) {
@@ -640,7 +658,8 @@ public final class Main {
       }
 
       ArrayNode indexes = MAPPER.createArrayNode();
-      session.dialect.collectTableIndexes(session.connection, schemaName, tableName, indexes);
+      session.dialect.collectTableIndexes(
+          session.connection, catalog, schemaName, tableName, indexes);
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("indexes", indexes);
@@ -649,6 +668,7 @@ public final class Main {
 
     ObjectNode listForeignKeys(JsonNode params) throws SQLException {
       Session session = requireSession(params);
+      String catalog = readCatalog(params);
       String schemaName = params.path("schema").asText("").trim();
       String tableName = params.path("table").asText("").trim();
       if (schemaName.isEmpty()) {
@@ -660,7 +680,7 @@ public final class Main {
 
       ArrayNode foreignKeys = MAPPER.createArrayNode();
       session.dialect.collectTableForeignKeys(
-          session.connection, schemaName, tableName, foreignKeys);
+          session.connection, catalog, schemaName, tableName, foreignKeys);
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("foreignKeys", foreignKeys);
@@ -669,6 +689,7 @@ public final class Main {
 
     ObjectNode listReferences(JsonNode params) throws SQLException {
       Session session = requireSession(params);
+      String catalog = readCatalog(params);
       String schemaName = params.path("schema").asText("").trim();
       String tableName = params.path("table").asText("").trim();
       if (schemaName.isEmpty()) {
@@ -680,7 +701,7 @@ public final class Main {
 
       ArrayNode references = MAPPER.createArrayNode();
       session.dialect.collectTableReferences(
-          session.connection, schemaName, tableName, references);
+          session.connection, catalog, schemaName, tableName, references);
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("references", references);
@@ -689,6 +710,7 @@ public final class Main {
 
     ObjectNode listConstraints(JsonNode params) throws SQLException {
       Session session = requireSession(params);
+      String catalog = readCatalog(params);
       String schemaName = params.path("schema").asText("").trim();
       String tableName = params.path("table").asText("").trim();
       if (schemaName.isEmpty()) {
@@ -700,7 +722,7 @@ public final class Main {
 
       ArrayNode constraints = MAPPER.createArrayNode();
       session.dialect.collectTableConstraints(
-          session.connection, schemaName, tableName, constraints);
+          session.connection, catalog, schemaName, tableName, constraints);
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("constraints", constraints);
@@ -709,6 +731,7 @@ public final class Main {
 
     ObjectNode listTriggers(JsonNode params) throws SQLException {
       Session session = requireSession(params);
+      String catalog = readCatalog(params);
       String schemaName = params.path("schema").asText("").trim();
       String tableName = params.path("table").asText("").trim();
       if (schemaName.isEmpty()) {
@@ -719,7 +742,8 @@ public final class Main {
       }
 
       ArrayNode triggers = MAPPER.createArrayNode();
-      session.dialect.collectTableTriggers(session.connection, schemaName, tableName, triggers);
+      session.dialect.collectTableTriggers(
+          session.connection, catalog, schemaName, tableName, triggers);
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("triggers", triggers);
@@ -728,6 +752,7 @@ public final class Main {
 
     ObjectNode listPackageMembers(JsonNode params) throws SQLException {
       Session session = requireSession(params);
+      String catalog = readCatalog(params);
       String schemaName = params.path("schema").asText("").trim();
       String packageName = params.path("package").asText("").trim();
       if (schemaName.isEmpty()) {
@@ -739,7 +764,7 @@ public final class Main {
 
       ArrayNode members = MAPPER.createArrayNode();
       session.dialect.collectPackageMembers(
-          session.connection, schemaName, packageName, members);
+          session.connection, catalog, schemaName, packageName, members);
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("members", members);
@@ -748,6 +773,7 @@ public final class Main {
 
     ObjectNode listPrimaryKeys(JsonNode params) throws SQLException {
       Session session = requireSession(params);
+      String catalog = readCatalog(params);
       String schemaName = params.path("schema").asText("").trim();
       String tableName = params.path("table").asText("").trim();
       if (tableName.isEmpty()) {
@@ -757,7 +783,7 @@ public final class Main {
       ArrayNode keys = MAPPER.createArrayNode();
       String resolvedSchema =
           session.dialect.collectPrimaryKeys(
-              session.connection, schemaName, tableName, keys);
+              session.connection, catalog, schemaName, tableName, keys);
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("keys", keys);
@@ -768,7 +794,7 @@ public final class Main {
           resolvedSchema != null && !resolvedSchema.isBlank() ? resolvedSchema : schemaName;
       String relationKind =
           session.dialect.resolveRelationKind(
-              session.connection, schemaForKind, tableName);
+              session.connection, catalog, schemaForKind, tableName);
       if (relationKind != null && !relationKind.isBlank()) {
         result.put("relationKind", relationKind);
       }
@@ -777,6 +803,7 @@ public final class Main {
 
     ObjectNode fetchObjectDdl(JsonNode params) throws SQLException {
       Session session = requireSession(params);
+      String catalog = readCatalog(params);
       String schemaName = params.path("schema").asText("").trim();
       String objectName = params.path("name").asText("").trim();
       String kind = params.path("kind").asText("").trim().toLowerCase(java.util.Locale.ROOT);
@@ -796,7 +823,7 @@ public final class Main {
 
       String ddl =
           session.dialect.fetchObjectDdl(
-              session.connection, schemaName, objectName, kind, packageBody);
+              session.connection, catalog, schemaName, objectName, kind, packageBody);
       if (ddl == null || ddl.isBlank()) {
         throw new RuntimeException(
             "No DDL found for " + schemaName + "." + objectName + " (" + kind + ").");
@@ -810,6 +837,7 @@ public final class Main {
 
     ObjectNode compileObject(JsonNode params) throws SQLException {
       Session session = requireSession(params);
+      String catalog = readCatalog(params);
       String schemaName = params.path("schema").asText("").trim();
       String objectName = params.path("name").asText("").trim();
       String kind = params.path("kind").asText("").trim().toLowerCase(java.util.Locale.ROOT);
@@ -827,11 +855,12 @@ public final class Main {
         packageBody = params.path("packageBody").asBoolean();
       }
       return session.dialect.compileObject(
-          session.connection, schemaName, objectName, kind, packageBody, MAPPER);
+          session.connection, catalog, schemaName, objectName, kind, packageBody, MAPPER);
     }
 
     ObjectNode listObjectDependencies(JsonNode params) throws SQLException {
       Session session = requireSession(params);
+      String catalog = readCatalog(params);
       String schemaName = params.path("schema").asText("").trim();
       String objectName = params.path("name").asText("").trim();
       String kind = params.path("kind").asText("").trim().toLowerCase(java.util.Locale.ROOT);
@@ -851,7 +880,7 @@ public final class Main {
 
       ArrayNode dependencies = MAPPER.createArrayNode();
       session.dialect.collectObjectDependencies(
-          session.connection, schemaName, objectName, kind, packageBody, dependencies);
+          session.connection, catalog, schemaName, objectName, kind, packageBody, dependencies);
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("dependencies", dependencies);
@@ -861,6 +890,7 @@ public final class Main {
 
     ObjectNode listObjectDependents(JsonNode params) throws SQLException {
       Session session = requireSession(params);
+      String catalog = readCatalog(params);
       String schemaName = params.path("schema").asText("").trim();
       String objectName = params.path("name").asText("").trim();
       String kind = params.path("kind").asText("").trim().toLowerCase(java.util.Locale.ROOT);
@@ -880,7 +910,7 @@ public final class Main {
 
       ArrayNode dependents = MAPPER.createArrayNode();
       session.dialect.collectObjectDependents(
-          session.connection, schemaName, objectName, kind, packageBody, dependents);
+          session.connection, catalog, schemaName, objectName, kind, packageBody, dependents);
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("dependents", dependents);

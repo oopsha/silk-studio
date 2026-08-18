@@ -33,19 +33,23 @@ final class MetadataRelationKind {
 
   /**
    * Resolves relation kind via {@link DatabaseMetaData#getTables}. Returns {@code null} when
-   * the object is not found or the type is unrecognized.
+   * the object is not found or the type is unrecognized. {@code catalog} is optional — when
+   * blank, falls back to the connection's current catalog (pre-catalog-parameter behavior).
    */
-  static String resolveViaJdbc(Connection connection, String schemaName, String tableName)
+  static String resolveViaJdbc(
+      Connection connection, String requestedCatalog, String schemaName, String tableName)
       throws SQLException {
     if (tableName == null || tableName.isBlank()) {
       return null;
     }
     DatabaseMetaData metadata = connection.getMetaData();
-    String catalog = null;
-    try {
-      catalog = connection.getCatalog();
-    } catch (SQLException ignored) {
-      // Some drivers do not support catalogs.
+    String catalog = requestedCatalog != null && !requestedCatalog.isBlank() ? requestedCatalog : null;
+    if (catalog == null) {
+      try {
+        catalog = connection.getCatalog();
+      } catch (SQLException ignored) {
+        // Some drivers do not support catalogs.
+      }
     }
 
     String[] types = new String[] {"TABLE", "VIEW", "MATERIALIZED VIEW", "SYSTEM TABLE"};
