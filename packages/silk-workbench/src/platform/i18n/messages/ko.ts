@@ -801,6 +801,7 @@ export const koMessages = {
       timedOut:
         "쿼리가 {seconds}초 제한 시간을 초과했습니다 (설정 → Database → 쿼리 제한 시간).",
       timedOutUnlimited: "쿼리 제한 시간을 초과했습니다.",
+      goToDefinitionLookingUp: "정의를 조회하는 중…",
       goToDefinitionNotFound:
         "이 식별자에 해당하는 테이블·뷰·프로시저·함수·패키지를 찾을 수 없습니다.",
       goToDefinitionOtherDatabase:

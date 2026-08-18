@@ -802,6 +802,7 @@ export const enMessages = {
       cancelled: "Cancelled.",
       timedOut: "Query timed out after {seconds}s (Settings → Database → Query Timeout).",
       timedOutUnlimited: "Query timed out.",
+      goToDefinitionLookingUp: "Looking up definition…",
       goToDefinitionNotFound:
         "No table, view, procedure, function, or package found for this identifier.",
       goToDefinitionOtherDatabase:

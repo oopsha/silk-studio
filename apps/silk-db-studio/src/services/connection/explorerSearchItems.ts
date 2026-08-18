@@ -159,7 +159,7 @@ function collectFromSchemas(
             ? "Loading…"
             : schema.status === "error"
               ? (schema.errorMessage ?? "Failed to load — retry")
-              : "Load schema to search objects…",
+              : "Not indexed yet — click to load this schema's objects for search",
         icon: "database",
         profileId,
         schemaName: schema.name,
@@ -207,7 +207,7 @@ export function buildExplorerSearchPicks(
               ? "Loading…"
               : catalog.status === "error"
                 ? (catalog.errorMessage ?? "Failed to load — retry")
-                : "Load database to search its schemas…",
+                : "Not indexed yet — click to load this database for search",
           icon: "database",
           profileId,
           catalogName: catalog.name,

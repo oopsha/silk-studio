@@ -17,6 +17,7 @@ import {
   buildExplorerSearchPicks,
   type ExplorerSearchPick,
 } from "../../services/connection/explorerSearchItems";
+import { runWithConcurrency } from "../../services/connection/explorerSearchPrefetchService";
 import { ExplorerSearchQuickPickService } from "../../services/connection/explorerSearchQuickPickService";
 import {
   defaultObjectAction,
@@ -169,6 +170,33 @@ function ExplorerSearchQuickPick() {
             pick.catalogName,
             true,
           );
+          // A catalog "loaded" only means its schema *names* are known — load every
+          // schema's objects too so this one click makes the whole database searchable,
+          // instead of leaving the user to click through each schema individually.
+          const catalog = ConnectionTreeService.getCache(pick.profileId).catalogs.find(
+            (item) => item.name.toLowerCase() === pick.catalogName.toLowerCase(),
+          );
+          const schemaNames = catalog?.schemas.map((schema) => schema.name) ?? [];
+          let loaded = 0;
+          setStatusMessage(
+            `Loading ${pick.catalogName} (0/${schemaNames.length} schemas)…`,
+          );
+          await runWithConcurrency(schemaNames, 3, async (schemaName) => {
+            try {
+              await ConnectionTreeService.loadSchemaObjects(
+                pick.profileId,
+                schemaName,
+                false,
+                pick.catalogName,
+              );
+            } catch {
+              // Best-effort per schema — a failure here just leaves that one unsearchable.
+            }
+            loaded += 1;
+            setStatusMessage(
+              `Loading ${pick.catalogName} (${loaded}/${schemaNames.length} schemas)…`,
+            );
+          });
           setStatusMessage(`Loaded ${pick.catalogName}. Continue typing to filter.`);
         } catch (error) {
           setStatusMessage(formatErrorMessage(error, t("app.explorer.searchLoadFailed")));
