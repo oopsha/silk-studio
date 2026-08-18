@@ -17,6 +17,17 @@ use std::os::windows::process::CommandExt;
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// Sets `params.catalog` when non-blank. The jdbc-agent falls back to the connection's current
+/// catalog when this is absent — never sends a value that would trigger a session-wide switch.
+fn set_optional_catalog(params: &mut Value, catalog: Option<&str>) {
+    if let Some(catalog) = catalog {
+        let trimmed = catalog.trim();
+        if !trimmed.is_empty() {
+            params["catalog"] = json!(trimmed);
+        }
+    }
+}
+
 type PendingMap = Arc<Mutex<HashMap<u64, Sender<Result<Value, String>>>>>;
 
 struct AgentIo {
@@ -166,6 +177,7 @@ impl JdbcAgentClient {
         connection_id: &str,
         schema: &str,
         table: &str,
+        catalog: Option<&str>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let schema = schema.trim();
@@ -176,14 +188,13 @@ impl JdbcAgentClient {
         if table.is_empty() {
             return Err("table is required.".into());
         }
-        self.send_request(
-            "connection.columns",
-            json!({
-                "connectionId": connection_id.trim(),
-                "schema": schema,
-                "table": table
-            }),
-        )
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "schema": schema,
+            "table": table
+        });
+        set_optional_catalog(&mut params, catalog);
+        self.send_request("connection.columns", params)
     }
 
     pub fn list_package_members(
@@ -191,6 +202,7 @@ impl JdbcAgentClient {
         connection_id: &str,
         schema: &str,
         package: &str,
+        catalog: Option<&str>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let schema = schema.trim();
@@ -201,14 +213,13 @@ impl JdbcAgentClient {
         if package.is_empty() {
             return Err("package is required.".into());
         }
-        self.send_request(
-            "connection.packageMembers",
-            json!({
-                "connectionId": connection_id.trim(),
-                "schema": schema,
-                "package": package
-            }),
-        )
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "schema": schema,
+            "package": package
+        });
+        set_optional_catalog(&mut params, catalog);
+        self.send_request("connection.packageMembers", params)
     }
 
     pub fn list_primary_keys(
@@ -216,20 +227,20 @@ impl JdbcAgentClient {
         connection_id: &str,
         schema: &str,
         table: &str,
+        catalog: Option<&str>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let table = table.trim();
         if table.is_empty() {
             return Err("table is required.".into());
         }
-        self.send_request(
-            "connection.primaryKeys",
-            json!({
-                "connectionId": connection_id.trim(),
-                "schema": schema.trim(),
-                "table": table
-            }),
-        )
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "schema": schema.trim(),
+            "table": table
+        });
+        set_optional_catalog(&mut params, catalog);
+        self.send_request("connection.primaryKeys", params)
     }
 
     pub fn list_indexes(
@@ -237,6 +248,7 @@ impl JdbcAgentClient {
         connection_id: &str,
         schema: &str,
         table: &str,
+        catalog: Option<&str>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let schema = schema.trim();
@@ -247,14 +259,13 @@ impl JdbcAgentClient {
         if table.is_empty() {
             return Err("table is required.".into());
         }
-        self.send_request(
-            "connection.indexes",
-            json!({
-                "connectionId": connection_id.trim(),
-                "schema": schema,
-                "table": table
-            }),
-        )
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "schema": schema,
+            "table": table
+        });
+        set_optional_catalog(&mut params, catalog);
+        self.send_request("connection.indexes", params)
     }
 
     pub fn get_table_comment(
@@ -262,6 +273,7 @@ impl JdbcAgentClient {
         connection_id: &str,
         schema: &str,
         table: &str,
+        catalog: Option<&str>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let schema = schema.trim();
@@ -272,14 +284,13 @@ impl JdbcAgentClient {
         if table.is_empty() {
             return Err("table is required.".into());
         }
-        self.send_request(
-            "connection.tableComment",
-            json!({
-                "connectionId": connection_id.trim(),
-                "schema": schema,
-                "table": table
-            }),
-        )
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "schema": schema,
+            "table": table
+        });
+        set_optional_catalog(&mut params, catalog);
+        self.send_request("connection.tableComment", params)
     }
 
     pub fn list_foreign_keys(
@@ -287,6 +298,7 @@ impl JdbcAgentClient {
         connection_id: &str,
         schema: &str,
         table: &str,
+        catalog: Option<&str>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let schema = schema.trim();
@@ -297,14 +309,13 @@ impl JdbcAgentClient {
         if table.is_empty() {
             return Err("table is required.".into());
         }
-        self.send_request(
-            "connection.foreignKeys",
-            json!({
-                "connectionId": connection_id.trim(),
-                "schema": schema,
-                "table": table
-            }),
-        )
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "schema": schema,
+            "table": table
+        });
+        set_optional_catalog(&mut params, catalog);
+        self.send_request("connection.foreignKeys", params)
     }
 
     pub fn list_references(
@@ -312,6 +323,7 @@ impl JdbcAgentClient {
         connection_id: &str,
         schema: &str,
         table: &str,
+        catalog: Option<&str>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let schema = schema.trim();
@@ -322,14 +334,13 @@ impl JdbcAgentClient {
         if table.is_empty() {
             return Err("table is required.".into());
         }
-        self.send_request(
-            "connection.references",
-            json!({
-                "connectionId": connection_id.trim(),
-                "schema": schema,
-                "table": table
-            }),
-        )
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "schema": schema,
+            "table": table
+        });
+        set_optional_catalog(&mut params, catalog);
+        self.send_request("connection.references", params)
     }
 
     pub fn list_constraints(
@@ -337,6 +348,7 @@ impl JdbcAgentClient {
         connection_id: &str,
         schema: &str,
         table: &str,
+        catalog: Option<&str>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let schema = schema.trim();
@@ -347,14 +359,13 @@ impl JdbcAgentClient {
         if table.is_empty() {
             return Err("table is required.".into());
         }
-        self.send_request(
-            "connection.constraints",
-            json!({
-                "connectionId": connection_id.trim(),
-                "schema": schema,
-                "table": table
-            }),
-        )
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "schema": schema,
+            "table": table
+        });
+        set_optional_catalog(&mut params, catalog);
+        self.send_request("connection.constraints", params)
     }
 
     pub fn list_triggers(
@@ -362,6 +373,7 @@ impl JdbcAgentClient {
         connection_id: &str,
         schema: &str,
         table: &str,
+        catalog: Option<&str>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let schema = schema.trim();
@@ -372,14 +384,13 @@ impl JdbcAgentClient {
         if table.is_empty() {
             return Err("table is required.".into());
         }
-        self.send_request(
-            "connection.triggers",
-            json!({
-                "connectionId": connection_id.trim(),
-                "schema": schema,
-                "table": table
-            }),
-        )
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "schema": schema,
+            "table": table
+        });
+        set_optional_catalog(&mut params, catalog);
+        self.send_request("connection.triggers", params)
     }
 
     pub fn fetch_object_ddl(
@@ -389,6 +400,7 @@ impl JdbcAgentClient {
         name: &str,
         kind: &str,
         package_body: Option<bool>,
+        catalog: Option<&str>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let schema = schema.trim();
@@ -412,6 +424,7 @@ impl JdbcAgentClient {
         if let Some(package_body) = package_body {
             params["packageBody"] = json!(package_body);
         }
+        set_optional_catalog(&mut params, catalog);
         self.send_request("connection.ddl", params)
     }
 
@@ -422,6 +435,7 @@ impl JdbcAgentClient {
         name: &str,
         kind: &str,
         package_body: Option<bool>,
+        catalog: Option<&str>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let schema = schema.trim();
@@ -445,6 +459,7 @@ impl JdbcAgentClient {
         if let Some(package_body) = package_body {
             params["packageBody"] = json!(package_body);
         }
+        set_optional_catalog(&mut params, catalog);
         self.send_request("connection.compile", params)
     }
 
@@ -455,6 +470,7 @@ impl JdbcAgentClient {
         name: &str,
         kind: &str,
         package_body: Option<bool>,
+        catalog: Option<&str>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let schema = schema.trim();
@@ -478,6 +494,7 @@ impl JdbcAgentClient {
         if let Some(package_body) = package_body {
             params["packageBody"] = json!(package_body);
         }
+        set_optional_catalog(&mut params, catalog);
         self.send_request("connection.dependencies", params)
     }
 
@@ -488,6 +505,7 @@ impl JdbcAgentClient {
         name: &str,
         kind: &str,
         package_body: Option<bool>,
+        catalog: Option<&str>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let schema = schema.trim();
@@ -511,6 +529,7 @@ impl JdbcAgentClient {
         if let Some(package_body) = package_body {
             params["packageBody"] = json!(package_body);
         }
+        set_optional_catalog(&mut params, catalog);
         self.send_request("connection.dependents", params)
     }
 

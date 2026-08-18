@@ -91,6 +91,7 @@ export async function bridgeListColumns(
   connectionId: string,
   schema: string,
   table: string,
+  catalog?: string,
 ): Promise<ConnectionColumnsResult> {
   if (!isTauri()) {
     throw new Error("Database metadata is available in the desktop app only.");
@@ -103,6 +104,7 @@ export async function bridgeListColumns(
     connectionId: id,
     schema: schema.trim(),
     table: table.trim(),
+    catalog: catalog?.trim() ? catalog.trim() : null,
   });
   if (!isConnectionColumnsResult(payload)) {
     throw new Error("Invalid connection columns payload from desktop bridge.");
@@ -114,6 +116,7 @@ export async function bridgeListIndexes(
   connectionId: string,
   schema: string,
   table: string,
+  catalog?: string,
 ): Promise<ConnectionIndexesResult> {
   if (!isTauri()) {
     throw new Error("Database metadata is available in the desktop app only.");
@@ -126,6 +129,7 @@ export async function bridgeListIndexes(
     connectionId: id,
     schema: schema.trim(),
     table: table.trim(),
+    catalog: catalog?.trim() ? catalog.trim() : null,
   });
   if (!isConnectionIndexesResult(payload)) {
     throw new Error("Invalid connection indexes payload from desktop bridge.");
@@ -137,6 +141,7 @@ export async function bridgeGetTableComment(
   connectionId: string,
   schema: string,
   table: string,
+  catalog?: string,
 ): Promise<ConnectionTableCommentResult> {
   if (!isTauri()) {
     throw new Error("Database metadata is available in the desktop app only.");
@@ -149,6 +154,7 @@ export async function bridgeGetTableComment(
     connectionId: id,
     schema: schema.trim(),
     table: table.trim(),
+    catalog: catalog?.trim() ? catalog.trim() : null,
   });
   if (!isConnectionTableCommentResult(payload)) {
     throw new Error("Invalid connection table comment payload from desktop bridge.");
@@ -160,6 +166,7 @@ export async function bridgeListForeignKeys(
   connectionId: string,
   schema: string,
   table: string,
+  catalog?: string,
 ): Promise<ConnectionForeignKeysResult> {
   if (!isTauri()) {
     throw new Error("Database metadata is available in the desktop app only.");
@@ -172,6 +179,7 @@ export async function bridgeListForeignKeys(
     connectionId: id,
     schema: schema.trim(),
     table: table.trim(),
+    catalog: catalog?.trim() ? catalog.trim() : null,
   });
   if (!isConnectionForeignKeysResult(payload)) {
     throw new Error("Invalid connection foreign keys payload from desktop bridge.");
@@ -183,6 +191,7 @@ export async function bridgeListReferences(
   connectionId: string,
   schema: string,
   table: string,
+  catalog?: string,
 ): Promise<ConnectionReferencesResult> {
   if (!isTauri()) {
     throw new Error("Database metadata is available in the desktop app only.");
@@ -195,6 +204,7 @@ export async function bridgeListReferences(
     connectionId: id,
     schema: schema.trim(),
     table: table.trim(),
+    catalog: catalog?.trim() ? catalog.trim() : null,
   });
   if (!isConnectionReferencesResult(payload)) {
     throw new Error("Invalid connection references payload from desktop bridge.");
@@ -206,6 +216,7 @@ export async function bridgeListConstraints(
   connectionId: string,
   schema: string,
   table: string,
+  catalog?: string,
 ): Promise<ConnectionConstraintsResult> {
   if (!isTauri()) {
     throw new Error("Database metadata is available in the desktop app only.");
@@ -218,6 +229,7 @@ export async function bridgeListConstraints(
     connectionId: id,
     schema: schema.trim(),
     table: table.trim(),
+    catalog: catalog?.trim() ? catalog.trim() : null,
   });
   if (!isConnectionConstraintsResult(payload)) {
     throw new Error("Invalid connection constraints payload from desktop bridge.");
@@ -229,6 +241,7 @@ export async function bridgeListTriggers(
   connectionId: string,
   schema: string,
   table: string,
+  catalog?: string,
 ): Promise<ConnectionTriggersResult> {
   if (!isTauri()) {
     throw new Error("Database metadata is available in the desktop app only.");
@@ -241,6 +254,7 @@ export async function bridgeListTriggers(
     connectionId: id,
     schema: schema.trim(),
     table: table.trim(),
+    catalog: catalog?.trim() ? catalog.trim() : null,
   });
   if (!isConnectionTriggersResult(payload)) {
     throw new Error("Invalid connection triggers payload from desktop bridge.");
@@ -252,6 +266,7 @@ export async function bridgeListPackageMembers(
   connectionId: string,
   schema: string,
   packageName: string,
+  catalog?: string,
 ): Promise<ConnectionPackageMembersResult> {
   if (!isTauri()) {
     throw new Error("Database metadata is available in the desktop app only.");
@@ -264,6 +279,7 @@ export async function bridgeListPackageMembers(
     connectionId: id,
     schema: schema.trim(),
     package: packageName.trim(),
+    catalog: catalog?.trim() ? catalog.trim() : null,
   });
   if (!isConnectionPackageMembersResult(payload)) {
     throw new Error(
