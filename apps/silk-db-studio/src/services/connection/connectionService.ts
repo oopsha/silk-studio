@@ -66,7 +66,7 @@ const INITIAL_STATE: ConnectionState = {
 class ConnectionServiceImpl {
   private state: ConnectionState = INITIAL_STATE;
   private readonly listeners = new Set<ConnectionListener>();
-  private initialized = false;
+  private initPromise: Promise<void> | null = null;
 
   getState(): ConnectionState {
     return this.state;
@@ -104,16 +104,29 @@ class ConnectionServiceImpl {
     return this.state.connectedProfileIds.length > 0;
   }
 
-  async initialize(): Promise<void> {
-    if (this.initialized) return;
-    this.initialized = true;
-
-    await this.migrateLegacyPasswords();
-
-    const activeProfile = this.getActiveProfile();
-    if (activeProfile) {
-      await this.connect(activeProfile.id, { silent: true });
+  /**
+   * One-time startup housekeeping (currently: migrating legacy plaintext passwords into the
+   * OS credential store). Does *not* auto-connect anything — see
+   * {@link connectFromRestoredTabs} for that, driven by which profiles the restored editor
+   * tabs actually use. Safe to call from multiple places; every caller awaits the same
+   * underlying migration.
+   */
+  initialize(): Promise<void> {
+    if (!this.initPromise) {
+      this.initPromise = this.migrateLegacyPasswords();
     }
+    return this.initPromise;
+  }
+
+  /**
+   * Connects every distinct profile referenced by restored editor-tab bindings, silently and
+   * in parallel — replaces the old "reconnect whatever was last active" startup behavior.
+   * Profiles that no longer exist are skipped; a failed connect for one profile does not stop
+   * the others (each `connect(..., { silent: true })` swallows its own error).
+   */
+  async connectFromRestoredTabs(profileIds: readonly string[]): Promise<void> {
+    const ids = [...new Set(profileIds)].filter((id) => this.getProfile(id));
+    await Promise.allSettled(ids.map((id) => this.connect(id, { silent: true })));
   }
 
   async getPassword(profileId: string): Promise<string> {

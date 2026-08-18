@@ -9,6 +9,7 @@ import {
 import { readTextFileAtPath } from "@silk-studio/editor/services/editor/editorFileIO.ts";
 import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import type { EditorConnectionBinding } from "../connection/editorConnectionBindingService";
+import { ConnectionService } from "../connection/connectionService";
 
 const PERSIST_DEBOUNCE_MS = 400;
 /** Cap Hot Exit flush so a stuck write cannot block window close. */
@@ -129,6 +130,19 @@ export function startEditorSessionSync(): () => void {
     }
 
     if (disposed) return;
+
+    // Connect exactly the profiles the restored editor tabs are bound to — not "whatever was
+    // last active". No open tabs (or none bound to a connection) means nothing auto-connects.
+    const restoredProfileIds = new Set<string>();
+    for (const binding of Object.values(raw?.bindings ?? {})) {
+      if (binding.profileId) restoredProfileIds.add(binding.profileId);
+    }
+    if (restoredProfileIds.size > 0) {
+      void ConnectionService.initialize().then(() => {
+        if (disposed) return;
+        return ConnectionService.connectFromRestoredTabs([...restoredProfileIds]);
+      });
+    }
 
     unlisteners.push(
       EditorGroupsService.onDidChangeAnyGroup(() => schedulePersist()),
