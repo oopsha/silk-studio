@@ -8,6 +8,7 @@ import { isDdlEditorTab } from "../../services/connection/ddlEditorConstants";
 import { isObjectEditorTab } from "../../services/connection/objectEditorConstants";
 import { openObjectDdl } from "../../services/connection/ddlEditorService";
 import { openObjectEditor } from "../../services/connection/objectEditorService";
+import { ConnectionTreeService } from "../../services/connection/connectionTreeService";
 import type { ExplorerObjectRef } from "../../services/connection/explorerObjectActions";
 import { isSqlLanguageId } from "../../services/sql/sqlDialect";
 import {
@@ -41,6 +42,27 @@ async function resolveGoToDefinitionTarget(
   return findObjectAcrossSchemas(profileId, identifier.name);
 }
 
+/**
+ * When the identifier carries a leading database segment (SQL Server
+ * `db.schema.table`) that isn't the profile's current database, Go to Definition
+ * can't resolve it: schemas are only cached for the current database, and switching
+ * it just to peek would change the connection's active database for every other tab
+ * sharing this profile. Report which database instead of silently failing or switching.
+ */
+function crossDatabaseName(
+  profileId: string,
+  identifier: ResolvedIdentifier,
+): string | null {
+  if (!identifier.database) return null;
+  const cache = ConnectionTreeService.getCache(profileId);
+  if (cache.catalogs.length === 0) return null;
+  const current = cache.currentCatalog?.trim();
+  if (current && current.toLowerCase() === identifier.database.toLowerCase()) {
+    return null;
+  }
+  return identifier.database;
+}
+
 CommandsRegistry.registerCommand("silk.editor.goToDefinition", async () => {
   if (!(document.activeElement instanceof HTMLElement)) return;
   if (!document.activeElement.closest(".monaco-editor")) return;
@@ -61,6 +83,18 @@ CommandsRegistry.registerCommand("silk.editor.goToDefinition", async () => {
   const profileId = getConnectedProfileIdForCompletion();
   if (!profileId) {
     AppNotificationService.show(t("app.query.noConnection"), "info");
+    return;
+  }
+
+  const otherDatabase = crossDatabaseName(profileId, identifier);
+  if (otherDatabase) {
+    AppNotificationService.show(
+      t("app.query.goToDefinitionOtherDatabase").replace(
+        "{database}",
+        otherDatabase,
+      ),
+      "info",
+    );
     return;
   }
 
