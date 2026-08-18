@@ -7,22 +7,26 @@ export type DdlEditorRef = {
   schemaName: string;
   kind: MetadataObjectKind;
   objectName: string;
+  /** SQL Server catalog/database the object was resolved in, when not the session's current one. */
+  catalogName?: string | null;
 };
 
 export function ddlEditorUri(ref: DdlEditorRef): string {
-  return (
+  const base =
     `${DDL_EDITOR_URI_PREFIX}` +
     `${encodeURIComponent(ref.profileId)}/` +
     `${encodeURIComponent(ref.schemaName)}/` +
     `${encodeURIComponent(ref.kind)}/` +
-    `${encodeURIComponent(ref.objectName)}`
-  );
+    `${encodeURIComponent(ref.objectName)}`;
+  const catalog = ref.catalogName?.trim();
+  return catalog ? `${base}?catalog=${encodeURIComponent(catalog)}` : base;
 }
 
 export function parseDdlEditorUri(uri: string | undefined): DdlEditorRef | null {
   if (!uri?.startsWith(DDL_EDITOR_URI_PREFIX)) return null;
   const rest = uri.slice(DDL_EDITOR_URI_PREFIX.length);
-  const parts = rest.split("/");
+  const [path, query] = rest.split("?", 2);
+  const parts = path.split("/");
   if (parts.length !== 4) return null;
   try {
     const profileId = decodeURIComponent(parts[0]);
@@ -30,7 +34,10 @@ export function parseDdlEditorUri(uri: string | undefined): DdlEditorRef | null 
     const kind = decodeURIComponent(parts[2]) as MetadataObjectKind;
     const objectName = decodeURIComponent(parts[3]);
     if (!profileId || !schemaName || !objectName) return null;
-    return { profileId, schemaName, kind, objectName };
+    const catalogName = query
+      ? (new URLSearchParams(query).get("catalog") ?? undefined)
+      : undefined;
+    return { profileId, schemaName, kind, objectName, catalogName };
   } catch {
     return null;
   }

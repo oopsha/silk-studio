@@ -18,6 +18,7 @@ export function openObjectDdl(ref: ExplorerObjectRef): void {
     schemaName: ref.schemaName,
     kind: ref.object.kind,
     objectName: ref.object.name,
+    catalogName: ref.catalogName,
   });
 
   const label = buildDdlTabLabel(ref.schemaName, ref.object.name);

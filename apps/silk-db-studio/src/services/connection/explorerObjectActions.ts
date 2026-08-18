@@ -11,6 +11,8 @@ export type ExplorerObjectRef = {
   profileId: string;
   schemaName: string;
   object: MetadataObject;
+  /** SQL Server catalog/database this object was resolved in, when not the session's current one. */
+  catalogName?: string | null;
 };
 
 export type ExplorerMenuItem = {

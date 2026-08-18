@@ -23,7 +23,12 @@ function IndexesPreview({ objectRef }: IndexesPreviewProps) {
     let cancelled = false;
     setLoadState({ status: "loading" });
 
-    bridgeListIndexes(objectRef.profileId, objectRef.schemaName, objectRef.objectName)
+    bridgeListIndexes(
+      objectRef.profileId,
+      objectRef.schemaName,
+      objectRef.objectName,
+      objectRef.catalogName ?? undefined,
+    )
       .then((result) => {
         if (cancelled) return;
         setLoadState({ status: "ready", indexes: result.indexes });
@@ -39,7 +44,13 @@ function IndexesPreview({ objectRef }: IndexesPreviewProps) {
     return () => {
       cancelled = true;
     };
-  }, [objectRef.profileId, objectRef.schemaName, objectRef.objectName, t]);
+  }, [
+    objectRef.profileId,
+    objectRef.schemaName,
+    objectRef.objectName,
+    objectRef.catalogName,
+    t,
+  ]);
 
   if (loadState.status === "loading") {
     return (

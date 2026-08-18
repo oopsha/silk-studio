@@ -27,7 +27,12 @@ function ForeignKeysPreview({ objectRef }: ForeignKeysPreviewProps) {
     let cancelled = false;
     setLoadState({ status: "loading" });
 
-    bridgeListForeignKeys(objectRef.profileId, objectRef.schemaName, objectRef.objectName)
+    bridgeListForeignKeys(
+      objectRef.profileId,
+      objectRef.schemaName,
+      objectRef.objectName,
+      objectRef.catalogName ?? undefined,
+    )
       .then((result) => {
         if (cancelled) return;
         setLoadState({ status: "ready", foreignKeys: result.foreignKeys });
@@ -43,7 +48,13 @@ function ForeignKeysPreview({ objectRef }: ForeignKeysPreviewProps) {
     return () => {
       cancelled = true;
     };
-  }, [objectRef.profileId, objectRef.schemaName, objectRef.objectName, t]);
+  }, [
+    objectRef.profileId,
+    objectRef.schemaName,
+    objectRef.objectName,
+    objectRef.catalogName,
+    t,
+  ]);
 
   if (loadState.status === "loading") {
     return (

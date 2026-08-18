@@ -23,7 +23,12 @@ function TriggersPreview({ objectRef }: TriggersPreviewProps) {
     let cancelled = false;
     setLoadState({ status: "loading" });
 
-    bridgeListTriggers(objectRef.profileId, objectRef.schemaName, objectRef.objectName)
+    bridgeListTriggers(
+      objectRef.profileId,
+      objectRef.schemaName,
+      objectRef.objectName,
+      objectRef.catalogName ?? undefined,
+    )
       .then((result) => {
         if (cancelled) return;
         setLoadState({ status: "ready", triggers: result.triggers });
@@ -39,7 +44,13 @@ function TriggersPreview({ objectRef }: TriggersPreviewProps) {
     return () => {
       cancelled = true;
     };
-  }, [objectRef.profileId, objectRef.schemaName, objectRef.objectName, t]);
+  }, [
+    objectRef.profileId,
+    objectRef.schemaName,
+    objectRef.objectName,
+    objectRef.catalogName,
+    t,
+  ]);
 
   if (loadState.status === "loading") {
     return (
