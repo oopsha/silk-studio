@@ -20,6 +20,7 @@ import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { monacoLanguageIdForDriver } from "../../services/sql/sqlDialect";
 import { ConnectionService } from "../../services/connection/connectionService";
 import { registerSqlLanguages } from "../../services/sql/registerSqlLanguages";
+import { registerMonacoInstance } from "../../services/editor/monacoInstanceRegistry";
 import "./DdlPreview.css";
 
 export type DdlPreviewRef = {
@@ -48,6 +49,7 @@ function DdlPreview({ objectRef: ref, tabId, tabUri, bufferedContent }: DdlPrevi
   const configuration = useConfiguration();
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const unregisterMonacoRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (!ref) {
@@ -113,6 +115,7 @@ function DdlPreview({ objectRef: ref, tabId, tabUri, bufferedContent }: DdlPrevi
       if (instance && tabId) {
         EditorService.saveViewState(tabId, instance.saveViewState());
       }
+      unregisterMonacoRef.current();
     };
   }, [tabId]);
 
@@ -129,6 +132,8 @@ function DdlPreview({ objectRef: ref, tabId, tabUri, bufferedContent }: DdlPrevi
   const handleMount = useCallback(
     (instance: editor.IStandaloneCodeEditor) => {
       editorRef.current = instance;
+      unregisterMonacoRef.current();
+      unregisterMonacoRef.current = registerMonacoInstance(instance);
       if (tabId) {
         scheduleRestoreViewState(instance, () => EditorService.getViewState(tabId));
       }

@@ -1,15 +1,15 @@
+import type { editor } from "monaco-editor";
 import type { MetadataObject } from "@silk-studio/db-protocol";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
 import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
-import { isDdlEditorTab } from "../../services/connection/ddlEditorConstants";
-import { isObjectEditorTab } from "../../services/connection/objectEditorConstants";
 import { openObjectDdl } from "../../services/connection/ddlEditorService";
 import { openObjectEditor } from "../../services/connection/objectEditorService";
 import type { ExplorerObjectRef } from "../../services/connection/explorerObjectActions";
 import { ConnectionService } from "../../services/connection/connectionService";
+import { findRegisteredMonacoInstanceAt } from "../../services/editor/monacoInstanceRegistry";
 import { isSqlLanguageId } from "../../services/sql/sqlDialect";
 import {
   resolveIdentifierAtPosition,
@@ -68,16 +68,41 @@ function unsupportedDatabaseSegment(identifier: ResolvedIdentifier): string | nu
   return identifier.database?.includes(".") ? identifier.database : null;
 }
 
+/**
+ * `EditorService.getActiveTextEditor()` only reflects a *real* SQL editor tab — it's
+ * populated by `EditorArea`'s own Monaco mount lifecycle, which is skipped entirely for
+ * `renderAlternative` views (the standalone DDL preview, and the object editor's embedded
+ * Properties→DDL section both mount their own local Monaco instance that never registers
+ * with `EditorGroupsService`). Try that known-working path first, then fall back to the
+ * app's own registry (`monacoInstanceRegistry.ts`) that those views register themselves
+ * into — NOT Monaco's own `editor.getEditors()`, which can miss instances created through
+ * a different `monaco-editor` module copy than whatever this file happens to import (a
+ * real risk in a pnpm workspace where multiple packages each depend on `monaco-editor`).
+ */
+function findFocusedMonacoEditor(): editor.ICodeEditor | null {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return null;
+  const activeEditorInstance = EditorService.getActiveTextEditor();
+  if (activeEditorInstance?.getDomNode()?.contains(active)) {
+    return activeEditorInstance;
+  }
+  return findRegisteredMonacoInstanceAt(active);
+}
+
 CommandsRegistry.registerCommand("silk.editor.goToDefinition", async () => {
   if (!(document.activeElement instanceof HTMLElement)) return;
   if (!document.activeElement.closest(".monaco-editor")) return;
 
   const activeTab = EditorService.getActiveTab();
   if (!activeTab) return;
-  if (isDdlEditorTab(activeTab.uri) || isObjectEditorTab(activeTab.uri)) return;
+  // DDL preview (standalone "View DDL" tab, or the object editor's own Properties→DDL
+  // section) is a real, focusable Monaco instance too — letting F4 resolve identifiers
+  // referenced in that DDL text (e.g. a FK's REFERENCES target) is exactly the point here,
+  // not a recursion risk: it only ever opens/focuses a tab for a *different* resolved
+  // object, the same reveal-by-uri behavior F4 already has everywhere else.
   if (!isSqlLanguageId(activeTab.languageId)) return;
 
-  const instance = EditorService.getActiveTextEditor();
+  const instance = findFocusedMonacoEditor();
   const position = instance?.getPosition();
   const model = instance?.getModel();
   if (!position || !model) return;

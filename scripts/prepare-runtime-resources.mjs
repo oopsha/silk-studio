@@ -12,9 +12,9 @@
  *   SILK_JRE_OS=mac|windows|linux
  *   SILK_JRE_ARCH=x64|aarch64
  *
- * Also stages the AWS session-manager-plugin binary (Windows only for now) used by the SSM
- * tunnel feature — see the comment above stageSsmPlugin() below for how it avoids needing an
- * elevated installer run.
+ * Also stages the AWS session-manager-plugin binary (Windows and macOS; Linux not yet) used by
+ * the SSM tunnel feature — see the comment above stageSsmPlugin() below for how it avoids
+ * needing an elevated installer run.
  */
 
 import { createWriteStream } from "node:fs";
@@ -300,18 +300,40 @@ function findFileNamed(root, name) {
 }
 
 /**
+ * Windows: `SessionManagerPlugin.zip` looks like an installer package (it ships
+ * `install.bat`/`uninstall.bat`), but inspecting it shows `install.bat` only does two
+ * privileged things — copies `package.zip`'s contents into `%PROGRAMFILES%` and registers a
+ * Windows service — and `package.zip` itself is a **plain, unprivileged zip** containing the
+ * actual portable `bin/session-manager-plugin.exe`.
+ *
+ * macOS: `sessionmanager-bundle.zip` is the same idea one layer shallower — no nested
+ * package.zip, the zip extracts straight to `sessionmanager-bundle/bin/session-manager-plugin`
+ * plus an `install` shell script (again privileged: copies to `/usr/local/...` and symlinks
+ * into `/usr/local/bin`) that we skip entirely, same as Windows's `install.bat`. Verified via
+ * `curl -I`/`unzip -l` against AWS's actual `mac`/`mac_arm64` URLs — the exec bit is already
+ * set inside the zip.
+ *
+ * A stable "latest" pointer (not a versioned API like Adoptium's) — re-verify against AWS's
+ * official "Install the Session Manager plugin" docs before a release if it's been a while.
+ */
+function ssmPluginDownloadUrl(os, arch) {
+  if (os === "windows") {
+    return "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/windows/SessionManagerPlugin.zip";
+  }
+  if (os === "mac") {
+    const macPath = arch === "aarch64" ? "mac_arm64" : "mac";
+    return `https://s3.amazonaws.com/session-manager-downloads/plugin/latest/${macPath}/sessionmanager-bundle.zip`;
+  }
+  // Linux: not staged yet — see docs/bundled-runtime.md.
+  return null;
+}
+
+/**
  * Stages the AWS session-manager-plugin binary — the small open-source (Apache-2.0) Go binary
  * that implements the SSM WebSocket data channel for the built-in tunnel feature. Deliberately
- * NOT the full AWS CLI (see the ssm-tunnel feature plan for why).
- *
- * `SessionManagerPlugin.zip` looks like an installer package (it ships `install.bat` /
- * `uninstall.bat`), but inspecting it shows `install.bat` only does two privileged things —
- * copies `package.zip`'s contents into `%PROGRAMFILES%` and registers a Windows service — and
- * `package.zip` itself is a **plain, unprivileged zip** containing the actual portable
- * `bin/session-manager-plugin.exe`. We don't want the Windows-service registration anyway
- * (Silk spawns the plugin as an ad-hoc per-tunnel subprocess), so this extracts `package.zip`
- * directly and skips `install.bat` entirely — no installer execution, no Administrator rights.
- * Windows-only for V1; other hosts are skipped, not failed (see docs/bundled-runtime.md).
+ * NOT the full AWS CLI (see the ssm-tunnel feature plan for why). No installer is ever run —
+ * see `ssmPluginDownloadUrl`'s comment for how each platform's archive is unwrapped by hand
+ * instead, so this needs no elevated/Administrator privileges on either OS.
  */
 async function stageSsmPlugin() {
   if (!forceSsmPlugin && ssmPluginBinExists(OUT_SSM_PLUGIN)) {
@@ -321,42 +343,55 @@ async function stageSsmPlugin() {
   }
 
   const os = detectOs();
-  if (os !== "windows") {
+  const arch = detectArch();
+  const url = ssmPluginDownloadUrl(os, arch);
+  if (!url) {
     log(
-      `Skipping session-manager-plugin staging on ${os} (Windows-only for now — see docs/bundled-runtime.md).`,
+      `Skipping session-manager-plugin staging on ${os} (not supported yet — see docs/bundled-runtime.md).`,
     );
     return;
   }
 
-  // A stable "latest" pointer (not a versioned API like Adoptium's) — re-verify against AWS's
-  // official "Install the Session Manager plugin" docs before a release if it's been a while.
-  const url =
-    "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/windows/SessionManagerPlugin.zip";
+  const isWindows = os === "windows";
+  const binName = isWindows ? "session-manager-plugin.exe" : "session-manager-plugin";
 
   const tmp = mkdtempSync(join(tmpdir(), "silk-ssm-plugin-"));
   try {
-    const archivePath = join(tmp, "SessionManagerPlugin.zip");
+    const archivePath = join(
+      tmp,
+      isWindows ? "SessionManagerPlugin.zip" : "sessionmanager-bundle.zip",
+    );
     await download(url, archivePath);
 
     const outerRoot = join(tmp, "outer");
     extractArchive(archivePath, outerRoot);
 
-    const packageZip = findFileNamed(outerRoot, "package.zip");
-    if (!packageZip) {
-      fail("Could not locate package.zip inside SessionManagerPlugin.zip (AWS may have changed the package layout — see stageSsmPlugin's comment).");
+    // Windows nests a second, plain zip inside the installer-shaped outer one; macOS's
+    // bundle has the binary directly under the outer zip's bin/.
+    let innerRoot = outerRoot;
+    if (isWindows) {
+      const packageZip = findFileNamed(outerRoot, "package.zip");
+      if (!packageZip) {
+        fail("Could not locate package.zip inside SessionManagerPlugin.zip (AWS may have changed the package layout — see stageSsmPlugin's comment).");
+      }
+      innerRoot = join(tmp, "inner");
+      extractArchive(packageZip, innerRoot);
     }
 
-    const innerRoot = join(tmp, "inner");
-    extractArchive(packageZip, innerRoot);
-
-    const exePath = findFileNamed(innerRoot, "session-manager-plugin.exe");
-    if (!exePath) {
-      fail("Could not locate bin/session-manager-plugin.exe inside package.zip.");
+    const binPath = findFileNamed(innerRoot, binName);
+    if (!binPath) {
+      fail(`Could not locate bin/${binName} inside the downloaded archive.`);
     }
 
     rmSync(OUT_SSM_PLUGIN, { recursive: true, force: true });
     mkdirSync(OUT_SSM_PLUGIN, { recursive: true });
-    cpSync(exePath, join(OUT_SSM_PLUGIN, "session-manager-plugin.exe"));
+    const outBinPath = join(OUT_SSM_PLUGIN, binName);
+    cpSync(binPath, outBinPath);
+    if (!isWindows) {
+      // Defensive — verified the zip already preserves the exec bit, but cheap insurance
+      // against an extraction environment that doesn't.
+      chmodSync(outBinPath, 0o755);
+    }
     for (const notice of ["LICENSE", "NOTICE", "THIRD-PARTY"]) {
       const noticePath = findFileNamed(innerRoot, notice);
       if (noticePath) {
@@ -370,11 +405,15 @@ async function stageSsmPlugin() {
       [
         "AWS Session Manager Plugin",
         `Fetched via: ${url}`,
-        `Host: ${os}`,
+        `Host: ${os}/${arch}`,
         `Prepared: ${new Date().toISOString()}`,
         "License: Apache-2.0 — see https://github.com/aws/session-manager-plugin",
-        "Extracted directly from the package's package.zip (bypassing install.bat's Program",
-        "Files copy + Windows service registration, which this app doesn't use or need).",
+        isWindows
+          ? "Extracted directly from the package's package.zip (bypassing install.bat's Program"
+          : "Extracted directly from the signed bundle zip's bin/ (bypassing the install script's",
+        isWindows
+          ? "Files copy + Windows service registration, which this app doesn't use or need)."
+          : "/usr/local copy + symlink, which this app doesn't use or need).",
         "",
       ].join("\n"),
       "utf8",
@@ -402,7 +441,7 @@ Populated by \`scripts/prepare-runtime-resources.mjs\` (not committed).
 | --- | --- |
 | \`jdbc-agent/\` | \`jdbc-agent-all.jar\` + \`lib/\` (+ notices) |
 | \`jre/\` | Eclipse Temurin JRE 17 for the **build host** OS/arch |
-| \`ssm-plugin/\` | AWS \`session-manager-plugin\` binary (Windows build host only for now), see \`docs/bundled-runtime.md\` |
+| \`ssm-plugin/\` | AWS \`session-manager-plugin\` binary (Windows/macOS build host; Linux not yet), see \`docs/bundled-runtime.md\` |
 
 See [\`docs/bundled-runtime.md\`](../../../../docs/bundled-runtime.md).
 `,
