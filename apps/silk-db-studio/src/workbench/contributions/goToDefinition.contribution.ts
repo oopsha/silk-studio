@@ -34,7 +34,7 @@ const t = I18nService.t.bind(I18nService);
 async function resolveGoToDefinitionTarget(
   profileId: string,
   identifier: ResolvedIdentifier,
-): Promise<{ schema: string; object: MetadataObject } | null> {
+): Promise<{ schema: string; object: MetadataObject; catalog: string | null } | null> {
   const catalog = identifier.database?.trim() || null;
   if (identifier.qualifier) {
     const asPackage = await findObjectAcrossSchemas(
@@ -44,16 +44,18 @@ async function resolveGoToDefinitionTarget(
       catalog,
     );
     if (asPackage && asPackage.object.kind === "package") {
-      return asPackage;
+      return { ...asPackage, catalog };
     }
-    return findObjectAcrossSchemas(
+    const found = await findObjectAcrossSchemas(
       profileId,
       identifier.name,
       identifier.qualifier,
       catalog,
     );
+    return found ? { ...found, catalog } : null;
   }
-  return findObjectAcrossSchemas(profileId, identifier.name, null, catalog);
+  const found = await findObjectAcrossSchemas(profileId, identifier.name, null, catalog);
+  return found ? { ...found, catalog } : null;
 }
 
 /**
@@ -110,6 +112,7 @@ CommandsRegistry.registerCommand("silk.editor.goToDefinition", async () => {
     profileId,
     schemaName: found.schema,
     object: found.object,
+    catalogName: found.catalog,
   };
   if (found.object.kind === "table" || found.object.kind === "view") {
     openObjectEditor(ref);

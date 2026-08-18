@@ -24,8 +24,14 @@ function DataView({ objectRef }: DataViewProps) {
         objectRef.profileId,
         objectRef.schemaName,
         objectRef.objectName,
+        objectRef.catalogName,
       ),
-    [objectRef.profileId, objectRef.schemaName, objectRef.objectName],
+    [
+      objectRef.profileId,
+      objectRef.schemaName,
+      objectRef.objectName,
+      objectRef.catalogName,
+    ],
   );
   const session = useQueryExecutionStateByOwnerId(ownerId);
   const isRunning = session.status === "running";
@@ -35,8 +41,15 @@ function DataView({ objectRef }: DataViewProps) {
       profileId: objectRef.profileId,
       schemaName: objectRef.schemaName,
       object: { name: objectRef.objectName, kind: objectRef.kind },
+      catalogName: objectRef.catalogName,
     }),
-    [objectRef.profileId, objectRef.schemaName, objectRef.objectName, objectRef.kind],
+    [
+      objectRef.profileId,
+      objectRef.schemaName,
+      objectRef.objectName,
+      objectRef.kind,
+      objectRef.catalogName,
+    ],
   );
 
   const runFetch = useCallback(() => {

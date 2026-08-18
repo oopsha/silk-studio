@@ -135,8 +135,10 @@ export function buildOpenDataOwnerId(
   profileId: string,
   schemaName: string,
   objectName: string,
+  catalogName?: string | null,
 ): string {
-  return `${OPEN_DATA_OWNER_PREFIX}${profileId}:${schemaName}.${objectName}`;
+  const catalogPrefix = catalogName?.trim() ? `${catalogName.trim()}:` : "";
+  return `${OPEN_DATA_OWNER_PREFIX}${profileId}:${catalogPrefix}${schemaName}.${objectName}`;
 }
 
 class QueryExecutionServiceImpl {

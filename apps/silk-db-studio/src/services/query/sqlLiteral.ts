@@ -37,18 +37,28 @@ export function qualifyTableName(
   schema: string,
   table: string,
   driverId: ConnectionDriverId,
+  catalog?: string | null,
 ): string {
-  return `${quoteIdentifier(schema, driverId)}.${quoteIdentifier(table, driverId)}`;
+  const catalogPrefix = catalog?.trim()
+    ? `${quoteIdentifier(catalog.trim(), driverId)}.`
+    : "";
+  return `${catalogPrefix}${quoteIdentifier(schema, driverId)}.${quoteIdentifier(table, driverId)}`;
 }
 
+/**
+ * `catalog` produces a 3-part reference (e.g. SQL Server `[DB].[schema].[table]`) so a query
+ * can target an object resolved from a non-current catalog without switching the shared JDBC
+ * session's database — see openTableDataService.ts.
+ */
 export function formatTableReference(
   schema: string | null | undefined,
   table: string,
   driverId: ConnectionDriverId,
+  catalog?: string | null,
 ): string {
   const trimmedSchema = schema?.trim();
   if (!trimmedSchema) {
     return quoteIdentifier(table, driverId);
   }
-  return qualifyTableName(trimmedSchema, table, driverId);
+  return qualifyTableName(trimmedSchema, table, driverId, catalog);
 }

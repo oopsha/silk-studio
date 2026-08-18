@@ -11,8 +11,9 @@ export function buildOpenDataSql(
   schemaName: string,
   objectName: string,
   driverId: ConnectionDriverId,
+  catalogName?: string | null,
 ): string {
-  const tableRef = formatTableReference(schemaName, objectName, driverId);
+  const tableRef = formatTableReference(schemaName, objectName, driverId, catalogName);
   return `SELECT * FROM ${tableRef}`;
 }
 
@@ -30,12 +31,17 @@ export async function openTableData(ref: ExplorerObjectRef): Promise<void> {
     await ConnectionService.connect(ref.profileId);
   }
 
+  // A 3-part reference (catalog.schema.table) resolves correctly against another database
+  // without switching the shared session's current catalog — see sqlLiteral.ts.
   const sql = buildOpenDataSql(
     ref.schemaName,
     ref.object.name,
     profile.driverId,
+    ref.catalogName,
   );
-  const tabTitle = `${ref.schemaName}.${ref.object.name}`;
+  const tabTitle = ref.catalogName?.trim()
+    ? `${ref.catalogName.trim()}.${ref.schemaName}.${ref.object.name}`
+    : `${ref.schemaName}.${ref.object.name}`;
 
   await QueryExecutionService.execute(sql, {
     relationKind: ref.object.kind,
@@ -45,6 +51,7 @@ export async function openTableData(ref: ExplorerObjectRef): Promise<void> {
       ref.profileId,
       ref.schemaName,
       ref.object.name,
+      ref.catalogName,
     ),
   });
 }

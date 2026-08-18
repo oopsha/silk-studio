@@ -38,7 +38,12 @@ function ObjectEditorHeader({ objectRef }: ObjectEditorHeaderProps) {
     let cancelled = false;
     setCommentState({ status: "loading" });
 
-    bridgeGetTableComment(objectRef.profileId, objectRef.schemaName, objectRef.objectName)
+    bridgeGetTableComment(
+      objectRef.profileId,
+      objectRef.schemaName,
+      objectRef.objectName,
+      objectRef.catalogName ?? undefined,
+    )
       .then((result) => {
         if (cancelled) return;
         setCommentState({ status: "ready", comment: result.comment });
@@ -54,7 +59,12 @@ function ObjectEditorHeader({ objectRef }: ObjectEditorHeaderProps) {
     return () => {
       cancelled = true;
     };
-  }, [objectRef.profileId, objectRef.schemaName, objectRef.objectName]);
+  }, [
+    objectRef.profileId,
+    objectRef.schemaName,
+    objectRef.objectName,
+    objectRef.catalogName,
+  ]);
 
   return (
     <div className="object-editor-header">

@@ -29,7 +29,12 @@ function ReferencesPreview({ objectRef }: ReferencesPreviewProps) {
     let cancelled = false;
     setLoadState({ status: "loading" });
 
-    bridgeListReferences(objectRef.profileId, objectRef.schemaName, objectRef.objectName)
+    bridgeListReferences(
+      objectRef.profileId,
+      objectRef.schemaName,
+      objectRef.objectName,
+      objectRef.catalogName ?? undefined,
+    )
       .then((result) => {
         if (cancelled) return;
         setLoadState({ status: "ready", references: result.references });
@@ -45,7 +50,13 @@ function ReferencesPreview({ objectRef }: ReferencesPreviewProps) {
     return () => {
       cancelled = true;
     };
-  }, [objectRef.profileId, objectRef.schemaName, objectRef.objectName, t]);
+  }, [
+    objectRef.profileId,
+    objectRef.schemaName,
+    objectRef.objectName,
+    objectRef.catalogName,
+    t,
+  ]);
 
   if (loadState.status === "loading") {
     return (

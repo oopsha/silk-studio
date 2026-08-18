@@ -73,12 +73,16 @@ function DependenciesPreview({ objectRef }: DependenciesPreviewProps) {
         objectRef.schemaName,
         objectRef.objectName,
         objectRef.kind,
+        undefined,
+        objectRef.catalogName ?? undefined,
       ),
       bridgeListObjectDependents(
         objectRef.profileId,
         objectRef.schemaName,
         objectRef.objectName,
         objectRef.kind,
+        undefined,
+        objectRef.catalogName ?? undefined,
       ),
     ])
       .then(([dependenciesResult, dependentsResult]) => {
@@ -100,7 +104,14 @@ function DependenciesPreview({ objectRef }: DependenciesPreviewProps) {
     return () => {
       cancelled = true;
     };
-  }, [objectRef.profileId, objectRef.schemaName, objectRef.objectName, objectRef.kind, t]);
+  }, [
+    objectRef.profileId,
+    objectRef.schemaName,
+    objectRef.objectName,
+    objectRef.kind,
+    objectRef.catalogName,
+    t,
+  ]);
 
   if (loadState.status === "loading") {
     return (

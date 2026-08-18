@@ -18,6 +18,7 @@ export function openObjectEditor(ref: ExplorerObjectRef): void {
     schemaName: ref.schemaName,
     kind: ref.object.kind,
     objectName: ref.object.name,
+    catalogName: ref.catalogName,
   });
 
   const label = buildObjectEditorTabLabel(ref.schemaName, ref.object.name);

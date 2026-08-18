@@ -30,7 +30,12 @@ function ConstraintsPreview({ objectRef }: ConstraintsPreviewProps) {
     let cancelled = false;
     setLoadState({ status: "loading" });
 
-    bridgeListConstraints(objectRef.profileId, objectRef.schemaName, objectRef.objectName)
+    bridgeListConstraints(
+      objectRef.profileId,
+      objectRef.schemaName,
+      objectRef.objectName,
+      objectRef.catalogName ?? undefined,
+    )
       .then((result) => {
         if (cancelled) return;
         setLoadState({ status: "ready", constraints: result.constraints });
@@ -46,7 +51,13 @@ function ConstraintsPreview({ objectRef }: ConstraintsPreviewProps) {
     return () => {
       cancelled = true;
     };
-  }, [objectRef.profileId, objectRef.schemaName, objectRef.objectName, t]);
+  }, [
+    objectRef.profileId,
+    objectRef.schemaName,
+    objectRef.objectName,
+    objectRef.catalogName,
+    t,
+  ]);
 
   if (loadState.status === "loading") {
     return (

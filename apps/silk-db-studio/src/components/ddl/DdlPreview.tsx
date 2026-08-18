@@ -27,6 +27,7 @@ export type DdlPreviewRef = {
   schemaName: string;
   kind: MetadataObjectKind;
   objectName: string;
+  catalogName?: string | null;
 };
 
 type DdlPreviewProps = {
@@ -70,7 +71,14 @@ function DdlPreview({ objectRef: ref, tabId, tabUri, bufferedContent }: DdlPrevi
     let cancelled = false;
     setLoadState({ status: "loading" });
 
-    void bridgeFetchObjectDdl(ref.profileId, ref.schemaName, ref.objectName, ref.kind)
+    void bridgeFetchObjectDdl(
+      ref.profileId,
+      ref.schemaName,
+      ref.objectName,
+      ref.kind,
+      undefined,
+      ref.catalogName ?? undefined,
+    )
       .then((result) => {
         if (cancelled) return;
         const ddl = result.ddl.endsWith("\n") ? result.ddl : `${result.ddl}\n`;
@@ -88,7 +96,16 @@ function DdlPreview({ objectRef: ref, tabId, tabUri, bufferedContent }: DdlPrevi
     return () => {
       cancelled = true;
     };
-  }, [ref?.profileId, ref?.schemaName, ref?.objectName, ref?.kind, tabId, bufferedContent, t]);
+  }, [
+    ref?.profileId,
+    ref?.schemaName,
+    ref?.objectName,
+    ref?.kind,
+    ref?.catalogName,
+    tabId,
+    bufferedContent,
+    t,
+  ]);
 
   useLayoutEffect(() => {
     return () => {

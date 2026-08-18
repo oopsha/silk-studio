@@ -60,11 +60,13 @@ function ColumnsPreview({ objectRef }: ColumnsPreviewProps) {
         objectRef.profileId,
         objectRef.schemaName,
         objectRef.objectName,
+        objectRef.catalogName ?? undefined,
       ),
       bridgeListPrimaryKeys(
         objectRef.profileId,
         objectRef.schemaName,
         objectRef.objectName,
+        objectRef.catalogName ?? undefined,
       ),
     ])
       .then(([columnsResult, primaryKeysResult]) => {
@@ -88,7 +90,13 @@ function ColumnsPreview({ objectRef }: ColumnsPreviewProps) {
     return () => {
       cancelled = true;
     };
-  }, [objectRef.profileId, objectRef.schemaName, objectRef.objectName, t]);
+  }, [
+    objectRef.profileId,
+    objectRef.schemaName,
+    objectRef.objectName,
+    objectRef.catalogName,
+    t,
+  ]);
 
   if (loadState.status === "loading") {
     return (

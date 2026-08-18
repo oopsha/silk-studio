@@ -388,6 +388,7 @@ function ProfileTree({
                           profileId: profile.id,
                           schemaName: schema.name,
                           object,
+                          catalogName,
                         })
                       }
                     />
@@ -871,6 +872,7 @@ function ObjectGroup({
                         profileId,
                         schemaName,
                         object: item,
+                        catalogName: databaseName,
                       } satisfies ExplorerObjectRef,
                     });
                   }}
