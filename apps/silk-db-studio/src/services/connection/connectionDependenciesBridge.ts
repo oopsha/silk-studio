@@ -13,6 +13,7 @@ export async function bridgeListObjectDependencies(
   name: string,
   kind: MetadataObjectKind,
   packageBody?: boolean,
+  catalog?: string,
 ): Promise<ConnectionDependenciesResult> {
   if (!isTauri()) {
     throw new Error("Object dependencies are available in the desktop app only.");
@@ -27,6 +28,7 @@ export async function bridgeListObjectDependencies(
     name: name.trim(),
     kind,
     packageBody,
+    catalog: catalog?.trim() ? catalog.trim() : null,
   });
   if (!isConnectionDependenciesResult(payload)) {
     throw new Error("Invalid connection dependencies payload from desktop bridge.");
@@ -41,6 +43,7 @@ export async function bridgeListObjectDependents(
   name: string,
   kind: MetadataObjectKind,
   packageBody?: boolean,
+  catalog?: string,
 ): Promise<ConnectionDependentsResult> {
   if (!isTauri()) {
     throw new Error("Object dependents are available in the desktop app only.");
@@ -55,6 +58,7 @@ export async function bridgeListObjectDependents(
     name: name.trim(),
     kind,
     packageBody,
+    catalog: catalog?.trim() ? catalog.trim() : null,
   });
   if (!isConnectionDependentsResult(payload)) {
     throw new Error("Invalid connection dependents payload from desktop bridge.");

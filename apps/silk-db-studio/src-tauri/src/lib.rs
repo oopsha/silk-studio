@@ -198,12 +198,16 @@ fn connection_columns(
     connection_id: String,
     schema: String,
     table: String,
+    catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
-    state
-        .jdbc_agent
-        .list_columns(connection_id, schema.trim(), table.trim())
+    state.jdbc_agent.list_columns(
+        connection_id,
+        schema.trim(),
+        table.trim(),
+        catalog.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -211,6 +215,7 @@ fn connection_package_members(
     connection_id: String,
     schema: String,
     package: String,
+    catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
@@ -218,6 +223,7 @@ fn connection_package_members(
         connection_id,
         schema.trim(),
         package.trim(),
+        catalog.as_deref(),
     )
 }
 
@@ -226,12 +232,16 @@ fn connection_primary_keys(
     connection_id: String,
     schema: String,
     table: String,
+    catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
-    state
-        .jdbc_agent
-        .list_primary_keys(connection_id, schema.trim(), table.trim())
+    state.jdbc_agent.list_primary_keys(
+        connection_id,
+        schema.trim(),
+        table.trim(),
+        catalog.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -239,12 +249,16 @@ fn connection_indexes(
     connection_id: String,
     schema: String,
     table: String,
+    catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
-    state
-        .jdbc_agent
-        .list_indexes(connection_id, schema.trim(), table.trim())
+    state.jdbc_agent.list_indexes(
+        connection_id,
+        schema.trim(),
+        table.trim(),
+        catalog.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -252,12 +266,16 @@ fn connection_table_comment(
     connection_id: String,
     schema: String,
     table: String,
+    catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
-    state
-        .jdbc_agent
-        .get_table_comment(connection_id, schema.trim(), table.trim())
+    state.jdbc_agent.get_table_comment(
+        connection_id,
+        schema.trim(),
+        table.trim(),
+        catalog.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -265,12 +283,16 @@ fn connection_foreign_keys(
     connection_id: String,
     schema: String,
     table: String,
+    catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
-    state
-        .jdbc_agent
-        .list_foreign_keys(connection_id, schema.trim(), table.trim())
+    state.jdbc_agent.list_foreign_keys(
+        connection_id,
+        schema.trim(),
+        table.trim(),
+        catalog.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -278,12 +300,16 @@ fn connection_references(
     connection_id: String,
     schema: String,
     table: String,
+    catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
-    state
-        .jdbc_agent
-        .list_references(connection_id, schema.trim(), table.trim())
+    state.jdbc_agent.list_references(
+        connection_id,
+        schema.trim(),
+        table.trim(),
+        catalog.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -291,12 +317,16 @@ fn connection_constraints(
     connection_id: String,
     schema: String,
     table: String,
+    catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
-    state
-        .jdbc_agent
-        .list_constraints(connection_id, schema.trim(), table.trim())
+    state.jdbc_agent.list_constraints(
+        connection_id,
+        schema.trim(),
+        table.trim(),
+        catalog.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -304,12 +334,16 @@ fn connection_triggers(
     connection_id: String,
     schema: String,
     table: String,
+    catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
-    state
-        .jdbc_agent
-        .list_triggers(connection_id, schema.trim(), table.trim())
+    state.jdbc_agent.list_triggers(
+        connection_id,
+        schema.trim(),
+        table.trim(),
+        catalog.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -319,6 +353,7 @@ fn connection_ddl(
     name: String,
     kind: String,
     package_body: Option<bool>,
+    catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
@@ -328,6 +363,7 @@ fn connection_ddl(
         name.trim(),
         kind.trim(),
         package_body,
+        catalog.as_deref(),
     )
 }
 
@@ -338,6 +374,7 @@ fn connection_compile(
     name: String,
     kind: String,
     package_body: Option<bool>,
+    catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
@@ -347,6 +384,7 @@ fn connection_compile(
         name.trim(),
         kind.trim(),
         package_body,
+        catalog.as_deref(),
     )
 }
 
@@ -357,6 +395,7 @@ fn connection_dependencies(
     name: String,
     kind: String,
     package_body: Option<bool>,
+    catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
@@ -366,6 +405,7 @@ fn connection_dependencies(
         name.trim(),
         kind.trim(),
         package_body,
+        catalog.as_deref(),
     )
 }
 
@@ -376,6 +416,7 @@ fn connection_dependents(
     name: String,
     kind: String,
     package_body: Option<bool>,
+    catalog: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
@@ -385,6 +426,7 @@ fn connection_dependents(
         name.trim(),
         kind.trim(),
         package_body,
+        catalog.as_deref(),
     )
 }
 

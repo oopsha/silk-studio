@@ -11,6 +11,7 @@ export async function bridgeCompileObject(
   name: string,
   kind: MetadataObjectKind,
   packageBody?: boolean,
+  catalog?: string,
 ): Promise<ConnectionCompileResult> {
   if (!isTauri()) {
     throw new Error("PL/SQL compile is available in the desktop app only.");
@@ -25,6 +26,7 @@ export async function bridgeCompileObject(
     name: name.trim(),
     kind,
     packageBody,
+    catalog: catalog?.trim() ? catalog.trim() : null,
   });
   if (!isConnectionCompileResult(payload)) {
     throw new Error("Invalid connection compile payload from desktop bridge.");

@@ -11,6 +11,7 @@ export async function bridgeFetchObjectDdl(
   name: string,
   kind: MetadataObjectKind,
   packageBody?: boolean,
+  catalog?: string,
 ): Promise<ConnectionDdlResult> {
   if (!isTauri()) {
     throw new Error("DDL metadata is available in the desktop app only.");
@@ -25,6 +26,7 @@ export async function bridgeFetchObjectDdl(
     name: name.trim(),
     kind,
     packageBody,
+    catalog: catalog?.trim() ? catalog.trim() : null,
   });
   if (!isConnectionDdlResult(payload)) {
     throw new Error("Invalid connection DDL payload from desktop bridge.");

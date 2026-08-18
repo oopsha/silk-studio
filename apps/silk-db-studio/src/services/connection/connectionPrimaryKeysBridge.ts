@@ -8,6 +8,7 @@ export async function bridgeListPrimaryKeys(
   connectionId: string,
   schema: string | null | undefined,
   table: string,
+  catalog?: string,
 ): Promise<ConnectionPrimaryKeysResult> {
   if (!isTauri()) {
     throw new Error("Database metadata is available in the desktop app only.");
@@ -20,6 +21,7 @@ export async function bridgeListPrimaryKeys(
     connectionId: id,
     schema: schema?.trim() ?? "",
     table: table.trim(),
+    catalog: catalog?.trim() ? catalog.trim() : null,
   });
   if (!isConnectionPrimaryKeysResult(payload)) {
     throw new Error("Invalid connection primary keys payload from desktop bridge.");
