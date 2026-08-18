@@ -1424,6 +1424,9 @@ class QueryExecutionServiceImpl {
       namedPrefix: ConfigurationService.getValue(
         "sql.parameters.namedPrefix",
       ),
+      mybatisEnabled: ConfigurationService.getValue(
+        "sql.parameters.mybatisEnabled",
+      ),
     };
     const occurrences = detectSqlParameterOccurrences(sql, options);
     if (occurrences.length === 0) {

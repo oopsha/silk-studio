@@ -48,8 +48,14 @@ export type WorkbenchConfiguration = {
   "sql.parameters.anonymousEnabled": boolean;
   /** Prompt for `:name` (or configured prefix) placeholders before execute. */
   "sql.parameters.namedEnabled": boolean;
-  /** Prefix for named placeholders, e.g. `:` for `:name`, `#` for MyBatis `#{name}`. */
+  /** Prefix for named placeholders, e.g. `:` for `:name`. Independent of MyBatis support below. */
   "sql.parameters.namedPrefix": string;
+  /**
+   * When enabled, recognizes MyBatis's `#{name}` and `${name}` placeholders (each with an
+   * optional `,jdbcType=...` suffix) regardless of `sql.parameters.namedPrefix` — so `:name`
+   * and MyBatis-style placeholders can both be prompted for in the same statement.
+   */
+  "sql.parameters.mybatisEnabled": boolean;
   "ai.enabled": boolean;
   "ai.provider": AiProviderId;
   "ai.model": string;
@@ -94,6 +100,7 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "sql.parameters.anonymousEnabled": false,
   "sql.parameters.namedEnabled": true,
   "sql.parameters.namedPrefix": ":",
+  "sql.parameters.mybatisEnabled": false,
   "ai.enabled": false,
   "ai.provider": "gemini",
   "ai.model": "gemini-3.5-flash",

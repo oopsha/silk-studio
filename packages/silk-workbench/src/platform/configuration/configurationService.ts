@@ -194,6 +194,10 @@ class ConfigurationServiceImpl {
         "sql.parameters.namedPrefix"
       ].slice(0, 4);
     }
+    if (typeof values["sql.parameters.mybatisEnabled"] !== "boolean") {
+      values["sql.parameters.mybatisEnabled"] =
+        CONFIGURATION_DEFAULTS["sql.parameters.mybatisEnabled"];
+    }
     if (typeof values["ai.enabled"] !== "boolean") {
       values["ai.enabled"] = CONFIGURATION_DEFAULTS["ai.enabled"];
     }

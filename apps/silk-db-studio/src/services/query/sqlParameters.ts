@@ -25,6 +25,13 @@ export type SqlParameterDetectOptions = {
   anonymousMark?: string;
   /** Default `:`. */
   namedPrefix?: string;
+  /**
+   * Independent of `namedPrefix` — when true, also recognizes MyBatis's two placeholder
+   * forms `#{name}` and `${name}` (each with an optional `,jdbcType=...` suffix), regardless
+   * of what `namedPrefix` is set to. Lets `:name` and MyBatis-style placeholders coexist in
+   * the same statement instead of forcing a single prefix character.
+   */
+  mybatisEnabled?: boolean;
 };
 
 export type SqlParameterValue = {
@@ -53,7 +60,7 @@ export function detectSqlParameterOccurrences(
 ): SqlParameterOccurrence[] {
   const anonymousMark = options.anonymousMark ?? DEFAULT_ANONYMOUS_MARK;
   const namedPrefix = options.namedPrefix ?? DEFAULT_NAMED_PREFIX;
-  if (!options.anonymousEnabled && !options.namedEnabled) {
+  if (!options.anonymousEnabled && !options.namedEnabled && !options.mybatisEnabled) {
     return [];
   }
   if (!sql) return [];
@@ -96,6 +103,28 @@ export function detectSqlParameterOccurrences(
       });
       i = end;
       continue;
+    }
+
+    // MyBatis's two placeholder forms — independent of the configured named prefix, so
+    // `:name` and `#{name}`/`${name}` can be enabled at the same time.
+    if (
+      options.mybatisEnabled &&
+      (sql[i] === "#" || sql[i] === "$") &&
+      sql[i + 1] === "{"
+    ) {
+      const mark = sql[i];
+      const braced = readBracedParameterName(sql, i + 1);
+      if (braced) {
+        occurrences.push({
+          kind: "named",
+          key: braced.name,
+          label: `${mark}{${braced.name}}`,
+          start: i,
+          end: braced.end,
+        });
+        i = braced.end;
+        continue;
+      }
     }
 
     if (
