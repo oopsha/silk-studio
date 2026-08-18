@@ -264,8 +264,10 @@ export class EditorServiceImpl {
   }
 
   /**
-   * Replace open editors with a Hot Exit snapshot. Clears restore-pending and
-   * opens Untitled when the snapshot has no tabs.
+   * Replace open editors with a Hot Exit snapshot. Clears restore-pending. An
+   * empty/missing snapshot means "nothing was open" — stays empty rather than
+   * inventing a connection-less Untitled tab (see `ensureInitialTab` for the
+   * only remaining Untitled fallback, used when session restore never runs).
    */
   applySessionSnapshot(snapshot: EditorGroupContentSnapshot | null): void {
     for (const tab of this.tabs) {
@@ -279,7 +281,6 @@ export class EditorServiceImpl {
     this.initialized = true;
 
     if (!snapshot || snapshot.tabs.length === 0) {
-      this.openUntitled();
       this.updateContextKeys();
       this.fireDidChange();
       return;
