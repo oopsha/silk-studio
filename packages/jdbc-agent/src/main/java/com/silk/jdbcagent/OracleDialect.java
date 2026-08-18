@@ -64,7 +64,8 @@ final class OracleDialect implements DbDialect {
   }
 
   @Override
-  public List<String> listSchemaNames(Connection connection) throws SQLException {
+  public List<String> listSchemaNames(Connection connection, String catalog) throws SQLException {
+    // Oracle has no catalog concept; `catalog` is intentionally unused.
     Set<String> names = new LinkedHashSet<>();
     try (ResultSet schemas = connection.getMetaData().getSchemas()) {
       while (schemas.next()) {
@@ -87,7 +88,11 @@ final class OracleDialect implements DbDialect {
 
   @Override
   public void collectTableColumns(
-      Connection connection, String schemaName, String tableName, ArrayNode columns)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode columns)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
     // Oracle unquoted identifiers are stored uppercased — try given case, then UPPER.
@@ -106,7 +111,8 @@ final class OracleDialect implements DbDialect {
   }
 
   @Override
-  public String fetchTableComment(Connection connection, String schemaName, String tableName)
+  public String fetchTableComment(
+      Connection connection, String catalog, String schemaName, String tableName)
       throws SQLException {
     // ALL_TAB_COMMENTS covers both tables and views (TABLE_TYPE differs, name doesn't).
     String sql = "SELECT COMMENTS FROM ALL_TAB_COMMENTS WHERE OWNER = ? AND TABLE_NAME = ?";
@@ -131,7 +137,11 @@ final class OracleDialect implements DbDialect {
 
   @Override
   public void collectTableIndexes(
-      Connection connection, String schemaName, String tableName, ArrayNode indexes)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode indexes)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
     for (String schema : distinctCases(schemaName)) {
@@ -148,7 +158,11 @@ final class OracleDialect implements DbDialect {
 
   @Override
   public void collectTableForeignKeys(
-      Connection connection, String schemaName, String tableName, ArrayNode foreignKeys)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode foreignKeys)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
     for (String schema : distinctCases(schemaName)) {
@@ -165,7 +179,11 @@ final class OracleDialect implements DbDialect {
 
   @Override
   public void collectTableReferences(
-      Connection connection, String schemaName, String tableName, ArrayNode references)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode references)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
     for (String schema : distinctCases(schemaName)) {
@@ -182,7 +200,11 @@ final class OracleDialect implements DbDialect {
 
   @Override
   public void collectTableConstraints(
-      Connection connection, String schemaName, String tableName, ArrayNode constraints)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode constraints)
       throws SQLException {
     String sql =
         "SELECT cc.CONSTRAINT_NAME AS NAME, c.CONSTRAINT_TYPE AS TYPE, "
@@ -218,7 +240,11 @@ final class OracleDialect implements DbDialect {
 
   @Override
   public void collectTableTriggers(
-      Connection connection, String schemaName, String tableName, ArrayNode triggers)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode triggers)
       throws SQLException {
     String sql =
         "SELECT TRIGGER_NAME AS NAME, TRIGGERING_EVENT AS EVENT, TRIGGER_TYPE AS TIMING, "
@@ -242,7 +268,11 @@ final class OracleDialect implements DbDialect {
 
   @Override
   public void collectPackageMembers(
-      Connection connection, String schemaName, String packageName, ArrayNode members)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String packageName,
+      ArrayNode members)
       throws SQLException {
     String[] schemas = distinctCases(schemaName);
     String[] packages = distinctCases(packageName);
@@ -261,8 +291,8 @@ final class OracleDialect implements DbDialect {
         try (ResultSet procedures = metadata.getProcedures(null, schema, "%")) {
           Set<String> seen = new LinkedHashSet<>();
           while (procedures.next()) {
-            String catalog = procedures.getString("PROCEDURE_CAT");
-            if (catalog == null || !catalog.equalsIgnoreCase(pkg)) {
+            String procedureCatalog = procedures.getString("PROCEDURE_CAT");
+            if (procedureCatalog == null || !procedureCatalog.equalsIgnoreCase(pkg)) {
               continue;
             }
             String name = procedures.getString("PROCEDURE_NAME");
@@ -331,7 +361,11 @@ final class OracleDialect implements DbDialect {
 
   @Override
   public String collectPrimaryKeys(
-      Connection connection, String schemaName, String tableName, ArrayNode keys)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode keys)
       throws SQLException {
     List<String> candidates = new ArrayList<>();
     String currentSchema =
@@ -354,7 +388,8 @@ final class OracleDialect implements DbDialect {
    */
   @Override
   public String resolveRelationKind(
-      Connection connection, String schemaName, String tableName) throws SQLException {
+      Connection connection, String catalog, String schemaName, String tableName)
+      throws SQLException {
     String schema = schemaName == null ? "" : schemaName.trim();
     if (schema.isBlank()) {
       String currentSchema =
@@ -370,7 +405,7 @@ final class OracleDialect implements DbDialect {
       }
     }
     if (schema.isBlank() || tableName == null || tableName.isBlank()) {
-      return MetadataRelationKind.resolveViaJdbc(connection, schemaName, tableName);
+      return MetadataRelationKind.resolveViaJdbc(connection, null, schemaName, tableName);
     }
 
     String sql =
@@ -392,12 +427,13 @@ final class OracleDialect implements DbDialect {
         }
       }
     }
-    return MetadataRelationKind.resolveViaJdbc(connection, schemaName, tableName);
+    return MetadataRelationKind.resolveViaJdbc(connection, null, schemaName, tableName);
   }
 
   @Override
   public String fetchObjectDdl(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
@@ -435,6 +471,7 @@ final class OracleDialect implements DbDialect {
   @Override
   public ObjectNode compileObject(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
@@ -482,6 +519,7 @@ final class OracleDialect implements DbDialect {
   @Override
   public void collectObjectDependencies(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
@@ -514,6 +552,7 @@ final class OracleDialect implements DbDialect {
   @Override
   public void collectObjectDependents(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
@@ -722,7 +761,8 @@ final class OracleDialect implements DbDialect {
   }
 
   @Override
-  public void collectSchemaObjects(Connection connection, String schemaName, ArrayNode objects)
+  public void collectSchemaObjects(
+      Connection connection, String catalog, String schemaName, ArrayNode objects)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
 

@@ -87,11 +87,20 @@ final class SqlServerDialect implements DbDialect {
     return new ArrayList<>(names);
   }
 
+  /** {@code requested} when non-blank, else the connection's current catalog. */
+  private static String effectiveCatalog(Connection connection, String requested)
+      throws SQLException {
+    if (requested != null && !requested.isBlank()) {
+      return requested.trim();
+    }
+    return connection.getCatalog();
+  }
+
   @Override
-  public List<String> listSchemaNames(Connection connection) throws SQLException {
-    String catalog = connection.getCatalog();
+  public List<String> listSchemaNames(Connection connection, String catalog) throws SQLException {
+    String effective = effectiveCatalog(connection, catalog);
     Set<String> names = new LinkedHashSet<>();
-    try (ResultSet schemas = connection.getMetaData().getSchemas(catalog, null)) {
+    try (ResultSet schemas = connection.getMetaData().getSchemas(effective, null)) {
       while (schemas.next()) {
         String name = schemas.getString("TABLE_SCHEM");
         if (name != null && !name.isBlank()) {
@@ -100,7 +109,9 @@ final class SqlServerDialect implements DbDialect {
       }
     }
 
-    if (names.isEmpty()) {
+    if (names.isEmpty() && (catalog == null || catalog.isBlank())) {
+      // Only meaningful for the connection's own current catalog — a probe query can't target
+      // another catalog without qualifying it, and getSchemas() above already covers that case.
       try (Statement statement = connection.createStatement();
           ResultSet rs = statement.executeQuery("SELECT SCHEMA_NAME()")) {
         if (rs.next()) {
@@ -116,13 +127,15 @@ final class SqlServerDialect implements DbDialect {
   }
 
   @Override
-  public void collectSchemaObjects(Connection connection, String schemaName, ArrayNode objects)
+  public void collectSchemaObjects(
+      Connection connection, String catalog, String schemaName, ArrayNode objects)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
-    String catalog = connection.getCatalog();
+    String effective = effectiveCatalog(connection, catalog);
+    String prefix = CatalogQualifier.prefix(catalog);
 
     try (ResultSet tables =
-        metadata.getTables(catalog, schemaName, "%", new String[] {"TABLE", "VIEW"})) {
+        metadata.getTables(effective, schemaName, "%", new String[] {"TABLE", "VIEW"})) {
       while (tables.next()) {
         String name = tables.getString("TABLE_NAME");
         String type = tables.getString("TABLE_TYPE");
@@ -136,7 +149,7 @@ final class SqlServerDialect implements DbDialect {
       }
     }
 
-    try (ResultSet procedures = metadata.getProcedures(catalog, schemaName, "%")) {
+    try (ResultSet procedures = metadata.getProcedures(effective, schemaName, "%")) {
       while (procedures.next()) {
         String name = stripProcedureNumberSuffix(procedures.getString("PROCEDURE_NAME"));
         if (name == null || name.isBlank()) {
@@ -150,7 +163,7 @@ final class SqlServerDialect implements DbDialect {
 
     // getFunctions (JDBC 4.0+) reports scalar/table-valued functions separately from
     // getProcedures, so no extra filtering is needed to tell them apart on SQL Server.
-    try (ResultSet functions = metadata.getFunctions(catalog, schemaName, "%")) {
+    try (ResultSet functions = metadata.getFunctions(effective, schemaName, "%")) {
       while (functions.next()) {
         String name = functions.getString("FUNCTION_NAME");
         if (name == null || name.isBlank()) {
@@ -166,42 +179,42 @@ final class SqlServerDialect implements DbDialect {
 
     appendSimpleObjects(
         connection,
-        "SELECT DISTINCT i.name AS NAME FROM sys.indexes i "
-            + "JOIN sys.objects o ON o.object_id = i.object_id "
-            + "JOIN sys.schemas s ON s.schema_id = o.schema_id "
+        "SELECT DISTINCT i.name AS NAME FROM " + prefix + "sys.indexes i "
+            + "JOIN " + prefix + "sys.objects o ON o.object_id = i.object_id "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
             + "WHERE s.name = ? AND i.name IS NOT NULL AND o.is_ms_shipped = 0",
         schemaName,
         "index",
         objects);
     appendSimpleObjects(
         connection,
-        "SELECT sq.name AS NAME FROM sys.sequences sq "
-            + "JOIN sys.schemas s ON s.schema_id = sq.schema_id "
+        "SELECT sq.name AS NAME FROM " + prefix + "sys.sequences sq "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = sq.schema_id "
             + "WHERE s.name = ?",
         schemaName,
         "sequence",
         objects);
     appendSimpleObjects(
         connection,
-        "SELECT syn.name AS NAME FROM sys.synonyms syn "
-            + "JOIN sys.schemas s ON s.schema_id = syn.schema_id "
+        "SELECT syn.name AS NAME FROM " + prefix + "sys.synonyms syn "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = syn.schema_id "
             + "WHERE s.name = ?",
         schemaName,
         "synonym",
         objects);
     appendSimpleObjects(
         connection,
-        "SELECT tr.name AS NAME FROM sys.triggers tr "
-            + "JOIN sys.objects o ON o.object_id = tr.parent_id "
-            + "JOIN sys.schemas s ON s.schema_id = o.schema_id "
+        "SELECT tr.name AS NAME FROM " + prefix + "sys.triggers tr "
+            + "JOIN " + prefix + "sys.objects o ON o.object_id = tr.parent_id "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
             + "WHERE s.name = ? AND tr.parent_class = 1",
         schemaName,
         "trigger",
         objects);
     appendSimpleObjects(
         connection,
-        "SELECT t.name AS NAME FROM sys.types t "
-            + "JOIN sys.schemas s ON s.schema_id = t.schema_id "
+        "SELECT t.name AS NAME FROM " + prefix + "sys.types t "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = t.schema_id "
             + "WHERE s.name = ? AND t.is_user_defined = 1",
         schemaName,
         "type",
@@ -230,68 +243,89 @@ final class SqlServerDialect implements DbDialect {
 
   @Override
   public void collectTableColumns(
-      Connection connection, String schemaName, String tableName, ArrayNode columns)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode columns)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
-    String catalog = connection.getCatalog();
-    try (ResultSet rs = metadata.getColumns(catalog, schemaName, tableName, "%")) {
+    String effective = effectiveCatalog(connection, catalog);
+    try (ResultSet rs = metadata.getColumns(effective, schemaName, tableName, "%")) {
       MetadataColumns.appendFromResultSet(rs, columns);
     }
-    applyColumnComments(connection, schemaName, tableName, columns);
+    applyColumnComments(connection, catalog, schemaName, tableName, columns);
   }
 
   @Override
   public void collectTableIndexes(
-      Connection connection, String schemaName, String tableName, ArrayNode indexes)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode indexes)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
-    String catalog = connection.getCatalog();
-    try (ResultSet rs = metadata.getIndexInfo(catalog, schemaName, tableName, false, true)) {
+    String effective = effectiveCatalog(connection, catalog);
+    try (ResultSet rs = metadata.getIndexInfo(effective, schemaName, tableName, false, true)) {
       MetadataIndexes.appendFromResultSet(rs, indexes);
     }
   }
 
   @Override
   public void collectTableForeignKeys(
-      Connection connection, String schemaName, String tableName, ArrayNode foreignKeys)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode foreignKeys)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
-    String catalog = connection.getCatalog();
-    try (ResultSet rs = metadata.getImportedKeys(catalog, schemaName, tableName)) {
+    String effective = effectiveCatalog(connection, catalog);
+    try (ResultSet rs = metadata.getImportedKeys(effective, schemaName, tableName)) {
       MetadataForeignKeys.appendFromResultSet(rs, foreignKeys);
     }
   }
 
   @Override
   public void collectTableReferences(
-      Connection connection, String schemaName, String tableName, ArrayNode references)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode references)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
-    String catalog = connection.getCatalog();
-    try (ResultSet rs = metadata.getExportedKeys(catalog, schemaName, tableName)) {
+    String effective = effectiveCatalog(connection, catalog);
+    try (ResultSet rs = metadata.getExportedKeys(effective, schemaName, tableName)) {
       MetadataReferences.appendFromResultSet(rs, references);
     }
   }
 
   @Override
   public void collectTableConstraints(
-      Connection connection, String schemaName, String tableName, ArrayNode constraints)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode constraints)
       throws SQLException {
+    String prefix = CatalogQualifier.prefix(catalog);
     String sql =
         "SELECT k.name AS NAME, CASE WHEN k.type = 'PK' THEN 'P' ELSE 'U' END AS TYPE, "
             + "c.name AS COLUMN_NAME, NULL AS CHECK_CLAUSE, ic.key_ordinal AS POS "
-            + "FROM sys.key_constraints k "
-            + "JOIN sys.tables t ON t.object_id = k.parent_object_id "
-            + "JOIN sys.schemas s ON s.schema_id = t.schema_id "
-            + "JOIN sys.index_columns ic "
+            + "FROM " + prefix + "sys.key_constraints k "
+            + "JOIN " + prefix + "sys.tables t ON t.object_id = k.parent_object_id "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = t.schema_id "
+            + "JOIN " + prefix + "sys.index_columns ic "
             + "  ON ic.object_id = k.parent_object_id AND ic.index_id = k.unique_index_id "
-            + "JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id "
+            + "JOIN " + prefix + "sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id "
             + "WHERE s.name = ? AND t.name = ? "
             + "UNION ALL "
             + "SELECT cc.name, 'C', NULL, cc.definition, 0 "
-            + "FROM sys.check_constraints cc "
-            + "JOIN sys.tables t ON t.object_id = cc.parent_object_id "
-            + "JOIN sys.schemas s ON s.schema_id = t.schema_id "
+            + "FROM " + prefix + "sys.check_constraints cc "
+            + "JOIN " + prefix + "sys.tables t ON t.object_id = cc.parent_object_id "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = t.schema_id "
             + "WHERE s.name = ? AND t.name = ?";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
       statement.setString(1, schemaName);
@@ -306,16 +340,21 @@ final class SqlServerDialect implements DbDialect {
 
   @Override
   public void collectTableTriggers(
-      Connection connection, String schemaName, String tableName, ArrayNode triggers)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode triggers)
       throws SQLException {
+    String prefix = CatalogQualifier.prefix(catalog);
     String sql =
         "SELECT tr.name AS NAME, te.type_desc AS EVENT, "
             + "CASE WHEN tr.is_instead_of_trigger = 1 THEN 'INSTEAD OF' ELSE 'AFTER' END AS TIMING, "
             + "CAST(CASE WHEN tr.is_disabled = 1 THEN 0 ELSE 1 END AS BIT) AS ENABLED "
-            + "FROM sys.triggers tr "
-            + "JOIN sys.objects o ON o.object_id = tr.parent_id "
-            + "JOIN sys.schemas s ON s.schema_id = o.schema_id "
-            + "LEFT JOIN sys.trigger_events te ON te.object_id = tr.object_id "
+            + "FROM " + prefix + "sys.triggers tr "
+            + "JOIN " + prefix + "sys.objects o ON o.object_id = tr.parent_id "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
+            + "LEFT JOIN " + prefix + "sys.trigger_events te ON te.object_id = tr.object_id "
             + "WHERE s.name = ? AND o.name = ? AND tr.parent_class = 1";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
       statement.setString(1, schemaName);
@@ -335,19 +374,21 @@ final class SqlServerDialect implements DbDialect {
   @Override
   public void collectObjectDependencies(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
       Boolean packageBody,
       ArrayNode dependencies)
       throws SQLException {
+    String prefix = CatalogQualifier.prefix(catalog);
     String sql =
         "SELECT DISTINCT rs.name AS [SCHEMA], ro.name AS NAME, ro.type_desc AS TYPE "
-            + "FROM sys.sql_expression_dependencies d "
-            + "JOIN sys.objects o ON o.object_id = d.referencing_id "
-            + "JOIN sys.schemas s ON s.schema_id = o.schema_id "
-            + "JOIN sys.objects ro ON ro.object_id = d.referenced_id "
-            + "JOIN sys.schemas rs ON rs.schema_id = ro.schema_id "
+            + "FROM " + prefix + "sys.sql_expression_dependencies d "
+            + "JOIN " + prefix + "sys.objects o ON o.object_id = d.referencing_id "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
+            + "JOIN " + prefix + "sys.objects ro ON ro.object_id = d.referenced_id "
+            + "JOIN " + prefix + "sys.schemas rs ON rs.schema_id = ro.schema_id "
             + "WHERE s.name = ? AND o.name = ?";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
       statement.setString(1, schemaName);
@@ -361,19 +402,21 @@ final class SqlServerDialect implements DbDialect {
   @Override
   public void collectObjectDependents(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
       Boolean packageBody,
       ArrayNode dependents)
       throws SQLException {
+    String prefix = CatalogQualifier.prefix(catalog);
     String sql =
         "SELECT DISTINCT s2.name AS [SCHEMA], o2.name AS NAME, o2.type_desc AS TYPE "
-            + "FROM sys.sql_expression_dependencies d "
-            + "JOIN sys.objects o2 ON o2.object_id = d.referencing_id "
-            + "JOIN sys.schemas s2 ON s2.schema_id = o2.schema_id "
-            + "JOIN sys.objects ot ON ot.object_id = d.referenced_id "
-            + "JOIN sys.schemas st ON st.schema_id = ot.schema_id "
+            + "FROM " + prefix + "sys.sql_expression_dependencies d "
+            + "JOIN " + prefix + "sys.objects o2 ON o2.object_id = d.referencing_id "
+            + "JOIN " + prefix + "sys.schemas s2 ON s2.schema_id = o2.schema_id "
+            + "JOIN " + prefix + "sys.objects ot ON ot.object_id = d.referenced_id "
+            + "JOIN " + prefix + "sys.schemas st ON st.schema_id = ot.schema_id "
             + "WHERE st.name = ? AND ot.name = ?";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
       statement.setString(1, schemaName);
@@ -385,16 +428,18 @@ final class SqlServerDialect implements DbDialect {
   }
 
   @Override
-  public String fetchTableComment(Connection connection, String schemaName, String tableName)
+  public String fetchTableComment(
+      Connection connection, String catalog, String schemaName, String tableName)
       throws SQLException {
     // Same MS_Description extended-property mechanism as applyColumnComments below, but
     // minor_id = 0 selects the property on the object itself rather than one of its columns.
     // Joins sys.objects (not sys.tables) so this covers views too.
+    String prefix = CatalogQualifier.prefix(catalog);
     String sql =
         "SELECT CAST(ep.value AS NVARCHAR(MAX)) AS COMMENT "
-            + "FROM sys.objects o "
-            + "JOIN sys.schemas s ON s.schema_id = o.schema_id "
-            + "LEFT JOIN sys.extended_properties ep "
+            + "FROM " + prefix + "sys.objects o "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
+            + "LEFT JOIN " + prefix + "sys.extended_properties ep "
             + "  ON ep.major_id = o.object_id AND ep.minor_id = 0 AND ep.name = 'MS_Description' "
             + "WHERE s.name = ? AND o.name = ?";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -417,18 +462,19 @@ final class SqlServerDialect implements DbDialect {
    * this covers view columns too.
    */
   private void applyColumnComments(
-      Connection connection, String schemaName, String tableName, ArrayNode columns)
+      Connection connection, String catalog, String schemaName, String tableName, ArrayNode columns)
       throws SQLException {
     if (columns.isEmpty()) {
       return;
     }
 
+    String prefix = CatalogQualifier.prefix(catalog);
     String sql =
         "SELECT c.name AS COLUMN_NAME, CAST(ep.value AS NVARCHAR(MAX)) AS REMARKS "
-            + "FROM sys.columns c "
-            + "JOIN sys.objects o ON o.object_id = c.object_id "
-            + "JOIN sys.schemas s ON s.schema_id = o.schema_id "
-            + "JOIN sys.extended_properties ep "
+            + "FROM " + prefix + "sys.columns c "
+            + "JOIN " + prefix + "sys.objects o ON o.object_id = c.object_id "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
+            + "JOIN " + prefix + "sys.extended_properties ep "
             + "  ON ep.major_id = c.object_id AND ep.minor_id = c.column_id AND ep.name = 'MS_Description' "
             + "WHERE s.name = ? AND o.name = ?";
 
@@ -456,7 +502,11 @@ final class SqlServerDialect implements DbDialect {
 
   @Override
   public String collectPrimaryKeys(
-      Connection connection, String schemaName, String tableName, ArrayNode keys)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode keys)
       throws SQLException {
     List<String> candidates = new ArrayList<>();
     String currentSchema =
@@ -466,19 +516,20 @@ final class SqlServerDialect implements DbDialect {
     }
     candidates.addAll(MetadataTableScope.sessionSchemaCandidates(connection));
     return MetadataTableScope.collectPrimaryKeys(
-        connection, schemaName, tableName, keys, candidates, connection.getCatalog());
+        connection, schemaName, tableName, keys, candidates, effectiveCatalog(connection, catalog));
   }
 
   @Override
   public String fetchObjectDdl(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
       Boolean packageBody)
       throws SQLException {
     if ("table".equals(kind)) {
-      return fetchSqlServerTableDdl(connection, schemaName, objectName);
+      return fetchSqlServerTableDdl(connection, catalog, schemaName, objectName);
     }
 
     String objectType =
@@ -489,11 +540,12 @@ final class SqlServerDialect implements DbDialect {
           default -> throw new RuntimeException("Unsupported object kind for DDL: " + kind);
         };
 
+    String prefix = CatalogQualifier.prefix(catalog);
     String sql =
         "SELECT m.definition "
-            + "FROM sys.sql_modules m "
-            + "INNER JOIN sys.objects o ON m.object_id = o.object_id "
-            + "INNER JOIN sys.schemas s ON o.schema_id = s.schema_id "
+            + "FROM " + prefix + "sys.sql_modules m "
+            + "INNER JOIN " + prefix + "sys.objects o ON m.object_id = o.object_id "
+            + "INNER JOIN " + prefix + "sys.schemas s ON o.schema_id = s.schema_id "
             + "WHERE s.name = ? AND o.name = ? AND o.type = ?";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
       statement.setString(1, schemaName);
@@ -506,7 +558,9 @@ final class SqlServerDialect implements DbDialect {
   }
 
   private String fetchSqlServerTableDdl(
-      Connection connection, String schemaName, String objectName) throws SQLException {
+      Connection connection, String catalog, String schemaName, String objectName)
+      throws SQLException {
+    String prefix = CatalogQualifier.prefix(catalog);
     String sql =
         "SELECT "
             + "'CREATE TABLE ' + QUOTENAME(?) + '.' + QUOTENAME(?) + ' (' + CHAR(13) + CHAR(10) + "
@@ -524,7 +578,7 @@ final class SqlServerDialect implements DbDialect {
             + "           ELSE '' "
             + "         END + "
             + "         CASE WHEN c.IS_NULLABLE = 'NO' THEN ' NOT NULL' ELSE '' END "
-            + "  FROM INFORMATION_SCHEMA.COLUMNS c "
+            + "  FROM " + prefix + "INFORMATION_SCHEMA.COLUMNS c "
             + "  WHERE c.TABLE_SCHEMA = ? AND c.TABLE_NAME = ? "
             + "  ORDER BY c.ORDINAL_POSITION "
             + "  FOR XML PATH(''), TYPE).value('.', 'nvarchar(max)'), 1, 7, '    ') + "

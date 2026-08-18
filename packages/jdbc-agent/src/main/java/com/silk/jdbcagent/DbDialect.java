@@ -14,6 +14,15 @@ import java.util.List;
  *
  * <p>Add a new implementation + register it in {@link DbDialects} to support another database;
  * the rest of the agent (request handling, JSON shapes) stays untouched.
+ *
+ * <p>Every metadata-reading method below takes an explicit {@code catalog}. When {@code null} or
+ * blank, dialects fall back to the connection's current catalog ({@code connection.getCatalog()})
+ * — identical to the pre-catalog-parameter behavior. When non-blank, dialects that support
+ * multiple catalogs (SQL Server, MySQL/MariaDB) must scope the query to that catalog *without*
+ * calling {@code connection.setCatalog()} — the connection is shared across every tab/session
+ * bound to this profile, so mutating its catalog as a side effect of a read would affect
+ * concurrent work. Dialects with no catalog concept (Oracle) or where the driver can't switch
+ * catalogs post-connect (PostgreSQL) simply ignore the parameter.
  */
 interface DbDialect {
   /** Stable id surfaced in error messages; matches the frontend's {@code ConnectionDriverId}. */
@@ -31,8 +40,8 @@ interface DbDialect {
    */
   void afterConnect(Connection connection, JsonNode params) throws SQLException;
 
-  /** Lists the schema/namespace names a user should be able to browse. */
-  List<String> listSchemaNames(Connection connection) throws SQLException;
+  /** Lists the schema/namespace names a user should be able to browse under {@code catalog}. */
+  List<String> listSchemaNames(Connection connection, String catalog) throws SQLException;
 
   /**
    * When {@code true}, Explorer shows a Databases (catalog) level above schemas (SQL Server).
@@ -52,10 +61,11 @@ interface DbDialect {
 
   /**
    * Populates {@code objects} with the tables/views/procedures/functions/packages visible under
-   * {@code schemaName}. Only kinds the database actually supports need to be emitted (must be a
-   * subset of {@link #supportedGroups()}).
+   * {@code schemaName} (within {@code catalog}). Only kinds the database actually supports need
+   * to be emitted (must be a subset of {@link #supportedGroups()}).
    */
-  void collectSchemaObjects(Connection connection, String schemaName, ArrayNode objects)
+  void collectSchemaObjects(
+      Connection connection, String catalog, String schemaName, ArrayNode objects)
       throws SQLException;
 
   /**
@@ -63,7 +73,11 @@ interface DbDialect {
    * for {@code tableName} under {@code schemaName}. Used by SQL autocomplete.
    */
   void collectTableColumns(
-      Connection connection, String schemaName, String tableName, ArrayNode columns)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode columns)
       throws SQLException;
 
   /**
@@ -71,7 +85,11 @@ interface DbDialect {
    * columns}) for {@code tableName}. Object Editor "Indexes" section.
    */
   void collectTableIndexes(
-      Connection connection, String schemaName, String tableName, ArrayNode indexes)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode indexes)
       throws SQLException;
 
   /**
@@ -79,7 +97,11 @@ interface DbDialect {
    * referencing (child) side. Object Editor "Foreign Keys" section.
    */
   void collectTableForeignKeys(
-      Connection connection, String schemaName, String tableName, ArrayNode foreignKeys)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode foreignKeys)
       throws SQLException;
 
   /**
@@ -87,7 +109,11 @@ interface DbDialect {
    * {@code tableName}. Object Editor "Constraints" section.
    */
   void collectTableConstraints(
-      Connection connection, String schemaName, String tableName, ArrayNode constraints)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode constraints)
       throws SQLException;
 
   /**
@@ -95,7 +121,11 @@ interface DbDialect {
    * "Triggers" section.
    */
   void collectTableTriggers(
-      Connection connection, String schemaName, String tableName, ArrayNode triggers)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode triggers)
       throws SQLException;
 
   /**
@@ -103,7 +133,8 @@ interface DbDialect {
    * none. Object Editor "General" section. Default: unsupported (no comment concept exposed by
    * this dialect's driver).
    */
-  default String fetchTableComment(Connection connection, String schemaName, String tableName)
+  default String fetchTableComment(
+      Connection connection, String catalog, String schemaName, String tableName)
       throws SQLException {
     return null;
   }
@@ -114,7 +145,11 @@ interface DbDialect {
    * Editor "References" section.
    */
   void collectTableReferences(
-      Connection connection, String schemaName, String tableName, ArrayNode references)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode references)
       throws SQLException;
 
   /**
@@ -122,7 +157,11 @@ interface DbDialect {
    * kind}) for SQL autocomplete ({@code PKG.member}). Default: no members (non-Oracle dialects).
    */
   default void collectPackageMembers(
-      Connection connection, String schemaName, String packageName, ArrayNode members)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String packageName,
+      ArrayNode members)
       throws SQLException {
     // no-op
   }
@@ -135,7 +174,11 @@ interface DbDialect {
    * @return resolved schema/owner, or {@code null} when no PK metadata was found
    */
   String collectPrimaryKeys(
-      Connection connection, String schemaName, String tableName, ArrayNode keys)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode keys)
       throws SQLException;
 
   /**
@@ -145,8 +188,9 @@ interface DbDialect {
    * @return kind string, or {@code null} when unknown / not found
    */
   default String resolveRelationKind(
-      Connection connection, String schemaName, String tableName) throws SQLException {
-    return MetadataRelationKind.resolveViaJdbc(connection, schemaName, tableName);
+      Connection connection, String catalog, String schemaName, String tableName)
+      throws SQLException {
+    return MetadataRelationKind.resolveViaJdbc(connection, catalog, schemaName, tableName);
   }
 
   /**
@@ -165,6 +209,7 @@ interface DbDialect {
    */
   String fetchObjectDdl(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
@@ -182,6 +227,7 @@ interface DbDialect {
    */
   default com.fasterxml.jackson.databind.node.ObjectNode compileObject(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
@@ -200,6 +246,7 @@ interface DbDialect {
    */
   default void collectObjectDependencies(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
@@ -218,6 +265,7 @@ interface DbDialect {
    */
   default void collectObjectDependents(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,

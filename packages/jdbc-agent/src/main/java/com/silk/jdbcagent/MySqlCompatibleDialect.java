@@ -23,6 +23,14 @@ import java.util.Set;
  * and {@link MariaDbDialect}. They stay separate classes (and separate frontend driver ids /
  * bundled jars) rather than one dialect for two URL prefixes, since they're distinct official
  * drivers with independent versioning and licenses (see THIRD_PARTY_NOTICES.md).
+ *
+ * <p>The {@code catalog} parameter threaded through {@link DbDialect} is mostly a no-op here:
+ * every method already receives the target database as {@code schemaName} (there's no separate
+ * schema level), and every query below is already explicitly scoped by that value rather than
+ * the connection's current catalog — so browsing another database never requires {@code
+ * connection.setCatalog()}. The one place the connection's *current* catalog leaked in was
+ * {@link #collectPrimaryKeys}'s schema-candidate fallback, fixed below to prefer the passed
+ * {@code catalog} when present.
  */
 abstract class MySqlCompatibleDialect implements DbDialect {
   @Override
@@ -53,7 +61,7 @@ abstract class MySqlCompatibleDialect implements DbDialect {
   }
 
   @Override
-  public List<String> listSchemaNames(Connection connection) throws SQLException {
+  public List<String> listSchemaNames(Connection connection, String catalog) throws SQLException {
     Set<String> names = new LinkedHashSet<>();
     // Databases are reported via getCatalogs() (TABLE_CAT); getSchemas() is effectively unused.
     try (ResultSet catalogs = connection.getMetaData().getCatalogs()) {
@@ -76,7 +84,8 @@ abstract class MySqlCompatibleDialect implements DbDialect {
   }
 
   @Override
-  public void collectSchemaObjects(Connection connection, String schemaName, ArrayNode objects)
+  public void collectSchemaObjects(
+      Connection connection, String catalog, String schemaName, ArrayNode objects)
       throws SQLException {
     // `schemaName` here is a database name; pass it as the JDBC catalog and leave the schema
     // pattern null (no separate schema level).
@@ -161,7 +170,11 @@ abstract class MySqlCompatibleDialect implements DbDialect {
 
   @Override
   public void collectTableColumns(
-      Connection connection, String schemaName, String tableName, ArrayNode columns)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode columns)
       throws SQLException {
     // schemaName is the database/catalog name for MySQL-compatible drivers.
     DatabaseMetaData metadata = connection.getMetaData();
@@ -171,7 +184,8 @@ abstract class MySqlCompatibleDialect implements DbDialect {
   }
 
   @Override
-  public String fetchTableComment(Connection connection, String schemaName, String tableName)
+  public String fetchTableComment(
+      Connection connection, String catalog, String schemaName, String tableName)
       throws SQLException {
     // MySQL/MariaDB have no separate comment concept for views (TABLE_COMMENT is typically
     // "VIEW" there, not a user comment) — this still returns whatever's actually stored.
@@ -193,7 +207,11 @@ abstract class MySqlCompatibleDialect implements DbDialect {
 
   @Override
   public void collectTableIndexes(
-      Connection connection, String schemaName, String tableName, ArrayNode indexes)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode indexes)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
     try (ResultSet rs = metadata.getIndexInfo(schemaName, null, tableName, false, true)) {
@@ -203,7 +221,11 @@ abstract class MySqlCompatibleDialect implements DbDialect {
 
   @Override
   public void collectTableForeignKeys(
-      Connection connection, String schemaName, String tableName, ArrayNode foreignKeys)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode foreignKeys)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
     try (ResultSet rs = metadata.getImportedKeys(schemaName, null, tableName)) {
@@ -213,7 +235,11 @@ abstract class MySqlCompatibleDialect implements DbDialect {
 
   @Override
   public void collectTableReferences(
-      Connection connection, String schemaName, String tableName, ArrayNode references)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode references)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
     try (ResultSet rs = metadata.getExportedKeys(schemaName, null, tableName)) {
@@ -223,7 +249,11 @@ abstract class MySqlCompatibleDialect implements DbDialect {
 
   @Override
   public void collectTableConstraints(
-      Connection connection, String schemaName, String tableName, ArrayNode constraints)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode constraints)
       throws SQLException {
     String keySql =
         "SELECT tc.CONSTRAINT_NAME AS NAME, "
@@ -266,7 +296,11 @@ abstract class MySqlCompatibleDialect implements DbDialect {
 
   @Override
   public void collectTableTriggers(
-      Connection connection, String schemaName, String tableName, ArrayNode triggers)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode triggers)
       throws SQLException {
     String sql =
         "SELECT TRIGGER_NAME AS NAME, ACTION_TIMING AS TIMING, EVENT_MANIPULATION AS EVENT "
@@ -288,6 +322,7 @@ abstract class MySqlCompatibleDialect implements DbDialect {
   @Override
   public void collectObjectDependencies(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
@@ -313,6 +348,7 @@ abstract class MySqlCompatibleDialect implements DbDialect {
   @Override
   public void collectObjectDependents(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
@@ -337,21 +373,27 @@ abstract class MySqlCompatibleDialect implements DbDialect {
 
   @Override
   public String collectPrimaryKeys(
-      Connection connection, String schemaName, String tableName, ArrayNode keys)
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode keys)
       throws SQLException {
     List<String> candidates = new ArrayList<>();
-    String catalog = connection.getCatalog();
-    if (catalog != null && !catalog.isBlank()) {
-      candidates.add(catalog.trim());
+    String effectiveCatalog =
+        catalog != null && !catalog.isBlank() ? catalog.trim() : connection.getCatalog();
+    if (effectiveCatalog != null && !effectiveCatalog.isBlank()) {
+      candidates.add(effectiveCatalog);
     }
     candidates.addAll(MetadataTableScope.sessionSchemaCandidates(connection));
     return MetadataTableScope.collectPrimaryKeys(
-        connection, schemaName, tableName, keys, candidates, catalog);
+        connection, schemaName, tableName, keys, candidates, effectiveCatalog);
   }
 
   @Override
   public String fetchObjectDdl(
       Connection connection,
+      String catalog,
       String schemaName,
       String objectName,
       String kind,
