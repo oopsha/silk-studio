@@ -1419,6 +1419,9 @@ class QueryExecutionServiceImpl {
       namedEnabled: ConfigurationService.getValue(
         "sql.parameters.namedEnabled",
       ),
+      namedPrefix: ConfigurationService.getValue(
+        "sql.parameters.namedPrefix",
+      ),
     };
     const occurrences = detectSqlParameterOccurrences(sql, options);
     if (occurrences.length === 0) {

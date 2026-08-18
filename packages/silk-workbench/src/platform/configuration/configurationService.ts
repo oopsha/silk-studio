@@ -182,6 +182,14 @@ class ConfigurationServiceImpl {
       values["sql.parameters.namedEnabled"] =
         CONFIGURATION_DEFAULTS["sql.parameters.namedEnabled"];
     }
+    if (typeof values["sql.parameters.namedPrefix"] !== "string") {
+      values["sql.parameters.namedPrefix"] =
+        CONFIGURATION_DEFAULTS["sql.parameters.namedPrefix"];
+    } else {
+      values["sql.parameters.namedPrefix"] = values[
+        "sql.parameters.namedPrefix"
+      ].slice(0, 4);
+    }
     if (typeof values["ai.enabled"] !== "boolean") {
       values["ai.enabled"] = CONFIGURATION_DEFAULTS["ai.enabled"];
     }
