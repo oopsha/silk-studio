@@ -8,7 +8,6 @@ import { isDdlEditorTab } from "../../services/connection/ddlEditorConstants";
 import { isObjectEditorTab } from "../../services/connection/objectEditorConstants";
 import { openObjectDdl } from "../../services/connection/ddlEditorService";
 import { openObjectEditor } from "../../services/connection/objectEditorService";
-import { ConnectionTreeService } from "../../services/connection/connectionTreeService";
 import type { ExplorerObjectRef } from "../../services/connection/explorerObjectActions";
 import { isSqlLanguageId } from "../../services/sql/sqlDialect";
 import {
@@ -27,40 +26,43 @@ const t = I18nService.t.bind(I18nService);
  * standalone DDL for just the member. So whenever the qualifier resolves to a package,
  * always show that package regardless of which segment the cursor was actually on.
  * Only when the qualifier is NOT a package do we treat it as a schema hint for `name`.
+ *
+ * `identifier.database` (SQL Server `db.schema.table`) is passed straight through to
+ * {@link findObjectAcrossSchemas}, which loads that catalog's schemas on demand without
+ * switching the connection's session catalog — see sqlCompletionCatalog.ts.
  */
 async function resolveGoToDefinitionTarget(
   profileId: string,
   identifier: ResolvedIdentifier,
 ): Promise<{ schema: string; object: MetadataObject } | null> {
+  const catalog = identifier.database?.trim() || null;
   if (identifier.qualifier) {
-    const asPackage = await findObjectAcrossSchemas(profileId, identifier.qualifier);
+    const asPackage = await findObjectAcrossSchemas(
+      profileId,
+      identifier.qualifier,
+      null,
+      catalog,
+    );
     if (asPackage && asPackage.object.kind === "package") {
       return asPackage;
     }
-    return findObjectAcrossSchemas(profileId, identifier.name, identifier.qualifier);
+    return findObjectAcrossSchemas(
+      profileId,
+      identifier.name,
+      identifier.qualifier,
+      catalog,
+    );
   }
-  return findObjectAcrossSchemas(profileId, identifier.name);
+  return findObjectAcrossSchemas(profileId, identifier.name, null, catalog);
 }
 
 /**
- * When the identifier carries a leading database segment (SQL Server
- * `db.schema.table`) that isn't the profile's current database, Go to Definition
- * can't resolve it: schemas are only cached for the current database, and switching
- * it just to peek would change the connection's active database for every other tab
- * sharing this profile. Report which database instead of silently failing or switching.
+ * `identifier.database` can itself contain dots for a 4-part linked-server reference
+ * (`server.db.schema.table`) — out of scope, so report it instead of misinterpreting the
+ * server name as a database name.
  */
-function crossDatabaseName(
-  profileId: string,
-  identifier: ResolvedIdentifier,
-): string | null {
-  if (!identifier.database) return null;
-  const cache = ConnectionTreeService.getCache(profileId);
-  if (cache.catalogs.length === 0) return null;
-  const current = cache.currentCatalog?.trim();
-  if (current && current.toLowerCase() === identifier.database.toLowerCase()) {
-    return null;
-  }
-  return identifier.database;
+function unsupportedDatabaseSegment(identifier: ResolvedIdentifier): string | null {
+  return identifier.database?.includes(".") ? identifier.database : null;
 }
 
 CommandsRegistry.registerCommand("silk.editor.goToDefinition", async () => {
@@ -86,12 +88,12 @@ CommandsRegistry.registerCommand("silk.editor.goToDefinition", async () => {
     return;
   }
 
-  const otherDatabase = crossDatabaseName(profileId, identifier);
-  if (otherDatabase) {
+  const unsupportedDatabase = unsupportedDatabaseSegment(identifier);
+  if (unsupportedDatabase) {
     AppNotificationService.show(
       t("app.query.goToDefinitionOtherDatabase").replace(
         "{database}",
-        otherDatabase,
+        unsupportedDatabase,
       ),
       "info",
     );

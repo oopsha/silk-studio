@@ -28,6 +28,26 @@ export function getExplorerSchemas(cache: ProfileTreeCache): SchemaTreeNode[] {
   return preferred?.schemas ?? [];
 }
 
+/**
+ * Schemas for one explicit catalog (any loaded catalog, not just the session's current one) —
+ * used by F4 / object search to resolve `database.schema.object` without switching sessions.
+ * Falls back to {@link getExplorerSchemas} when the dialect has no catalog level.
+ */
+export function getSchemasForCatalog(
+  cache: ProfileTreeCache,
+  catalogName: string | null | undefined,
+): SchemaTreeNode[] {
+  if (cache.catalogs.length === 0) {
+    return cache.schemas;
+  }
+  if (!catalogName) {
+    return getExplorerSchemas(cache);
+  }
+  const target = catalogName.trim().toLowerCase();
+  const match = cache.catalogs.find((item) => item.name.toLowerCase() === target);
+  return match?.schemas ?? [];
+}
+
 export function useConnectionTree(profileId: string | null): ProfileTreeCache {
   const [cache, setCache] = useState<ProfileTreeCache>(() =>
     profileId ? ConnectionTreeService.getCache(profileId) : EMPTY_CACHE,

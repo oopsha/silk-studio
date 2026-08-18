@@ -801,7 +801,7 @@ export const enMessages = {
       goToDefinitionNotFound:
         "No table, view, procedure, function, or package found for this identifier.",
       goToDefinitionOtherDatabase:
-        "{database} is a different database than the one currently active on this connection. Switch to it in the Explorer's Databases list, then try again.",
+        "{database} looks like a linked-server reference (server.database.schema.table), which isn't supported.",
       noConnection:
         "No active database connection. Connect a profile in the Connections explorer.",
       noConnectionTarget:
