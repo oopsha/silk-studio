@@ -6,9 +6,15 @@ import type {
 import { bridgeListColumns, bridgeListPackageMembers } from "../connection/connectionBridge";
 import { ConnectionService } from "../connection/connectionService";
 import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
-import { ConnectionTreeService } from "../connection/connectionTreeService";
+import {
+  ConnectionTreeService,
+  type SchemaTreeNode,
+} from "../connection/connectionTreeService";
 import { effectiveDefaultSchema } from "../connection/connectionTypes";
-import { getExplorerSchemas } from "../connection/useConnectionTree";
+import {
+  getExplorerSchemas,
+  getSchemasForCatalog,
+} from "../connection/useConnectionTree";
 import {
   COLUMN_CACHE_TTL_MS,
   SCHEMA_LOAD_BUDGET_MS,
@@ -298,15 +304,13 @@ export function findTableInSchemas(
   return null;
 }
 
-/** Scans all group kinds (tables/views/procedures/functions/packages) for a name match. */
-export function findObjectInSchemas(
-  profileId: string,
+/** Pure variant of {@link findObjectInSchemas} operating on an already-resolved schema list. */
+function findObjectInSchemaList(
+  schemas: SchemaTreeNode[],
   objectName: string,
   preferredSchema?: string | null,
 ): { schema: string; object: MetadataObject } | null {
-  const caches = getExplorerSchemas(
-    ConnectionTreeService.getCache(profileId),
-  ).filter((schema) => schema.status === "loaded");
+  const caches = schemas.filter((schema) => schema.status === "loaded");
   const ordered = preferredSchema
     ? [
         ...caches.filter(
@@ -333,15 +337,121 @@ export function findObjectInSchemas(
   return null;
 }
 
+/** Scans all group kinds (tables/views/procedures/functions/packages) for a name match. */
+export function findObjectInSchemas(
+  profileId: string,
+  objectName: string,
+  preferredSchema?: string | null,
+): { schema: string; object: MetadataObject } | null {
+  return findObjectInSchemaList(
+    getExplorerSchemas(ConnectionTreeService.getCache(profileId)),
+    objectName,
+    preferredSchema,
+  );
+}
+
+/** Loads a specific catalog's schema list on demand (idempotent — skips when already loaded). */
+async function ensureCatalogSchemasLoaded(
+  profileId: string,
+  catalogName: string,
+): Promise<void> {
+  await ensureSchemasLoaded(profileId);
+  const cache = ConnectionTreeService.getCache(profileId);
+  const catalog = cache.catalogs.find(
+    (item) => item.name.toLowerCase() === catalogName.toLowerCase(),
+  );
+  if (!catalog || catalog.status === "loaded" || catalog.status === "loading") {
+    return;
+  }
+  try {
+    await ConnectionTreeService.loadCatalogSchemas(profileId, catalogName);
+  } catch {
+    // ignore — findObjectAcrossSchemas below just reports "not found"
+  }
+}
+
+/** Catalog-scoped variant of {@link ensureSchemaObjectsLoaded} — never switches the session. */
+async function ensureSchemaObjectsLoadedInCatalog(
+  profileId: string,
+  catalogName: string,
+  schemaName: string,
+  options?: { budgetMs?: number },
+): Promise<boolean> {
+  const budgetMs = options?.budgetMs ?? SCHEMA_LOAD_BUDGET_MS;
+  await ensureCatalogSchemasLoaded(profileId, catalogName);
+  const cache = ConnectionTreeService.getCache(profileId);
+  const schemas = getSchemasForCatalog(cache, catalogName);
+  const schema = schemas.find(
+    (item) => item.name.toLowerCase() === schemaName.toLowerCase(),
+  );
+  if (!schema) {
+    return true;
+  }
+  if (schema.status === "loaded") return true;
+
+  if (schema.status !== "loading") {
+    void ConnectionTreeService.loadSchemaObjects(
+      profileId,
+      schema.name,
+      false,
+      catalogName,
+    ).catch(() => {
+      // ignore — next attempt may retry via status
+    });
+  }
+
+  const ready = await waitUntil(() => {
+    const next = getSchemasForCatalog(
+      ConnectionTreeService.getCache(profileId),
+      catalogName,
+    ).find((item) => item.name.toLowerCase() === schemaName.toLowerCase());
+    return next?.status === "loaded" || next?.status === "error";
+  }, budgetMs);
+
+  const latest = getSchemasForCatalog(
+    ConnectionTreeService.getCache(profileId),
+    catalogName,
+  ).find((item) => item.name.toLowerCase() === schemaName.toLowerCase());
+  return latest?.status === "loaded" || ready;
+}
+
 /**
- * Go-to-definition lookup for F4: resolves a bare or `schema.`-qualified identifier to
- * whichever object (of any kind) matches, loading the relevant schema(s) on demand.
+ * Go-to-definition lookup for F4: resolves a bare, `schema.`-qualified, or
+ * `database.schema.`-qualified identifier to whichever object (of any kind) matches, loading
+ * the relevant catalog/schema(s) on demand. `catalogName` never triggers a session switch —
+ * see {@link ensureCatalogSchemasLoaded}.
  */
 export async function findObjectAcrossSchemas(
   profileId: string,
   objectName: string,
   qualifierSchema?: string | null,
+  catalogName?: string | null,
 ): Promise<{ schema: string; object: MetadataObject } | null> {
+  if (catalogName) {
+    if (qualifierSchema) {
+      const cacheBefore = ConnectionTreeService.getCache(profileId);
+      const resolvedSchema =
+        getSchemasForCatalog(cacheBefore, catalogName)
+          .map((schema) => schema.name)
+          .find((name) => name.toLowerCase() === qualifierSchema.toLowerCase()) ??
+        qualifierSchema;
+      await ensureSchemaObjectsLoadedInCatalog(profileId, catalogName, resolvedSchema);
+      const cache = ConnectionTreeService.getCache(profileId);
+      return findObjectInSchemaList(
+        getSchemasForCatalog(cache, catalogName),
+        objectName,
+        resolvedSchema,
+      );
+    }
+    await ensureCatalogSchemasLoaded(profileId, catalogName);
+    const cache = ConnectionTreeService.getCache(profileId);
+    return findObjectInSchemaList(
+      getSchemasForCatalog(cache, catalogName),
+      objectName,
+      null,
+    );
+  }
+
   if (qualifierSchema) {
     const resolvedSchema =
       findSchemaName(profileId, qualifierSchema) ?? qualifierSchema;
