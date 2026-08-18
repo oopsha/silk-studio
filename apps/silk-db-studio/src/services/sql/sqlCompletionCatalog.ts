@@ -416,16 +416,27 @@ async function ensureSchemaObjectsLoadedInCatalog(
 }
 
 /**
+ * Default wait budget for go-to-definition-style lookups (F4, "load database" quick-pick
+ * actions): unlike autocomplete-while-typing, these are explicit, patient user actions, so a
+ * real network round trip (SSM-tunneled RDS, cold cache) needs far more than
+ * {@link SCHEMA_LOAD_BUDGET_MS}'s 120ms — that budget exists specifically so Suggest never
+ * blocks typing, and reusing it here silently failed even when the object genuinely existed.
+ */
+export const GO_TO_DEFINITION_BUDGET_MS = 15_000;
+
+/**
  * Go-to-definition lookup for F4: resolves a bare, `schema.`-qualified, or
  * `database.schema.`-qualified identifier to whichever object (of any kind) matches, loading
  * the relevant catalog/schema(s) on demand. `catalogName` never triggers a session switch —
- * see {@link ensureCatalogSchemasLoaded}.
+ * see {@link ensureCatalogSchemasLoaded}. `budgetMs` defaults to
+ * {@link GO_TO_DEFINITION_BUDGET_MS}; pass a smaller value only for latency-sensitive callers.
  */
 export async function findObjectAcrossSchemas(
   profileId: string,
   objectName: string,
   qualifierSchema?: string | null,
   catalogName?: string | null,
+  budgetMs: number = GO_TO_DEFINITION_BUDGET_MS,
 ): Promise<{ schema: string; object: MetadataObject } | null> {
   if (catalogName) {
     if (qualifierSchema) {
@@ -435,7 +446,9 @@ export async function findObjectAcrossSchemas(
           .map((schema) => schema.name)
           .find((name) => name.toLowerCase() === qualifierSchema.toLowerCase()) ??
         qualifierSchema;
-      await ensureSchemaObjectsLoadedInCatalog(profileId, catalogName, resolvedSchema);
+      await ensureSchemaObjectsLoadedInCatalog(profileId, catalogName, resolvedSchema, {
+        budgetMs,
+      });
       const cache = ConnectionTreeService.getCache(profileId);
       return findObjectInSchemaList(
         getSchemasForCatalog(cache, catalogName),
@@ -455,12 +468,12 @@ export async function findObjectAcrossSchemas(
   if (qualifierSchema) {
     const resolvedSchema =
       findSchemaName(profileId, qualifierSchema) ?? qualifierSchema;
-    await ensureSchemaObjectsLoaded(profileId, resolvedSchema);
+    await ensureSchemaObjectsLoaded(profileId, resolvedSchema, { budgetMs });
     return findObjectInSchemas(profileId, objectName, resolvedSchema);
   }
 
   for (const schema of schemaCandidatesForCompletion()) {
-    await ensureSchemaObjectsLoaded(profileId, schema);
+    await ensureSchemaObjectsLoaded(profileId, schema, { budgetMs });
     const found = findObjectInSchemas(profileId, objectName, schema);
     if (found) return found;
   }

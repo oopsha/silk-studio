@@ -102,11 +102,16 @@ CommandsRegistry.registerCommand("silk.editor.goToDefinition", async () => {
     return;
   }
 
+  // The lookup can take a few seconds (SSM-tunneled RDS, cold cache) — say so up front
+  // rather than leaving F4 looking like it did nothing.
+  AppNotificationService.show(t("app.query.goToDefinitionLookingUp"), "info", 20_000);
+
   const found = await resolveGoToDefinitionTarget(profileId, identifier);
   if (!found) {
     AppNotificationService.show(t("app.query.goToDefinitionNotFound"), "info");
     return;
   }
+  AppNotificationService.dismiss();
 
   const ref: ExplorerObjectRef = {
     profileId,

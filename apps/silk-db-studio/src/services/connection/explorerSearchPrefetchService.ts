@@ -9,7 +9,7 @@ import { ConnectionTreeService } from "./connectionTreeService";
 const MAX_PREFETCH_OBJECTS = 300_000;
 const CONCURRENCY = 3;
 
-async function runWithConcurrency<T>(
+export async function runWithConcurrency<T>(
   items: readonly T[],
   limit: number,
   worker: (item: T) => Promise<void>,
