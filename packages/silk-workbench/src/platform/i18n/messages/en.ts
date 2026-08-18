@@ -95,6 +95,10 @@ export const enMessages = {
       preloadDefaultSchemaDescription:
         "After connect, preload default schema objects into cache for SQL autocomplete and Quick Pick without expanding the explorer tree.",
       preloadDefaultSchemaHint: "Preload the default schema.",
+      prefetchAllDatabases: "Prefetch All Databases for Search",
+      prefetchAllDatabasesDescription:
+        "When enabled, background-loads every database/schema/object name after connecting so Ctrl+Shift+O search finds objects even in databases never expanded in Explorer. Off by default — can use significant memory on instances with many databases and thousands of tables (see docs).",
+      prefetchAllDatabasesHint: "Prefetch all databases in the background.",
       sqlParameters: "SQL Parameters",
       anonymousParameters: "Anonymous SQL Parameters",
       anonymousParametersDescription:
