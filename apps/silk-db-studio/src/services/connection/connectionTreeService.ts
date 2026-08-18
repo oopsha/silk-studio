@@ -369,11 +369,18 @@ class ConnectionTreeServiceImpl {
     }
   }
 
+  /**
+   * @param includeSecondaryKinds When `false`, skips indexes/sequences/synonyms/triggers/
+   * types (5 extra round trips) and only fetches tables/views/procedures/functions. Bulk
+   * callers (prefetch, Ctrl+Shift+O "load database/schema") pass `false` for speed; a single
+   * deliberate Explorer "expand this schema" click passes `true` (default) for the full picture.
+   */
   async loadSchemaObjects(
     profileId: string,
     schemaName: string,
     force = false,
     catalogName?: string,
+    includeSecondaryKinds = true,
   ): Promise<void> {
     if (!this.connectedProfileIds.has(profileId)) {
       throw new Error("Connect this profile before loading database objects.");
@@ -390,6 +397,7 @@ class ConnectionTreeServiceImpl {
         catalogName,
         schemaName,
         force,
+        includeSecondaryKinds,
       );
       return;
     }
@@ -417,7 +425,12 @@ class ConnectionTreeServiceImpl {
     this.fireDidChange();
 
     try {
-      const result = await bridgeListMetadata(profileId, schemaName);
+      const result = await bridgeListMetadata(
+        profileId,
+        schemaName,
+        undefined,
+        includeSecondaryKinds,
+      );
       const loaded = result.schemas.find(
         (item) => item.name.toLowerCase() === schemaName.toLowerCase(),
       );
@@ -469,6 +482,7 @@ class ConnectionTreeServiceImpl {
     catalogName: string,
     schemaName: string,
     force: boolean,
+    includeSecondaryKinds = true,
   ): Promise<void> {
     const cache = this.getCache(profileId);
     const catalog = cache.catalogs.find(
@@ -506,7 +520,12 @@ class ConnectionTreeServiceImpl {
     this.fireDidChange();
 
     try {
-      const result = await bridgeListMetadata(profileId, schemaName, catalogName);
+      const result = await bridgeListMetadata(
+        profileId,
+        schemaName,
+        catalogName,
+        includeSecondaryKinds,
+      );
       const loaded = result.schemas.find(
         (item) => item.name.toLowerCase() === schemaName.toLowerCase(),
       );

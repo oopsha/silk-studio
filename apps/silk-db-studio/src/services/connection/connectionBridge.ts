@@ -68,6 +68,7 @@ export async function bridgeListMetadata(
   connectionId: string,
   schema?: string,
   catalog?: string,
+  includeSecondaryKinds?: boolean,
 ): Promise<ConnectionMetadataResult> {
   if (!isTauri()) {
     throw new Error("Database metadata is available in the desktop app only.");
@@ -80,6 +81,7 @@ export async function bridgeListMetadata(
     connectionId: id,
     schema: schema?.trim() ? schema.trim() : null,
     catalog: catalog?.trim() ? catalog.trim() : null,
+    includeSecondaryKinds: includeSecondaryKinds ?? null,
   });
   if (!isConnectionMetadataResult(payload)) {
     throw new Error("Invalid connection metadata payload from desktop bridge.");

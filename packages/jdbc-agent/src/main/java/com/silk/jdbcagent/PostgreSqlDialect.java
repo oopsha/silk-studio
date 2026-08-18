@@ -100,7 +100,11 @@ final class PostgreSqlDialect implements DbDialect {
 
   @Override
   public void collectSchemaObjects(
-      Connection connection, String requestedCatalog, String schemaName, ArrayNode objects)
+      Connection connection,
+      String requestedCatalog,
+      String schemaName,
+      boolean includeSecondaryKinds,
+      ArrayNode objects)
       throws SQLException {
     DatabaseMetaData metadata = connection.getMetaData();
     String catalog = connection.getCatalog();
@@ -163,6 +167,10 @@ final class PostgreSqlDialect implements DbDialect {
       ObjectNode object = objects.addObject();
       object.put("name", name);
       object.put("kind", "function");
+    }
+
+    if (!includeSecondaryKinds) {
+      return;
     }
 
     appendSimpleObjects(

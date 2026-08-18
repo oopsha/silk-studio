@@ -185,12 +185,16 @@ fn connection_metadata(
     connection_id: String,
     schema: Option<String>,
     catalog: Option<String>,
+    include_secondary_kinds: Option<bool>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
-    state
-        .jdbc_agent
-        .list_metadata(connection_id, schema.as_deref(), catalog.as_deref())
+    state.jdbc_agent.list_metadata(
+        connection_id,
+        schema.as_deref(),
+        catalog.as_deref(),
+        include_secondary_kinds,
+    )
 }
 
 #[tauri::command]
