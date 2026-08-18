@@ -9,7 +9,6 @@ import {
   filterSystemNamespaces,
   type ExplorerFilterContext,
 } from "./systemNamespaces";
-import { EditorConnectionBindingService } from "./editorConnectionBindingService";
 
 export type SchemaTreeNode = {
   name: string;
@@ -325,7 +324,10 @@ class ConnectionTreeServiceImpl {
       this.caches.set(profileId, {
         status: "loaded",
         errorMessage: null,
-        currentCatalog: result.currentCatalog?.trim() || catalogName,
+        // Reading another catalog's schemas is a pure metadata query now (no
+        // connection.setCatalog on the Java side) — currentCatalog still reflects
+        // whatever the shared session is actually on, never the catalog we just read.
+        currentCatalog: result.currentCatalog?.trim() || cache.currentCatalog,
         schemas: [],
         catalogs: (this.caches.get(profileId)?.catalogs ?? nextCatalogs).map(
           (item) =>
@@ -340,10 +342,6 @@ class ConnectionTreeServiceImpl {
         ),
       });
       this.fireDidChange();
-      EditorConnectionBindingService.setCatalogForProfile(
-        profileId,
-        result.currentCatalog?.trim() || catalogName,
-      );
     } catch (error) {
       const message = formatErrorMessage(
         error,
@@ -516,7 +514,9 @@ class ConnectionTreeServiceImpl {
       this.caches.set(profileId, {
         status: "loaded",
         errorMessage: null,
-        currentCatalog: result.currentCatalog?.trim() || catalogName,
+        // Same as loadCatalogSchemas: reading another catalog's objects no longer touches
+        // the shared session's catalog, so don't fall back to the catalog we just read.
+        currentCatalog: result.currentCatalog?.trim() || cache.currentCatalog,
         schemas: [],
         catalogs: (this.caches.get(profileId)?.catalogs ?? nextCatalogs).map(
           (item) => {
