@@ -22,6 +22,11 @@ export type { QueryRelationKind };
 export type UpdateEligibility =
   | {
       eligible: true;
+      /** Non-null only for a `catalog.schema.table` (SQL Server 3-part) source query — see
+       * sqlTableReference.ts. Threaded through so the generated UPDATE/DELETE targets the same
+       * catalog the SELECT read from, instead of silently falling back to the session's current
+       * catalog. */
+      catalog: string | null;
       /** Null when UPDATE should use an unqualified table (session default). */
       schema: string | null;
       table: string;
@@ -158,6 +163,7 @@ export async function resolveUpdateEligibility(
       connectionId,
       explicitSchema,
       tableRef.table,
+      tableRef.catalog ?? undefined,
     );
   } catch (error) {
     return {
@@ -214,6 +220,7 @@ export async function resolveUpdateEligibility(
 
   return {
     eligible: true,
+    catalog: tableRef.catalog,
     schema: resolvedSchema,
     table: tableRef.table,
     primaryKeys,
@@ -245,6 +252,7 @@ export async function buildUpdatePreview(
   const originalRows = QueryResultDirtyService.getOriginalRows(tabId);
   const statements = [
     ...buildUpdateStatements({
+      catalog: eligibility.catalog,
       schema: eligibility.schema,
       table: eligibility.table,
       driverId: eligibility.driverId,
@@ -253,6 +261,7 @@ export async function buildUpdatePreview(
       dirtyRows,
     }),
     ...buildDeleteStatements({
+      catalog: eligibility.catalog,
       schema: eligibility.schema,
       table: eligibility.table,
       driverId: eligibility.driverId,
