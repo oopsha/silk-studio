@@ -126,6 +126,27 @@ export type ConnectionMetadataResult = {
   currentCatalog?: string;
 };
 
+/**
+ * Background-prefetch support (`connection.prefetchCatalog`): every schema's lightweight
+ * object list for one catalog (or, for dialects with no catalog concept, the whole profile)
+ * in a single response — see that RPC's doc comment in jdbc-agent's Main.java for why this
+ * exists as its own call instead of one `connection.metadata` round trip per schema.
+ */
+export type ConnectionPrefetchCatalogParams = {
+  connectionId: string;
+  /** Omitted for dialects where `usesCatalogExplorer()` is false (MySQL/Oracle/PostgreSQL). */
+  catalog?: string;
+  /** Safety cap mirrored from the frontend's own limit — see MAX_PREFETCH_OBJECTS. */
+  maxObjects?: number;
+};
+
+export type ConnectionPrefetchCatalogResult = {
+  schemas: MetadataSchema[];
+  /** True when the cap or the per-call time budget was hit before every schema was covered. */
+  truncated: boolean;
+  message?: string;
+};
+
 /** Column metadata for SQL autocomplete and the object editor's Columns section (`connection.columns`). */
 export type MetadataColumn = {
   name: string;
@@ -511,22 +532,23 @@ function isMetadataGroup(value: unknown): value is MetadataGroup {
   );
 }
 
+function isMetadataSchema(value: unknown): value is MetadataSchema {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  return (
+    typeof item.name === "string" &&
+    Array.isArray(item.groups) &&
+    item.groups.every(isMetadataGroup)
+  );
+}
+
 export function isConnectionMetadataResult(
   value: unknown,
 ): value is ConnectionMetadataResult {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
   if (!Array.isArray(record.schemas)) return false;
-  const schemasOk = record.schemas.every((schema) => {
-    if (!schema || typeof schema !== "object") return false;
-    const item = schema as Record<string, unknown>;
-    return (
-      typeof item.name === "string" &&
-      Array.isArray(item.groups) &&
-      item.groups.every(isMetadataGroup)
-    );
-  });
-  if (!schemasOk) return false;
+  if (!record.schemas.every(isMetadataSchema)) return false;
   if (record.currentCatalog !== undefined && typeof record.currentCatalog !== "string") {
     return false;
   }
@@ -536,6 +558,19 @@ export function isConnectionMetadataResult(
     if (!catalog || typeof catalog !== "object") return false;
     return typeof (catalog as Record<string, unknown>).name === "string";
   });
+}
+
+export function isConnectionPrefetchCatalogResult(
+  value: unknown,
+): value is ConnectionPrefetchCatalogResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Array.isArray(record.schemas) &&
+    record.schemas.every(isMetadataSchema) &&
+    typeof record.truncated === "boolean" &&
+    (record.message === undefined || typeof record.message === "string")
+  );
 }
 
 function isMetadataColumn(value: unknown): value is MetadataColumn {

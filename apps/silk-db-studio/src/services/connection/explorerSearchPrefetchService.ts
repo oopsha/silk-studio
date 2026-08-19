@@ -7,7 +7,6 @@ import { ConnectionTreeService } from "./connectionTreeService";
  * the tens-of-MB range even on legacy/ERP instances with thousands of tables per schema.
  */
 const MAX_PREFETCH_OBJECTS = 300_000;
-const CONCURRENCY = 3;
 
 export async function runWithConcurrency<T>(
   items: readonly T[],
@@ -33,6 +32,16 @@ export async function runWithConcurrency<T>(
  * `explorer.search.prefetchAllDatabases` (off by default — see the setting's description for
  * the memory tradeoff). Never switches the shared session's current catalog — it only calls
  * ConnectionTreeService's catalog-scoped read paths (see connectionTreeService.ts, 4단계).
+ *
+ * One `ConnectionTreeService.prefetchCatalog` call covers a whole catalog's schemas in a single
+ * round trip (jdbc-agent's `connection.prefetchCatalog` loops schemas server-side) — this used
+ * to be one `loadSchemaObjects` call (one Tauri `invoke()`) per *schema*, which on an instance
+ * with dozens of catalogs × many schemas fired hundreds of `invoke()` calls in a burst right
+ * after connect. That was confirmed (by elimination testing, in production use over an SSM
+ * tunnel) to saturate WebView2's IPC/message pump on Windows badly enough to delay keyboard
+ * input app-wide for the whole burst — a call-*count* problem, not a call-rate one, so no
+ * amount of client-side throttling (concurrency limits, artificial delays — both tried) fully
+ * fixed it. Collapsing to one call per catalog is what actually removes the cause.
  */
 class ExplorerSearchPrefetchServiceImpl {
   private started = false;
@@ -95,26 +104,6 @@ class ExplorerSearchPrefetchServiceImpl {
     return total;
   }
 
-  private async loadSchema(
-    profileId: string,
-    schemaName: string,
-    catalogName: string | undefined,
-  ): Promise<void> {
-    if (!this.isLive(profileId)) return;
-    if (this.countLoadedObjects(profileId) >= MAX_PREFETCH_OBJECTS) return;
-    try {
-      await ConnectionTreeService.loadSchemaObjects(
-        profileId,
-        schemaName,
-        false,
-        catalogName,
-        false,
-      );
-    } catch {
-      // Best-effort — a failed schema just stays unsearchable until manually retried.
-    }
-  }
-
   private async prefetch(profileId: string): Promise<void> {
     try {
       await ConnectionTreeService.loadSchemas(profileId);
@@ -126,10 +115,16 @@ class ExplorerSearchPrefetchServiceImpl {
     const cache = ConnectionTreeService.getCache(profileId);
 
     if (cache.catalogs.length === 0) {
-      const schemaNames = cache.schemas.map((schema) => schema.name);
-      await runWithConcurrency(schemaNames, CONCURRENCY, (schemaName) =>
-        this.loadSchema(profileId, schemaName, undefined),
-      );
+      try {
+        await ConnectionTreeService.prefetchCatalog(
+          profileId,
+          undefined,
+          MAX_PREFETCH_OBJECTS,
+        );
+      } catch {
+        // Best-effort — a failed prefetch just leaves this profile unsearchable until a
+        // manual Explorer expand.
+      }
       return;
     }
 
@@ -137,18 +132,14 @@ class ExplorerSearchPrefetchServiceImpl {
       if (!this.isLive(profileId)) return;
       if (this.countLoadedObjects(profileId) >= MAX_PREFETCH_OBJECTS) return;
       try {
-        await ConnectionTreeService.loadCatalogSchemas(profileId, catalog.name);
+        await ConnectionTreeService.prefetchCatalog(
+          profileId,
+          catalog.name,
+          MAX_PREFETCH_OBJECTS,
+        );
       } catch {
-        continue;
+        // Best-effort — a failed catalog just stays unsearchable until manually loaded.
       }
-      if (!this.isLive(profileId)) return;
-      const latest = ConnectionTreeService.getCache(profileId).catalogs.find(
-        (item) => item.name.toLowerCase() === catalog.name.toLowerCase(),
-      );
-      const schemaNames = latest?.schemas.map((schema) => schema.name) ?? [];
-      await runWithConcurrency(schemaNames, CONCURRENCY, (schemaName) =>
-        this.loadSchema(profileId, schemaName, catalog.name),
-      );
     }
   }
 }
