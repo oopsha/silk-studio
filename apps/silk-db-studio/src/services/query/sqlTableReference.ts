@@ -1,4 +1,5 @@
 export type SqlTableReference = {
+  catalog: string | null;
   schema: string | null;
   table: string;
 };
@@ -116,9 +117,9 @@ export function parseSingleTableFromSelect(sql: string): SqlTableReference | nul
   }
 
   // Up to 3 dotted parts: table, schema.table, or database.schema.table
-  // (SQL Server-style). The database segment is only ever used session-side
-  // (see ActiveDatabaseService) — it's discarded here, same as a 2-part
-  // reference already discards nothing beyond schema+table.
+  // (SQL Server-style). The database segment is returned as `catalog` so
+  // callers can query/edit the right catalog without switching the shared
+  // JDBC session (see connection/connectionTreeService.ts, 4단계).
   const chain = readDottedIdentifierChain(rest, 3);
   if (!chain) {
     return null;
@@ -133,6 +134,7 @@ export function parseSingleTableFromSelect(sql: string): SqlTableReference | nul
 
   const { parts } = chain;
   return {
+    catalog: parts.length >= 3 ? parts[parts.length - 3] : null,
     schema: parts.length >= 2 ? parts[parts.length - 2] : null,
     table: parts[parts.length - 1],
   };

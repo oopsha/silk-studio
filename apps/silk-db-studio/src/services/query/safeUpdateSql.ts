@@ -35,6 +35,7 @@ function buildPrimaryKeyWhereClause(input: {
 }
 
 export function buildUpdateStatement(input: {
+  catalog?: string | null;
   schema: string | null;
   table: string;
   driverId: ConnectionDriverId;
@@ -42,7 +43,12 @@ export function buildUpdateStatement(input: {
   originalRow: Record<string, string | null>;
   changes: DirtyRowChange[];
 }): string {
-  const tableRef = formatTableReference(input.schema, input.table, input.driverId);
+  const tableRef = formatTableReference(
+    input.schema,
+    input.table,
+    input.driverId,
+    input.catalog,
+  );
   const setClause = input.changes
     .map(
       (change) =>
@@ -55,18 +61,25 @@ export function buildUpdateStatement(input: {
 }
 
 export function buildDeleteStatement(input: {
+  catalog?: string | null;
   schema: string | null;
   table: string;
   driverId: ConnectionDriverId;
   primaryKeys: string[];
   originalRow: Record<string, string | null>;
 }): string {
-  const tableRef = formatTableReference(input.schema, input.table, input.driverId);
+  const tableRef = formatTableReference(
+    input.schema,
+    input.table,
+    input.driverId,
+    input.catalog,
+  );
   const whereClause = buildPrimaryKeyWhereClause(input);
   return `DELETE FROM ${tableRef} WHERE ${whereClause}`;
 }
 
 export function buildDeleteStatements(input: {
+  catalog?: string | null;
   schema: string | null;
   table: string;
   driverId: ConnectionDriverId;
@@ -76,6 +89,7 @@ export function buildDeleteStatements(input: {
 }): string[] {
   return input.deletedRowIndexes.map((rowIndex) =>
     buildDeleteStatement({
+      catalog: input.catalog,
       schema: input.schema,
       table: input.table,
       driverId: input.driverId,
@@ -86,6 +100,7 @@ export function buildDeleteStatements(input: {
 }
 
 export function buildUpdateStatements(input: {
+  catalog?: string | null;
   schema: string | null;
   table: string;
   driverId: ConnectionDriverId;
@@ -95,6 +110,7 @@ export function buildUpdateStatements(input: {
 }): string[] {
   return input.dirtyRows.map((row) =>
     buildUpdateStatement({
+      catalog: input.catalog,
       schema: input.schema,
       table: input.table,
       driverId: input.driverId,

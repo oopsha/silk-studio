@@ -4,6 +4,7 @@ import { parseSingleTableFromSelect } from "./sqlTableReference";
 describe("parseSingleTableFromSelect", () => {
   it("parses a plain single-table select", () => {
     expect(parseSingleTableFromSelect("SELECT * FROM T1 WHERE X = 1")).toEqual({
+      catalog: null,
       schema: null,
       table: "T1",
     });
@@ -12,13 +13,13 @@ describe("parseSingleTableFromSelect", () => {
   it("parses a schema-qualified table with alias", () => {
     expect(
       parseSingleTableFromSelect("SELECT T1.* FROM SCHEMA1.T1 T1 WHERE T1.X = 1"),
-    ).toEqual({ schema: "SCHEMA1", table: "T1" });
+    ).toEqual({ catalog: null, schema: "SCHEMA1", table: "T1" });
   });
 
   it("parses a database.schema.table (SQL Server 3-part) reference", () => {
     expect(
       parseSingleTableFromSelect("SELECT * FROM PSM.dbo.PST_PAYMENT_50"),
-    ).toEqual({ schema: "dbo", table: "PST_PAYMENT_50" });
+    ).toEqual({ catalog: "PSM", schema: "dbo", table: "PST_PAYMENT_50" });
   });
 
   it("parses a database.schema.table reference with a trailing WHERE", () => {
@@ -26,25 +27,25 @@ describe("parseSingleTableFromSelect", () => {
       parseSingleTableFromSelect(
         "SELECT * FROM PSM.dbo.PST_PAYMENT_50 WHERE ID = 1",
       ),
-    ).toEqual({ schema: "dbo", table: "PST_PAYMENT_50" });
+    ).toEqual({ catalog: "PSM", schema: "dbo", table: "PST_PAYMENT_50" });
   });
 
   it("parses a SQL Server bracket-quoted schema.table reference", () => {
     expect(
       parseSingleTableFromSelect("SELECT * FROM [dbo].[POS_SETTING_XYZ]"),
-    ).toEqual({ schema: "dbo", table: "POS_SETTING_XYZ" });
+    ).toEqual({ catalog: null, schema: "dbo", table: "POS_SETTING_XYZ" });
   });
 
   it("parses a SQL Server bracket-quoted database.schema.table reference", () => {
     expect(
       parseSingleTableFromSelect("SELECT * FROM [PSM].[dbo].[PST_PAYMENT_50]"),
-    ).toEqual({ schema: "dbo", table: "PST_PAYMENT_50" });
+    ).toEqual({ catalog: "PSM", schema: "dbo", table: "PST_PAYMENT_50" });
   });
 
   it("parses a bracket-quoted table with an alias", () => {
     expect(
       parseSingleTableFromSelect("SELECT * FROM [dbo].[T1] T1 WHERE T1.X = 1"),
-    ).toEqual({ schema: "dbo", table: "T1" });
+    ).toEqual({ catalog: null, schema: "dbo", table: "T1" });
   });
 
   it("allows a JOIN nested inside a WHERE subquery", () => {
@@ -63,6 +64,7 @@ describe("parseSingleTableFromSelect", () => {
    AND T1.USE_YN            = 'Y'
 ;`;
     expect(parseSingleTableFromSelect(sql)).toEqual({
+      catalog: null,
       schema: null,
       table: "BBA020MS",
     });
@@ -80,6 +82,7 @@ describe("parseSingleTableFromSelect", () => {
    AND T1.USE_YN            = 'Y'
 ;`;
     expect(parseSingleTableFromSelect(sql)).toEqual({
+      catalog: null,
       schema: null,
       table: "BBA020MS",
     });
@@ -92,6 +95,7 @@ describe("parseSingleTableFromSelect", () => {
                        UNION
                        SELECT S2.CUST_NO FROM BBA013MS S2)`;
     expect(parseSingleTableFromSelect(sql)).toEqual({
+      catalog: null,
       schema: null,
       table: "BBA020MS",
     });
@@ -137,6 +141,7 @@ SELECT T1.*
    AND T1.USE_YN            = 'Y'
 ;`;
     expect(parseSingleTableFromSelect(sql)).toEqual({
+      catalog: null,
       schema: null,
       table: "BBA020MS",
     });
@@ -145,6 +150,7 @@ SELECT T1.*
   it("ignores a block comment and a trailing line comment", () => {
     const sql = `/* note */ SELECT * FROM T1 WHERE X = 1 -- trailing`;
     expect(parseSingleTableFromSelect(sql)).toEqual({
+      catalog: null,
       schema: null,
       table: "T1",
     });
@@ -153,6 +159,6 @@ SELECT T1.*
   it("doesn't treat -- inside a string literal as a comment", () => {
     expect(
       parseSingleTableFromSelect("SELECT * FROM T1 WHERE NOTE = '--not a comment'"),
-    ).toEqual({ schema: null, table: "T1" });
+    ).toEqual({ catalog: null, schema: null, table: "T1" });
   });
 });
