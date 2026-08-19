@@ -198,6 +198,19 @@ fn connection_metadata(
 }
 
 #[tauri::command]
+fn connection_prefetch_catalog(
+    connection_id: String,
+    catalog: Option<String>,
+    max_objects: Option<u32>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    state
+        .jdbc_agent
+        .prefetch_catalog(connection_id, catalog.as_deref(), max_objects)
+}
+
+#[tauri::command]
 fn connection_columns(
     connection_id: String,
     schema: String,
@@ -455,6 +468,7 @@ pub fn run() {
             connection_disconnect,
             connection_test,
             connection_metadata,
+            connection_prefetch_catalog,
             connection_columns,
             connection_package_members,
             connection_primary_keys,

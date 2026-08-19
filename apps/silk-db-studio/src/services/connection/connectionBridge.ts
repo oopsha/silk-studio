@@ -6,6 +6,7 @@ import {
   isConnectionIndexesResult,
   isConnectionMetadataResult,
   isConnectionPackageMembersResult,
+  isConnectionPrefetchCatalogResult,
   isConnectionReferencesResult,
   isConnectionTableCommentResult,
   isConnectionTriggersResult,
@@ -16,6 +17,7 @@ import {
   type ConnectionIndexesResult,
   type ConnectionMetadataResult,
   type ConnectionPackageMembersResult,
+  type ConnectionPrefetchCatalogResult,
   type ConnectionReferencesResult,
   type ConnectionTableCommentResult,
   type ConnectionTriggersResult,
@@ -85,6 +87,34 @@ export async function bridgeListMetadata(
   });
   if (!isConnectionMetadataResult(payload)) {
     throw new Error("Invalid connection metadata payload from desktop bridge.");
+  }
+  return payload;
+}
+
+/**
+ * Background-prefetch support: every schema's lightweight object list for one catalog (or,
+ * when `catalog` is omitted, the whole profile for dialects with no catalog concept) in a
+ * single round trip — see `connection.prefetchCatalog` in jdbc-agent's Main.java.
+ */
+export async function bridgeConnectionPrefetchCatalog(
+  connectionId: string,
+  catalog?: string,
+  maxObjects?: number,
+): Promise<ConnectionPrefetchCatalogResult> {
+  if (!isTauri()) {
+    throw new Error("Database metadata is available in the desktop app only.");
+  }
+  const id = connectionId.trim();
+  if (!id) {
+    throw new Error("connectionId is required.");
+  }
+  const payload = await invoke<unknown>("connection_prefetch_catalog", {
+    connectionId: id,
+    catalog: catalog?.trim() ? catalog.trim() : null,
+    maxObjects: maxObjects ?? null,
+  });
+  if (!isConnectionPrefetchCatalogResult(payload)) {
+    throw new Error("Invalid prefetch-catalog payload from desktop bridge.");
   }
   return payload;
 }

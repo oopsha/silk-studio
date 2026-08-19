@@ -33,13 +33,46 @@ public final class Main {
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   /**
-   * Runs {@code query.execute} off the stdin reader thread so {@code query.cancel} can be
-   * processed (and {@link Statement#cancel()} called) while a long query is in flight.
+   * One single-thread executor per {@code connectionId}, created lazily and reused for the life
+   * of the process (profiles reconnect with the same id, so the thread just sits idle between
+   * sessions — cheap, and avoids any shutdown-ordering race with in-flight work on that id).
+   *
+   * <p>Every request that carries a {@code connectionId} (open/close/metadata/columns/ddl/
+   * execute/…) is dispatched onto that connection's own thread instead of being handled inline
+   * on the stdin-reading thread. This is what lets two different profiles' work run truly in
+   * parallel while keeping a hard guarantee the old inline-dispatch relied on implicitly: a
+   * {@link Connection} is only ever touched by one thread — its own connection's thread — for
+   * its whole lifetime, so no explicit locking is needed around session state. {@code
+   * query.execute} shares this same per-connection thread (rather than a separate global one)
+   * precisely so it can never run concurrently with a metadata call against the same Connection.
+   *
+   * <p>{@code query.cancel} is the one exception: it must reach {@link Statement#cancel()} while
+   * that connection's thread may still be busy running the query being cancelled, so it bypasses
+   * this dispatch entirely and runs inline on the stdin-reading thread — safe because {@code
+   * cancel()} is specified to be callable from a different thread while a statement executes.
    */
-  private static final ExecutorService QUERY_EXECUTOR =
-      Executors.newSingleThreadExecutor(
+  private static final Map<String, ExecutorService> CONNECTION_EXECUTORS =
+      new ConcurrentHashMap<>();
+
+  private static ExecutorService executorFor(String connectionId) {
+    return CONNECTION_EXECUTORS.computeIfAbsent(
+        connectionId,
+        id ->
+            Executors.newSingleThreadExecutor(
+                (runnable) -> {
+                  Thread thread = new Thread(runnable, "jdbc-agent-conn-" + id);
+                  thread.setDaemon(true);
+                  return thread;
+                }));
+  }
+
+  /** For the handful of RPCs with no {@code connectionId} (e.g. {@code connection.test}, which
+   * opens its own ad-hoc connection) — keeps them off the stdin-reading thread without needing a
+   * dedicated single-thread executor each. */
+  private static final ExecutorService MISC_EXECUTOR =
+      Executors.newCachedThreadPool(
           (runnable) -> {
-            Thread thread = new Thread(runnable, "jdbc-agent-query");
+            Thread thread = new Thread(runnable, "jdbc-agent-misc");
             thread.setDaemon(true);
             return thread;
           });
@@ -102,30 +135,50 @@ public final class Main {
         }
 
         String method = request.path("method").asText("");
-        if ("query.execute".equals(method)) {
-          // Keep reading stdin (for query.cancel) while execute runs on QUERY_EXECUTOR.
-          QUERY_EXECUTOR.execute(
-              () -> {
-                ObjectNode response = handleRequest(runtime, request);
-                writeResponse(writer, response);
-              });
+
+        // query.cancel must reach Statement#cancel() even while that connection's own thread is
+        // still busy running the query being cancelled — see CONNECTION_EXECUTORS's doc comment.
+        if ("query.cancel".equals(method)) {
+          writeResponse(writer, handleRequest(runtime, request));
           continue;
         }
 
-        ObjectNode response = handleRequest(runtime, request);
-        writeResponse(writer, response);
-
-        if (response.path("result").path("shutdown").asBoolean(false)) {
-          break;
+        // No connectionId yet to key a session thread on — trivial/instant, handle inline so
+        // the shutdown-loop-break below stays simple and synchronous.
+        if ("agent.ping".equals(method) || "agent.shutdown".equals(method)) {
+          ObjectNode response = handleRequest(runtime, request);
+          writeResponse(writer, response);
+          if (response.path("result").path("shutdown").asBoolean(false)) {
+            break;
+          }
+          continue;
         }
+
+        // Everything else (open/close/metadata/columns/ddl/execute/…) runs on its connection's
+        // own thread so one profile's slow round trip never blocks another's — see
+        // CONNECTION_EXECUTORS's doc comment for the full reasoning.
+        String connectionId = request.path("params").path("connectionId").asText("").trim();
+        ExecutorService executor =
+            connectionId.isEmpty() ? MISC_EXECUTOR : executorFor(connectionId);
+        executor.execute(
+            () -> {
+              ObjectNode response = handleRequest(runtime, request);
+              writeResponse(writer, response);
+            });
       }
     } catch (Throwable error) {
       System.err.println(describeThrowable(error, "jdbc-agent server failed."));
       System.exit(1);
     } finally {
-      QUERY_EXECUTOR.shutdownNow();
+      MISC_EXECUTOR.shutdownNow();
+      for (ExecutorService executor : CONNECTION_EXECUTORS.values()) {
+        executor.shutdownNow();
+      }
       try {
-        QUERY_EXECUTOR.awaitTermination(2, TimeUnit.SECONDS);
+        MISC_EXECUTOR.awaitTermination(2, TimeUnit.SECONDS);
+        for (ExecutorService executor : CONNECTION_EXECUTORS.values()) {
+          executor.awaitTermination(2, TimeUnit.SECONDS);
+        }
       } catch (InterruptedException ignored) {
         Thread.currentThread().interrupt();
       }
@@ -188,6 +241,10 @@ public final class Main {
         case "connection.metadata" -> {
           response.put("ok", true);
           response.set("result", runtime.listMetadata(params));
+        }
+        case "connection.prefetchCatalog" -> {
+          response.put("ok", true);
+          response.set("result", runtime.prefetchCatalog(params));
         }
         case "connection.columns" -> {
           response.put("ok", true);
@@ -600,6 +657,93 @@ public final class Main {
       String current = connection.getCatalog();
       if (current != null && !current.isBlank()) {
         result.put("currentCatalog", current);
+      }
+      return result;
+    }
+
+    /**
+     * Background-prefetch support (Ctrl+Shift+O search index): walks every schema in one
+     * catalog (or, for dialects with no catalog concept, every schema in the whole profile)
+     * and returns lightweight tables/views/procedures/functions for all of them in a single
+     * response — collapsing what would otherwise be one {@link #listMetadata} round trip per
+     * schema into exactly one round trip per catalog. That collapse is the whole point: with
+     * dozens of catalogs each holding many schemas, doing this schema-by-schema from the
+     * frontend means hundreds of Tauri {@code invoke()} calls firing in a burst, which was
+     * empirically confirmed (by elimination — React re-render cost was ruled out first) to
+     * saturate the WebView2 IPC/message pump on Windows badly enough to visibly delay keyboard
+     * input app-wide for the whole burst. Looping schemas here instead means the JS side makes
+     * one {@code invoke()} per catalog and simply awaits it while this loop runs — no repeated
+     * JS↔native boundary crossings during the loop, regardless of how many schemas it covers.
+     *
+     * <p>Deliberately does *not* batch the underlying SQL into one join per catalog (that would
+     * cut total wall-clock time too, not just IPC call count) — the confirmed user-facing bug
+     * is about IPC call *count*, not prefetch duration, and doing per-schema JDBC calls inside
+     * one Java-side loop already fixes that with far less new/dialect-specific code than a
+     * hand-written bulk query per driver would need. Revisit if total prefetch duration itself
+     * becomes the complaint.
+     *
+     * @param catalog Null/blank for dialects where {@link DbDialect#usesCatalogExplorer()} is
+     *     false (MySQL/Oracle/PostgreSQL) — same convention {@link #listMetadata} uses.
+     * @param maxObjects Safety cap mirrored from the frontend's own limit (see
+     *     {@code MAX_PREFETCH_OBJECTS} in {@code explorerSearchPrefetchService.ts}) — stops
+     *     early and reports {@code truncated:true} rather than accumulating unbounded memory
+     *     against a legacy/ERP-scale instance with thousands of tables per schema.
+     */
+    ObjectNode prefetchCatalog(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      Connection connection = session.connection;
+      DbDialect dialect = session.dialect;
+      String catalog = readCatalog(params);
+      int maxObjects = params.path("maxObjects").asInt(300_000);
+      // Wall-clock budget rather than a per-statement JDBC query timeout: bounds this call's
+      // total duration without needing to touch every dialect's individual statement creation,
+      // and gives a hard ceiling on how long connection.close/query.execute for this same
+      // profile could ever queue behind an in-flight prefetch (see the threading doc comment
+      // on CONNECTION_EXECUTORS — every request for one profile shares that profile's single
+      // dedicated thread).
+      long deadlineNanos = System.nanoTime() + (long) timeoutSeconds * 1_000_000_000L;
+
+      List<String> schemaNames = dialect.listSchemaNames(connection, catalog);
+
+      ArrayNode schemas = MAPPER.createArrayNode();
+      int totalObjects = 0;
+      boolean truncated = false;
+      for (String schemaName : schemaNames) {
+        if (System.nanoTime() >= deadlineNanos) {
+          truncated = true;
+          break;
+        }
+        if (totalObjects >= maxObjects) {
+          truncated = true;
+          break;
+        }
+
+        ObjectNode schemaNode = MAPPER.createObjectNode();
+        schemaNode.put("name", schemaName);
+        ArrayNode groups = schemaNode.putArray("groups");
+
+        try {
+          ArrayNode objects = MAPPER.createArrayNode();
+          dialect.collectSchemaObjects(
+              connection, catalog, schemaName, /* includeSecondaryKinds= */ false, objects);
+          totalObjects += objects.size();
+          populateGroups(groups, dialect.supportedGroups(), objects);
+        } catch (SQLException ignored) {
+          // Best-effort — one unreadable schema (permissions, etc.) just stays empty here
+          // rather than aborting the whole catalog's prefetch.
+        }
+
+        schemas.add(schemaNode);
+      }
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.set("schemas", schemas);
+      result.put("truncated", truncated);
+      if (truncated) {
+        result.put(
+            "message",
+            "Prefetch stopped early (limit reached) — " + schemas.size() + "/"
+                + schemaNames.size() + " schemas covered.");
       }
       return result;
     }

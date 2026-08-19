@@ -176,6 +176,30 @@ impl JdbcAgentClient {
         self.send_request("connection.metadata", params)
     }
 
+    /// Background-prefetch support: fetches every schema's lightweight object list for one
+    /// catalog (or, when `catalog` is `None`, every schema in the whole profile — dialects
+    /// with no catalog concept) in a single round trip. See `connection.prefetchCatalog` in
+    /// jdbc-agent's `Main.java` for why this exists as its own RPC instead of looping
+    /// `list_metadata` calls from the caller.
+    pub fn prefetch_catalog(
+        &self,
+        connection_id: &str,
+        catalog: Option<&str>,
+        max_objects: Option<u32>,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let mut params = json!({ "connectionId": connection_id.trim() });
+        if let Some(catalog) = catalog {
+            if !catalog.trim().is_empty() {
+                params["catalog"] = json!(catalog.trim());
+            }
+        }
+        if let Some(max_objects) = max_objects {
+            params["maxObjects"] = json!(max_objects);
+        }
+        self.send_request("connection.prefetchCatalog", params)
+    }
+
     pub fn list_columns(
         &self,
         connection_id: &str,
