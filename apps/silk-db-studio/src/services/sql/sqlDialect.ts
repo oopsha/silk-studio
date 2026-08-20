@@ -69,6 +69,17 @@ export function formatterLanguageForDriver(
 }
 
 /**
+ * True when this driver implicitly commits DDL (CREATE/ALTER/DROP/TRUNCATE/GRANT/REVOKE) as
+ * part of running it — Oracle and MySQL/MariaDB always auto-commit DDL, even with
+ * autocommit off, so there is never anything left pending to commit or roll back afterward.
+ * PostgreSQL and SQL Server instead run DDL inside the normal transaction like any other
+ * statement — a `ROLLBACK` there genuinely undoes a `CREATE TABLE`/`CREATE PROCEDURE`.
+ */
+export function driverAutoCommitsDdl(driverId: ConnectionDriverId): boolean {
+  return driverId === "oracle" || driverId === "mysql" || driverId === "mariadb";
+}
+
+/**
  * Prefer the active editor tab binding's driver, then any connected profile,
  * then the active profile, then Oracle (studio default).
  * Used for execution / completion — not for editor language mode.

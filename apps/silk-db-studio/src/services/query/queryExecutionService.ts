@@ -14,7 +14,7 @@ import { bridgeRollback } from "../connection/connectionBridge";
 import { ConnectionService } from "../connection/connectionService";
 import { ConnectionTransactionService } from "../connection/connectionTransactionService";
 import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
-import { resolveActiveDriverId } from "../sql/sqlDialect";
+import { driverAutoCommitsDdl, resolveActiveDriverId } from "../sql/sqlDialect";
 import { QueryHistoryService } from "./queryHistoryService";
 import type { QueryHistoryStatus } from "./queryHistoryTypes";
 import {
@@ -27,7 +27,7 @@ import {
   type QueryLogPart,
 } from "./queryLogNav";
 import { buildExplainPlan } from "./sqlExplain";
-import { assertReadOnlyQueryAllowed, isWriteSql } from "./sqlGuard";
+import { assertReadOnlyQueryAllowed, isDdlSql, isWriteSql } from "./sqlGuard";
 import { stripTrailingSemicolon } from "./sqlExecutable";
 import {
   buildQueryResultTabTitle,
@@ -1466,7 +1466,15 @@ class QueryExecutionServiceImpl {
       binds: binds && binds.length > 0 ? binds : null,
     });
     if (!autoCommit && isWriteSql(sql)) {
-      ConnectionTransactionService.markDirty(connectionId);
+      const driverId = ConnectionService.getProfile(connectionId)?.driverId;
+      // Oracle/MySQL implicitly commit DDL as it runs — nothing is actually left pending,
+      // so the status bar's commit/rollback indicator would be showing a no-op. Postgres/SQL
+      // Server run DDL inside the normal transaction, where it's genuinely still pending.
+      const alreadyCommitted =
+        isDdlSql(sql) && !!driverId && driverAutoCommitsDdl(driverId);
+      if (!alreadyCommitted) {
+        ConnectionTransactionService.markDirty(connectionId);
+      }
     }
     return result;
   }

@@ -258,7 +258,7 @@ function PlsqlEditorView() {
               void CommandService.executeCommand("silk.plsql.compile");
             }}
           >
-            <Codicon name="server-process" />
+            <Codicon name="save" />
             {t("app.plsql.actionCompile")}
           </button>
           <button
@@ -274,7 +274,7 @@ function PlsqlEditorView() {
               void CommandService.executeCommand("silk.file.save");
             }}
           >
-            <Codicon name="save" />
+            <Codicon name="diff" />
             {t("app.plsql.actionSave")}
           </button>
         </div>

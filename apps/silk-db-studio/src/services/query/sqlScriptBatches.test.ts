@@ -97,4 +97,25 @@ describe("extractExecutableScript", () => {
     expect(statements).toHaveLength(1);
     expect(statements[0].sql).toBe("SELECT 2");
   });
+
+  // Ctrl+Shift+Enter (Execute Script) entry point for the user-reported repro: a
+  // CREATE OR REPLACE PROCEDURE ... END; block followed by a standalone SQL*Plus `/`
+  // buffer-execute marker. The `/` is a client convention, not SQL, and must be dropped
+  // rather than sent to the DB as its own (invalid) statement — otherwise the script
+  // reports a spurious failure even though the procedure was created successfully.
+  it("drops the trailing SQL*Plus `/` marker for a non-SQL-Server CREATE PROCEDURE script", () => {
+    const sql = `CREATE OR REPLACE PROCEDURE hello_test (
+  p_name IN VARCHAR2
+) AS
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Hello, ' || p_name || '!');
+END;
+/
+`;
+    const { statements, usedGo } = extractExecutableScript(sql, 0, 0, "oracle");
+    expect(usedGo).toBe(false);
+    expect(statements).toHaveLength(1);
+    expect(statements[0].sql).toContain("PROCEDURE hello_test");
+    expect(statements[0].sql.trim()).not.toBe("/");
+  });
 });

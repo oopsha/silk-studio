@@ -73,7 +73,7 @@ export function extractExecutableStatements(
 
   const statement = findStatementRange(content, start);
   const trimmed = trimSqlRange(content, statement.start, statement.end);
-  if (!trimmed.sql) {
+  if (!trimmed.sql || isLoneSlashMarker(trimmed.sql)) {
     return { statements: [], mode: "statement" };
   }
   return {
@@ -102,7 +102,7 @@ export function statementsInRange(
       start + relativeRange.start,
       start + relativeRange.end,
     );
-    if (trimmed.sql.length > 0) {
+    if (trimmed.sql.length > 0 && !isLoneSlashMarker(trimmed.sql)) {
       statements.push({ sql: trimmed.sql, range: trimmed.range });
     }
   }
@@ -110,12 +110,23 @@ export function statementsInRange(
   // Selection with no `;` still counts as one statement.
   if (statements.length === 0) {
     const trimmed = trimSqlRange(content, start, end);
-    if (trimmed.sql.length > 0) {
+    if (trimmed.sql.length > 0 && !isLoneSlashMarker(trimmed.sql)) {
       statements.push({ sql: trimmed.sql, range: trimmed.range });
     }
   }
 
   return statements;
+}
+
+/**
+ * True when `sql` (already whitespace/`;`-trimmed) is nothing but a standalone SQL*Plus/SQLcl
+ * buffer-execute marker: a lone `/` on its own line, optionally with a trailing comment. This is
+ * a client convention, not SQL — Oracle rejects it as a statement (ORA-00900) if sent verbatim,
+ * so it must never reach {@link statementsInRange}'s or {@link extractExecutableStatements}'s
+ * output; it is dropped silently rather than surfaced as a failed statement.
+ */
+function isLoneSlashMarker(sql: string): boolean {
+  return stripSqlComments(sql).trim() === "/";
 }
 
 /**
@@ -224,6 +235,12 @@ function readWordAt(content: string, index: number): string {
 
 const PLSQL_BLOCK_INCREMENT = /^(?:begin|case|loop|if)$/i;
 const PLSQL_END_TAG = /^(?:if|loop|case)$/i;
+/**
+ * Object kinds whose `CREATE [OR REPLACE] <kind> ... BEGIN ... END;` header always owns a
+ * single top-level executable body (unlike PACKAGE, which can hold several sibling
+ * procedures/functions each with their own BEGIN/END — not handled here, see the module doc).
+ */
+const PLSQL_CREATE_BODY_KIND = /^(?:procedure|function|trigger)$/i;
 
 /**
  * Splits SQL into statement ranges by `;`, skipping delimiters inside quotes or comments.
@@ -235,6 +252,13 @@ const PLSQL_END_TAG = /^(?:if|loop|case)$/i;
  * `;` inside it is only a real terminator once BEGIN/CASE/IF/LOOP nesting has returned to zero
  * after entering the block's own top-level BEGIN. Without this, e.g. a `DECLARE x VARCHAR2(10);`
  * line would be mistaken for the end of the whole block.
+ *
+ * A `CREATE [OR REPLACE] PROCEDURE/FUNCTION/TRIGGER ... BEGIN ... END;` header gets the same
+ * treatment once its top-level `BEGIN` is reached: without it, any `;` inside the body (e.g. a
+ * `NULL;` statement) would be mistaken for the end of the `CREATE` statement, splitting one
+ * object definition into several broken fragments. PACKAGE is intentionally excluded — a
+ * package body can hold multiple sibling procedures/functions, each with its own top-level
+ * BEGIN/END, which this single-block depth counter can't disambiguate.
  */
 export function splitSqlStatements(content: string): StatementRange[] {
   const ranges: StatementRange[] = [];
@@ -249,6 +273,8 @@ export function splitSqlStatements(content: string): StatementRange[] {
   let plsqlDepth = 0;
   let plsqlEnteredBegin = false;
   let statementOpenerChecked = false;
+  let createBlockCandidate = false;
+  let createBlockKindSeen = false;
 
   const resetStatementState = (nextStart: number) => {
     statementStart = nextStart;
@@ -256,6 +282,8 @@ export function splitSqlStatements(content: string): StatementRange[] {
     plsqlDepth = 0;
     plsqlEnteredBegin = false;
     statementOpenerChecked = false;
+    createBlockCandidate = false;
+    createBlockKindSeen = false;
   };
 
   while (i < content.length) {
@@ -348,6 +376,29 @@ export function splitSqlStatements(content: string): StatementRange[] {
         i += word.length;
         continue;
       }
+      if (lower === "create") {
+        createBlockCandidate = true;
+        i += word.length;
+        continue;
+      }
+    } else if (atWordStart && createBlockCandidate && !plsqlBlock) {
+      const word = readWordAt(content, i);
+      const lower = word.toLowerCase();
+      if (!createBlockKindSeen && PLSQL_CREATE_BODY_KIND.test(lower)) {
+        createBlockKindSeen = true;
+        i += word.length;
+        continue;
+      }
+      if (createBlockKindSeen && lower === "begin") {
+        plsqlBlock = true;
+        plsqlDepth = 1;
+        plsqlEnteredBegin = true;
+        i += word.length;
+        continue;
+      }
+      // Header noise: OR REPLACE, EDITIONABLE, schema/object name, parameter list, AS/IS, ...
+      i += word.length;
+      continue;
     } else if (atWordStart && plsqlBlock) {
       const word = readWordAt(content, i);
       const lower = word.toLowerCase();
@@ -407,19 +458,24 @@ export function splitSqlStatements(content: string): StatementRange[] {
 
 /**
  * JDBC drivers generally reject a trailing statement terminator `;` for plain SQL — but an
- * anonymous PL/SQL block (`DECLARE`/`BEGIN ... END`) requires its own closing `;`; Oracle
- * rejects `END` without one (PLS-00103, "end-of-file" expecting `;`). Keep it for those.
+ * anonymous PL/SQL block (`DECLARE`/`BEGIN ... END`) or a `CREATE [OR REPLACE]`
+ * PROCEDURE/FUNCTION/PACKAGE/TRIGGER/TYPE requires its own closing `;`; Oracle rejects `END`
+ * without one (PLS-00103, "end-of-file" expecting `;`). Keep it for those.
  */
 export function stripTrailingSemicolon(sql: string): string {
   const trimmed = sql.trim();
-  if (isAnonymousPlsqlBlock(trimmed)) {
+  if (isPlsqlBlockRequiringSemicolon(trimmed)) {
     return trimmed.endsWith(";") ? trimmed : `${trimmed};`;
   }
   return trimmed.replace(/;\s*$/, "").trimEnd();
 }
 
-function isAnonymousPlsqlBlock(sql: string): boolean {
-  return /^\s*(?:declare|begin)\b/i.test(stripSqlComments(sql));
+const PLSQL_CREATE_HEADER =
+  /^\s*create(?:\s+or\s+replace)?\s+(?:editionable\s+|noneditionable\s+)?(?:procedure|function|package(?:\s+body)?|trigger|type(?:\s+body)?)\b/i;
+
+function isPlsqlBlockRequiringSemicolon(sql: string): boolean {
+  const stripped = stripSqlComments(sql);
+  return /^\s*(?:declare|begin)\b/i.test(stripped) || PLSQL_CREATE_HEADER.test(stripped);
 }
 
 function clamp(value: number, min: number, max: number): number {

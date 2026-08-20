@@ -275,7 +275,9 @@ function PlsqlSnapshotDialog() {
                           <span className="plsql-snapshot-dialog__reason">
                             {entry.reason === "save"
                               ? t("app.plsql.reasonSave")
-                              : t("app.plsql.reasonManual")}
+                              : entry.reason === "compile"
+                                ? t("app.plsql.reasonCompile")
+                                : t("app.plsql.reasonManual")}
                           </span>
                         </div>
                         <div className="plsql-snapshot-dialog__row-actions">
