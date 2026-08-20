@@ -1,7 +1,11 @@
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
+import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import { formatErrorMessage } from "../formatErrorMessage";
+import { QueryExecutionService } from "../query/queryExecutionService";
+import { assertReadOnlyQueryAllowed } from "../query/sqlGuard";
 import { ConnectionService } from "./connectionService";
+import { ConnectionTreeService } from "./connectionTreeService";
 import { bridgeCompileObject } from "./connectionCompileBridge";
 import {
   applyPlsqlCompileMarkers,
@@ -11,9 +15,12 @@ import {
   isPlsqlEditorTab,
   isPlsqlSourceLoaded,
   parsePlsqlEditorUri,
+  type PlsqlEditorRef,
 } from "./plsqlEditorConstants";
 import { PlsqlCompileStateService } from "./plsqlCompileStateService";
 import { isEditablePlsqlKind } from "./plsqlEditorService";
+import { buildPlsqlSaveSql } from "./plsqlSaveSql";
+import { recordPlsqlSnapshot } from "./plsqlSnapshotService";
 
 export function getPlsqlCompileBlockedReason(tabId?: string): string | null {
   const tab = tabId
@@ -42,12 +49,66 @@ export function getPlsqlCompileBlockedReason(tabId?: string): string | null {
   if (!isPlsqlSourceLoaded(tab.content)) {
     return "Source is not loaded yet.";
   }
+  if (!tab.content.trim()) {
+    return "Source is empty. Nothing to compile.";
+  }
   return null;
 }
 
 /**
- * Recompiles the DB object for the active (or given) PL/SQL tab.
- * Applies Monaco markers and updates the compile error list state.
+ * Recompiles the just-saved/pushed DB object and reports diagnostics (error markers + the
+ * status message shown in the compile panel). Shared by both the fast "Save" action below and
+ * the dialog-confirmed save (`executePlsqlSave` in plsqlSaveService.ts) — either way, the DB
+ * object was just replaced with the buffer's text, so both paths should surface the same
+ * line/column error feedback rather than only the fast path showing it.
+ *
+ * Deliberately never throws: this step runs *after* the actual save/push already succeeded, so
+ * a failure here (e.g. the diagnostics RPC itself erroring) must not be reported as "save
+ * failed" to the caller — it's recorded via {@link PlsqlCompileStateService.setFailed} instead,
+ * visible in the compile panel same as a real compile error would be.
+ */
+export async function reportPlsqlCompileDiagnostics(
+  tabId: string,
+  ref: PlsqlEditorRef,
+): Promise<void> {
+  PlsqlCompileStateService.setCompiling(tabId);
+  clearPlsqlCompileMarkers();
+  try {
+    const result = await bridgeCompileObject(
+      ref.profileId,
+      ref.schemaName,
+      ref.objectName,
+      ref.kind,
+      ref.kind === "package" ? ref.packageBody === true : undefined,
+    );
+    PlsqlCompileStateService.setResult(tabId, result.success, result.errors);
+    if (result.errors.length > 0) {
+      applyPlsqlCompileMarkers(result.errors);
+    } else {
+      clearPlsqlCompileMarkers();
+    }
+  } catch (error) {
+    const message = formatErrorMessage(
+      error,
+      "Failed to read compile diagnostics.",
+    );
+    PlsqlCompileStateService.setFailed(tabId, message);
+    clearPlsqlCompileMarkers();
+  }
+}
+
+/**
+ * Saves the active (or given) PL/SQL tab's *edited buffer* to the DB immediately — no confirm
+ * dialog (that's `executePlsqlSave`/the "Compare & Save" flow) — then reports compile
+ * diagnostics. It pushes the buffer via `CREATE OR REPLACE` (same SQL the confirm-dialog save
+ * would build) so this is meant for a fast edit → save → fix-errors loop.
+ *
+ * Compiling only the DB-stored version while ignoring unsaved edits was the previous behavior,
+ * but it's confusing: the buffer visibly shows your edits while this reported on a different
+ * (older) version, which reads as "my changes got reverted." Since there's no dialog to bail
+ * out of, a successful push always marks the tab clean and records a snapshot, regardless of
+ * whether the compiled result has PL/SQL errors — Oracle still creates/replaces the object (as
+ * INVALID if it has errors), so the DB and the buffer are in sync either way.
  */
 export async function compileActivePlsqlObject(tabId?: string): Promise<void> {
   const tab = tabId
@@ -65,28 +126,36 @@ export async function compileActivePlsqlObject(tabId?: string): Promise<void> {
     throw new Error("Invalid PL/SQL editor tab.");
   }
 
+  const readOnly = ConfigurationService.getValue("database.readOnly");
+  const { sql, warnings } = buildPlsqlSaveSql(tab.content, ref);
+  assertReadOnlyQueryAllowed(sql, readOnly);
+
   PlsqlCompileStateService.setCompiling(tab.id);
   clearPlsqlCompileMarkers();
 
   try {
-    const result = await bridgeCompileObject(
-      ref.profileId,
-      ref.schemaName,
-      ref.objectName,
-      ref.kind,
-      ref.kind === "package" ? ref.packageBody === true : undefined,
-    );
-
-    PlsqlCompileStateService.setResult(tab.id, result.success, result.errors);
-    if (result.errors.length > 0) {
-      applyPlsqlCompileMarkers(result.errors);
-    } else {
-      clearPlsqlCompileMarkers();
-    }
+    await QueryExecutionService.executeWriteStatement(sql, {
+      connectionId: ref.profileId,
+    });
   } catch (error) {
-    const message = formatErrorMessage(error, "Failed to compile PL/SQL object.");
+    const message = formatErrorMessage(error, "Failed to save PL/SQL object.");
     PlsqlCompileStateService.setFailed(tab.id, message);
     clearPlsqlCompileMarkers();
     throw error;
   }
+
+  // The push succeeded — the DB object now matches the buffer, whether or not it's valid
+  // PL/SQL, so record it and clear dirty state before reporting compile diagnostics below.
+  recordPlsqlSnapshot(ref, tab.content, "compile");
+  EditorService.markTabSaved(tab.id, tab.uri, tab.label);
+  await ConnectionTreeService.invalidateAndRefreshSchema(
+    ref.profileId,
+    ref.schemaName,
+  );
+
+  if (warnings.length > 0) {
+    AppNotificationService.show(warnings.join(" "), "info");
+  }
+
+  await reportPlsqlCompileDiagnostics(tab.id, ref);
 }

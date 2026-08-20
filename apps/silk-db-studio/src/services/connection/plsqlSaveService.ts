@@ -16,6 +16,7 @@ import { PlsqlSaveDialogService } from "./plsqlSaveDialogService";
 import { buildPlsqlSaveSql } from "./plsqlSaveSql";
 import { recordPlsqlSnapshot } from "./plsqlSnapshotService";
 import { bridgeFetchObjectDdl } from "./connectionDdlBridge";
+import { reportPlsqlCompileDiagnostics } from "./plsqlCompileService";
 
 function assertSaveAllowed(ref: PlsqlEditorRef): void {
   const readOnly = ConfigurationService.getValue("database.readOnly");
@@ -158,6 +159,11 @@ export async function executePlsqlSave(
     recordPlsqlSnapshot(ref, tab.content, "save");
     EditorService.markTabSaved(tabId, tab.uri, tab.label);
   }
+
+  // Surface the same line/column compile diagnostics the fast "Save" action shows — the DB
+  // object was just replaced either way, so this dialog-confirmed path shouldn't leave the
+  // user unaware the object came out INVALID.
+  await reportPlsqlCompileDiagnostics(tabId, ref);
 }
 
 export function formatPlsqlSaveError(error: unknown, fallback: string): string {

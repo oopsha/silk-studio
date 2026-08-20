@@ -7,8 +7,12 @@ import { AppNotificationService } from "@silk-studio/workbench/services/notifica
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { openObjectDdl } from "../../services/connection/ddlEditorService";
 import { openObjectEditor } from "../../services/connection/objectEditorService";
-import type { ExplorerObjectRef } from "../../services/connection/explorerObjectActions";
+import {
+  defaultObjectAction,
+  type ExplorerObjectRef,
+} from "../../services/connection/explorerObjectActions";
 import { ConnectionService } from "../../services/connection/connectionService";
+import { openPlsqlObjectSource } from "../../services/connection/plsqlEditorService";
 import { findRegisteredMonacoInstanceAt } from "../../services/editor/monacoInstanceRegistry";
 import { isSqlLanguageId } from "../../services/sql/sqlDialect";
 import {
@@ -158,8 +162,17 @@ CommandsRegistry.registerCommand("silk.editor.goToDefinition", async () => {
     object: found.object,
     catalogName: found.catalog,
   };
-  if (found.object.kind === "table" || found.object.kind === "view") {
+
+  // Mirror the Explorer's own double-click routing (defaultObjectAction) so F4 lands on the
+  // same window: table/view → Object Editor, an Oracle procedure/function/package → the
+  // editable PL/SQL source tab (compile/save/snapshot actions), everything else → read-only
+  // DDL view.
+  const driverId = ConnectionService.getProfile(resolvedProfileId)?.driverId;
+  const action = defaultObjectAction(found.object.kind, driverId);
+  if (action === "openObjectEditor") {
     openObjectEditor(ref);
+  } else if (action === "openSource") {
+    openPlsqlObjectSource(ref);
   } else {
     openObjectDdl(ref);
   }

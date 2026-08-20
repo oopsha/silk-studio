@@ -2,7 +2,7 @@ import type { PlsqlEditorRef } from "./plsqlEditorConstants";
 
 export const MAX_PLSQL_SNAPSHOTS = 20;
 
-export type PlsqlSnapshotReason = "save" | "manual";
+export type PlsqlSnapshotReason = "save" | "compile" | "manual";
 
 export type PlsqlSnapshotEntry = {
   id: string;
@@ -31,7 +31,9 @@ function normalizeEntry(value: unknown): PlsqlSnapshotEntry | null {
     typeof record.id !== "string" ||
     typeof record.createdAt !== "number" ||
     typeof record.content !== "string" ||
-    (record.reason !== "save" && record.reason !== "manual")
+    (record.reason !== "save" &&
+      record.reason !== "compile" &&
+      record.reason !== "manual")
   ) {
     return null;
   }
