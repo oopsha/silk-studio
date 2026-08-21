@@ -7,9 +7,9 @@ import { ConnectionService } from "./connectionService";
 import { ConnectionTreeService } from "./connectionTreeService";
 import {
   buildPlsqlTabLabel,
-  isPlsqlEditorTab,
+  isEditableSourceTab,
   isPlsqlSourceLoaded,
-  parsePlsqlEditorUri,
+  resolvePlsqlSourceRef,
   type PlsqlEditorRef,
 } from "./plsqlEditorConstants";
 import { PlsqlSaveDialogService } from "./plsqlSaveDialogService";
@@ -17,6 +17,7 @@ import { buildPlsqlSaveSql } from "./plsqlSaveSql";
 import { recordPlsqlSnapshot } from "./plsqlSnapshotService";
 import { bridgeFetchObjectDdl } from "./connectionDdlBridge";
 import { reportPlsqlCompileDiagnostics } from "./plsqlCompileService";
+import { supportsCompileDiagnostics } from "../sql/sqlDialect";
 
 function assertSaveAllowed(ref: PlsqlEditorRef): void {
   const readOnly = ConfigurationService.getValue("database.readOnly");
@@ -34,12 +35,12 @@ export function getPlsqlSaveBlockedReason(tabId?: string): string | null {
   const tab = tabId
     ? EditorService.getTabs().find((item) => item.id === tabId)
     : EditorService.getActiveTab();
-  if (!tab || !isPlsqlEditorTab(tab.uri)) {
+  if (!tab || !isEditableSourceTab(tab.uri)) {
     return "Active editor is not a PL/SQL source tab.";
   }
-  const ref = parsePlsqlEditorUri(tab.uri);
+  const ref = resolvePlsqlSourceRef(tab.uri);
   if (!ref) {
-    return "Invalid PL/SQL editor tab.";
+    return "Active editor is not a PL/SQL source tab.";
   }
   if (ConfigurationService.getValue("database.readOnly")) {
     return "Read-only mode is enabled. PL/SQL Save is blocked.";
@@ -66,7 +67,7 @@ export async function openPlsqlSaveDialog(tabId?: string): Promise<boolean> {
     : EditorService.getActiveTab();
   if (!tab) return false;
 
-  const ref = parsePlsqlEditorUri(tab.uri);
+  const ref = resolvePlsqlSourceRef(tab.uri);
   if (!ref) {
     throw new Error("Active editor is not a PL/SQL source tab.");
   }
@@ -162,8 +163,12 @@ export async function executePlsqlSave(
 
   // Surface the same line/column compile diagnostics the fast "Save" action shows — the DB
   // object was just replaced either way, so this dialog-confirmed path shouldn't leave the
-  // user unaware the object came out INVALID.
-  await reportPlsqlCompileDiagnostics(tabId, ref);
+  // user unaware the object came out INVALID. Only Oracle has this diagnostics step; other
+  // dialects already surfaced any syntax/reference error as a failed statement above.
+  const profile = ConnectionService.getProfile(ref.profileId);
+  if (profile && supportsCompileDiagnostics(profile.driverId)) {
+    await reportPlsqlCompileDiagnostics(tabId, ref);
+  }
 }
 
 export function formatPlsqlSaveError(error: unknown, fallback: string): string {
@@ -172,5 +177,5 @@ export function formatPlsqlSaveError(error: unknown, fallback: string): string {
 
 /** True when the active (or given) tab should use PL/SQL DB save instead of filesystem. */
 export function shouldUsePlsqlSave(uri: string | undefined): boolean {
-  return isPlsqlEditorTab(uri);
+  return isEditableSourceTab(uri);
 }

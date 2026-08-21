@@ -3,9 +3,9 @@ import { formatErrorMessage } from "../formatErrorMessage";
 import { bridgeFetchObjectDdl } from "./connectionDdlBridge";
 import {
   buildPlsqlTabLabel,
-  isPlsqlEditorTab,
+  isEditableSourceTab,
   isPlsqlSourceLoaded,
-  parsePlsqlEditorUri,
+  resolvePlsqlSourceRef,
   type PlsqlEditorRef,
 } from "./plsqlEditorConstants";
 import { PlsqlSnapshotDialogService } from "./plsqlSnapshotDialogService";
@@ -42,12 +42,12 @@ export function getPlsqlSnapshotBlockedReason(tabId?: string): string | null {
   const tab = tabId
     ? EditorService.getTabs().find((item) => item.id === tabId)
     : EditorService.getActiveTab();
-  if (!tab || !isPlsqlEditorTab(tab.uri)) {
+  if (!tab) {
     return "Active editor is not a PL/SQL source tab.";
   }
-  const ref = parsePlsqlEditorUri(tab.uri);
+  const ref = resolvePlsqlSourceRef(tab.uri);
   if (!ref) {
-    return "Invalid PL/SQL editor tab.";
+    return "Active editor is not a PL/SQL source tab.";
   }
   if (!isPlsqlSourceLoaded(tab.content)) {
     return "Source is not loaded yet.";
@@ -67,7 +67,7 @@ function requireActivePlsqlTab(tabId?: string): {
   if (!tab) {
     throw new Error("No active editor.");
   }
-  const ref = parsePlsqlEditorUri(tab.uri);
+  const ref = resolvePlsqlSourceRef(tab.uri);
   if (!ref) {
     throw new Error("Active editor is not a PL/SQL source tab.");
   }
@@ -232,7 +232,7 @@ export function rollbackPlsqlSnapshot(
   snapshot: PlsqlSnapshotEntry,
 ): void {
   const tab = EditorService.getTabs().find((item) => item.id === tabId);
-  if (!tab || !isPlsqlEditorTab(tab.uri)) {
+  if (!tab || !isEditableSourceTab(tab.uri)) {
     throw new Error("PL/SQL tab not found.");
   }
   EditorService.updateTabContent(tabId, snapshot.content);
@@ -244,9 +244,9 @@ export async function reloadPlsqlFromDatabase(tabId: string): Promise<void> {
   if (!tab) {
     throw new Error("PL/SQL tab not found.");
   }
-  const ref = parsePlsqlEditorUri(tab.uri);
+  const ref = resolvePlsqlSourceRef(tab.uri);
   if (!ref) {
-    throw new Error("Invalid PL/SQL editor tab.");
+    throw new Error("Active editor is not a PL/SQL source tab.");
   }
   const result = await bridgeFetchObjectDdl(
     ref.profileId,

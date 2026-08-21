@@ -462,13 +462,31 @@ final class PostgreSqlDialect implements DbDialect {
             + "FROM pg_catalog.pg_class c "
             + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
             + "WHERE n.nspname = ? AND c.relname = ? AND c.relkind IN ('v', 'm')";
+    String definition;
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
       statement.setString(1, schemaName);
       statement.setString(2, objectName);
       try (ResultSet rs = statement.executeQuery()) {
-        return MetadataDdl.readFirstColumnAsString(rs);
+        definition = MetadataDdl.readFirstColumnAsString(rs);
       }
     }
+    if (definition == null || definition.isBlank()) {
+      return definition;
+    }
+    // pg_get_viewdef only returns the bare SELECT — wrap it in a CREATE OR REPLACE VIEW header
+    // so this round-trips through the same "Save" path as every other object kind (which
+    // requires the buffer to start with CREATE) and so the DDL viewer shows a complete,
+    // directly-executable statement rather than a headless query.
+    return "CREATE OR REPLACE VIEW "
+        + quoteIdent(schemaName)
+        + "."
+        + quoteIdent(objectName)
+        + " AS\n"
+        + definition.stripTrailing();
+  }
+
+  private static String quoteIdent(String identifier) {
+    return "\"" + identifier.replace("\"", "\"\"") + "\"";
   }
 
   private String fetchPostgreSqlRoutineDdl(

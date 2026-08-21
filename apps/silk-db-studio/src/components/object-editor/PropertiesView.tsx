@@ -3,7 +3,10 @@ import { useEffect, useState } from "react";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import type { MessageKey } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
+import { ConnectionService } from "../../services/connection/connectionService";
+import { supportsPlsqlSourceEdit } from "../../services/connection/plsqlEditorService";
 import DdlPreview from "../ddl/DdlPreview";
+import ViewDdlEditor from "./ViewDdlEditor";
 import ObjectEditorHeader from "./ObjectEditorHeader";
 import ColumnsPreview from "./ColumnsPreview";
 import IndexesPreview from "./IndexesPreview";
@@ -66,14 +69,31 @@ const PROPERTIES_SECTIONS: PropertiesSection[] = [
   {
     id: "ddl",
     labelKey: "app.objectEditor.ddlSection",
-    render: (ctx) => (
-      <DdlPreview
-        objectRef={ctx.objectRef}
-        tabId={ctx.tabId}
-        tabUri={ctx.tabUri}
-        bufferedContent={ctx.bufferedContent}
-      />
-    ),
+    render: (ctx) => {
+      const driverId = ConnectionService.getProfile(ctx.objectRef.profileId)?.driverId;
+      const isEditableView =
+        ctx.objectRef.kind === "view" &&
+        driverId !== undefined &&
+        supportsPlsqlSourceEdit(driverId, "view");
+      if (isEditableView) {
+        return (
+          <ViewDdlEditor
+            objectRef={ctx.objectRef}
+            tabId={ctx.tabId}
+            tabUri={ctx.tabUri}
+            bufferedContent={ctx.bufferedContent}
+          />
+        );
+      }
+      return (
+        <DdlPreview
+          objectRef={ctx.objectRef}
+          tabId={ctx.tabId}
+          tabUri={ctx.tabUri}
+          bufferedContent={ctx.bufferedContent}
+        />
+      );
+    },
   },
 ];
 

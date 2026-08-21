@@ -12,29 +12,30 @@ import {
   clearPlsqlCompileMarkers,
 } from "./plsqlCompileMarkers";
 import {
-  isPlsqlEditorTab,
+  isEditableSourceTab,
   isPlsqlSourceLoaded,
-  parsePlsqlEditorUri,
+  resolvePlsqlSourceRef,
   type PlsqlEditorRef,
 } from "./plsqlEditorConstants";
 import { PlsqlCompileStateService } from "./plsqlCompileStateService";
-import { isEditablePlsqlKind } from "./plsqlEditorService";
+import { isEditablePlsqlKind, supportsPlsqlSourceEdit } from "./plsqlEditorService";
 import { buildPlsqlSaveSql } from "./plsqlSaveSql";
 import { recordPlsqlSnapshot } from "./plsqlSnapshotService";
+import { supportsCompileDiagnostics } from "../sql/sqlDialect";
 
 export function getPlsqlCompileBlockedReason(tabId?: string): string | null {
   const tab = tabId
     ? EditorService.getTabs().find((item) => item.id === tabId)
     : EditorService.getActiveTab();
-  if (!tab || !isPlsqlEditorTab(tab.uri)) {
+  if (!tab || !isEditableSourceTab(tab.uri)) {
     return "Active editor is not a PL/SQL source tab.";
   }
-  const ref = parsePlsqlEditorUri(tab.uri);
+  const ref = resolvePlsqlSourceRef(tab.uri);
   if (!ref) {
-    return "Invalid PL/SQL editor tab.";
+    return "Active editor is not a PL/SQL source tab.";
   }
   if (!isEditablePlsqlKind(ref.kind)) {
-    return "Compile is only supported for procedures, functions, and packages.";
+    return "Compile is only supported for procedures, functions, packages, and views.";
   }
   if (ConfigurationService.getValue("database.readOnly")) {
     return "Read-only mode is enabled. PL/SQL Compile is blocked.";
@@ -43,8 +44,8 @@ export function getPlsqlCompileBlockedReason(tabId?: string): string | null {
     return "Connect this profile before compiling.";
   }
   const profile = ConnectionService.getProfile(ref.profileId);
-  if (profile?.driverId !== "oracle") {
-    return "Compile is available for Oracle only in v1.";
+  if (!profile || !supportsPlsqlSourceEdit(profile.driverId, ref.kind)) {
+    return "Source editing is not supported for this connection/object type.";
   }
   if (!isPlsqlSourceLoaded(tab.content)) {
     return "Source is not loaded yet.";
@@ -121,9 +122,9 @@ export async function compileActivePlsqlObject(tabId?: string): Promise<void> {
     throw new Error(blocked);
   }
 
-  const ref = parsePlsqlEditorUri(tab.uri);
+  const ref = resolvePlsqlSourceRef(tab.uri);
   if (!ref) {
-    throw new Error("Invalid PL/SQL editor tab.");
+    throw new Error("Active editor is not a PL/SQL source tab.");
   }
 
   const readOnly = ConfigurationService.getValue("database.readOnly");
@@ -157,5 +158,8 @@ export async function compileActivePlsqlObject(tabId?: string): Promise<void> {
     AppNotificationService.show(warnings.join(" "), "info");
   }
 
-  await reportPlsqlCompileDiagnostics(tab.id, ref);
+  const profile = ConnectionService.getProfile(ref.profileId);
+  if (profile && supportsCompileDiagnostics(profile.driverId)) {
+    await reportPlsqlCompileDiagnostics(tab.id, ref);
+  }
 }

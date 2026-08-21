@@ -20,8 +20,14 @@ function createTabId(): string {
   return `tab-${crypto.randomUUID()}`;
 }
 
-/** Alternative editor tabs that sync Monaco content and dirty state via EditorService. */
-const MANAGED_SILK_URI_PREFIXES = ["silk://plsql/"];
+/**
+ * Alternative editor tabs that sync Monaco content and dirty state via EditorService.
+ * `silk://object/` covers the Object Editor tab — most of its Properties sub-sections
+ * (columns, indexes, …) are read-only and never call these, but the DDL section becomes
+ * an editable buffer for Oracle views, which needs the same content/dirty tracking as
+ * the dedicated `silk://plsql/` source tabs.
+ */
+const MANAGED_SILK_URI_PREFIXES = ["silk://plsql/", "silk://object/"];
 
 /** Workbench chrome tabs — not part of Hot Exit restore. */
 const EXCLUDED_SESSION_URI_PREFIXES = [

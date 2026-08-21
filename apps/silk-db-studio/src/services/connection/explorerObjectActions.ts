@@ -98,8 +98,13 @@ export function buildObjectMenuItems(
     canMutate &&
     driverId !== undefined &&
     supportsRenameObject(kind, driverId);
+  // Relations (table/view) have their own "openObjectEditor" entry above — a view's DDL is
+  // editable there (Properties → DDL), not via this "edit source" entry, which is only for
+  // the dedicated PL/SQL source tab (procedure/function/package). Without this guard, once
+  // `supportsPlsqlSourceEdit` also covers views (for the Object Editor's DDL section), this
+  // menu item would incorrectly enable and route a view to the wrong tab type.
   const canEditSource =
-    driverId !== undefined && supportsPlsqlSourceEdit(driverId, kind);
+    !isRelation && driverId !== undefined && supportsPlsqlSourceEdit(driverId, kind);
   const isPackage = kind === "package";
   const t = I18nService.t.bind(I18nService);
 
