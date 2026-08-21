@@ -3,6 +3,10 @@ import { AppNotificationService } from "@silk-studio/workbench/services/notifica
 import { formatErrorMessage } from "../formatErrorMessage";
 import { bridgeCommit, bridgeRollback } from "./connectionBridge";
 import { ConnectionService } from "./connectionService";
+import {
+  discardPendingDdlSaves,
+  resolvePendingDdlSaves,
+} from "./pendingDdlSaveService";
 
 type TransactionListener = () => void;
 
@@ -25,6 +29,9 @@ class ConnectionTransactionServiceImpl {
         if (!connected.has(id)) {
           this.dirty.delete(id);
           changed = true;
+          // No DB session left to have committed/rolled back against — drop silently, no
+          // user-visible error (see pendingDdlSaveService.ts).
+          discardPendingDdlSaves(id);
         }
       }
       if (changed) {
@@ -72,6 +79,9 @@ export async function commitConnection(connectionId: string): Promise<void> {
   try {
     const result = await bridgeCommit(connectionId);
     ConnectionTransactionService.clear(connectionId);
+    // "Nothing to commit" is treated as commit-success for pending saves too: if the driver
+    // reports nothing pending, whatever we were tracking here is no longer blocked on anything.
+    resolvePendingDdlSaves(connectionId, "commit");
     AppNotificationService.show(
       result.committed ? tKey("app.transaction.committed") : tKey("app.transaction.nothingToCommit"),
       "success",
@@ -96,6 +106,9 @@ export async function rollbackConnection(connectionId: string): Promise<void> {
   try {
     const result = await bridgeRollback(connectionId);
     ConnectionTransactionService.clear(connectionId);
+    // "Nothing to roll back" is treated conservatively as a rollback outcome for pending saves
+    // too — we can't prove the save survived, so discard rather than mark it durable.
+    resolvePendingDdlSaves(connectionId, "rollback");
     if (result.rolledBack) {
       // Dynamic import breaks the query <-> connection service cycle (same
       // pattern as resolveExecutionConnection.ts's ActiveDatabaseService import).

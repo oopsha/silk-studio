@@ -939,6 +939,9 @@ export const enMessages = {
       clearAllSnapshots: "Delete All",
       clearAllConfirm:
         "Delete all local snapshots for {label}? This cannot be undone.",
+      savePendingCommit:
+        "Saved, but still pending commit — commit it from the status bar for it to take effect.",
+      saveRolledBack: "This save was rolled back and did not take effect.",
     },
     ai: {
       emptyHint:

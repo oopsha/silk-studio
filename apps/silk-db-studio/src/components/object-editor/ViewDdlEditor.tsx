@@ -66,10 +66,11 @@ type LoadState =
  * `resolvePlsqlSourceRef` inside the service layer) rather than a command that assumes the
  * active tab *is* the PL/SQL tab.
  *
- * Supported drivers: Oracle, PostgreSQL, MySQL, MariaDB (see `supportsPlsqlSourceEdit` in
- * `plsqlEditorService.ts`). Only Oracle runs a post-save compile-diagnostics step
- * (`ALTER ... COMPILE` + `ALL_ERRORS`); the others have no equivalent — any syntax/reference
- * error there already surfaces as a failed `CREATE OR REPLACE` statement.
+ * Supported drivers: Oracle, PostgreSQL, MySQL, MariaDB, SQL Server (see
+ * `supportsPlsqlSourceEdit` in `plsqlEditorService.ts`). Only Oracle runs a post-save
+ * compile-diagnostics step (`ALTER ... COMPILE` + `ALL_ERRORS`); the others have no
+ * equivalent — any syntax/reference error there already surfaces as a failed
+ * `CREATE OR REPLACE`/`ALTER VIEW` statement.
  */
 function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEditorProps) {
   const { t } = useI18n();

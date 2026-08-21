@@ -1,10 +1,12 @@
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
+import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { formatErrorMessage } from "../formatErrorMessage";
 import { QueryExecutionService } from "../query/queryExecutionService";
 import { assertReadOnlyQueryAllowed } from "../query/sqlGuard";
 import { ConnectionService } from "./connectionService";
+import { ConnectionTransactionService } from "./connectionTransactionService";
 import { ConnectionTreeService } from "./connectionTreeService";
 import { bridgeCompileObject } from "./connectionCompileBridge";
 import {
@@ -19,6 +21,7 @@ import {
 } from "./plsqlEditorConstants";
 import { PlsqlCompileStateService } from "./plsqlCompileStateService";
 import { isEditablePlsqlKind, supportsPlsqlSourceEdit } from "./plsqlEditorService";
+import { registerPendingDdlSave } from "./pendingDdlSaveService";
 import { buildPlsqlSaveSql } from "./plsqlSaveSql";
 import { recordPlsqlSnapshot } from "./plsqlSnapshotService";
 import { supportsCompileDiagnostics } from "../sql/sqlDialect";
@@ -128,7 +131,11 @@ export async function compileActivePlsqlObject(tabId?: string): Promise<void> {
   }
 
   const readOnly = ConfigurationService.getValue("database.readOnly");
-  const { sql, warnings } = buildPlsqlSaveSql(tab.content, ref);
+  const saveDriverId = ConnectionService.getProfile(ref.profileId)?.driverId;
+  if (!saveDriverId) {
+    throw new Error("Connection profile not found.");
+  }
+  const { sql, warnings } = buildPlsqlSaveSql(tab.content, ref, saveDriverId);
   assertReadOnlyQueryAllowed(sql, readOnly);
 
   PlsqlCompileStateService.setCompiling(tab.id);
@@ -146,9 +153,33 @@ export async function compileActivePlsqlObject(tabId?: string): Promise<void> {
   }
 
   // The push succeeded — the DB object now matches the buffer, whether or not it's valid
-  // PL/SQL, so record it and clear dirty state before reporting compile diagnostics below.
-  recordPlsqlSnapshot(ref, tab.content, "compile");
-  EditorService.markTabSaved(tab.id, tab.uri, tab.label);
+  // PL/SQL. Capture the buffer state as of *now* (the user may keep editing before an eventual
+  // commit/rollback, so don't re-read tab.content later).
+  const savedContent = tab.content;
+  const savedUri = tab.uri;
+  const savedLabel = tab.label;
+
+  if (ConnectionTransactionService.isDirty(ref.profileId)) {
+    // DDL is transactional here (Postgres/SQL Server with autoCommit off) and a manual commit
+    // is now pending — defer the local snapshot/clean-mark until we know the write is durable.
+    registerPendingDdlSave(ref.profileId, {
+      onCommit: () => {
+        const stillOpen = EditorService.getTabs().find((item) => item.id === tab.id);
+        recordPlsqlSnapshot(ref, savedContent, "compile");
+        if (stillOpen) {
+          EditorService.markTabSaved(tab.id, savedUri, savedLabel);
+        }
+      },
+      onRollback: () => {
+        AppNotificationService.show(tKey("app.plsql.saveRolledBack"), "info");
+      },
+    });
+    AppNotificationService.show(tKey("app.plsql.savePendingCommit"), "info");
+  } else {
+    recordPlsqlSnapshot(ref, savedContent, "compile");
+    EditorService.markTabSaved(tab.id, savedUri, savedLabel);
+  }
+
   await ConnectionTreeService.invalidateAndRefreshSchema(
     ref.profileId,
     ref.schemaName,
