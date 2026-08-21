@@ -1,0 +1,116 @@
+.view-ddl-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.view-ddl-editor__banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-description);
+  font-size: 12px;
+}
+
+.view-ddl-editor__banner-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view-ddl-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.view-ddl-editor__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--color-foreground);
+  background-color: var(--color-input-background);
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.view-ddl-editor__action .codicon {
+  font-size: 14px;
+}
+
+.view-ddl-editor__action:hover:not(:disabled) {
+  background-color: var(--color-list-hover);
+}
+
+.view-ddl-editor__action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.view-ddl-editor__errors {
+  flex-shrink: 0;
+  max-height: 140px;
+  overflow: auto;
+  border-bottom: 1px solid var(--color-border);
+  background-color: #1e1e1e;
+}
+
+.view-ddl-editor__error {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 12px;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
+  color: #f48771;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.view-ddl-editor__error:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.view-ddl-editor__error--static {
+  cursor: default;
+}
+
+.view-ddl-editor__error--static:hover {
+  background: transparent;
+}
+
+.view-ddl-editor__error-loc {
+  flex-shrink: 0;
+  color: #c586c0;
+  font-variant-numeric: tabular-nums;
+}
+
+.view-ddl-editor__error-msg {
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.view-ddl-editor__body {
+  flex: 1;
+  min-height: 0;
+}

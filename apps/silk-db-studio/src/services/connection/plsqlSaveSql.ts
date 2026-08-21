@@ -15,6 +15,8 @@ function oracleKindKeyword(kind: MetadataObjectKind): string {
       return "FUNCTION";
     case "package":
       return "PACKAGE";
+    case "view":
+      return "VIEW";
     default:
       throw new Error(`Unsupported PL/SQL object kind: ${kind}`);
   }
@@ -24,7 +26,8 @@ function normalizeIdent(name: string): string {
   const trimmed = name.trim();
   if (
     (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+    (trimmed.startsWith("`") && trimmed.endsWith("`"))
   ) {
     return trimmed.slice(1, -1);
   }
@@ -44,8 +47,13 @@ export function extractPlsqlObjectName(
   kind: MetadataObjectKind,
 ): string | null {
   const keyword = oracleKindKeyword(kind);
+  // Identifier token: double-quoted (Oracle/Postgres), backtick-quoted (MySQL/MariaDB), or bare.
   const header = new RegExp(
-    String.raw`^\s*CREATE(?:\s+OR\s+REPLACE)?\s+(?:EDITIONABLE\s+|NONEDITIONABLE\s+)?(?:${keyword})(?:\s+BODY)?\s+((?:"[^"]+"|[A-Za-z_][\w$#]*)(?:\s*\.\s*(?:"[^"]+"|[A-Za-z_][\w$#]*))?)`,
+    String.raw`^\s*CREATE(?:\s+OR\s+REPLACE)?\s+(?:EDITIONABLE\s+|NONEDITIONABLE\s+)?(?:${keyword})(?:\s+BODY)?\s+((?:"[^"]+"|` +
+      "`[^`]+`" +
+      String.raw`|[A-Za-z_][\w$#]*)(?:\s*\.\s*(?:"[^"]+"|` +
+      "`[^`]+`" +
+      String.raw`|[A-Za-z_][\w$#]*))?)`,
     "i",
   );
   const match = header.exec(sql);
@@ -53,7 +61,7 @@ export function extractPlsqlObjectName(
   const qualified = match[1].replace(/\s+/g, "");
   const parts = qualified.split(".");
   const bare = parts[parts.length - 1] ?? "";
-  return bare.replace(/^"|"$/g, "") || null;
+  return bare.replace(/^"|"$/g, "").replace(/^`|`$/g, "") || null;
 }
 
 /**

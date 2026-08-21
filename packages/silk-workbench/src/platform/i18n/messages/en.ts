@@ -892,6 +892,8 @@ export const enMessages = {
       reloadFromDb: "Reload source from database",
       compileTitle: "Save and compile immediately, no confirmation (Ctrl+Shift+F9)",
       saveTitle: "Compare changes, then save and compile (Ctrl+S)",
+      compileTitleNoDiagnostics: "Save immediately, no confirmation (Ctrl+Shift+F9)",
+      saveTitleNoDiagnostics: "Compare changes, then save (Ctrl+S)",
       readOnlyEnabled: "Read-only mode is enabled",
       actionHistory: "History",
       actionSnapshot: "Snapshot",

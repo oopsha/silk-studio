@@ -14,10 +14,27 @@ export function isEditablePlsqlKind(kind: MetadataObjectKind): boolean {
   return kind === "procedure" || kind === "function" || kind === "package";
 }
 
+/**
+ * Drivers that support the VIEW DDL editor's history/snapshot/reload/save/compare-save
+ * machinery. Oracle, PostgreSQL, and MySQL/MariaDB all round-trip cleanly via
+ * `CREATE OR REPLACE VIEW` (Postgres source is `pg_get_viewdef` wrapped in a CREATE OR REPLACE
+ * header server-side; MySQL/MariaDB source comes directly from `SHOW CREATE VIEW`). SQL Server
+ * is a later phase — it has no `CREATE OR REPLACE`, only `ALTER VIEW`.
+ */
+const VIEW_EDIT_DRIVERS = new Set<ConnectionDriverId>([
+  "oracle",
+  "postgresql",
+  "mysql",
+  "mariadb",
+]);
+
 export function supportsPlsqlSourceEdit(
   driverId: ConnectionDriverId,
   kind: MetadataObjectKind,
 ): boolean {
+  if (kind === "view") {
+    return VIEW_EDIT_DRIVERS.has(driverId);
+  }
   return driverId === "oracle" && isEditablePlsqlKind(kind);
 }
 

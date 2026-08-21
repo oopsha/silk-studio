@@ -890,6 +890,8 @@ export const koMessages = {
       reloadFromDb: "데이터베이스에서 소스 다시 로드",
       compileTitle: "확인 없이 즉시 저장 및 컴파일 (Ctrl+Shift+F9)",
       saveTitle: "변경사항 비교 후 저장 및 컴파일 (Ctrl+S)",
+      compileTitleNoDiagnostics: "확인 없이 즉시 저장 (Ctrl+Shift+F9)",
+      saveTitleNoDiagnostics: "변경사항 비교 후 저장 (Ctrl+S)",
       readOnlyEnabled: "읽기 전용 모드가 켜져 있습니다",
       actionHistory: "기록",
       actionSnapshot: "스냅샷",

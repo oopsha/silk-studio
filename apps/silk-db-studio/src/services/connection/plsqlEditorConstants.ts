@@ -1,4 +1,5 @@
 import type { MetadataObjectKind } from "@silk-studio/db-protocol";
+import { parseObjectEditorUri } from "./objectEditorConstants";
 
 export const PLSQL_EDITOR_URI_PREFIX = "silk://plsql/";
 
@@ -61,6 +62,32 @@ export function parsePlsqlEditorUri(uri: string | undefined): PlsqlEditorRef | n
 
 export function isPlsqlEditorTab(uri: string | undefined): boolean {
   return parsePlsqlEditorUri(uri) !== null;
+}
+
+/**
+ * Resolves a {@link PlsqlEditorRef} from either a dedicated PL/SQL editor tab URI
+ * (`silk://plsql/...`, used by procedure/function/package) or an embedded Object
+ * Editor tab URI (`silk://object/...`) for a view — the view DDL editor reuses the
+ * PL/SQL save/snapshot/compile machinery from inside an Object Editor tab rather than
+ * opening its own dedicated tab type. Returns null for any other object-editor kind
+ * (tables etc. stay read-only and never resolve here).
+ */
+export function resolvePlsqlSourceRef(uri: string | undefined): PlsqlEditorRef | null {
+  const direct = parsePlsqlEditorUri(uri);
+  if (direct) return direct;
+  const objectRef = parseObjectEditorUri(uri);
+  if (!objectRef || objectRef.kind !== "view") return null;
+  return {
+    profileId: objectRef.profileId,
+    schemaName: objectRef.schemaName,
+    kind: objectRef.kind,
+    objectName: objectRef.objectName,
+  };
+}
+
+/** True when {@link resolvePlsqlSourceRef} can resolve a ref from this tab URI. */
+export function isEditableSourceTab(uri: string | undefined): boolean {
+  return resolvePlsqlSourceRef(uri) !== null;
 }
 
 function kindShortLabel(ref: Pick<PlsqlEditorRef, "kind" | "packageBody">): string {

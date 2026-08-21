@@ -481,9 +481,10 @@ final class OracleDialect implements DbDialect {
     String normalizedKind = kind.trim().toLowerCase(java.util.Locale.ROOT);
     if (!normalizedKind.equals("procedure")
         && !normalizedKind.equals("function")
-        && !normalizedKind.equals("package")) {
+        && !normalizedKind.equals("package")
+        && !normalizedKind.equals("view")) {
       throw new RuntimeException(
-          "Compile is only supported for procedure, function, and package.");
+          "Compile is only supported for procedure, function, package, and view.");
     }
 
     String alterSql = buildCompileAlterSql(schemaName, objectName, normalizedKind, packageBody);
@@ -691,6 +692,7 @@ final class OracleDialect implements DbDialect {
         }
         yield "ALTER PACKAGE " + qualified + " COMPILE PACKAGE";
       }
+      case "view" -> "ALTER VIEW " + qualified + " COMPILE";
       default -> throw new IllegalArgumentException("Unsupported compile kind: " + kind);
     };
   }
@@ -705,6 +707,7 @@ final class OracleDialect implements DbDialect {
         }
         yield packageBody ? List.of("PACKAGE BODY") : List.of("PACKAGE");
       }
+      case "view" -> List.of("VIEW");
       default -> List.of();
     };
   }

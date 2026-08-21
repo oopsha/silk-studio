@@ -80,6 +80,17 @@ export function driverAutoCommitsDdl(driverId: ConnectionDriverId): boolean {
 }
 
 /**
+ * True when this driver has a compile/recompile-with-diagnostics step (Oracle's
+ * `ALTER ... COMPILE` + `ALL_ERRORS`) worth running after a PL/SQL Save. Postgres, MySQL, and
+ * MariaDB have no equivalent — there's nothing to separately "compile," and any syntax or
+ * reference error in the pushed `CREATE OR REPLACE` already surfaces as a normal failed
+ * statement when that DDL runs, so skipping this step for them loses no diagnostic information.
+ */
+export function supportsCompileDiagnostics(driverId: ConnectionDriverId): boolean {
+  return driverId === "oracle";
+}
+
+/**
  * Prefer the active editor tab binding's driver, then any connected profile,
  * then the active profile, then Oracle (studio default).
  * Used for execution / completion — not for editor language mode.
