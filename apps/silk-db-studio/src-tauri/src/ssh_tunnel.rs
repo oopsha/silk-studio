@@ -19,6 +19,43 @@ fn require_nonempty(value: &str, field: &str) -> Result<String, String> {
     Ok(trimmed.to_string())
 }
 
+/// Expands a private-key path using whichever home-directory shorthand this platform's users
+/// actually type: a leading `~/...` on macOS/Linux, or a leading `%USERPROFILE%` on Windows
+/// (Windows paths don't use `~`, and Windows users reach for `%USERPROFILE%` instead — Windows
+/// itself already accepts `/` or `\` interchangeably as a separator, so no extra handling is
+/// needed there). Deliberately does *not* try to recognize the other platform's convention —
+/// `\` is a legal filename character on macOS/Linux, not a separator, so guessing at a foreign
+/// path here would be non-standard and could misinterpret a literal backslash in a real
+/// filename. A raw path with no recognized prefix (including one written for the other
+/// platform, e.g. a Windows `~\Keys\name` opened on a Mac) is left untouched; the user has to
+/// point it at wherever the key actually lives on this machine.
+fn expand_key_path(raw: &str) -> PathBuf {
+    let trimmed = raw.trim();
+
+    #[cfg(windows)]
+    {
+        if let Some(rest) = trimmed.strip_prefix("%USERPROFILE%") {
+            if let Ok(home) = std::env::var("USERPROFILE") {
+                return PathBuf::from(home).join(rest.trim_start_matches(['\\', '/']));
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        if trimmed == "~" {
+            if let Ok(home) = std::env::var("HOME") {
+                return PathBuf::from(home);
+            }
+        } else if let Some(rest) = trimmed.strip_prefix("~/") {
+            if let Ok(home) = std::env::var("HOME") {
+                return PathBuf::from(home).join(rest);
+            }
+        }
+    }
+
+    PathBuf::from(trimmed)
+}
+
 fn parse_auth(
     auth_method: &str,
     password: Option<String>,
@@ -34,7 +71,7 @@ fn parse_auth(
             let key_path = private_key_path
                 .filter(|value| !value.trim().is_empty())
                 .ok_or("private_key_path is required.")?;
-            Ok(SshAuth::PrivateKey { key_path: PathBuf::from(key_path.trim()), passphrase })
+            Ok(SshAuth::PrivateKey { key_path: expand_key_path(&key_path), passphrase })
         }
         other => Err(format!("Unsupported auth method: {other}")),
     }

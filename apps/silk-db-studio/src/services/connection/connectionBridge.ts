@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { invokeJdbcCommand } from "./jdbcInvoke";
 import {
   isConnectionColumnsResult,
   isConnectionConstraintsResult,
@@ -79,12 +80,12 @@ export async function bridgeListMetadata(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_metadata", {
+  const payload = await invokeJdbcCommand<unknown>("connection_metadata", {
     connectionId: id,
     schema: schema?.trim() ? schema.trim() : null,
     catalog: catalog?.trim() ? catalog.trim() : null,
     includeSecondaryKinds: includeSecondaryKinds ?? null,
-  });
+  }, id);
   if (!isConnectionMetadataResult(payload)) {
     throw new Error("Invalid connection metadata payload from desktop bridge.");
   }
@@ -108,11 +109,11 @@ export async function bridgeConnectionPrefetchCatalog(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_prefetch_catalog", {
+  const payload = await invokeJdbcCommand<unknown>("connection_prefetch_catalog", {
     connectionId: id,
     catalog: catalog?.trim() ? catalog.trim() : null,
     maxObjects: maxObjects ?? null,
-  });
+  }, id);
   if (!isConnectionPrefetchCatalogResult(payload)) {
     throw new Error("Invalid prefetch-catalog payload from desktop bridge.");
   }
@@ -132,12 +133,12 @@ export async function bridgeListColumns(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_columns", {
+  const payload = await invokeJdbcCommand<unknown>("connection_columns", {
     connectionId: id,
     schema: schema.trim(),
     table: table.trim(),
     catalog: catalog?.trim() ? catalog.trim() : null,
-  });
+  }, id);
   if (!isConnectionColumnsResult(payload)) {
     throw new Error("Invalid connection columns payload from desktop bridge.");
   }
@@ -157,12 +158,12 @@ export async function bridgeListIndexes(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_indexes", {
+  const payload = await invokeJdbcCommand<unknown>("connection_indexes", {
     connectionId: id,
     schema: schema.trim(),
     table: table.trim(),
     catalog: catalog?.trim() ? catalog.trim() : null,
-  });
+  }, id);
   if (!isConnectionIndexesResult(payload)) {
     throw new Error("Invalid connection indexes payload from desktop bridge.");
   }
@@ -182,12 +183,12 @@ export async function bridgeGetTableComment(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_table_comment", {
+  const payload = await invokeJdbcCommand<unknown>("connection_table_comment", {
     connectionId: id,
     schema: schema.trim(),
     table: table.trim(),
     catalog: catalog?.trim() ? catalog.trim() : null,
-  });
+  }, id);
   if (!isConnectionTableCommentResult(payload)) {
     throw new Error("Invalid connection table comment payload from desktop bridge.");
   }
@@ -207,12 +208,12 @@ export async function bridgeListForeignKeys(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_foreign_keys", {
+  const payload = await invokeJdbcCommand<unknown>("connection_foreign_keys", {
     connectionId: id,
     schema: schema.trim(),
     table: table.trim(),
     catalog: catalog?.trim() ? catalog.trim() : null,
-  });
+  }, id);
   if (!isConnectionForeignKeysResult(payload)) {
     throw new Error("Invalid connection foreign keys payload from desktop bridge.");
   }
@@ -232,12 +233,12 @@ export async function bridgeListReferences(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_references", {
+  const payload = await invokeJdbcCommand<unknown>("connection_references", {
     connectionId: id,
     schema: schema.trim(),
     table: table.trim(),
     catalog: catalog?.trim() ? catalog.trim() : null,
-  });
+  }, id);
   if (!isConnectionReferencesResult(payload)) {
     throw new Error("Invalid connection references payload from desktop bridge.");
   }
@@ -257,12 +258,12 @@ export async function bridgeListConstraints(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_constraints", {
+  const payload = await invokeJdbcCommand<unknown>("connection_constraints", {
     connectionId: id,
     schema: schema.trim(),
     table: table.trim(),
     catalog: catalog?.trim() ? catalog.trim() : null,
-  });
+  }, id);
   if (!isConnectionConstraintsResult(payload)) {
     throw new Error("Invalid connection constraints payload from desktop bridge.");
   }
@@ -282,12 +283,12 @@ export async function bridgeListTriggers(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_triggers", {
+  const payload = await invokeJdbcCommand<unknown>("connection_triggers", {
     connectionId: id,
     schema: schema.trim(),
     table: table.trim(),
     catalog: catalog?.trim() ? catalog.trim() : null,
-  });
+  }, id);
   if (!isConnectionTriggersResult(payload)) {
     throw new Error("Invalid connection triggers payload from desktop bridge.");
   }
@@ -307,12 +308,12 @@ export async function bridgeListPackageMembers(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_package_members", {
+  const payload = await invokeJdbcCommand<unknown>("connection_package_members", {
     connectionId: id,
     schema: schema.trim(),
     package: packageName.trim(),
     catalog: catalog?.trim() ? catalog.trim() : null,
-  });
+  }, id);
   if (!isConnectionPackageMembersResult(payload)) {
     throw new Error(
       "Invalid connection package members payload from desktop bridge.",
@@ -349,9 +350,9 @@ export async function bridgeCommit(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_commit", {
+  const payload = await invokeJdbcCommand<unknown>("connection_commit", {
     connectionId: id,
-  });
+  }, id);
   if (!isConnectionCommitResult(payload)) {
     throw new Error("Invalid connection commit payload from desktop bridge.");
   }
@@ -386,9 +387,9 @@ export async function bridgeRollback(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_rollback", {
+  const payload = await invokeJdbcCommand<unknown>("connection_rollback", {
     connectionId: id,
-  });
+  }, id);
   if (!isConnectionRollbackResult(payload)) {
     throw new Error("Invalid connection rollback payload from desktop bridge.");
   }
@@ -411,10 +412,10 @@ export async function bridgeSetCatalog(
   if (!name) {
     throw new Error("catalog is required.");
   }
-  const payload = await invoke<unknown>("connection_set_catalog", {
+  const payload = await invokeJdbcCommand<unknown>("connection_set_catalog", {
     connectionId: id,
     catalog: name,
-  });
+  }, id);
   if (
     payload &&
     typeof payload === "object" &&

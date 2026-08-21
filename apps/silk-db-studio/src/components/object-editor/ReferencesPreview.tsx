@@ -4,12 +4,18 @@ import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { bridgeListReferences } from "../../services/connection/connectionBridge";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
+import {
+  getCachedObjectPreview,
+  setCachedObjectPreview,
+} from "../../services/connection/objectPreviewCache";
 import "./TablePropertySection.css";
+
+type CachedReferencesPreview = { references: MetadataReference[] };
 
 type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; references: MetadataReference[] };
+  | ({ status: "ready" } & CachedReferencesPreview);
 
 type ReferencesPreviewProps = {
   objectRef: ObjectEditorRef;
@@ -26,6 +32,15 @@ function ReferencesPreview({ objectRef }: ReferencesPreviewProps) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
+    const cached = getCachedObjectPreview<CachedReferencesPreview>(
+      "references",
+      objectRef,
+    );
+    if (cached) {
+      setLoadState({ status: "ready", ...cached });
+      return;
+    }
+
     let cancelled = false;
     setLoadState({ status: "loading" });
 
@@ -37,7 +52,11 @@ function ReferencesPreview({ objectRef }: ReferencesPreviewProps) {
     )
       .then((result) => {
         if (cancelled) return;
-        setLoadState({ status: "ready", references: result.references });
+        const ready: CachedReferencesPreview = {
+          references: result.references,
+        };
+        setLoadState({ status: "ready", ...ready });
+        setCachedObjectPreview("references", objectRef, ready);
       })
       .catch((error) => {
         if (cancelled) return;

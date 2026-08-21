@@ -1,4 +1,5 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { isTauri } from "@tauri-apps/api/core";
+import { invokeJdbcCommand } from "./jdbcInvoke";
 import {
   isConnectionDependenciesResult,
   isConnectionDependentsResult,
@@ -22,14 +23,18 @@ export async function bridgeListObjectDependencies(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_dependencies", {
-    connectionId: id,
-    schema: schema.trim(),
-    name: name.trim(),
-    kind,
-    packageBody,
-    catalog: catalog?.trim() ? catalog.trim() : null,
-  });
+  const payload = await invokeJdbcCommand<unknown>(
+    "connection_dependencies",
+    {
+      connectionId: id,
+      schema: schema.trim(),
+      name: name.trim(),
+      kind,
+      packageBody,
+      catalog: catalog?.trim() ? catalog.trim() : null,
+    },
+    id,
+  );
   if (!isConnectionDependenciesResult(payload)) {
     throw new Error("Invalid connection dependencies payload from desktop bridge.");
   }
@@ -52,14 +57,18 @@ export async function bridgeListObjectDependents(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_dependents", {
-    connectionId: id,
-    schema: schema.trim(),
-    name: name.trim(),
-    kind,
-    packageBody,
-    catalog: catalog?.trim() ? catalog.trim() : null,
-  });
+  const payload = await invokeJdbcCommand<unknown>(
+    "connection_dependents",
+    {
+      connectionId: id,
+      schema: schema.trim(),
+      name: name.trim(),
+      kind,
+      packageBody,
+      catalog: catalog?.trim() ? catalog.trim() : null,
+    },
+    id,
+  );
   if (!isConnectionDependentsResult(payload)) {
     throw new Error("Invalid connection dependents payload from desktop bridge.");
   }

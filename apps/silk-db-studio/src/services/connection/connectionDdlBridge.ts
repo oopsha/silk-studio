@@ -1,4 +1,5 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { isTauri } from "@tauri-apps/api/core";
+import { invokeJdbcCommand } from "./jdbcInvoke";
 import {
   isConnectionDdlResult,
   type ConnectionDdlResult,
@@ -20,14 +21,18 @@ export async function bridgeFetchObjectDdl(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_ddl", {
-    connectionId: id,
-    schema: schema.trim(),
-    name: name.trim(),
-    kind,
-    packageBody,
-    catalog: catalog?.trim() ? catalog.trim() : null,
-  });
+  const payload = await invokeJdbcCommand<unknown>(
+    "connection_ddl",
+    {
+      connectionId: id,
+      schema: schema.trim(),
+      name: name.trim(),
+      kind,
+      packageBody,
+      catalog: catalog?.trim() ? catalog.trim() : null,
+    },
+    id,
+  );
   if (!isConnectionDdlResult(payload)) {
     throw new Error("Invalid connection DDL payload from desktop bridge.");
   }

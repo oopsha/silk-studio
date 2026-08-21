@@ -816,6 +816,8 @@ export const koMessages = {
         "이 에디터에 선택된 연결이 없습니다. 상태바에서 연결된 프로필을 고르세요.",
       connectionDisconnected:
         "연결 \"{name}\"이(가) 끊어져 있습니다. Connections 탐색기에서 다시 연결하세요.",
+      connectionReconnectFailed:
+        "재연결 확인에 실패했습니다. \"{name}\"에 수동으로 다시 연결하세요.",
       executeFailed: "쿼리 실행에 실패했습니다.",
       parametersTitle: "쿼리 파라미터",
       parametersSummary:

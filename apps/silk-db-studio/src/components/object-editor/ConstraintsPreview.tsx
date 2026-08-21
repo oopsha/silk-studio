@@ -5,12 +5,18 @@ import type { MessageKey } from "@silk-studio/workbench/platform/i18n/i18nServic
 import { bridgeListConstraints } from "../../services/connection/connectionBridge";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
+import {
+  getCachedObjectPreview,
+  setCachedObjectPreview,
+} from "../../services/connection/objectPreviewCache";
 import "./TablePropertySection.css";
+
+type CachedConstraintsPreview = { constraints: MetadataConstraint[] };
 
 type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; constraints: MetadataConstraint[] };
+  | ({ status: "ready" } & CachedConstraintsPreview);
 
 type ConstraintsPreviewProps = {
   objectRef: ObjectEditorRef;
@@ -27,6 +33,15 @@ function ConstraintsPreview({ objectRef }: ConstraintsPreviewProps) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
+    const cached = getCachedObjectPreview<CachedConstraintsPreview>(
+      "constraints",
+      objectRef,
+    );
+    if (cached) {
+      setLoadState({ status: "ready", ...cached });
+      return;
+    }
+
     let cancelled = false;
     setLoadState({ status: "loading" });
 
@@ -38,7 +53,11 @@ function ConstraintsPreview({ objectRef }: ConstraintsPreviewProps) {
     )
       .then((result) => {
         if (cancelled) return;
-        setLoadState({ status: "ready", constraints: result.constraints });
+        const ready: CachedConstraintsPreview = {
+          constraints: result.constraints,
+        };
+        setLoadState({ status: "ready", ...ready });
+        setCachedObjectPreview("constraints", objectRef, ready);
       })
       .catch((error) => {
         if (cancelled) return;

@@ -117,6 +117,8 @@ function ProfileTree({
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const filterActive = filter.trim().length > 0;
+  /** Object keys with an open flow currently in flight — see `handleObjectAction`. */
+  const pendingActionKeysRef = useRef<Set<SelectedObjectKey>>(new Set());
 
   useEffect(() => {
     if (!isConnected) {
@@ -214,8 +216,19 @@ function ProfileTree({
   }
 
   async function handleObjectAction(ref: ExplorerObjectRef) {
+    // Opening an object (fetching DDL/columns over a possibly tunneled connection) can take a
+    // visible moment with no feedback in between — a double-click or a few extra Enter presses
+    // in that window would otherwise each independently re-run the whole open flow. Ignore
+    // re-triggers for the same object while one is still in flight.
+    const key = objectSelectionKey(profile.id, ref.schemaName, ref.object.name);
+    if (pendingActionKeysRef.current.has(key)) return;
+    pendingActionKeysRef.current.add(key);
+
     const action = defaultObjectAction(ref.object.kind, profile.driverId);
-    if (!action) return;
+    if (!action) {
+      pendingActionKeysRef.current.delete(key);
+      return;
+    }
     const commandId =
       action === "openObjectEditor"
         ? EXPLORER_COMMANDS.openObjectEditor
@@ -226,6 +239,8 @@ function ProfileTree({
       await CommandService.executeCommand(commandId, ref);
     } catch (error) {
       onFlash(formatErrorMessage(error, t("app.explorer.actionFailed")));
+    } finally {
+      pendingActionKeysRef.current.delete(key);
     }
   }
 

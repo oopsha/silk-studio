@@ -11,6 +11,7 @@ import { ConfigurationService } from "@silk-studio/workbench/platform/configurat
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { formatErrorMessage, reportError } from "../formatErrorMessage";
 import { bridgeRollback } from "../connection/connectionBridge";
+import { invokeJdbcCommand } from "../connection/jdbcInvoke";
 import { ConnectionService } from "../connection/connectionService";
 import { ConnectionTransactionService } from "../connection/connectionTransactionService";
 import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
@@ -1456,15 +1457,19 @@ class QueryExecutionServiceImpl {
         ? queryTimeoutSecOverride
         : ConfigurationService.getValue("database.queryTimeoutSec");
     const autoCommit = ConfigurationService.getValue("database.autoCommit");
-    const result = await invoke<unknown>("query_execute", {
+    const result = await invokeJdbcCommand<unknown>(
+      "query_execute",
+      {
+        connectionId,
+        sql,
+        maxRows,
+        queryTimeoutSec,
+        autoCommit,
+        readOnly,
+        binds: binds && binds.length > 0 ? binds : null,
+      },
       connectionId,
-      sql,
-      maxRows,
-      queryTimeoutSec,
-      autoCommit,
-      readOnly,
-      binds: binds && binds.length > 0 ? binds : null,
-    });
+    );
     if (!autoCommit && isWriteSql(sql)) {
       const driverId = ConnectionService.getProfile(connectionId)?.driverId;
       // Oracle/MySQL implicitly commit DDL as it runs — nothing is actually left pending,

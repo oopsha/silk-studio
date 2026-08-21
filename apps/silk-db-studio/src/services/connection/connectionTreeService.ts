@@ -12,6 +12,7 @@ import {
   filterSystemNamespaces,
   type ExplorerFilterContext,
 } from "./systemNamespaces";
+import { invalidateObjectPreviewCache } from "./objectPreviewCache";
 
 export type SchemaTreeNode = {
   name: string;
@@ -138,7 +139,11 @@ class ConnectionTreeServiceImpl {
   invalidate(profileId?: string): void {
     if (profileId) {
       this.caches.delete(profileId);
+      invalidateObjectPreviewCache(profileId);
     } else {
+      for (const cachedProfileId of this.caches.keys()) {
+        invalidateObjectPreviewCache(cachedProfileId);
+      }
       this.caches.clear();
       this.explorerFilters.clear();
     }
@@ -154,6 +159,8 @@ class ConnectionTreeServiceImpl {
     schemaName: string,
     catalogName?: string,
   ): void {
+    invalidateObjectPreviewCache(profileId, schemaName);
+
     const cache = this.caches.get(profileId);
     if (!cache) return;
 

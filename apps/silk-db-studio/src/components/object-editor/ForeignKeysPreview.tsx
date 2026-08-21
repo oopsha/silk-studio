@@ -4,12 +4,18 @@ import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { bridgeListForeignKeys } from "../../services/connection/connectionBridge";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
+import {
+  getCachedObjectPreview,
+  setCachedObjectPreview,
+} from "../../services/connection/objectPreviewCache";
 import "./TablePropertySection.css";
+
+type CachedForeignKeysPreview = { foreignKeys: MetadataForeignKey[] };
 
 type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; foreignKeys: MetadataForeignKey[] };
+  | ({ status: "ready" } & CachedForeignKeysPreview);
 
 type ForeignKeysPreviewProps = {
   objectRef: ObjectEditorRef;
@@ -24,6 +30,15 @@ function ForeignKeysPreview({ objectRef }: ForeignKeysPreviewProps) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
+    const cached = getCachedObjectPreview<CachedForeignKeysPreview>(
+      "foreignKeys",
+      objectRef,
+    );
+    if (cached) {
+      setLoadState({ status: "ready", ...cached });
+      return;
+    }
+
     let cancelled = false;
     setLoadState({ status: "loading" });
 
@@ -35,7 +50,11 @@ function ForeignKeysPreview({ objectRef }: ForeignKeysPreviewProps) {
     )
       .then((result) => {
         if (cancelled) return;
-        setLoadState({ status: "ready", foreignKeys: result.foreignKeys });
+        const ready: CachedForeignKeysPreview = {
+          foreignKeys: result.foreignKeys,
+        };
+        setLoadState({ status: "ready", ...ready });
+        setCachedObjectPreview("foreignKeys", objectRef, ready);
       })
       .catch((error) => {
         if (cancelled) return;

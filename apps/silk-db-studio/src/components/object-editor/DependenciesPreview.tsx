@@ -7,17 +7,22 @@ import {
 } from "../../services/connection/connectionDependenciesBridge";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
+import {
+  getCachedObjectPreview,
+  setCachedObjectPreview,
+} from "../../services/connection/objectPreviewCache";
 import "./TablePropertySection.css";
 import "./DependenciesPreview.css";
+
+type CachedDependenciesPreview = {
+  dependencies: ConnectionDependency[];
+  dependents: ConnectionDependency[];
+};
 
 type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | {
-      status: "ready";
-      dependencies: ConnectionDependency[];
-      dependents: ConnectionDependency[];
-    };
+  | ({ status: "ready" } & CachedDependenciesPreview);
 
 type DependenciesPreviewProps = {
   objectRef: ObjectEditorRef;
@@ -64,6 +69,15 @@ function DependenciesPreview({ objectRef }: DependenciesPreviewProps) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
+    const cached = getCachedObjectPreview<CachedDependenciesPreview>(
+      "dependencies",
+      objectRef,
+    );
+    if (cached) {
+      setLoadState({ status: "ready", ...cached });
+      return;
+    }
+
     let cancelled = false;
     setLoadState({ status: "loading" });
 
@@ -87,11 +101,12 @@ function DependenciesPreview({ objectRef }: DependenciesPreviewProps) {
     ])
       .then(([dependenciesResult, dependentsResult]) => {
         if (cancelled) return;
-        setLoadState({
-          status: "ready",
+        const ready: CachedDependenciesPreview = {
           dependencies: dependenciesResult.dependencies,
           dependents: dependentsResult.dependents,
-        });
+        };
+        setLoadState({ status: "ready", ...ready });
+        setCachedObjectPreview("dependencies", objectRef, ready);
       })
       .catch((error) => {
         if (cancelled) return;
