@@ -4,12 +4,18 @@ import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { bridgeListTriggers } from "../../services/connection/connectionBridge";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
+import {
+  getCachedObjectPreview,
+  setCachedObjectPreview,
+} from "../../services/connection/objectPreviewCache";
 import "./TablePropertySection.css";
+
+type CachedTriggersPreview = { triggers: MetadataTrigger[] };
 
 type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; triggers: MetadataTrigger[] };
+  | ({ status: "ready" } & CachedTriggersPreview);
 
 type TriggersPreviewProps = {
   objectRef: ObjectEditorRef;
@@ -20,6 +26,15 @@ function TriggersPreview({ objectRef }: TriggersPreviewProps) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
+    const cached = getCachedObjectPreview<CachedTriggersPreview>(
+      "triggers",
+      objectRef,
+    );
+    if (cached) {
+      setLoadState({ status: "ready", ...cached });
+      return;
+    }
+
     let cancelled = false;
     setLoadState({ status: "loading" });
 
@@ -31,7 +46,9 @@ function TriggersPreview({ objectRef }: TriggersPreviewProps) {
     )
       .then((result) => {
         if (cancelled) return;
-        setLoadState({ status: "ready", triggers: result.triggers });
+        const ready: CachedTriggersPreview = { triggers: result.triggers };
+        setLoadState({ status: "ready", ...ready });
+        setCachedObjectPreview("triggers", objectRef, ready);
       })
       .catch((error) => {
         if (cancelled) return;

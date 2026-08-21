@@ -1,4 +1,5 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { isTauri } from "@tauri-apps/api/core";
+import { invokeJdbcCommand } from "./jdbcInvoke";
 import {
   isConnectionPrimaryKeysResult,
   type ConnectionPrimaryKeysResult,
@@ -17,12 +18,16 @@ export async function bridgeListPrimaryKeys(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invoke<unknown>("connection_primary_keys", {
-    connectionId: id,
-    schema: schema?.trim() ?? "",
-    table: table.trim(),
-    catalog: catalog?.trim() ? catalog.trim() : null,
-  });
+  const payload = await invokeJdbcCommand<unknown>(
+    "connection_primary_keys",
+    {
+      connectionId: id,
+      schema: schema?.trim() ?? "",
+      table: table.trim(),
+      catalog: catalog?.trim() ? catalog.trim() : null,
+    },
+    id,
+  );
   if (!isConnectionPrimaryKeysResult(payload)) {
     throw new Error("Invalid connection primary keys payload from desktop bridge.");
   }

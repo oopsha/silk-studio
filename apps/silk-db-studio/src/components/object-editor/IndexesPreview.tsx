@@ -4,12 +4,18 @@ import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { bridgeListIndexes } from "../../services/connection/connectionBridge";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
+import {
+  getCachedObjectPreview,
+  setCachedObjectPreview,
+} from "../../services/connection/objectPreviewCache";
 import "./TablePropertySection.css";
+
+type CachedIndexesPreview = { indexes: MetadataIndex[] };
 
 type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; indexes: MetadataIndex[] };
+  | ({ status: "ready" } & CachedIndexesPreview);
 
 type IndexesPreviewProps = {
   objectRef: ObjectEditorRef;
@@ -20,6 +26,15 @@ function IndexesPreview({ objectRef }: IndexesPreviewProps) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
+    const cached = getCachedObjectPreview<CachedIndexesPreview>(
+      "indexes",
+      objectRef,
+    );
+    if (cached) {
+      setLoadState({ status: "ready", ...cached });
+      return;
+    }
+
     let cancelled = false;
     setLoadState({ status: "loading" });
 
@@ -31,7 +46,9 @@ function IndexesPreview({ objectRef }: IndexesPreviewProps) {
     )
       .then((result) => {
         if (cancelled) return;
-        setLoadState({ status: "ready", indexes: result.indexes });
+        const ready: CachedIndexesPreview = { indexes: result.indexes };
+        setLoadState({ status: "ready", ...ready });
+        setCachedObjectPreview("indexes", objectRef, ready);
       })
       .catch((error) => {
         if (cancelled) return;

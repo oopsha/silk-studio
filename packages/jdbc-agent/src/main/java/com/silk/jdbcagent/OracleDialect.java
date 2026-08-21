@@ -439,6 +439,13 @@ final class OracleDialect implements DbDialect {
       String kind,
       Boolean packageBody)
       throws SQLException {
+    if (kind.equals("procedure") || kind.equals("function") || kind.equals("package")) {
+      String plsql = fetchOraclePlsqlSource(connection, schemaName, objectName, kind, packageBody);
+      if (plsql != null) {
+        return plsql;
+      }
+    }
+
     String metadataType = MetadataDdl.oracleMetadataType(kind, packageBody);
     try (Statement statement = connection.createStatement()) {
       statement.execute(
@@ -466,6 +473,97 @@ final class OracleDialect implements DbDialect {
       }
     }
     return null;
+  }
+
+  /**
+   * Fast path for procedure/function/package source, reading {@code ALL_SOURCE} directly
+   * instead of {@code DBMS_METADATA.GET_DDL} — same approach DBeaver uses (see
+   * {@code OracleUtils.getSource}/{@code insertCreateReplace} in its source). {@code ALL_SOURCE}
+   * is a plain dictionary view of the stored source text with no formatting/transform engine
+   * behind it, so it's dramatically faster for large PL/SQL objects: `GET_DDL` was measured at
+   * 4+ seconds for one large package in production use, where this is sub-second.
+   *
+   * {@code ALL_SOURCE.TEXT} does not include the {@code CREATE [OR REPLACE]} prefix — its first
+   * row is literally e.g. {@code "PACKAGE BODY name IS\n"} — so that header is reconstructed
+   * here to match what {@code DBMS_METADATA.GET_DDL} (and this app's save-SQL builder, which
+   * requires a leading {@code CREATE}) already expect. Falls back to {@code null} (letting the
+   * caller try {@code DBMS_METADATA.GET_DDL}) on anything unexpected — a custom/wrapped object
+   * with no plain-text source, an empty result, or a first line that doesn't parse the way a
+   * normal object's does — rather than ever returning something silently wrong.
+   */
+  private String fetchOraclePlsqlSource(
+      Connection connection,
+      String schemaName,
+      String objectName,
+      String kind,
+      Boolean packageBody)
+      throws SQLException {
+    String baseType =
+        switch (kind) {
+          case "procedure" -> "PROCEDURE";
+          case "function" -> "FUNCTION";
+          case "package" -> "PACKAGE";
+          default -> throw new IllegalArgumentException("Unsupported PL/SQL kind: " + kind);
+        };
+    String sourceType =
+        kind.equals("package") && Boolean.TRUE.equals(packageBody)
+            ? baseType + " BODY"
+            : baseType;
+
+    for (String schema : distinctCases(schemaName)) {
+      for (String object : distinctCases(objectName)) {
+        StringBuilder source = new StringBuilder();
+        try (PreparedStatement statement =
+            connection.prepareStatement(
+                "SELECT TEXT FROM ALL_SOURCE WHERE TYPE = ? AND OWNER = ? AND NAME = ? "
+                    + "ORDER BY LINE")) {
+          statement.setString(1, sourceType);
+          statement.setString(2, schema);
+          statement.setString(3, object);
+          try (ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) {
+              String line = rs.getString(1);
+              source.append(line == null ? "" : line);
+            }
+          }
+        }
+        if (source.length() > 0) {
+          String withHeader = insertPlsqlCreateReplace(sourceType, schema, source.toString());
+          if (withHeader != null) {
+            return withHeader;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  private static final java.util.regex.Pattern PLSQL_SOURCE_HEADER =
+      java.util.regex.Pattern.compile(
+          "^\\s*(PROCEDURE|FUNCTION|PACKAGE(?:\\s+BODY)?)\\s+(\"?\\w+\"?)",
+          java.util.regex.Pattern.CASE_INSENSITIVE);
+
+  /** {@code ALL_SOURCE.TEXT} has no {@code CREATE [OR REPLACE]} header — reconstruct it. */
+  private static String insertPlsqlCreateReplace(String sourceType, String schema, String source) {
+    java.util.regex.Matcher matcher = PLSQL_SOURCE_HEADER.matcher(source);
+    if (!matcher.find() || matcher.start() != 0) {
+      return null;
+    }
+    return "CREATE OR REPLACE "
+        + matcher.group(1).toUpperCase(java.util.Locale.ROOT)
+        + " \""
+        + schema
+        + "\".\""
+        + objectNameFromHeader(matcher.group(2))
+        + "\""
+        + source.substring(matcher.end());
+  }
+
+  private static String objectNameFromHeader(String rawName) {
+    if (rawName.startsWith("\"") && rawName.endsWith("\"") && rawName.length() >= 2) {
+      return rawName.substring(1, rawName.length() - 1);
+    }
+    return rawName;
   }
 
   @Override

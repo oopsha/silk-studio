@@ -817,6 +817,8 @@ export const enMessages = {
         "No connection selected for this editor. Use the status bar to pick a connected profile.",
       connectionDisconnected:
         "Connection \"{name}\" is disconnected. Reconnect it in the Connections explorer.",
+      connectionReconnectFailed:
+        "Reconnected check failed; please reconnect \"{name}\" manually.",
       executeFailed: "Failed to execute query.",
       parametersTitle: "Query Parameters",
       parametersSummary:

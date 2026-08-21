@@ -5,16 +5,21 @@ import { bridgeListColumns } from "../../services/connection/connectionBridge";
 import { bridgeListPrimaryKeys } from "../../services/connection/connectionPrimaryKeysBridge";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
+import {
+  getCachedObjectPreview,
+  setCachedObjectPreview,
+} from "../../services/connection/objectPreviewCache";
 import "./ColumnsPreview.css";
+
+type CachedColumnsPreview = {
+  columns: MetadataColumn[];
+  primaryKeyNames: Set<string>;
+};
 
 type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | {
-      status: "ready";
-      columns: MetadataColumn[];
-      primaryKeyNames: Set<string>;
-    };
+  | ({ status: "ready" } & CachedColumnsPreview);
 
 type ColumnsPreviewProps = {
   objectRef: ObjectEditorRef;
@@ -52,6 +57,15 @@ function ColumnsPreview({ objectRef }: ColumnsPreviewProps) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
+    const cached = getCachedObjectPreview<CachedColumnsPreview>(
+      "columns",
+      objectRef,
+    );
+    if (cached) {
+      setLoadState({ status: "ready", ...cached });
+      return;
+    }
+
     let cancelled = false;
     setLoadState({ status: "loading" });
 
@@ -71,13 +85,14 @@ function ColumnsPreview({ objectRef }: ColumnsPreviewProps) {
     ])
       .then(([columnsResult, primaryKeysResult]) => {
         if (cancelled) return;
-        setLoadState({
-          status: "ready",
+        const ready: CachedColumnsPreview = {
           columns: columnsResult.columns,
           primaryKeyNames: new Set(
             primaryKeysResult.keys.map((key) => key.name.toLowerCase()),
           ),
-        });
+        };
+        setLoadState({ status: "ready", ...ready });
+        setCachedObjectPreview("columns", objectRef, ready);
       })
       .catch((error) => {
         if (cancelled) return;
