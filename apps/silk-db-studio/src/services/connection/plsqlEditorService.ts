@@ -19,13 +19,16 @@ export function isEditablePlsqlKind(kind: MetadataObjectKind): boolean {
  * machinery. Oracle, PostgreSQL, and MySQL/MariaDB all round-trip cleanly via
  * `CREATE OR REPLACE VIEW` (Postgres source is `pg_get_viewdef` wrapped in a CREATE OR REPLACE
  * header server-side; MySQL/MariaDB source comes directly from `SHOW CREATE VIEW`). SQL Server
- * is a later phase — it has no `CREATE OR REPLACE`, only `ALTER VIEW`.
+ * has no `CREATE OR REPLACE` — its source (`sys.sql_modules.definition`) is already a full
+ * `CREATE VIEW ... AS ...` statement, and `buildPlsqlSaveSql` rewrites the leading `CREATE` to
+ * `ALTER` for it instead (see that module).
  */
 const VIEW_EDIT_DRIVERS = new Set<ConnectionDriverId>([
   "oracle",
   "postgresql",
   "mysql",
   "mariadb",
+  "sqlserver",
 ]);
 
 export function supportsPlsqlSourceEdit(

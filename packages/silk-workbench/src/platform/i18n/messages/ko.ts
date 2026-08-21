@@ -935,6 +935,9 @@ export const koMessages = {
       clearAllSnapshots: "모두 삭제",
       clearAllConfirm:
         "{label}의 로컬 스냅샷을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.",
+      savePendingCommit:
+        "저장했지만 아직 커밋 대기 중입니다 — 상태 표시줄에서 커밋해야 최종 반영됩니다.",
+      saveRolledBack: "롤백되어 이 저장은 취소되었습니다.",
     },
     ai: {
       emptyHint:
