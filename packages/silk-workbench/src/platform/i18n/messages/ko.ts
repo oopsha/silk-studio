@@ -733,6 +733,31 @@ export const koMessages = {
       modifiedSection: "수정된 컬럼",
       renamedFrom: "{from}에서 이름 변경됨",
       blockersTitle: "저장 전에 다음을 해결하세요:",
+      blockerIdentityGenerated:
+        '"{name}"은(는) 식별자/생성 컬럼이라 편집할 수 없습니다.',
+      blockerUnknownDefaultConstraint:
+        '"{name}"의 기본값을 바꿀 수 없습니다 — 이 컬럼의 SQL Server 기본값 제약조건 이름을 알 수 없습니다 (테이블을 다시 불러온 뒤 시도하세요).',
+      blockerEmptyName: "컬럼명은 비워둘 수 없습니다.",
+      blockerNoType: '"{name}"에 타입이 지정되지 않았습니다.',
+      blockerInvalidColumnName:
+        '"{name}"에는 영문자, 숫자, 밑줄, $, # 만 사용할 수 있습니다.',
+      blockerDuplicateName: '컬럼명 "{name}"이(가) 중복됩니다.',
+      blockerTableNameRequired: "새 테이블명을 입력해야 합니다.",
+      blockerTableNameInvalid: "새 테이블명에는 영문자, 숫자, 밑줄, $, # 만 사용할 수 있습니다.",
+      blockerDropAllColumns: "테이블의 모든 컬럼을 삭제할 수는 없습니다.",
+      warningNotNullNoDefault:
+        '기본값 없이 NOT NULL 컬럼 "{name}"을(를) 추가하면, 테이블에 이미 행이 있는 경우 실패합니다.',
+      warningColumnDropped: '컬럼 "{name}"이(가) 삭제됩니다 — 되돌릴 수 없습니다.',
+      warningTypeChangeRisky:
+        '"{name}"의 타입 변경({before} → {after})으로 데이터가 잘리거나 실패할 수 있습니다.',
+      warningPostgresUsingClause:
+        '"{name}"의 타입 변경은 PostgreSQL에서 명시적인 USING 절이 필요할 수 있습니다 — 자동으로 생성되지 않으니, 저장이 실패하면 SQL 탭을 직접 수정하세요.',
+      warningBecomingNotNull:
+        '"{name}"이(가) NOT NULL로 바뀝니다 — 기존 행 중 NULL 값이 있으면 실패합니다.',
+      warningMysqlTypeFidelity:
+        '"{name}"의 타입은 드라이버 원본 텍스트가 아니라 화면 표시값에서 다시 만들어집니다 — ENUM/SET/unsigned 타입은 정보가 유실될 수 있습니다 (에이전트를 최신 버전으로 갱신하면 해결됩니다).',
+      warningNoConstraintVisibility:
+        "이 편집기는 제약조건·인덱스·외래 키를 알지 못합니다 — 이를 위반하는 변경은 데이터베이스 자체 오류로 실패합니다.",
     },
     objectEditor: {
       propertiesTab: "속성",

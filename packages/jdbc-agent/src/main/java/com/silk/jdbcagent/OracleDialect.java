@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 /** Oracle Database (ojdbc11) dialect. This is the original, pre-abstraction behavior. */
@@ -86,6 +87,35 @@ final class OracleDialect implements DbDialect {
     return new ArrayList<>(names);
   }
 
+  /**
+   * Queries {@code ALL_TAB_COLUMNS}/{@code ALL_COL_COMMENTS} directly instead of JDBC's {@code
+   * getColumns} — like {@link #collectRoutineArguments}, the standard JDBC metadata call is
+   * dramatically slower on Oracle's driver than a direct dictionary query (confirmed against
+   * DBeaver, which does the same). This is the tab users hit first opening a table, so it's the
+   * one most worth fixing.
+   */
+  private static final String ORACLE_COLUMNS_SQL_BASE =
+      "SELECT c.COLUMN_NAME, c.DATA_TYPE, c.DATA_LENGTH, c.DATA_PRECISION, c.DATA_SCALE, "
+          + "c.CHAR_LENGTH, c.NULLABLE, c.DATA_DEFAULT, c.COLUMN_ID%s, cm.COMMENTS "
+          + "FROM ALL_TAB_COLUMNS c "
+          + "LEFT JOIN ALL_COL_COMMENTS cm "
+          + "  ON cm.OWNER = c.OWNER AND cm.TABLE_NAME = c.TABLE_NAME "
+          + "  AND cm.COLUMN_NAME = c.COLUMN_NAME "
+          + "WHERE c.OWNER = ? AND c.TABLE_NAME = ? "
+          + "ORDER BY c.COLUMN_ID";
+
+  /**
+   * {@code IDENTITY_COLUMN}/{@code VIRTUAL_COLUMN} were added to {@code ALL_TAB_COLUMNS} in
+   * Oracle 12c/11g respectively — old enough that every real Oracle instance should have them,
+   * but some Oracle-compatible/legacy targets in the wild don't (confirmed by a user hitting
+   * ORA-00904 on {@code VIRTUAL_COLUMN}). Rather than gate on a version probe, just try with them
+   * first and drop both on that specific failure.
+   *
+   * <p>Deliberately re-checked on every call rather than cached on this dialect instance — {@code
+   * DbDialects} holds a single shared {@code OracleDialect} across every Oracle connection in the
+   * process, so a per-instance flag would leak a fallback triggered by one (old/nonstandard)
+   * target into unrelated sessions against normal Oracle instances.
+   */
   @Override
   public void collectTableColumns(
       Connection connection,
@@ -94,18 +124,107 @@ final class OracleDialect implements DbDialect {
       String tableName,
       ArrayNode columns)
       throws SQLException {
-    DatabaseMetaData metadata = connection.getMetaData();
-    // Oracle unquoted identifiers are stored uppercased — try given case, then UPPER.
-    String[] schemas = distinctCases(schemaName);
-    String[] tables = distinctCases(tableName);
-    for (String schema : schemas) {
-      for (String table : tables) {
-        try (ResultSet rs = metadata.getColumns(null, schema, table, "%")) {
-          MetadataColumns.appendFromResultSet(rs, columns);
+    for (String schema : distinctCases(schemaName)) {
+      for (String table : distinctCases(tableName)) {
+        try {
+          executeOracleColumnsQuery(connection, schema, table, columns, true);
+        } catch (SQLException error) {
+          if (error.getErrorCode() != 904) {
+            throw error;
+          }
+          executeOracleColumnsQuery(connection, schema, table, columns, false);
         }
         if (columns.size() > 0) {
           return;
         }
+      }
+    }
+  }
+
+  private static void executeOracleColumnsQuery(
+      Connection connection,
+      String schema,
+      String table,
+      ArrayNode columns,
+      boolean withIdentityVirtual)
+      throws SQLException {
+    String sql =
+        String.format(
+            ORACLE_COLUMNS_SQL_BASE, withIdentityVirtual ? ", c.IDENTITY_COLUMN, c.VIRTUAL_COLUMN" : "");
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schema);
+      statement.setString(2, table);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          appendOracleColumn(rs, columns, withIdentityVirtual);
+        }
+      }
+    }
+  }
+
+  private static void appendOracleColumn(
+      ResultSet rs, ArrayNode columns, boolean withIdentityVirtual) throws SQLException {
+    String name = rs.getString("COLUMN_NAME");
+    if (name == null || name.isBlank()) {
+      return;
+    }
+    ObjectNode column = columns.addObject();
+    column.put("name", name);
+
+    String dataType = rs.getString("DATA_TYPE");
+    if (dataType != null && !dataType.isBlank()) {
+      column.put("typeName", dataType);
+    }
+    String upperType = dataType == null ? "" : dataType.toUpperCase(Locale.ROOT);
+    Integer columnSize = null;
+    Integer decimalDigits = null;
+    if (upperType.startsWith("NUMBER") || upperType.startsWith("FLOAT")) {
+      columnSize = rs.getObject("DATA_PRECISION", Integer.class);
+      decimalDigits = rs.getObject("DATA_SCALE", Integer.class);
+    } else if (upperType.contains("CHAR")) {
+      columnSize = rs.getObject("CHAR_LENGTH", Integer.class);
+    } else if (upperType.contains("RAW")) {
+      columnSize = rs.getObject("DATA_LENGTH", Integer.class);
+    }
+    if (columnSize != null) {
+      column.put("columnSize", columnSize);
+    }
+    if (decimalDigits != null) {
+      column.put("decimalDigits", decimalDigits);
+    }
+
+    String nullable = rs.getString("NULLABLE");
+    if ("Y".equalsIgnoreCase(nullable)) {
+      column.put("nullable", true);
+    } else if ("N".equalsIgnoreCase(nullable)) {
+      column.put("nullable", false);
+    }
+
+    String defaultValue = rs.getString("DATA_DEFAULT");
+    if (defaultValue != null) {
+      // Oracle pads DATA_DEFAULT with a trailing newline/space for most literal defaults.
+      String trimmed = defaultValue.strip();
+      if (!trimmed.isEmpty()) {
+        column.put("defaultValue", trimmed);
+      }
+    }
+
+    String comment = rs.getString("COMMENTS");
+    if (comment != null && !comment.isBlank()) {
+      column.put("comment", comment);
+    }
+
+    Integer position = rs.getObject("COLUMN_ID", Integer.class);
+    if (position != null) {
+      column.put("position", position);
+    }
+
+    if (withIdentityVirtual) {
+      if ("YES".equalsIgnoreCase(rs.getString("IDENTITY_COLUMN"))) {
+        column.put("autoIncrement", true);
+      }
+      if ("YES".equalsIgnoreCase(rs.getString("VIRTUAL_COLUMN"))) {
+        column.put("generated", true);
       }
     }
   }
@@ -194,6 +313,7 @@ final class OracleDialect implements DbDialect {
     return null;
   }
 
+  /** Direct dictionary query — see {@link #collectTableColumns}'s doc comment for why. */
   @Override
   public void collectTableIndexes(
       Connection connection,
@@ -202,11 +322,41 @@ final class OracleDialect implements DbDialect {
       String tableName,
       ArrayNode indexes)
       throws SQLException {
-    DatabaseMetaData metadata = connection.getMetaData();
+    String sql =
+        "SELECT ic.INDEX_NAME, ic.COLUMN_NAME, ic.COLUMN_POSITION, i.UNIQUENESS "
+            + "FROM ALL_IND_COLUMNS ic "
+            + "JOIN ALL_INDEXES i ON i.OWNER = ic.INDEX_OWNER AND i.INDEX_NAME = ic.INDEX_NAME "
+            + "WHERE ic.TABLE_OWNER = ? AND ic.TABLE_NAME = ? "
+            + "ORDER BY ic.INDEX_NAME, ic.COLUMN_POSITION";
     for (String schema : distinctCases(schemaName)) {
       for (String table : distinctCases(tableName)) {
-        try (ResultSet rs = metadata.getIndexInfo(null, schema, table, false, true)) {
-          MetadataIndexes.appendFromResultSet(rs, indexes);
+        Map<String, TreeMap<Integer, String>> columnsByIndex = new LinkedHashMap<>();
+        Map<String, Boolean> uniqueByIndex = new LinkedHashMap<>();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+          statement.setString(1, schema);
+          statement.setString(2, table);
+          try (ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) {
+              String indexName = rs.getString("INDEX_NAME");
+              String columnName = rs.getString("COLUMN_NAME");
+              if (indexName == null || indexName.isBlank() || columnName == null || columnName.isBlank()) {
+                continue;
+              }
+              columnsByIndex
+                  .computeIfAbsent(indexName, key -> new TreeMap<>())
+                  .put(rs.getInt("COLUMN_POSITION"), columnName);
+              uniqueByIndex.put(indexName, "UNIQUE".equals(rs.getString("UNIQUENESS")));
+            }
+          }
+        }
+        for (Map.Entry<String, TreeMap<Integer, String>> entry : columnsByIndex.entrySet()) {
+          ObjectNode index = indexes.addObject();
+          index.put("name", entry.getKey());
+          index.put("unique", Boolean.TRUE.equals(uniqueByIndex.get(entry.getKey())));
+          ArrayNode indexColumns = index.putArray("columns");
+          for (String column : entry.getValue().values()) {
+            indexColumns.add(column);
+          }
         }
         if (indexes.size() > 0) {
           return;
@@ -215,6 +365,12 @@ final class OracleDialect implements DbDialect {
     }
   }
 
+  /**
+   * Direct {@code ALL_CONSTRAINTS}/{@code ALL_CONS_COLUMNS} query — see {@link
+   * #collectTableColumns}'s doc comment for why. Oracle doesn't support {@code ON UPDATE} actions
+   * on foreign keys at all, so unlike the other three dialects this never emits {@code
+   * updateRule}.
+   */
   @Override
   public void collectTableForeignKeys(
       Connection connection,
@@ -223,11 +379,25 @@ final class OracleDialect implements DbDialect {
       String tableName,
       ArrayNode foreignKeys)
       throws SQLException {
-    DatabaseMetaData metadata = connection.getMetaData();
+    String sql =
+        "SELECT c.CONSTRAINT_NAME AS FK_NAME, cc.COLUMN_NAME AS FK_COLUMN, cc.POSITION AS KEY_SEQ, "
+            + "rc.OWNER AS OTHER_OWNER, rc.TABLE_NAME AS OTHER_TABLE, "
+            + "rcc.COLUMN_NAME AS OTHER_COLUMN, c.DELETE_RULE "
+            + "FROM ALL_CONSTRAINTS c "
+            + "JOIN ALL_CONS_COLUMNS cc ON cc.OWNER = c.OWNER AND cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME "
+            + "JOIN ALL_CONSTRAINTS rc ON rc.OWNER = c.R_OWNER AND rc.CONSTRAINT_NAME = c.R_CONSTRAINT_NAME "
+            + "JOIN ALL_CONS_COLUMNS rcc ON rcc.OWNER = rc.OWNER AND rcc.CONSTRAINT_NAME = rc.CONSTRAINT_NAME "
+            + "  AND rcc.POSITION = cc.POSITION "
+            + "WHERE c.OWNER = ? AND c.TABLE_NAME = ? AND c.CONSTRAINT_TYPE = 'R' "
+            + "ORDER BY c.CONSTRAINT_NAME, cc.POSITION";
     for (String schema : distinctCases(schemaName)) {
       for (String table : distinctCases(tableName)) {
-        try (ResultSet rs = metadata.getImportedKeys(null, schema, table)) {
-          MetadataForeignKeys.appendFromResultSet(rs, foreignKeys);
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+          statement.setString(1, schema);
+          statement.setString(2, table);
+          try (ResultSet rs = statement.executeQuery()) {
+            appendOracleFkRows(rs, foreignKeys, "referencedSchema", "referencedTable", "referencedColumns", "columns");
+          }
         }
         if (foreignKeys.size() > 0) {
           return;
@@ -236,6 +406,7 @@ final class OracleDialect implements DbDialect {
     }
   }
 
+  /** Mirror image of {@link #collectTableForeignKeys} — who points *at* this table. */
   @Override
   public void collectTableReferences(
       Connection connection,
@@ -244,15 +415,105 @@ final class OracleDialect implements DbDialect {
       String tableName,
       ArrayNode references)
       throws SQLException {
-    DatabaseMetaData metadata = connection.getMetaData();
+    // Note the alias assignment here is intentionally the mirror of collectTableForeignKeys':
+    // FK_COLUMN/KEY_SEQ must be *this* table's own (referenced) column so appendOracleFkRows'
+    // fixed "FK_COLUMN → ownColumnsField" mapping lands it under "columns" — not the referencing
+    // child table's column, even though that's what "FK_COLUMN" would suggest.
+    String sql =
+        "SELECT c.CONSTRAINT_NAME AS FK_NAME, rcc.COLUMN_NAME AS FK_COLUMN, cc.POSITION AS KEY_SEQ, "
+            + "c.OWNER AS OTHER_OWNER, c.TABLE_NAME AS OTHER_TABLE, "
+            + "cc.COLUMN_NAME AS OTHER_COLUMN, c.DELETE_RULE "
+            + "FROM ALL_CONSTRAINTS rc "
+            + "JOIN ALL_CONSTRAINTS c ON c.R_OWNER = rc.OWNER AND c.R_CONSTRAINT_NAME = rc.CONSTRAINT_NAME "
+            + "  AND c.CONSTRAINT_TYPE = 'R' "
+            + "JOIN ALL_CONS_COLUMNS cc ON cc.OWNER = c.OWNER AND cc.CONSTRAINT_NAME = c.CONSTRAINT_NAME "
+            + "JOIN ALL_CONS_COLUMNS rcc ON rcc.OWNER = rc.OWNER AND rcc.CONSTRAINT_NAME = rc.CONSTRAINT_NAME "
+            + "  AND rcc.POSITION = cc.POSITION "
+            + "WHERE rc.OWNER = ? AND rc.TABLE_NAME = ? AND rc.CONSTRAINT_TYPE IN ('P', 'U') "
+            + "ORDER BY c.CONSTRAINT_NAME, cc.POSITION";
     for (String schema : distinctCases(schemaName)) {
       for (String table : distinctCases(tableName)) {
-        try (ResultSet rs = metadata.getExportedKeys(null, schema, table)) {
-          MetadataReferences.appendFromResultSet(rs, references);
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+          statement.setString(1, schema);
+          statement.setString(2, table);
+          try (ResultSet rs = statement.executeQuery()) {
+            appendOracleFkRows(
+                rs, references, "referencingSchema", "referencingTable", "referencingColumns", "columns");
+          }
         }
         if (references.size() > 0) {
           return;
         }
+      }
+    }
+  }
+
+  private static final class OracleFkBuilder {
+    String otherSchema;
+    String otherTable;
+    String deleteRule;
+    final TreeMap<Integer, String> fkColumns = new TreeMap<>();
+    final TreeMap<Integer, String> otherColumns = new TreeMap<>();
+  }
+
+  /**
+   * Groups flat {@code FK_NAME/FK_COLUMN/KEY_SEQ/OTHER_OWNER/OTHER_TABLE/OTHER_COLUMN/
+   * DELETE_RULE} rows (shared shape between {@link #collectTableForeignKeys}'s and {@link
+   * #collectTableReferences}'s queries) into one JSON object per constraint. The two callers
+   * disagree on what the "other side" and "this side" are called in the output, so the field
+   * names are parameterized rather than hardcoded.
+   */
+  private static void appendOracleFkRows(
+      ResultSet rs,
+      ArrayNode target,
+      String otherSchemaField,
+      String otherTableField,
+      String otherColumnsField,
+      String ownColumnsField)
+      throws SQLException {
+    Map<String, OracleFkBuilder> byName = new LinkedHashMap<>();
+    List<String> order = new ArrayList<>();
+    while (rs.next()) {
+      String fkColumn = rs.getString("FK_COLUMN");
+      if (fkColumn == null || fkColumn.isBlank()) {
+        continue;
+      }
+      String name = rs.getString("FK_NAME");
+      if (name == null || name.isBlank()) {
+        continue;
+      }
+      OracleFkBuilder builder = byName.get(name);
+      if (builder == null) {
+        builder = new OracleFkBuilder();
+        builder.otherSchema = rs.getString("OTHER_OWNER");
+        builder.otherTable = rs.getString("OTHER_TABLE");
+        builder.deleteRule = rs.getString("DELETE_RULE");
+        byName.put(name, builder);
+        order.add(name);
+      }
+      int keySeq = rs.getInt("KEY_SEQ");
+      builder.fkColumns.put(keySeq, fkColumn);
+      builder.otherColumns.put(keySeq, rs.getString("OTHER_COLUMN"));
+    }
+    for (String name : order) {
+      OracleFkBuilder builder = byName.get(name);
+      ObjectNode node = target.addObject();
+      node.put("name", name);
+      if (builder.otherSchema != null && !builder.otherSchema.isBlank()) {
+        node.put(otherSchemaField, builder.otherSchema);
+      }
+      node.put(otherTableField, builder.otherTable == null ? "" : builder.otherTable);
+      ArrayNode ownColumns = node.putArray(ownColumnsField);
+      for (String column : builder.fkColumns.values()) {
+        ownColumns.add(column);
+      }
+      ArrayNode otherColumns = node.putArray(otherColumnsField);
+      for (String column : builder.otherColumns.values()) {
+        otherColumns.add(column);
+      }
+      // Oracle has no ON UPDATE action — updateRule is deliberately never emitted.
+      if (builder.deleteRule != null && !builder.deleteRule.isBlank()) {
+        node.put("deleteRule", builder.deleteRule.trim());
       }
     }
   }
