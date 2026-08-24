@@ -31,6 +31,7 @@ import AboutDialog from "@silk-studio/workbench/components/diagnostics/AboutDial
 import AiAuditLogDialog from "@silk-studio/workbench/components/ai/AiAuditLogDialog.tsx";
 import AppToast from "@silk-studio/workbench/components/diagnostics/AppToast.tsx";
 import PlsqlSaveDialog from "../../plsql/PlsqlSaveDialog.tsx";
+import TableStructureSaveDialog from "../../object-editor/TableStructureSaveDialog.tsx";
 import PlsqlSnapshotDialog from "../../plsql/PlsqlSnapshotDialog.tsx";
 import DdlEditorView from "../../ddl/DdlEditorView.tsx";
 import PlsqlEditorView from "../../plsql/PlsqlEditorView.tsx";
@@ -380,6 +381,7 @@ function AppShell() {
       <ConnectionImportDialog />
       <ConnectionPasswordPromptDialog />
       <PlsqlSaveDialog />
+      <TableStructureSaveDialog />
       <PlsqlSnapshotDialog />
       <AboutDialog />
       <AiAuditLogDialog />

@@ -81,7 +81,16 @@ interface DbDialect {
 
   /**
    * Populates {@code columns} with column descriptors ({@code name}, optional {@code typeName})
-   * for {@code tableName} under {@code schemaName}. Used by SQL autocomplete.
+   * for {@code tableName} under {@code schemaName}. Used by SQL autocomplete and by the Object
+   * Editor's table-structure editor (Columns tab) — implementations should also emit {@code
+   * position}, {@code autoIncrement}, and {@code generated} when the driver exposes them (see
+   * {@link MetadataColumns#appendFromResultSet}), since the structure editor uses them to keep
+   * identity/generated columns read-only and to order the grid deterministically. Dialects whose
+   * type system can't be losslessly reconstructed from {@code typeName}/{@code columnSize}/{@code
+   * decimalDigits} alone (MySQL/MariaDB's {@code ENUM(...)}/{@code SET(...)}/unsigned modifiers)
+   * should additionally populate {@code fullTypeName} with the driver's own full column-type text
+   * — the structure editor's MySQL rename path (which must restate the entire column definition)
+   * depends on it.
    */
   void collectTableColumns(
       Connection connection,

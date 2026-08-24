@@ -152,7 +152,20 @@
 - **Rename** — 드라이버별 지원 시만 (Oracle `RENAME`, PostgreSQL `ALTER … RENAME` …)
 - read-only 모드·`sqlGuard` 차단
 - 성공 후 해당 스키마 트리 invalidate + 6-D refresh 연동
-- v1에서 **넣지 말 것**: 컬럼 편집 UI, 복잡한 ALTER TABLE 빌더, 패키지 본문 편집(→ 7)
+- ~~v1에서 **넣지 말 것**: 컬럼 편집 UI, 복잡한 ALTER TABLE 빌더~~ → 구현 완료(아래 "테이블 구조 편집" 참고). 패키지 본문 편집은 계속 범위 밖(→ 7)
+
+### 테이블 구조 편집 (컬럼 + 테이블명/코멘트) — 완료
+
+Properties → Columns 탭에서 테이블명·테이블 코멘트·컬럼(추가/삭제/이름변경/타입/길이/스케일/Not Null/기본값/코멘트)을 직접 편집하고 저장 시 4개 방언(Oracle/PostgreSQL/MySQL·MariaDB/SQL Server) 각각의 ALTER TABLE류 문장을 생성해 확인 다이얼로그 → 실행하는 기능. 핵심 파일: `tableStructureDiff.ts`(rowId 기반 snapshot diff), `tableStructureSaveSql.ts`(방언별 생성기), `TableStructureEditor.tsx`(편집 그리드), `TableStructureSaveDialog.tsx`(확인 다이얼로그).
+
+**알려진 제약사항(v1)**:
+- PK/FK/Unique/Check 제약조건·인덱스 편집 없음 — 위반 시 DB 원본 에러 그대로 노출.
+- 컬럼 순서 변경 없음.
+- identity/auto-increment/generated 컬럼은 읽기 전용.
+- PostgreSQL에서 `USING` 절이 필요한 타입 변경은 자동 생성 안 함(경고만 표시).
+- Oracle CHAR vs BYTE 길이 시맨틱을 완전히 보존하지 않음(타입을 실제로 편집한 경우만 재작성 — MySQL/MariaDB는 `fullTypeName` 필드로 예외적으로 커버).
+- Oracle/MySQL DDL은 auto-commit이라 문장 간 트랜잭션 원자성이 없음 — 부분 실패는 몇 번째 문장까지 실행됐는지 보고만 하고 자동 롤백하지 않음.
+- 구조 변경 히스토리/원클릭 복원 없음(스냅샷 기능과 달리, 구조 변경은 스냅샷 재실행으로 완전히 복구되지 않으므로 의도적으로 제외).
 
 ### 완료 기준
 

@@ -5,10 +5,13 @@ import type { MessageKey } from "@silk-studio/workbench/platform/i18n/i18nServic
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
 import { ConnectionService } from "../../services/connection/connectionService";
 import { supportsPlsqlSourceEdit } from "../../services/connection/plsqlEditorService";
+import { supportsTableStructureEdit } from "../../services/connection/explorerObjectMutationSql";
 import DdlPreview from "../ddl/DdlPreview";
 import ViewDdlEditor from "./ViewDdlEditor";
 import ObjectEditorHeader from "./ObjectEditorHeader";
 import ColumnsPreview from "./ColumnsPreview";
+import TableStructureEditor from "./TableStructureEditor";
+import { useTableStructureEditorState } from "./useTableStructureEditorState";
 import IndexesPreview from "./IndexesPreview";
 import ForeignKeysPreview from "./ForeignKeysPreview";
 import ReferencesPreview from "./ReferencesPreview";
@@ -22,6 +25,9 @@ type PropertiesRenderCtx = {
   tabId: string;
   tabUri: string | undefined;
   bufferedContent: string | undefined;
+  /** Set only for tables on a driver that supports structure editing — see
+   *  `useTableStructureEditorState`'s doc comment. */
+  tableEditor: ReturnType<typeof useTableStructureEditorState>;
 };
 
 type PropertiesSection = {
@@ -34,7 +40,12 @@ const PROPERTIES_SECTIONS: PropertiesSection[] = [
   {
     id: "columns",
     labelKey: "app.objectEditor.columnsSection",
-    render: (ctx) => <ColumnsPreview objectRef={ctx.objectRef} />,
+    render: (ctx) =>
+      ctx.tableEditor ? (
+        <TableStructureEditor state={ctx.tableEditor} />
+      ) : (
+        <ColumnsPreview objectRef={ctx.objectRef} />
+      ),
   },
   {
     id: "indexes",
@@ -119,6 +130,16 @@ function PropertiesView({ objectRef, tabId, tabUri, bufferedContent }: Propertie
     () => activeSectionIdByTabId.get(tabId) ?? PROPERTIES_SECTIONS[0].id,
   );
 
+  const driverId = ConnectionService.getProfile(objectRef.profileId)?.driverId;
+  const isTableStructureEditable =
+    driverId !== undefined && supportsTableStructureEdit(driverId, objectRef.kind);
+  const tableEditor = useTableStructureEditorState({
+    objectRef,
+    tabId,
+    driverId,
+    enabled: isTableStructureEditable,
+  });
+
   const setActiveSectionId = (id: string) => {
     setActiveSectionIdState(id);
     activeSectionIdByTabId.set(tabId, id);
@@ -136,7 +157,7 @@ function PropertiesView({ objectRef, tabId, tabUri, bufferedContent }: Propertie
 
   return (
     <div className="object-editor-properties-page">
-      <ObjectEditorHeader objectRef={objectRef} />
+      <ObjectEditorHeader objectRef={objectRef} tableEditor={tableEditor} />
       <div className="object-editor-properties">
         <aside className="object-editor-properties__sidebar">
           <nav className="object-editor-properties__nav">
@@ -157,7 +178,7 @@ function PropertiesView({ objectRef, tabId, tabUri, bufferedContent }: Propertie
           </nav>
         </aside>
         <div className="object-editor-properties__content">
-          {active.render({ objectRef, tabId, tabUri, bufferedContent })}
+          {active.render({ objectRef, tabId, tabUri, bufferedContent, tableEditor })}
         </div>
       </div>
     </div>

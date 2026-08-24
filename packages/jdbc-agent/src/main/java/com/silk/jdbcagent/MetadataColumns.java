@@ -45,6 +45,31 @@ final class MetadataColumns {
       if (remarks != null && !remarks.isBlank()) {
         column.put("comment", remarks);
       }
+      Integer position = rs.getObject("ORDINAL_POSITION", Integer.class);
+      if (position != null) {
+        column.put("position", position);
+      }
+      // IS_AUTOINCREMENT/IS_GENERATEDCOLUMN are "YES"/"NO"/"" (unknown) per the JDBC spec —
+      // only emit the field when the driver actually took a position, same "leave it out rather
+      // than guess" rule as NULLABLE above.
+      String autoIncrement = readYesNoColumn(rs, "IS_AUTOINCREMENT");
+      if (autoIncrement != null) {
+        column.put("autoIncrement", "YES".equalsIgnoreCase(autoIncrement));
+      }
+      String generated = readYesNoColumn(rs, "IS_GENERATEDCOLUMN");
+      if (generated != null) {
+        column.put("generated", "YES".equalsIgnoreCase(generated));
+      }
+    }
+  }
+
+  /** Reads a nullable "YES"/"NO"/"" JDBC metadata column, tolerating drivers that omit it. */
+  private static String readYesNoColumn(ResultSet rs, String columnLabel) throws SQLException {
+    try {
+      String value = rs.getString(columnLabel);
+      return (value == null || value.isBlank()) ? null : value;
+    } catch (SQLException e) {
+      return null;
     }
   }
 }

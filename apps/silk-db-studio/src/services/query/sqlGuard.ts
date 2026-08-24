@@ -1,13 +1,13 @@
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 
 const WRITE_SQL_PATTERN =
-  /^\s*(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|call|exec|execute)\b/i;
+  /^\s*(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|call|exec|execute|comment)\b/i;
 
 /** DDL/DCL keywords — the subset of {@link WRITE_SQL_PATTERN} that Oracle/MySQL implicitly
  *  commit on execution (see `driverAutoCommitsDdl` in sqlDialect.ts). `call`/`exec`/
  *  `execute` and the DML keywords are left out: those run inside the normal transaction. */
 const DDL_SQL_PATTERN =
-  /^\s*(drop|alter|create|truncate|grant|revoke)\b/i;
+  /^\s*(drop|alter|create|truncate|grant|revoke|comment)\b/i;
 
 /** One leading `-- ...` line comment (through its newline, or to end of string) or one leading
  *  `/* ... *\/` block comment, anchored at the start of the (remaining) input. */

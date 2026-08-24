@@ -66,6 +66,22 @@ export function supportsDropObject(
   return true;
 }
 
+/** All 5 drivers support the table structure editor (Columns tab of Properties) for tables. */
+const TABLE_STRUCTURE_EDIT_DRIVERS = new Set<ConnectionDriverId>([
+  "oracle",
+  "postgresql",
+  "mysql",
+  "mariadb",
+  "sqlserver",
+]);
+
+export function supportsTableStructureEdit(
+  driverId: ConnectionDriverId,
+  kind: MetadataObjectKind,
+): boolean {
+  return kind === "table" && TABLE_STRUCTURE_EDIT_DRIVERS.has(driverId);
+}
+
 /** v1 rename: PostgreSQL (table/view) and Oracle (all explorer kinds). */
 export function supportsRenameObject(
   kind: MetadataObjectKind,

@@ -1,0 +1,46 @@
+.table-structure-save-dialog__changes {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.table-structure-save-dialog__group {
+  margin-bottom: 16px;
+}
+
+.table-structure-save-dialog__group-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-description);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin: 0 0 6px;
+}
+
+.table-structure-save-dialog__entry {
+  padding: 6px 8px;
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.03);
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.table-structure-save-dialog__entry-name {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.table-structure-save-dialog__field-change {
+  color: var(--color-description);
+  font-size: 12px;
+  margin-left: 12px;
+}
+
+.table-structure-save-dialog__field-change strong {
+  color: var(--color-foreground);
+  font-weight: 500;
+}
+
+.table-structure-save-dialog__blockers {
+  color: #f48771;
+}

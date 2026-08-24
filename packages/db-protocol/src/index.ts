@@ -159,6 +159,24 @@ export type MetadataColumn = {
   nullable?: boolean;
   defaultValue?: string;
   comment?: string;
+  /** JDBC `ORDINAL_POSITION` — stable 1-based column order, used by the table structure editor. */
+  position?: number;
+  /**
+   * The driver's own full column-type text, when `typeName`/`columnSize`/`decimalDigits` can't
+   * losslessly reproduce it (e.g. MySQL/MariaDB `ENUM(...)`/`SET(...)`/unsigned modifiers).
+   * Only populated by dialects where this matters; the table structure editor's MySQL/MariaDB
+   * rename path restates this verbatim rather than re-deriving a declaration from parts.
+   */
+  fullTypeName?: string;
+  /**
+   * SQL Server only — the named default constraint backing this column's default value, if any.
+   * Changing/dropping a SQL Server column default requires dropping this constraint first.
+   */
+  defaultConstraintName?: string;
+  /** True for identity/auto-increment columns — the table structure editor keeps these read-only. */
+  autoIncrement?: boolean;
+  /** True for computed/generated columns — the table structure editor keeps these read-only. */
+  generated?: boolean;
 };
 
 export type ConnectionColumnsParams = {

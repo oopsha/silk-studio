@@ -325,6 +325,7 @@ final class SqlServerDialect implements DbDialect {
       }
     }
     applyColumnComments(connection, catalog, schemaName, tableName, columns);
+    applyColumnDefaultConstraintNames(connection, catalog, schemaName, tableName, columns);
   }
 
   private static void collectTableColumnsInCatalog(
@@ -341,8 +342,14 @@ final class SqlServerDialect implements DbDialect {
             + "c.NUMERIC_SCALE AS DECIMAL_DIGITS, "
             + "CASE WHEN c.IS_NULLABLE = 'YES' THEN 1 ELSE 0 END AS NULLABLE, "
             + "c.COLUMN_DEFAULT AS COLUMN_DEF, "
-            + "CAST(NULL AS NVARCHAR(4000)) AS REMARKS "
+            + "CAST(NULL AS NVARCHAR(4000)) AS REMARKS, "
+            + "c.ORDINAL_POSITION AS ORDINAL_POSITION, "
+            + "CASE WHEN sc.is_identity = 1 THEN 'YES' ELSE 'NO' END AS IS_AUTOINCREMENT, "
+            + "CASE WHEN sc.is_computed = 1 THEN 'YES' ELSE 'NO' END AS IS_GENERATEDCOLUMN "
             + "FROM " + prefix + "INFORMATION_SCHEMA.COLUMNS c "
+            + "LEFT JOIN " + prefix + "sys.objects o ON o.name = c.TABLE_NAME "
+            + "LEFT JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id AND s.name = c.TABLE_SCHEMA "
+            + "LEFT JOIN " + prefix + "sys.columns sc ON sc.object_id = o.object_id AND sc.name = c.COLUMN_NAME "
             + "WHERE c.TABLE_SCHEMA = ? AND c.TABLE_NAME = ? "
             + "ORDER BY c.ORDINAL_POSITION";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -778,6 +785,52 @@ final class SqlServerDialect implements DbDialect {
             if (node instanceof ObjectNode objectNode
                 && columnName.equals(objectNode.path("name").asText(null))) {
               objectNode.put("comment", remarks);
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * SQL Server stores column defaults as named constraints ({@code sys.default_constraints}),
+   * not as a plain column attribute — changing or dropping a default requires dropping this
+   * constraint by name first. Neither {@code getColumns()} nor {@code INFORMATION_SCHEMA.COLUMNS}
+   * expose the constraint name, so fetch and merge it in separately (same shape as {@link
+   * #applyColumnComments}).
+   */
+  private void applyColumnDefaultConstraintNames(
+      Connection connection, String catalog, String schemaName, String tableName, ArrayNode columns)
+      throws SQLException {
+    if (columns.isEmpty()) {
+      return;
+    }
+
+    String prefix = CatalogQualifier.prefix(catalog);
+    String sql =
+        "SELECT c.name AS COLUMN_NAME, dc.name AS CONSTRAINT_NAME "
+            + "FROM " + prefix + "sys.default_constraints dc "
+            + "JOIN " + prefix + "sys.columns c "
+            + "  ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id "
+            + "JOIN " + prefix + "sys.objects o ON o.object_id = dc.parent_object_id "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
+            + "WHERE s.name = ? AND o.name = ?";
+
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          String columnName = rs.getString("COLUMN_NAME");
+          String constraintName = rs.getString("CONSTRAINT_NAME");
+          if (columnName == null || constraintName == null || constraintName.isBlank()) {
+            continue;
+          }
+          for (JsonNode node : columns) {
+            if (node instanceof ObjectNode objectNode
+                && columnName.equals(objectNode.path("name").asText(null))) {
+              objectNode.put("defaultConstraintName", constraintName);
               break;
             }
           }
