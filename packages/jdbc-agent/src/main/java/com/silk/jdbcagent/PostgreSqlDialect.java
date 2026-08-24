@@ -241,6 +241,26 @@ final class PostgreSqlDialect implements DbDialect {
   }
 
   @Override
+  public void collectRoutineArguments(
+      Connection connection,
+      String requestedCatalog,
+      String schemaName,
+      String routineName,
+      String kind,
+      ArrayNode arguments)
+      throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    String catalog = connection.getCatalog();
+    boolean isFunction = "function".equals(kind);
+    try (ResultSet rs =
+        isFunction
+            ? metadata.getFunctionColumns(catalog, schemaName, routineName, "%")
+            : metadata.getProcedureColumns(catalog, schemaName, routineName, "%")) {
+      MetadataArguments.appendFromResultSet(rs, kind, arguments);
+    }
+  }
+
+  @Override
   public String fetchTableComment(
       Connection connection, String catalog, String schemaName, String tableName)
       throws SQLException {

@@ -7,7 +7,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -51,6 +51,24 @@ pub struct TunnelManager {
 impl TunnelManager {
     pub fn new(plugin_bin: PathBuf) -> Self {
         Self { plugin_bin, active: Mutex::new(HashMap::new()) }
+    }
+
+    /// Kills any already-running instance of our bundled `session-manager-plugin.exe`, matched
+    /// by exact executable path — call once at app startup (see `lib.rs`'s `.setup()`), before
+    /// this process opens any tunnel of its own. A process at that exact path can only be a
+    /// leftover from a *previous* run of this same app: this app is the only thing that ever
+    /// spawns it, so if we're just starting up, whatever we find here already lost its parent.
+    /// This is the app's actual defense against orphaned plugin processes, since the "normal"
+    /// defenses (the exit-requested handler calling `close_all`, and `Drop`) both only run on a
+    /// clean shutdown — a force-killed or crashed previous run skips both.
+    pub fn kill_orphaned_plugin_processes(plugin_bin: &Path) {
+        let mut system = sysinfo::System::new();
+        system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+        for process in system.processes().values() {
+            if process.exe() == Some(plugin_bin) {
+                process.kill();
+            }
+        }
     }
 
     /// Binds a port-0 listener to obtain an OS-assigned free local port, then immediately
@@ -156,6 +174,19 @@ impl TunnelManager {
         }
     }
 
+    /// Kills every open tunnel — called from the app's exit-requested handler (see `lib.rs`'s
+    /// `run()`) so plugin subprocesses don't outlive a window-close/quit. `Drop` alone isn't
+    /// enough: Tauri's runloop doesn't unwind through normal Rust drops on window close, so
+    /// this must be invoked explicitly before the process actually exits.
+    pub fn close_all(&self) {
+        if let Ok(mut active) = self.active.lock() {
+            for (_, mut handle) in active.drain() {
+                let _ = handle.child.kill();
+                let _ = handle.child.wait();
+            }
+        }
+    }
+
     pub fn is_open(&self, connection_id: &str) -> bool {
         self.active.lock().unwrap().contains_key(connection_id)
     }
@@ -210,12 +241,7 @@ fn stderr_suffix(tail: &str) -> String {
 
 impl Drop for TunnelManager {
     fn drop(&mut self) {
-        if let Ok(mut active) = self.active.lock() {
-            for (_, mut handle) in active.drain() {
-                let _ = handle.child.kill();
-                let _ = handle.child.wait();
-            }
-        }
+        self.close_all();
     }
 }
 

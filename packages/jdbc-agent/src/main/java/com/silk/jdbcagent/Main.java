@@ -250,6 +250,10 @@ public final class Main {
           response.put("ok", true);
           response.set("result", runtime.listColumns(params));
         }
+        case "connection.arguments" -> {
+          response.put("ok", true);
+          response.set("result", runtime.listArguments(params));
+        }
         case "connection.packageMembers" -> {
           response.put("ok", true);
           response.set("result", runtime.listPackageMembers(params));
@@ -766,6 +770,31 @@ public final class Main {
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("columns", columns);
+      return result;
+    }
+
+    ObjectNode listArguments(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      String catalog = readCatalog(params);
+      String schemaName = params.path("schema").asText("").trim();
+      String routineName = params.path("name").asText("").trim();
+      String kind = params.path("kind").asText("").trim().toLowerCase(java.util.Locale.ROOT);
+      if (schemaName.isEmpty()) {
+        throw new RuntimeException("Missing params.schema");
+      }
+      if (routineName.isEmpty()) {
+        throw new RuntimeException("Missing params.name");
+      }
+      if (!"procedure".equals(kind) && !"function".equals(kind)) {
+        throw new RuntimeException("params.kind must be \"procedure\" or \"function\"");
+      }
+
+      ArrayNode arguments = MAPPER.createArrayNode();
+      session.dialect.collectRoutineArguments(
+          session.connection, catalog, schemaName, routineName, kind, arguments);
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.set("arguments", arguments);
       return result;
     }
 

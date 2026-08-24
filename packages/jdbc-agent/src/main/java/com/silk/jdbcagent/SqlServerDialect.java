@@ -355,6 +355,76 @@ final class SqlServerDialect implements DbDialect {
   }
 
   @Override
+  public void collectRoutineArguments(
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String routineName,
+      String kind,
+      ArrayNode arguments)
+      throws SQLException {
+    if (catalog != null && !catalog.isBlank()) {
+      collectRoutineArgumentsInCatalog(connection, catalog, schemaName, routineName, arguments);
+      return;
+    }
+    DatabaseMetaData metadata = connection.getMetaData();
+    boolean isFunction = "function".equals(kind);
+    try (ResultSet rs =
+        isFunction
+            ? metadata.getFunctionColumns(null, schemaName, routineName, "%")
+            : metadata.getProcedureColumns(null, schemaName, routineName, "%")) {
+      MetadataArguments.appendFromResultSet(rs, kind, arguments);
+    }
+  }
+
+  /**
+   * {@code sys.parameters} has no JDBC-style {@code COLUMN_TYPE} constant — T-SQL only
+   * distinguishes IN from OUTPUT ({@code is_output}); {@code parameter_id = 0} is the
+   * routine's return-value slot (a function's return type, or a procedure's implicit int
+   * return code). Direction is derived directly here rather than routed through
+   * {@link MetadataArguments}, which expects real JDBC {@code COLUMN_TYPE} values.
+   */
+  private static void collectRoutineArgumentsInCatalog(
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String routineName,
+      ArrayNode arguments)
+      throws SQLException {
+    String prefix = CatalogQualifier.prefix(catalog);
+    String sql =
+        "SELECT p.name AS COLUMN_NAME, t.name AS TYPE_NAME, p.is_output AS IS_OUTPUT, "
+            + "p.parameter_id AS ORDINAL_POSITION "
+            + "FROM " + prefix + "sys.parameters p "
+            + "JOIN " + prefix + "sys.objects o ON o.object_id = p.object_id "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
+            + "JOIN " + prefix + "sys.types t ON t.user_type_id = p.user_type_id "
+            + "WHERE s.name = ? AND o.name = ? "
+            + "ORDER BY p.parameter_id";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, routineName);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          int ordinal = rs.getInt("ORDINAL_POSITION");
+          ObjectNode argument = arguments.addObject();
+          String name = rs.getString("COLUMN_NAME");
+          if (name != null && !name.isBlank()) {
+            argument.put("name", name);
+          }
+          String typeName = rs.getString("TYPE_NAME");
+          if (typeName != null && !typeName.isBlank()) {
+            argument.put("typeName", typeName);
+          }
+          argument.put(
+              "direction", ordinal == 0 ? "return" : (rs.getBoolean("IS_OUTPUT") ? "out" : "in"));
+          argument.put("position", ordinal);
+        }
+      }
+    }
+  }
+
+  @Override
   public void collectTableIndexes(
       Connection connection,
       String catalog,
@@ -597,7 +667,8 @@ final class SqlServerDialect implements DbDialect {
       throws SQLException {
     String prefix = CatalogQualifier.prefix(catalog);
     String sql =
-        "SELECT DISTINCT rs.name AS [SCHEMA], ro.name AS NAME, ro.type_desc AS TYPE "
+        "SELECT DISTINCT rs.name AS [SCHEMA], ro.name AS NAME, ro.type_desc AS TYPE, "
+            + "CAST(NULL AS NVARCHAR(60)) AS DEPENDENCY_TYPE "
             + "FROM " + prefix + "sys.sql_expression_dependencies d "
             + "JOIN " + prefix + "sys.objects o ON o.object_id = d.referencing_id "
             + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
@@ -625,7 +696,8 @@ final class SqlServerDialect implements DbDialect {
       throws SQLException {
     String prefix = CatalogQualifier.prefix(catalog);
     String sql =
-        "SELECT DISTINCT s2.name AS [SCHEMA], o2.name AS NAME, o2.type_desc AS TYPE "
+        "SELECT DISTINCT s2.name AS [SCHEMA], o2.name AS NAME, o2.type_desc AS TYPE, "
+            + "CAST(NULL AS NVARCHAR(60)) AS DEPENDENCY_TYPE "
             + "FROM " + prefix + "sys.sql_expression_dependencies d "
             + "JOIN " + prefix + "sys.objects o2 ON o2.object_id = d.referencing_id "
             + "JOIN " + prefix + "sys.schemas s2 ON s2.schema_id = o2.schema_id "

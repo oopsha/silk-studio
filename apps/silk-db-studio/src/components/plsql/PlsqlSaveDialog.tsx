@@ -58,7 +58,7 @@ function PlsqlSaveDialog() {
     setExecuting(true);
     setErrorMessage(null);
     try {
-      await executePlsqlSave(current.tabId, current.ref, current.sql);
+      await executePlsqlSave(current.tabId, current.ref, current.statements);
       PlsqlSaveDialogService.close(true);
     } catch (error) {
       setErrorMessage(

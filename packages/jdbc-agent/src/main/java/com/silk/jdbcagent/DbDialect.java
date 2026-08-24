@@ -116,6 +116,23 @@ interface DbDialect {
       throws SQLException;
 
   /**
+   * Populates {@code arguments} with parameter descriptors ({@code name}, {@code typeName},
+   * {@code direction}: in/out/inout/return, {@code position}) for a standalone stored
+   * {@code routineName} — {@code kind} is {@code "procedure"} or {@code "function"} and picks
+   * which JDBC metadata call applies (they're separate methods with different result shapes).
+   * Object Editor "Arguments" section. Package members are out of scope — a package's own
+   * procedures/functions aren't independently addressable by this method.
+   */
+  void collectRoutineArguments(
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String routineName,
+      String kind,
+      ArrayNode arguments)
+      throws SQLException;
+
+  /**
    * Populates {@code constraints} with primary-key/unique/check constraint descriptors for
    * {@code tableName}. Object Editor "Constraints" section.
    */

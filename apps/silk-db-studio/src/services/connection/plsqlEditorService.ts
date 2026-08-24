@@ -15,15 +15,20 @@ export function isEditablePlsqlKind(kind: MetadataObjectKind): boolean {
 }
 
 /**
- * Drivers that support the VIEW DDL editor's history/snapshot/reload/save/compare-save
- * machinery. Oracle, PostgreSQL, and MySQL/MariaDB all round-trip cleanly via
- * `CREATE OR REPLACE VIEW` (Postgres source is `pg_get_viewdef` wrapped in a CREATE OR REPLACE
- * header server-side; MySQL/MariaDB source comes directly from `SHOW CREATE VIEW`). SQL Server
- * has no `CREATE OR REPLACE` — its source (`sys.sql_modules.definition`) is already a full
- * `CREATE VIEW ... AS ...` statement, and `buildPlsqlSaveSql` rewrites the leading `CREATE` to
- * `ALTER` for it instead (see that module).
+ * Drivers that support the DDL editor's history/snapshot/reload/save/compare-save machinery
+ * for VIEWS and standalone PROCEDURES/FUNCTIONS. All five round-trip via some form of replace:
+ * Oracle and PostgreSQL natively (Postgres routine source is `pg_get_functiondef`, already
+ * `CREATE OR REPLACE FUNCTION/PROCEDURE`; view source is `pg_get_viewdef` wrapped in a CREATE
+ * OR REPLACE header server-side). SQL Server has no `CREATE OR REPLACE` at all — its source
+ * (`sys.sql_modules.definition`) is already a full `CREATE ... AS ...` statement, and
+ * `buildPlsqlSaveSql` rewrites the leading `CREATE` to `ALTER` for it instead. MySQL/MariaDB
+ * views round-trip via `CREATE OR REPLACE VIEW` the same way, but procedures/functions have no
+ * such syntax — those go through a `DROP IF EXISTS` + `CREATE` pair instead (see
+ * `buildPlsqlSaveSql`'s MySQL/MariaDB branch; DBeaver's `MySQLProcedureManager` does the same).
+ *
+ * Packages are Oracle-only — no other dialect here has an equivalent spec/body construct.
  */
-const VIEW_EDIT_DRIVERS = new Set<ConnectionDriverId>([
+const SOURCE_EDIT_DRIVERS = new Set<ConnectionDriverId>([
   "oracle",
   "postgresql",
   "mysql",
@@ -35,8 +40,8 @@ export function supportsPlsqlSourceEdit(
   driverId: ConnectionDriverId,
   kind: MetadataObjectKind,
 ): boolean {
-  if (kind === "view") {
-    return VIEW_EDIT_DRIVERS.has(driverId);
+  if (kind === "view" || kind === "procedure" || kind === "function") {
+    return SOURCE_EDIT_DRIVERS.has(driverId);
   }
   return driverId === "oracle" && isEditablePlsqlKind(kind);
 }

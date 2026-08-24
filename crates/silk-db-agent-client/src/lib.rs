@@ -225,6 +225,39 @@ impl JdbcAgentClient {
         self.send_request("connection.columns", params)
     }
 
+    /// Parameter list for a standalone stored procedure/function (not a package member) — see
+    /// `connection.arguments` in jdbc-agent's `Main.java`.
+    pub fn list_arguments(
+        &self,
+        connection_id: &str,
+        schema: &str,
+        name: &str,
+        kind: &str,
+        catalog: Option<&str>,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let schema = schema.trim();
+        let name = name.trim();
+        let kind = kind.trim();
+        if schema.is_empty() {
+            return Err("schema is required.".into());
+        }
+        if name.is_empty() {
+            return Err("name is required.".into());
+        }
+        if kind.is_empty() {
+            return Err("kind is required.".into());
+        }
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "schema": schema,
+            "name": name,
+            "kind": kind
+        });
+        set_optional_catalog(&mut params, catalog);
+        self.send_request("connection.arguments", params)
+    }
+
     pub fn list_package_members(
         &self,
         connection_id: &str,
@@ -865,8 +898,12 @@ fn java_bin_usable(java_bin: &PathBuf) -> bool {
     java_bin.components().count() == 1
 }
 
-impl Drop for JdbcAgentClient {
-    fn drop(&mut self) {
+impl JdbcAgentClient {
+    /// Sends `agent.shutdown`, kills the Java subprocess, and joins its reader thread. Callable
+    /// from `&self` (the actual mutation goes through `io`'s Mutex) so the app's exit-requested
+    /// handler can invoke this explicitly on the shared `AppState` — `Drop` alone isn't enough
+    /// since Tauri's runloop doesn't unwind through normal Rust drops on window close.
+    pub fn shutdown(&self) {
         let Ok(mut guard) = self.io.lock() else {
             return;
         };
@@ -890,5 +927,11 @@ impl Drop for JdbcAgentClient {
                 let _ = handle.join();
             }
         };
+    }
+}
+
+impl Drop for JdbcAgentClient {
+    fn drop(&mut self) {
+        self.shutdown();
     }
 }

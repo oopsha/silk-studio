@@ -3,7 +3,11 @@ import type { PlsqlEditorRef } from "./plsqlEditorConstants";
 export type PlsqlSaveDialogRequest = {
   tabId: string;
   ref: PlsqlEditorRef;
+  /** Joined display text for the "SQL" tab — always `statements.join(";\n\n") + ";"`. */
   sql: string;
+  /** What actually gets executed, in order — see `buildPlsqlSaveSql`'s doc comment for why
+   * this can be more than one statement (MySQL/MariaDB procedures/functions). */
+  statements: string[];
   warnings: string[];
   objectLabel: string;
   /** Current editor buffer (for Diff vs DB). */

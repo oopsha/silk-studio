@@ -86,11 +86,11 @@ export async function openPlsqlSaveDialog(tabId?: string): Promise<boolean> {
   if (!saveDriverId) {
     throw new Error("Connection profile not found.");
   }
-  const { sql, warnings } = buildPlsqlSaveSql(tab.content, ref, saveDriverId);
-  assertReadOnlyQueryAllowed(
-    sql,
-    ConfigurationService.getValue("database.readOnly"),
-  );
+  const { statements, warnings } = buildPlsqlSaveSql(tab.content, ref, saveDriverId);
+  const readOnly = ConfigurationService.getValue("database.readOnly");
+  for (const statement of statements) {
+    assertReadOnlyQueryAllowed(statement, readOnly);
+  }
 
   const objectLabel = buildPlsqlTabLabel(
     ref.schemaName,
@@ -102,7 +102,8 @@ export async function openPlsqlSaveDialog(tabId?: string): Promise<boolean> {
   const openPromise = PlsqlSaveDialogService.open({
     tabId: tab.id,
     ref,
-    sql,
+    sql: `${statements.join(";\n\n")};`,
+    statements,
     warnings,
     objectLabel,
     bufferContent: tab.content,
@@ -147,17 +148,22 @@ export async function openPlsqlSaveDialog(tabId?: string): Promise<boolean> {
 export async function executePlsqlSave(
   tabId: string,
   ref: PlsqlEditorRef,
-  sql: string,
+  statements: string[],
 ): Promise<void> {
   assertSaveAllowed(ref);
-  assertReadOnlyQueryAllowed(
-    sql,
-    ConfigurationService.getValue("database.readOnly"),
-  );
+  const readOnly = ConfigurationService.getValue("database.readOnly");
+  for (const statement of statements) {
+    assertReadOnlyQueryAllowed(statement, readOnly);
+  }
 
-  await QueryExecutionService.executeWriteStatement(sql, {
-    connectionId: ref.profileId,
-  });
+  // Sequential, not parallel — MySQL/MariaDB's DROP-then-CREATE pair (see
+  // buildPlsqlSaveSql) depends on running in this exact order, and every other driver only
+  // ever has one statement anyway.
+  for (const statement of statements) {
+    await QueryExecutionService.executeWriteStatement(statement, {
+      connectionId: ref.profileId,
+    });
+  }
   await ConnectionTreeService.invalidateAndRefreshSchema(
     ref.profileId,
     ref.schemaName,

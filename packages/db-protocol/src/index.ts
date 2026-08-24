@@ -171,6 +171,30 @@ export type ConnectionColumnsResult = {
   columns: MetadataColumn[];
 };
 
+/**
+ * One parameter (or return value) of a standalone stored procedure/function
+ * (`connection.arguments`) — package members aren't covered, see that RPC's doc comment.
+ */
+export type MetadataArgument = {
+  /** Absent for a function's return-value row. */
+  name?: string;
+  typeName?: string;
+  direction: "in" | "out" | "inout" | "return";
+  /** JDBC `ORDINAL_POSITION` (0 for the return-value row). */
+  position: number;
+};
+
+export type ConnectionArgumentsParams = {
+  connectionId: string;
+  schema: string;
+  name: string;
+  kind: "procedure" | "function";
+};
+
+export type ConnectionArgumentsResult = {
+  arguments: MetadataArgument[];
+};
+
 /** Package procedure/function members for SQL autocomplete (`connection.packageMembers`). */
 export type MetadataPackageMember = {
   name: string;
@@ -594,6 +618,30 @@ export function isConnectionColumnsResult(
   const record = value as Record<string, unknown>;
   return (
     Array.isArray(record.columns) && record.columns.every(isMetadataColumn)
+  );
+}
+
+function isMetadataArgument(value: unknown): value is MetadataArgument {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    (entry.name === undefined || typeof entry.name === "string") &&
+    (entry.typeName === undefined || typeof entry.typeName === "string") &&
+    (entry.direction === "in" ||
+      entry.direction === "out" ||
+      entry.direction === "inout" ||
+      entry.direction === "return") &&
+    typeof entry.position === "number"
+  );
+}
+
+export function isConnectionArgumentsResult(
+  value: unknown,
+): value is ConnectionArgumentsResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Array.isArray(record.arguments) && record.arguments.every(isMetadataArgument)
   );
 }
 
