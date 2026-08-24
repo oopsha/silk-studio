@@ -1,3 +1,4 @@
+import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import type { ConnectionDriverId } from "./connectionTypes";
 import type { ColumnChange, EditableColumnDraft, TableStructureChangeSet } from "./tableStructureDiff";
 import { formatColumnTypeParts } from "./tableColumnTypeFormat";
@@ -54,7 +55,10 @@ function collectBlockers(
   for (const change of alters) {
     if (change.original.autoIncrement || change.original.generated) {
       blockers.push(
-        `"${change.original.name}" is an identity/generated column — editing it is not supported.`,
+        tKey("app.tableStructure.blockerIdentityGenerated").replace(
+          "{name}",
+          change.original.name,
+        ),
       );
     }
   }
@@ -63,8 +67,10 @@ function collectBlockers(
     for (const change of alters) {
       if (change.defaultValue && !change.original.defaultConstraintName) {
         blockers.push(
-          `"${change.original.name}"'s default value can't be changed — its underlying SQL ` +
-            "Server default constraint name is unknown (reload the table and try again).",
+          tKey("app.tableStructure.blockerUnknownDefaultConstraint").replace(
+            "{name}",
+            change.original.name,
+          ),
         );
       }
     }
@@ -75,40 +81,38 @@ function collectBlockers(
     const name =
       change.op === "add" ? change.column.name.trim() : change.draft.name.trim();
     if (!name) {
-      blockers.push("A column name cannot be empty.");
+      blockers.push(tKey("app.tableStructure.blockerEmptyName"));
       continue;
     }
     seenNames.set(name.toLowerCase(), (seenNames.get(name.toLowerCase()) ?? 0) + 1);
     const typeName = change.op === "add" ? change.column.typeName.trim() : change.draft.typeName.trim();
     if (!typeName) {
-      blockers.push(`"${name}" has no type.`);
+      blockers.push(tKey("app.tableStructure.blockerNoType").replace("{name}", name));
     }
     if (!IDENT_PATTERN.test(name)) {
       blockers.push(
-        `"${name}" may only contain letters, numbers, underscore, $, and #.`,
+        tKey("app.tableStructure.blockerInvalidColumnName").replace("{name}", name),
       );
     }
   }
   for (const [name, count] of seenNames) {
     if (count > 1) {
-      blockers.push(`Column name "${name}" is used more than once.`);
+      blockers.push(tKey("app.tableStructure.blockerDuplicateName").replace("{name}", name));
     }
   }
 
   if (changes.tableRename) {
     const trimmed = changes.tableRename.after.trim();
     if (!trimmed) {
-      blockers.push("New table name is required.");
+      blockers.push(tKey("app.tableStructure.blockerTableNameRequired"));
     } else if (!IDENT_PATTERN.test(trimmed)) {
-      blockers.push(
-        "New table name may only contain letters, numbers, underscore, $, and #.",
-      );
+      blockers.push(tKey("app.tableStructure.blockerTableNameInvalid"));
     }
   }
 
   const survivingColumnCount = ctx.existingColumnCount - drops.length + adds.length;
   if (survivingColumnCount <= 0 && ctx.existingColumnCount > 0) {
-    blockers.push("Cannot drop every column from a table.");
+    blockers.push(tKey("app.tableStructure.blockerDropAllColumns"));
   }
 
   return blockers;
@@ -140,31 +144,45 @@ function collectWarnings(
   for (const change of adds) {
     if (!change.column.nullable && !change.column.defaultValue) {
       warnings.push(
-        `Adding NOT NULL column "${change.column.name}" with no default will fail if the table already has rows.`,
+        tKey("app.tableStructure.warningNotNullNoDefault").replace(
+          "{name}",
+          change.column.name,
+        ),
       );
     }
   }
 
   for (const change of drops) {
-    warnings.push(`Column "${change.original.name}" will be dropped — this is irreversible.`);
+    warnings.push(
+      tKey("app.tableStructure.warningColumnDropped").replace("{name}", change.original.name),
+    );
   }
 
   for (const change of alters) {
     if (change.type) {
       if (!looksLikeSafeWidening(change.type.before, change.type.after)) {
         warnings.push(
-          `"${change.original.name}"'s type change (${change.type.before} → ${change.type.after}) may truncate data or fail.`,
+          tKey("app.tableStructure.warningTypeChangeRisky")
+            .replace("{name}", change.original.name)
+            .replace("{before}", change.type.before)
+            .replace("{after}", change.type.after),
         );
       }
       if (ctx.driverId === "postgresql") {
         warnings.push(
-          `"${change.original.name}"'s type change may require an explicit USING clause on PostgreSQL — this is not generated automatically; edit the SQL tab if the save fails.`,
+          tKey("app.tableStructure.warningPostgresUsingClause").replace(
+            "{name}",
+            change.original.name,
+          ),
         );
       }
     }
     if (change.nullable && change.nullable.after === false) {
       warnings.push(
-        `"${change.original.name}" is becoming NOT NULL — this will fail if any existing row has NULL there.`,
+        tKey("app.tableStructure.warningBecomingNotNull").replace(
+          "{name}",
+          change.original.name,
+        ),
       );
     }
     if (
@@ -173,15 +191,16 @@ function collectWarnings(
       !change.original.fullTypeName
     ) {
       warnings.push(
-        `"${change.original.name}"'s type will be re-derived from its display form, not the driver's original text — this can lose fidelity for ENUM/SET/unsigned types (reconnect with an updated agent to fix).`,
+        tKey("app.tableStructure.warningMysqlTypeFidelity").replace(
+          "{name}",
+          change.original.name,
+        ),
       );
     }
   }
 
   if (drops.length > 0 || alters.some((c) => c.type)) {
-    warnings.push(
-      "This editor cannot see constraints, indexes, or foreign keys — a change that violates one fails with the database's own error.",
-    );
+    warnings.push(tKey("app.tableStructure.warningNoConstraintVisibility"));
   }
 
   return warnings;

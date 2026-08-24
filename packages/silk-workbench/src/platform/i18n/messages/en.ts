@@ -735,6 +735,32 @@ export const enMessages = {
       modifiedSection: "Modified Columns",
       renamedFrom: "renamed from {from}",
       blockersTitle: "Fix these before saving:",
+      blockerIdentityGenerated:
+        '"{name}" is an identity/generated column — editing it is not supported.',
+      blockerUnknownDefaultConstraint:
+        "\"{name}\"'s default value can't be changed — its underlying SQL Server default constraint name is unknown (reload the table and try again).",
+      blockerEmptyName: "A column name cannot be empty.",
+      blockerNoType: '"{name}" has no type.',
+      blockerInvalidColumnName:
+        '"{name}" may only contain letters, numbers, underscore, $, and #.',
+      blockerDuplicateName: 'Column name "{name}" is used more than once.',
+      blockerTableNameRequired: "New table name is required.",
+      blockerTableNameInvalid:
+        "New table name may only contain letters, numbers, underscore, $, and #.",
+      blockerDropAllColumns: "Cannot drop every column from a table.",
+      warningNotNullNoDefault:
+        'Adding NOT NULL column "{name}" with no default will fail if the table already has rows.',
+      warningColumnDropped: 'Column "{name}" will be dropped — this is irreversible.',
+      warningTypeChangeRisky:
+        '"{name}"\'s type change ({before} → {after}) may truncate data or fail.',
+      warningPostgresUsingClause:
+        '"{name}"\'s type change may require an explicit USING clause on PostgreSQL — this is not generated automatically; edit the SQL tab if the save fails.',
+      warningBecomingNotNull:
+        '"{name}" is becoming NOT NULL — this will fail if any existing row has NULL there.',
+      warningMysqlTypeFidelity:
+        '"{name}"\'s type will be re-derived from its display form, not the driver\'s original text — this can lose fidelity for ENUM/SET/unsigned types (reconnect with an updated agent to fix).',
+      warningNoConstraintVisibility:
+        "This editor cannot see constraints, indexes, or foreign keys — a change that violates one fails with the database's own error.",
     },
     objectEditor: {
       propertiesTab: "Properties",
