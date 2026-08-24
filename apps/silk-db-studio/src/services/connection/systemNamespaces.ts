@@ -8,6 +8,26 @@ const SQLSERVER_SYSTEM_CATALOGS = new Set([
   "tempdb",
 ]);
 
+/**
+ * SQL Server system schemas *within* a catalog — distinct from the catalog-level set above.
+ * Every database gets one schema per fixed database role (db_owner, db_datareader, ...) plus
+ * `guest`/`sys`/`information_schema`; none of these are ever something a user browses for.
+ */
+const SQLSERVER_SYSTEM_SCHEMAS = new Set([
+  "guest",
+  "sys",
+  "information_schema",
+  "db_accessadmin",
+  "db_backupoperator",
+  "db_datareader",
+  "db_datawriter",
+  "db_ddladmin",
+  "db_denydatareader",
+  "db_denydatawriter",
+  "db_owner",
+  "db_securityadmin",
+]);
+
 /** MySQL / MariaDB system databases (catalogs). */
 const MYSQL_SYSTEM_CATALOGS = new Set([
   "information_schema",
@@ -64,17 +84,28 @@ export type ExplorerFilterContext = {
   showSystemObjects: boolean;
 };
 
+/**
+ * SQL Server has two real levels (catalog, then schema within it) with *different* system-name
+ * sets — `master` is a system catalog but isn't a schema name, and `db_owner` is a system
+ * schema but isn't a catalog name. Other drivers don't distinguish the two, so `level` is a
+ * no-op for them; only the `"sqlserver"` branch below actually reads it.
+ */
+export type NamespaceLevel = "catalog" | "schema";
+
 /** True when `name` is a known system catalog/schema for the driver. */
 export function isSystemNamespace(
   driverId: ConnectionDriverId,
   name: string,
+  level: NamespaceLevel,
 ): boolean {
   const trimmed = name.trim();
   if (!trimmed) return false;
 
   switch (driverId) {
     case "sqlserver":
-      return SQLSERVER_SYSTEM_CATALOGS.has(trimmed.toLowerCase());
+      return level === "catalog"
+        ? SQLSERVER_SYSTEM_CATALOGS.has(trimmed.toLowerCase())
+        : SQLSERVER_SYSTEM_SCHEMAS.has(trimmed.toLowerCase());
     case "mysql":
     case "mariadb":
       return MYSQL_SYSTEM_CATALOGS.has(trimmed.toLowerCase());
@@ -94,9 +125,10 @@ export function isSystemNamespace(
 export function filterSystemNamespaces(
   names: string[],
   filter: ExplorerFilterContext | null | undefined,
+  level: NamespaceLevel,
 ): string[] {
   if (!filter || filter.showSystemObjects) return names;
-  return names.filter((name) => !isSystemNamespace(filter.driverId, name));
+  return names.filter((name) => !isSystemNamespace(filter.driverId, name, level));
 }
 
 export function showSystemObjectsHint(driverId: ConnectionDriverId): string {

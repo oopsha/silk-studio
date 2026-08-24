@@ -258,6 +258,7 @@ class ConnectionTreeServiceImpl {
       const catalogs = filterSystemNamespaces(
         (result.catalogs ?? []).map((item) => item.name),
         filter,
+        "catalog",
       ).map((name) => ({ name }));
       if ((result.catalogs ?? []).length > 0) {
         this.caches.set(profileId, {
@@ -274,6 +275,7 @@ class ConnectionTreeServiceImpl {
         const schemaNames = filterSystemNamespaces(
           result.schemas.map((item) => item.name),
           filter,
+          "schema",
         );
         const allowed = new Set(schemaNames.map((name) => name.toLowerCase()));
         const schemas = result.schemas.filter((item) =>
@@ -340,6 +342,7 @@ class ConnectionTreeServiceImpl {
       const schemaNames = filterSystemNamespaces(
         result.schemas.map((item) => item.name),
         filter,
+        "schema",
       );
       const allowed = new Set(schemaNames.map((name) => name.toLowerCase()));
       const schemasResult = {
@@ -661,6 +664,7 @@ class ConnectionTreeServiceImpl {
     const schemaNames = filterSystemNamespaces(
       result.schemas.map((item) => item.name),
       filter,
+      "schema",
     );
     const allowed = new Set(schemaNames.map((name) => name.toLowerCase()));
     const filteredSchemas = result.schemas.filter((item) =>
