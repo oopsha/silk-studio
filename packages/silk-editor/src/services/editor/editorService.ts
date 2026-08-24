@@ -25,9 +25,11 @@ function createTabId(): string {
  * `silk://object/` covers the Object Editor tab — most of its Properties sub-sections
  * (columns, indexes, …) are read-only and never call these, but the DDL section becomes
  * an editable buffer for Oracle views, which needs the same content/dirty tracking as
- * the dedicated `silk://plsql/` source tabs.
+ * the dedicated `silk://plsql/` source tabs. `silk://ddl/` covers the unified DDL viewer
+ * tab (Dependencies/Arguments/Declaration) — its Declaration section is likewise editable
+ * for drivers/kinds `supportsPlsqlSourceEdit` allows (Oracle procedures/functions today).
  */
-const MANAGED_SILK_URI_PREFIXES = ["silk://plsql/", "silk://object/"];
+const MANAGED_SILK_URI_PREFIXES = ["silk://plsql/", "silk://object/", "silk://ddl/"];
 
 /** Workbench chrome tabs — not part of Hot Exit restore. */
 const EXCLUDED_SESSION_URI_PREFIXES = [

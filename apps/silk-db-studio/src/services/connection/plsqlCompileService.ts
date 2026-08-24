@@ -135,16 +135,21 @@ export async function compileActivePlsqlObject(tabId?: string): Promise<void> {
   if (!saveDriverId) {
     throw new Error("Connection profile not found.");
   }
-  const { sql, warnings } = buildPlsqlSaveSql(tab.content, ref, saveDriverId);
-  assertReadOnlyQueryAllowed(sql, readOnly);
+  const { statements, warnings } = buildPlsqlSaveSql(tab.content, ref, saveDriverId);
+  for (const statement of statements) {
+    assertReadOnlyQueryAllowed(statement, readOnly);
+  }
 
   PlsqlCompileStateService.setCompiling(tab.id);
   clearPlsqlCompileMarkers();
 
   try {
-    await QueryExecutionService.executeWriteStatement(sql, {
-      connectionId: ref.profileId,
-    });
+    // Sequential, not parallel — see executePlsqlSave's identical comment.
+    for (const statement of statements) {
+      await QueryExecutionService.executeWriteStatement(statement, {
+        connectionId: ref.profileId,
+      });
+    }
   } catch (error) {
     const message = formatErrorMessage(error, "Failed to save PL/SQL object.");
     PlsqlCompileStateService.setFailed(tab.id, message);

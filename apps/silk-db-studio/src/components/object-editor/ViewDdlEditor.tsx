@@ -58,19 +58,22 @@ type LoadState =
   | { status: "ready" };
 
 /**
- * Editable DDL view for a VIEW, embedded in the Object Editor's Properties → DDL section (see
- * `PropertiesView.tsx`). Reuses the same history/snapshot/reload/save/compile machinery
- * `PlsqlEditorView.tsx` uses for procedure/function/package source tabs — the only structural
- * difference is that this lives inside a shared `silk://object/...` tab instead of its own
- * dedicated `silk://plsql/...` tab, so every action below is addressed by `tabId` (resolved via
- * `resolvePlsqlSourceRef` inside the service layer) rather than a command that assumes the
- * active tab *is* the PL/SQL tab.
+ * Editable DDL view embedded in a properties-style side panel — originally built for a VIEW
+ * inside the Object Editor's Properties → DDL section (see `PropertiesView.tsx`), and now
+ * reused as-is for a standalone procedure/function's "Declaration" tab inside `DdlEditorView`
+ * (the unified `silk://ddl/...` tab that replaced procedures/functions' separate "편집"
+ * action). Despite the name, nothing here is view-specific: it reuses the same
+ * history/snapshot/reload/save/compile machinery `PlsqlEditorView.tsx` uses for its own
+ * dedicated `silk://plsql/...` tabs, addressed purely by `tabId` (resolved via
+ * `resolvePlsqlSourceRef` inside the service layer, which knows about all three tab shapes)
+ * rather than a command that assumes the active tab *is* the PL/SQL tab.
  *
- * Supported drivers: Oracle, PostgreSQL, MySQL, MariaDB, SQL Server (see
- * `supportsPlsqlSourceEdit` in `plsqlEditorService.ts`). Only Oracle runs a post-save
- * compile-diagnostics step (`ALTER ... COMPILE` + `ALL_ERRORS`); the others have no
- * equivalent — any syntax/reference error there already surfaces as a failed
- * `CREATE OR REPLACE`/`ALTER VIEW` statement.
+ * Whether editing is actually offered for a given (driver, kind) is decided by the caller via
+ * `supportsPlsqlSourceEdit` in `plsqlEditorService.ts` — for `kind === "view"` that's Oracle,
+ * PostgreSQL, MySQL, MariaDB, SQL Server; for `procedure`/`function` it's Oracle only today.
+ * Only Oracle runs a post-save compile-diagnostics step (`ALTER ... COMPILE` + `ALL_ERRORS`);
+ * the others have no equivalent — any syntax/reference error there already surfaces as a
+ * failed `CREATE OR REPLACE`/`ALTER VIEW` statement.
  */
 function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEditorProps) {
   const { t } = useI18n();
@@ -113,8 +116,14 @@ function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEdi
 
   useEffect(() => {
     const buffered = bufferedContent ?? "";
+    // "-- Loading DDL..." is the hardcoded (non-localized) placeholder ddlEditorService.ts
+    // seeds a freshly-opened silk://ddl/... tab with, before this component (now also used for
+    // that tab's editable Declaration section — see this component's doc comment) ever runs —
+    // matches DdlPreview.tsx's identical check. Without it, that placeholder text was mistaken
+    // for real loaded DDL on first mount and the real fetch below never ran.
     const looksLoaded =
       buffered.trim().length > 0 &&
+      !buffered.startsWith("-- Loading DDL") &&
       !buffered.startsWith(`-- ${t("app.ddl.loading")}`) &&
       !buffered.startsWith(`-- ${t("app.ddl.loadFailed")}`);
 

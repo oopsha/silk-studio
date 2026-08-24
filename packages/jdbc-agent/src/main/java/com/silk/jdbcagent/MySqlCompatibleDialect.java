@@ -192,6 +192,26 @@ abstract class MySqlCompatibleDialect implements DbDialect {
   }
 
   @Override
+  public void collectRoutineArguments(
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String routineName,
+      String kind,
+      ArrayNode arguments)
+      throws SQLException {
+    // schemaName is the database/catalog name for MySQL-compatible drivers.
+    DatabaseMetaData metadata = connection.getMetaData();
+    boolean isFunction = "function".equals(kind);
+    try (ResultSet rs =
+        isFunction
+            ? metadata.getFunctionColumns(schemaName, null, routineName, "%")
+            : metadata.getProcedureColumns(schemaName, null, routineName, "%")) {
+      MetadataArguments.appendFromResultSet(rs, kind, arguments);
+    }
+  }
+
+  @Override
   public String fetchTableComment(
       Connection connection, String catalog, String schemaName, String tableName)
       throws SQLException {

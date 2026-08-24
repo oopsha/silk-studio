@@ -76,6 +76,15 @@ export function defaultObjectAction(
   if (kind === "table" || kind === "view") {
     return "openObjectEditor";
   }
+  // Procedures/functions always go through the unified DDL viewer tab now (Dependencies/
+  // Arguments/Declaration) instead of the dedicated PL/SQL source tab — see DdlEditorView.tsx
+  // and resolvePlsqlSourceRef's doc comment. The Declaration section renders editable when
+  // supportsPlsqlSourceEdit is true for this driver, read-only otherwise; either way "DDL 보기"
+  // (now labeled "속성 열기" for these kinds — see buildObjectMenuItems) is the single entry
+  // point, so there's no more "editSource" branch here for them.
+  if (kind === "procedure" || kind === "function") {
+    return "viewDdl";
+  }
   if (driverId && supportsPlsqlSourceEdit(driverId, kind)) {
     return "openSource";
   }
@@ -87,6 +96,11 @@ export function buildObjectMenuItems(
   options: ExplorerMenuOptions = {},
 ): ExplorerMenuItem[] {
   const isRelation = kind === "table" || kind === "view";
+  // Procedures/functions merged "편집"/"DDL 보기" into a single "속성 열기" entry (the
+  // unified DdlEditorView tab — Dependencies/Arguments/Declaration, Declaration editable
+  // when supportsPlsqlSourceEdit is true for this driver) — see defaultObjectAction's doc
+  // comment. Packages keep their separate spec/body edit entries; that merge is deferred.
+  const isRoutine = kind === "procedure" || kind === "function";
   const readOnly = options.readOnly ?? false;
   const driverId = options.driverId;
   const canMutate = options.canMutate ?? false;
@@ -100,11 +114,14 @@ export function buildObjectMenuItems(
     supportsRenameObject(kind, driverId);
   // Relations (table/view) have their own "openObjectEditor" entry above — a view's DDL is
   // editable there (Properties → DDL), not via this "edit source" entry, which is only for
-  // the dedicated PL/SQL source tab (procedure/function/package). Without this guard, once
-  // `supportsPlsqlSourceEdit` also covers views (for the Object Editor's DDL section), this
-  // menu item would incorrectly enable and route a view to the wrong tab type.
+  // the dedicated PL/SQL source tab (package only now — see isRoutine above). Without this
+  // guard, once `supportsPlsqlSourceEdit` also covers views (for the Object Editor's DDL
+  // section), this menu item would incorrectly enable and route a view to the wrong tab type.
   const canEditSource =
-    !isRelation && driverId !== undefined && supportsPlsqlSourceEdit(driverId, kind);
+    !isRelation &&
+    !isRoutine &&
+    driverId !== undefined &&
+    supportsPlsqlSourceEdit(driverId, kind);
   const isPackage = kind === "package";
   const t = I18nService.t.bind(I18nService);
 
@@ -115,16 +132,20 @@ export function buildObjectMenuItems(
       commandId: EXPLORER_COMMANDS.openObjectEditor,
       enabled: isRelation,
     },
-    {
-      id: "editSource",
-      label: isPackage ? t("app.explorer.editSpec") : t("common.edit"),
-      commandId: EXPLORER_COMMANDS.openSource,
-      enabled: canEditSource,
-      stubMessage:
-        driverId && !supportsPlsqlSourceEdit(driverId, kind)
-          ? t("app.explorer.stubEditOracle")
-          : undefined,
-    },
+    ...(isRoutine
+      ? []
+      : [
+          {
+            id: "editSource",
+            label: isPackage ? t("app.explorer.editSpec") : t("common.edit"),
+            commandId: EXPLORER_COMMANDS.openSource,
+            enabled: canEditSource,
+            stubMessage:
+              driverId && !supportsPlsqlSourceEdit(driverId, kind)
+                ? t("app.explorer.stubEditOracle")
+                : undefined,
+          } satisfies ExplorerMenuItem,
+        ]),
     ...(isPackage
       ? [
           {
@@ -137,7 +158,7 @@ export function buildObjectMenuItems(
       : []),
     {
       id: "viewDdl",
-      label: t("app.explorer.viewDdl"),
+      label: isRoutine ? t("app.explorer.openProperties") : t("app.explorer.viewDdl"),
       commandId: EXPLORER_COMMANDS.viewDdl,
       enabled: supportsDdlView(kind),
       stubMessage: supportsDdlView(kind) ? undefined : t("app.explorer.stubViewDdl"),

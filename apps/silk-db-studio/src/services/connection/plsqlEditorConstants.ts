@@ -1,5 +1,6 @@
 import type { MetadataObjectKind } from "@silk-studio/db-protocol";
 import { parseObjectEditorUri } from "./objectEditorConstants";
+import { parseDdlEditorUri } from "./ddlEditorConstants";
 
 export const PLSQL_EDITOR_URI_PREFIX = "silk://plsql/";
 
@@ -65,24 +66,40 @@ export function isPlsqlEditorTab(uri: string | undefined): boolean {
 }
 
 /**
- * Resolves a {@link PlsqlEditorRef} from either a dedicated PL/SQL editor tab URI
- * (`silk://plsql/...`, used by procedure/function/package) or an embedded Object
- * Editor tab URI (`silk://object/...`) for a view — the view DDL editor reuses the
- * PL/SQL save/snapshot/compile machinery from inside an Object Editor tab rather than
- * opening its own dedicated tab type. Returns null for any other object-editor kind
- * (tables etc. stay read-only and never resolve here).
+ * Resolves a {@link PlsqlEditorRef} from any of three tab URI shapes that can host editable
+ * PL/SQL source: a dedicated PL/SQL editor tab (`silk://plsql/...`, packages only — see
+ * DdlEditorView's doc comment for why procedures/functions no longer use this), an embedded
+ * Object Editor tab (`silk://object/...`) for a view, or the unified DDL viewer tab
+ * (`silk://ddl/...`) for a standalone procedure/function. Each of these reuses the same
+ * save/snapshot/compile machinery from inside a differently-shaped tab rather than assuming
+ * the active tab *is* a dedicated PL/SQL tab. Returns null for any other case (tables, package
+ * DDL views, etc. stay read-only and never resolve here).
  */
 export function resolvePlsqlSourceRef(uri: string | undefined): PlsqlEditorRef | null {
   const direct = parsePlsqlEditorUri(uri);
   if (direct) return direct;
+
   const objectRef = parseObjectEditorUri(uri);
-  if (!objectRef || objectRef.kind !== "view") return null;
-  return {
-    profileId: objectRef.profileId,
-    schemaName: objectRef.schemaName,
-    kind: objectRef.kind,
-    objectName: objectRef.objectName,
-  };
+  if (objectRef && objectRef.kind === "view") {
+    return {
+      profileId: objectRef.profileId,
+      schemaName: objectRef.schemaName,
+      kind: objectRef.kind,
+      objectName: objectRef.objectName,
+    };
+  }
+
+  const ddlRef = parseDdlEditorUri(uri);
+  if (ddlRef && (ddlRef.kind === "procedure" || ddlRef.kind === "function")) {
+    return {
+      profileId: ddlRef.profileId,
+      schemaName: ddlRef.schemaName,
+      kind: ddlRef.kind,
+      objectName: ddlRef.objectName,
+    };
+  }
+
+  return null;
 }
 
 /** True when {@link resolvePlsqlSourceRef} can resolve a ref from this tab URI. */

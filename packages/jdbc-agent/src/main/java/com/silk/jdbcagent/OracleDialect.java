@@ -110,6 +110,65 @@ final class OracleDialect implements DbDialect {
     }
   }
 
+  /**
+   * Queries {@code ALL_ARGUMENTS} directly instead of JDBC's {@code getProcedureColumns}/
+   * {@code getFunctionColumns} — those standard calls turned out to be dramatically slower on
+   * Oracle's driver (confirmed by comparing against DBeaver, which also queries
+   * {@code ALL_ARGUMENTS} directly here: {@code OracleProcedureBase.ArgumentsCache}). A
+   * standalone procedure/function can't be overloaded in Oracle (only package members can), so
+   * unlike DBeaver's version this doesn't need an {@code OVERLOAD} filter.
+   */
+  @Override
+  public void collectRoutineArguments(
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String routineName,
+      String kind,
+      ArrayNode arguments)
+      throws SQLException {
+    String sql =
+        "SELECT ARGUMENT_NAME AS COLUMN_NAME, DATA_TYPE AS TYPE_NAME, IN_OUT, POSITION "
+            + "FROM ALL_ARGUMENTS "
+            + "WHERE OWNER = ? AND OBJECT_NAME = ? AND PACKAGE_NAME IS NULL AND DATA_LEVEL = 0 "
+            + "ORDER BY POSITION";
+    for (String schema : distinctCases(schemaName)) {
+      for (String routine : distinctCases(routineName)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+          statement.setString(1, schema);
+          statement.setString(2, routine);
+          try (ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) {
+              int position = rs.getInt("POSITION");
+              ObjectNode argument = arguments.addObject();
+              String name = rs.getString("COLUMN_NAME");
+              if (name != null && !name.isBlank()) {
+                argument.put("name", name);
+              }
+              String typeName = rs.getString("TYPE_NAME");
+              if (typeName != null && !typeName.isBlank()) {
+                argument.put("typeName", typeName);
+              }
+              argument.put("direction", oracleArgumentDirection(rs.getString("IN_OUT"), position));
+              argument.put("position", position);
+            }
+          }
+        }
+        if (arguments.size() > 0) {
+          return;
+        }
+      }
+    }
+  }
+
+  /** {@code POSITION = 0} is always the routine's return value, regardless of {@code IN_OUT}. */
+  private static String oracleArgumentDirection(String inOut, int position) {
+    if (position == 0) return "return";
+    if ("OUT".equals(inOut)) return "out";
+    if ("IN".equals(inOut)) return "in";
+    return "inout";
+  }
+
   @Override
   public String fetchTableComment(
       Connection connection, String catalog, String schemaName, String tableName)

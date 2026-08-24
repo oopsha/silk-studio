@@ -61,7 +61,7 @@ describe("buildPlsqlSaveSql", () => {
 
   it("rewrites plain CREATE to CREATE OR REPLACE and strips trailing semicolon", () => {
     const result = buildPlsqlSaveSql("CREATE VIEW myview AS SELECT 1;", ref, "oracle");
-    expect(result.sql).toBe("CREATE OR REPLACE VIEW myview AS SELECT 1");
+    expect(result.statements).toEqual(["CREATE OR REPLACE VIEW myview AS SELECT 1"]);
     expect(result.warnings).toContain("Rewrote CREATE to CREATE OR REPLACE.");
   });
 
@@ -89,7 +89,7 @@ describe("buildPlsqlSaveSql", () => {
       ref,
       "postgresql",
     );
-    expect(result.sql).toBe('CREATE OR REPLACE VIEW "myview" AS SELECT 1');
+    expect(result.statements).toEqual(['CREATE OR REPLACE VIEW "myview" AS SELECT 1']);
     expect(result.warnings).toEqual([]);
   });
 
@@ -100,9 +100,9 @@ describe("buildPlsqlSaveSql", () => {
         ref,
         "sqlserver",
       );
-      expect(result.sql).toBe("ALTER VIEW myview AS SELECT 1");
+      expect(result.statements).toEqual(["ALTER VIEW myview AS SELECT 1"]);
       expect(result.warnings).toContain(
-        "Rewrote CREATE to ALTER (SQL Server has no CREATE OR REPLACE VIEW).",
+        "Rewrote CREATE to ALTER (SQL Server has no CREATE OR REPLACE).",
       );
     });
 
@@ -112,7 +112,7 @@ describe("buildPlsqlSaveSql", () => {
         ref,
         "sqlserver",
       );
-      expect(result.sql).toBe("ALTER VIEW myview AS SELECT 1");
+      expect(result.statements).toEqual(["ALTER VIEW myview AS SELECT 1"]);
       expect(result.warnings).toEqual([]);
     });
 
@@ -122,9 +122,9 @@ describe("buildPlsqlSaveSql", () => {
         ref,
         "sqlserver",
       );
-      expect(result.sql).toBe("ALTER VIEW [myview] AS SELECT 1");
+      expect(result.statements).toEqual(["ALTER VIEW [myview] AS SELECT 1"]);
       expect(result.warnings).toEqual([
-        "Rewrote CREATE to ALTER (SQL Server has no CREATE OR REPLACE VIEW).",
+        "Rewrote CREATE to ALTER (SQL Server has no CREATE OR REPLACE).",
       ]);
     });
 
@@ -148,5 +148,68 @@ describe("buildPlsqlSaveSql", () => {
     expect(() =>
       buildPlsqlSaveSql("ALTER VIEW myview AS SELECT 1", ref, "oracle"),
     ).toThrow(/CREATE \(OR REPLACE\)/);
+  });
+
+  describe("MySQL/MariaDB procedures and functions (no CREATE OR REPLACE)", () => {
+    const procedureRef: PlsqlEditorRef = {
+      profileId: "p1",
+      schemaName: "db",
+      kind: "procedure",
+      objectName: "myproc",
+    };
+
+    it("builds a DROP IF EXISTS + CREATE pair, leaving CREATE unrewritten", () => {
+      const result = buildPlsqlSaveSql(
+        "CREATE PROCEDURE `db`.`myproc`() BEGIN SELECT 1; END",
+        procedureRef,
+        "mysql",
+      );
+      // stripTrailingSemicolon treats a CREATE PROCEDURE/FUNCTION body as a PL/SQL block that
+      // needs its trailing `;` kept/added (existing, driver-agnostic behavior — harmless for a
+      // single-statement MySQL execute call too).
+      expect(result.statements).toEqual([
+        "DROP PROCEDURE IF EXISTS `db`.`myproc`",
+        "CREATE PROCEDURE `db`.`myproc`() BEGIN SELECT 1; END;",
+      ]);
+      expect(
+        result.warnings.some((w) => w.includes("two separate statements")),
+      ).toBe(true);
+    });
+
+    it("does the same for MariaDB functions, using DROP FUNCTION", () => {
+      const functionRef: PlsqlEditorRef = {
+        profileId: "p1",
+        schemaName: "db",
+        kind: "function",
+        objectName: "myfunc",
+      };
+      const result = buildPlsqlSaveSql(
+        "CREATE FUNCTION `db`.`myfunc`() RETURNS INT BEGIN RETURN 1; END",
+        functionRef,
+        "mariadb",
+      );
+      expect(result.statements[0]).toBe("DROP FUNCTION IF EXISTS `db`.`myfunc`");
+      expect(result.statements[1]).toBe(
+        "CREATE FUNCTION `db`.`myfunc`() RETURNS INT BEGIN RETURN 1; END;",
+      );
+    });
+
+    it("does not rewrite CREATE to CREATE OR REPLACE for MySQL procedures (invalid syntax there)", () => {
+      const result = buildPlsqlSaveSql(
+        "CREATE PROCEDURE myproc() BEGIN SELECT 1; END",
+        procedureRef,
+        "mysql",
+      );
+      expect(result.statements[1]).not.toMatch(/CREATE OR REPLACE/i);
+    });
+
+    it("still rewrites CREATE to CREATE OR REPLACE for MySQL views (unaffected by the routine branch)", () => {
+      const result = buildPlsqlSaveSql(
+        "CREATE VIEW myview AS SELECT 1",
+        ref,
+        "mysql",
+      );
+      expect(result.statements).toEqual(["CREATE OR REPLACE VIEW myview AS SELECT 1"]);
+    });
   });
 });

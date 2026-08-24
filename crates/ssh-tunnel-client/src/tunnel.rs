@@ -220,6 +220,17 @@ impl TunnelManager {
         }
     }
 
+    /// Closes every open tunnel — called from the app's exit-requested handler, same rationale
+    /// as `ssm_tunnel_client::TunnelManager::close_all`.
+    pub fn close_all(&self) {
+        if let Ok(mut active) = self.active.lock() {
+            for (_, handle) in active.drain() {
+                let _ = handle.shutdown.send(());
+                handle.task.abort();
+            }
+        }
+    }
+
     pub fn is_open(&self, connection_id: &str) -> bool {
         self.active.lock().map(|active| active.contains_key(connection_id)).unwrap_or(false)
     }
@@ -231,12 +242,7 @@ impl TunnelManager {
 
 impl Drop for TunnelManager {
     fn drop(&mut self) {
-        if let Ok(mut active) = self.active.lock() {
-            for (_, handle) in active.drain() {
-                let _ = handle.shutdown.send(());
-                handle.task.abort();
-            }
-        }
+        self.close_all();
     }
 }
 

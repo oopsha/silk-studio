@@ -1,10 +1,16 @@
 import type { MetadataObjectKind } from "@silk-studio/db-protocol";
 import { stripTrailingSemicolon } from "../query/sqlExecutable";
+import { qualifyTableName } from "../query/sqlLiteral";
 import type { ConnectionDriverId } from "./connectionTypes";
 import type { PlsqlEditorRef } from "./plsqlEditorConstants";
 
 export type PlsqlSaveSqlResult = {
-  sql: string;
+  /**
+   * One statement for every driver/kind except MySQL/MariaDB procedures/functions, which have
+   * no `CREATE OR REPLACE` and so need a `DROP IF EXISTS` + `CREATE` pair (two statements) —
+   * see the MySQL/MariaDB branch below. Always execute in array order.
+   */
+  statements: string[];
   warnings: string[];
 };
 
@@ -104,6 +110,16 @@ export function buildPlsqlSaveSql(
   }
 
   const isSqlServer = driverId === "sqlserver";
+  // MySQL/MariaDB support CREATE OR REPLACE for views/triggers but NOT for procedures/
+  // functions — those need a DROP IF EXISTS + CREATE pair instead (same approach DBeaver's
+  // MySQLProcedureManager uses, DEFINER clause and all — no attempt is made to strip it).
+  // Both statements auto-commit immediately in MySQL regardless of any surrounding
+  // transaction (DDL isn't transactional there): if CREATE fails after DROP already
+  // succeeded, the object is genuinely gone until re-created from a snapshot or the
+  // save dialog's still-visible "before" diff text.
+  const needsDropCreate =
+    (driverId === "mysql" || driverId === "mariadb") &&
+    (ref.kind === "procedure" || ref.kind === "function");
   const startsWithCreate = /^\s*CREATE\b/i.test(sql);
   const startsWithAlter = /^\s*ALTER\b/i.test(sql);
 
@@ -121,13 +137,16 @@ export function buildPlsqlSaveSql(
   }
 
   if (isSqlServer) {
-    // SQL Server has no CREATE OR REPLACE VIEW; this editor only ever edits an existing view,
-    // so rewrite a leading CREATE to ALTER. A buffer already starting with ALTER (re-saving
-    // after a prior save already did this rewrite) is left as-is.
+    // SQL Server has no CREATE OR REPLACE VIEW/PROCEDURE/FUNCTION; this editor only ever edits
+    // an existing object, so rewrite a leading CREATE to ALTER. A buffer already starting with
+    // ALTER (re-saving after a prior save already did this rewrite) is left as-is.
     if (startsWithCreate) {
       sql = sql.replace(/^\s*CREATE\b/i, "ALTER");
-      warnings.push("Rewrote CREATE to ALTER (SQL Server has no CREATE OR REPLACE VIEW).");
+      warnings.push("Rewrote CREATE to ALTER (SQL Server has no CREATE OR REPLACE).");
     }
+  } else if (needsDropCreate) {
+    // Leave a leading CREATE exactly as fetched — no OR REPLACE rewrite (invalid syntax for
+    // MySQL/MariaDB routines). The DROP statement built below handles the "replace" half.
   } else if (/^\s*CREATE\s+(?!OR\s+REPLACE\b)/i.test(sql)) {
     sql = sql.replace(/^\s*CREATE\b/i, "CREATE OR REPLACE");
     warnings.push("Rewrote CREATE to CREATE OR REPLACE.");
@@ -156,5 +175,20 @@ export function buildPlsqlSaveSql(
     );
   }
 
-  return { sql: stripTrailingSemicolon(sql), warnings };
+  const createStatement = stripTrailingSemicolon(sql);
+
+  if (needsDropCreate) {
+    const dropStatement = `DROP ${oracleKindKeyword(ref.kind)} IF EXISTS ${qualifyTableName(
+      ref.schemaName,
+      ref.objectName,
+      driverId,
+    )}`;
+    warnings.push(
+      "MySQL/MariaDB has no CREATE OR REPLACE for procedures/functions — this DROPs and " +
+        "recreates the object as two separate statements (see the SQL tab).",
+    );
+    return { statements: [dropStatement, createStatement], warnings };
+  }
+
+  return { statements: [createStatement], warnings };
 }

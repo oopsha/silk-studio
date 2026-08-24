@@ -228,6 +228,25 @@ fn connection_columns(
 }
 
 #[tauri::command]
+fn connection_arguments(
+    connection_id: String,
+    schema: String,
+    name: String,
+    kind: String,
+    catalog: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    state.jdbc_agent.list_arguments(
+        connection_id,
+        schema.trim(),
+        name.trim(),
+        kind.trim(),
+        catalog.as_deref(),
+    )
+}
+
+#[tauri::command]
 fn connection_package_members(
     connection_id: String,
     schema: String,
@@ -470,6 +489,7 @@ pub fn run() {
             connection_metadata,
             connection_prefetch_catalog,
             connection_columns,
+            connection_arguments,
             connection_package_members,
             connection_primary_keys,
             connection_indexes,
@@ -517,6 +537,14 @@ pub fn run() {
                     paths.java_bin.clone(),
                 ),
             });
+            // A leftover session-manager-plugin.exe at our exact bundled path can only be an
+            // orphan from a previous run of this same app (crashed, force-killed, or closed
+            // before the exit-requested handler below got to run) — see
+            // `kill_orphaned_plugin_processes`'s doc comment. Sweep it before opening any
+            // tunnel of our own so it doesn't keep locking its own .exe file indefinitely.
+            ssm_tunnel_client::TunnelManager::kill_orphaned_plugin_processes(
+                &paths.ssm_plugin_bin,
+            );
             app.manage(ssm_tunnel::SsmTunnelState {
                 tunnels: ssm_tunnel_client::TunnelManager::new(paths.ssm_plugin_bin.clone()),
             });
@@ -544,6 +572,26 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Kills jdbc-agent's Java subprocess and any open SSM/SSH tunnel subprocesses
+            // before the app actually exits. Necessary because Tauri's runloop terminates the
+            // process without unwinding through normal Rust drops on window close — the `Drop`
+            // impls on these types (which do the same kill+wait) never get a chance to run
+            // otherwise, leaving orphaned `session-manager-plugin.exe`/`java` processes behind
+            // (confirmed: an orphaned session-manager-plugin.exe holds a lock on its own .exe,
+            // which then blocks a later `cargo build` from touching it).
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                if let Some(state) = app_handle.try_state::<AppState>() {
+                    state.jdbc_agent.shutdown();
+                }
+                if let Some(state) = app_handle.try_state::<ssm_tunnel::SsmTunnelState>() {
+                    state.tunnels.close_all();
+                }
+                if let Some(state) = app_handle.try_state::<ssh_tunnel::SshTunnelState>() {
+                    state.tunnels.close_all();
+                }
+            }
+        });
 }
