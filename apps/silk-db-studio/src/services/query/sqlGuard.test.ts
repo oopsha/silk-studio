@@ -11,6 +11,8 @@ describe("isWriteSql", () => {
     expect(isWriteSql("DELETE FROM t")).toBe(true);
     expect(isWriteSql("DROP TABLE t")).toBe(true);
     expect(isWriteSql("CREATE TABLE t (id INT)")).toBe(true);
+    expect(isWriteSql("COMMENT ON TABLE t IS 'a table'")).toBe(true);
+    expect(isWriteSql("COMMENT ON COLUMN t.c IS 'a column'")).toBe(true);
   });
 
   it("allows typical read statements", () => {

@@ -189,6 +189,45 @@ abstract class MySqlCompatibleDialect implements DbDialect {
     try (ResultSet rs = metadata.getColumns(schemaName, null, tableName, "%")) {
       MetadataColumns.appendFromResultSet(rs, columns);
     }
+    applyFullTypeNames(connection, schemaName, tableName, columns);
+  }
+
+  /**
+   * {@code typeName}/{@code columnSize}/{@code decimalDigits} alone can't losslessly reproduce
+   * MySQL/MariaDB's full column-type text for {@code ENUM(...)}/{@code SET(...)} or unsigned/
+   * zerofill modifiers. The table-structure editor's rename path (which must restate the entire
+   * column definition via {@code CHANGE}) needs the driver's own text verbatim, so fetch
+   * {@code COLUMN_TYPE} from {@code information_schema.COLUMNS} and merge it in.
+   */
+  private static void applyFullTypeNames(
+      Connection connection, String schemaName, String tableName, ArrayNode columns)
+      throws SQLException {
+    if (columns.isEmpty()) {
+      return;
+    }
+    String sql =
+        "SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS "
+            + "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, tableName);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          String columnName = rs.getString("COLUMN_NAME");
+          String fullTypeName = rs.getString("COLUMN_TYPE");
+          if (columnName == null || fullTypeName == null || fullTypeName.isBlank()) {
+            continue;
+          }
+          for (JsonNode node : columns) {
+            if (node instanceof ObjectNode objectNode
+                && columnName.equals(objectNode.path("name").asText(null))) {
+              objectNode.put("fullTypeName", fullTypeName);
+              break;
+            }
+          }
+        }
+      }
+    }
   }
 
   @Override

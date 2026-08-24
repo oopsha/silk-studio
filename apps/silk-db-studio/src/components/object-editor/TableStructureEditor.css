@@ -1,0 +1,141 @@
+.table-structure-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.table-structure-editor__status {
+  padding: 16px;
+  color: var(--color-description);
+  font-size: 12px;
+}
+
+.table-structure-editor__status--error {
+  color: var(--color-error, #f48771);
+}
+
+.table-structure-editor__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table-structure-editor__toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--color-foreground);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.table-structure-editor__toolbar-button:hover:not(:disabled) {
+  background-color: var(--color-toolbar-hover-background);
+}
+
+.table-structure-editor__toolbar-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.table-structure-editor__toolbar-spacer {
+  flex: 1;
+}
+
+.table-structure-editor__grid {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.table-structure-editor__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table-structure-editor__table th,
+.table-structure-editor__table td {
+  padding: 4px 6px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.table-structure-editor__table th {
+  position: sticky;
+  top: 0;
+  color: var(--color-description);
+  font-weight: 600;
+  background-color: var(--color-surface);
+}
+
+.table-structure-editor__row--pending-drop {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.table-structure-editor__cell-input {
+  width: 100%;
+  min-width: 60px;
+  font-size: 12px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background-color: transparent;
+  color: var(--color-foreground);
+}
+
+.table-structure-editor__cell-input:hover,
+.table-structure-editor__cell-input:focus {
+  border-color: var(--color-border);
+  background-color: var(--color-input-background, rgba(255, 255, 255, 0.04));
+}
+
+.table-structure-editor__cell-input:disabled {
+  opacity: 0.5;
+}
+
+.table-structure-editor__cell-input--narrow {
+  width: 64px;
+  min-width: 48px;
+}
+
+.table-structure-editor__pk-cell {
+  text-align: center;
+  color: var(--color-description);
+}
+
+.table-structure-editor__index-cell {
+  width: 1%;
+  text-align: right;
+  color: var(--color-description);
+}
+
+.table-structure-editor__row-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 11px;
+  color: var(--color-description);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.table-structure-editor__row-action:hover {
+  color: var(--color-foreground);
+  background-color: var(--color-toolbar-hover-background);
+}

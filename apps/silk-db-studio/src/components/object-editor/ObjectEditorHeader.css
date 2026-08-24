@@ -62,3 +62,58 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.object-editor-header__input {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  color: var(--color-input-foreground);
+  background-color: var(--color-input-background);
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.object-editor-header__input:disabled {
+  opacity: 0.6;
+}
+
+.object-editor-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.object-editor-header__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--color-foreground);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.object-editor-header__button:hover:not(:disabled) {
+  background-color: var(--color-toolbar-hover-background);
+}
+
+.object-editor-header__button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.object-editor-header__button--primary {
+  border-color: var(--color-accent, var(--color-border));
+  color: var(--color-accent, var(--color-foreground));
+}
+
+.object-editor-header__blocked-reason {
+  font-size: 12px;
+  color: var(--color-description);
+}
