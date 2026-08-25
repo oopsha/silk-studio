@@ -1278,6 +1278,27 @@ final class OracleDialect implements DbDialect {
         objects);
   }
 
+  @Override
+  public void findObjectsByName(
+      Connection connection, String catalog, String name, ArrayNode objects)
+      throws SQLException {
+    String sql =
+        "SELECT OWNER, OBJECT_NAME, OBJECT_TYPE FROM ALL_OBJECTS "
+            + "WHERE OBJECT_NAME = ? AND OBJECT_TYPE IN ('TABLE', 'VIEW')";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, name);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          ObjectNode object = objects.addObject();
+          object.put("schemaName", rs.getString("OWNER"));
+          object.put("name", rs.getString("OBJECT_NAME"));
+          object.put(
+              "kind", "VIEW".equalsIgnoreCase(rs.getString("OBJECT_TYPE")) ? "view" : "table");
+        }
+      }
+    }
+  }
+
   /** Runs a single-column {@code (name) WHERE owner/schema = ?} query and appends {@code kind} objects. */
   private static void appendSimpleObjects(
       Connection connection, String sql, String schemaName, String kind, ArrayNode objects)

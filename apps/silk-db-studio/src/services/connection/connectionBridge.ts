@@ -3,6 +3,7 @@ import { invokeJdbcCommand } from "./jdbcInvoke";
 import {
   isConnectionColumnsResult,
   isConnectionConstraintsResult,
+  isConnectionFindObjectsByNameResult,
   isConnectionForeignKeysResult,
   isConnectionIndexesResult,
   isConnectionMetadataResult,
@@ -14,6 +15,7 @@ import {
   type ConnectionColumnsResult,
   type ConnectionConstraintsResult,
   type ConnectionCredentials,
+  type ConnectionFindObjectsByNameResult,
   type ConnectionForeignKeysResult,
   type ConnectionIndexesResult,
   type ConnectionMetadataResult,
@@ -116,6 +118,33 @@ export async function bridgeConnectionPrefetchCatalog(
   }, id);
   if (!isConnectionPrefetchCatalogResult(payload)) {
     throw new Error("Invalid prefetch-catalog payload from desktop bridge.");
+  }
+  return payload;
+}
+
+/**
+ * Finds tables/views named exactly `name`, across every schema (and catalog, for SQL Server)
+ * the connection can see — no schema required from the caller. Backs the AI assistant's
+ * find_object_by_name tool.
+ */
+export async function bridgeFindObjectsByName(
+  connectionId: string,
+  name: string,
+): Promise<ConnectionFindObjectsByNameResult> {
+  if (!isTauri()) {
+    throw new Error("Database metadata is available in the desktop app only.");
+  }
+  const id = connectionId.trim();
+  if (!id) {
+    throw new Error("connectionId is required.");
+  }
+  const payload = await invokeJdbcCommand<unknown>(
+    "connection_find_objects_by_name",
+    { connectionId: id, name: name.trim() },
+    id,
+  );
+  if (!isConnectionFindObjectsByNameResult(payload)) {
+    throw new Error("Invalid find-objects-by-name payload from desktop bridge.");
   }
   return payload;
 }

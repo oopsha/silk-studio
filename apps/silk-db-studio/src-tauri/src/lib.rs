@@ -239,6 +239,23 @@ fn connection_prefetch_catalog(
         .prefetch_catalog(connection_id, catalog.as_deref(), max_objects)
 }
 
+/// Loops every catalog on catalog-explorer dialects (SQL Server) server-side (jdbc-agent), so
+/// this can take a few seconds on an instance with many databases — `async` + `run_blocking`
+/// for the same reason `connection_connect`/`connection_test` are (see that doc comment).
+#[tauri::command]
+async fn connection_find_objects_by_name(
+    connection_id: String,
+    name: String,
+    app: tauri::AppHandle,
+) -> Result<Value, String> {
+    require_connection_id(&connection_id)?;
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        state.jdbc_agent.find_objects_by_name(&connection_id, &name)
+    })
+    .await
+}
+
 #[tauri::command]
 fn connection_columns(
     connection_id: String,
@@ -517,6 +534,7 @@ pub fn run() {
             connection_test,
             connection_metadata,
             connection_prefetch_catalog,
+            connection_find_objects_by_name,
             connection_columns,
             connection_arguments,
             connection_package_members,

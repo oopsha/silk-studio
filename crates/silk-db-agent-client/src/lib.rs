@@ -200,6 +200,16 @@ impl JdbcAgentClient {
         self.send_request("connection.prefetchCatalog", params)
     }
 
+    pub fn find_objects_by_name(
+        &self,
+        connection_id: &str,
+        name: &str,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let params = json!({ "connectionId": connection_id.trim(), "name": name.trim() });
+        self.send_request("connection.findObjectsByName", params)
+    }
+
     pub fn list_columns(
         &self,
         connection_id: &str,
