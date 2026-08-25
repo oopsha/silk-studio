@@ -80,6 +80,26 @@ interface DbDialect {
       throws SQLException;
 
   /**
+   * Populates {@code objects} with every table/view named exactly {@code name}, across every
+   * schema visible within {@code catalog} (for dialects with no catalog concept, {@code catalog}
+   * is ignored and every schema on the connection is searched). Each entry carries {@code
+   * schemaName}/{@code name}/{@code kind} ({@code "table"} or {@code "view"}).
+   *
+   * <p>Backs the AI assistant's "find an object without knowing its schema" tool — deliberately
+   * scoped to tables/views only (the common "open this table" case) rather than routines/
+   * packages too, to keep the per-dialect query (a single {@code WHERE name = ?} against the
+   * dictionary/system catalog, no schema predicate) simple and uniform across dialects. Callers
+   * that need every catalog searched (SQL Server) loop {@link #listCatalogNames} and call this
+   * once per catalog themselves — this method only ever looks at the one {@code catalog} given.
+   */
+  void findObjectsByName(
+      Connection connection,
+      String catalog,
+      String name,
+      ArrayNode objects)
+      throws SQLException;
+
+  /**
    * Populates {@code columns} with column descriptors ({@code name}, optional {@code typeName})
    * for {@code tableName} under {@code schemaName}. Used by SQL autocomplete and by the Object
    * Editor's table-structure editor (Columns tab) — implementations should also emit {@code

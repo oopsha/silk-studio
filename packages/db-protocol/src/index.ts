@@ -147,6 +147,27 @@ export type ConnectionPrefetchCatalogResult = {
   message?: string;
 };
 
+/**
+ * A table/view found by `connection.findObjectsByName` — a name-only, no-schema-required lookup
+ * across every schema (and catalog, for SQL Server) the connection can see. `catalogName` is
+ * only present for catalog-explorer dialects (SQL Server).
+ */
+export type FoundMetadataObject = {
+  catalogName?: string;
+  schemaName: string;
+  name: string;
+  kind: MetadataObjectKind;
+};
+
+export type ConnectionFindObjectsByNameParams = {
+  connectionId: string;
+  name: string;
+};
+
+export type ConnectionFindObjectsByNameResult = {
+  objects: FoundMetadataObject[];
+};
+
 /** Column metadata for SQL autocomplete and the object editor's Columns section (`connection.columns`). */
 export type MetadataColumn = {
   name: string;
@@ -613,6 +634,39 @@ export function isConnectionPrefetchCatalogResult(
     typeof record.truncated === "boolean" &&
     (record.message === undefined || typeof record.message === "string")
   );
+}
+
+const METADATA_OBJECT_KINDS: readonly string[] = [
+  "table",
+  "view",
+  "procedure",
+  "function",
+  "package",
+  "index",
+  "sequence",
+  "synonym",
+  "trigger",
+  "type",
+];
+
+function isFoundMetadataObject(value: unknown): value is FoundMetadataObject {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    (record.catalogName === undefined || typeof record.catalogName === "string") &&
+    typeof record.schemaName === "string" &&
+    typeof record.name === "string" &&
+    typeof record.kind === "string" &&
+    METADATA_OBJECT_KINDS.includes(record.kind)
+  );
+}
+
+export function isConnectionFindObjectsByNameResult(
+  value: unknown,
+): value is ConnectionFindObjectsByNameResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return Array.isArray(record.objects) && record.objects.every(isFoundMetadataObject);
 }
 
 function isMetadataColumn(value: unknown): value is MetadataColumn {

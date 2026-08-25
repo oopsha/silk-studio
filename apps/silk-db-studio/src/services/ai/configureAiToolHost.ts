@@ -6,6 +6,8 @@ import { bridgeListObjectDependencies } from "../connection/connectionDependenci
 import { bridgeFetchObjectDdl } from "../connection/connectionDdlBridge";
 import { ConnectionService } from "../connection/connectionService";
 import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
+import { openObjectEditor } from "../connection/objectEditorService";
+import { bridgeFindObjectsByName } from "../connection/connectionBridge";
 
 const MAX_RESULT_CHARS = 14_000;
 const MAX_SOURCE_CHARS = 10_000;
@@ -26,6 +28,35 @@ function resolveToolProfileId(): string | null {
   return connected && ConnectionService.isConnected(connected.id)
     ? connected.id
     : null;
+}
+
+/**
+ * Resolves which connection a tool call targets: an explicit `args.connectionName` (from
+ * find_object_by_name's matches, or the Explorer's connection display name) when given,
+ * otherwise the old implicit single-connection guess. Throws (caught by executeTool's try/
+ * catch) rather than returning early — every profile-scoped tool case calls this first.
+ */
+function resolveProfileIdFromArgs(args: Record<string, unknown>): string {
+  const connectionName =
+    typeof args.connectionName === "string" ? args.connectionName.trim() : "";
+  if (connectionName) {
+    const profile = ConnectionService.getConnectedProfiles().find(
+      (candidate) => candidate.name === connectionName,
+    );
+    if (!profile) {
+      throw new Error(
+        `No connected profile named "${connectionName}". Connected profiles: ${ConnectionService.getConnectedProfiles()
+          .map((candidate) => candidate.name)
+          .join(", ") || "(none)"}.`,
+      );
+    }
+    return profile.id;
+  }
+  const profileId = resolveToolProfileId();
+  if (!profileId) {
+    throw new Error("Connect a database profile before using DB tools.");
+  }
+  return profileId;
 }
 
 function asObjectKind(value: unknown): MetadataObjectKind | null {
@@ -64,6 +95,13 @@ function requireString(
   return value.trim();
 }
 
+/** SQL Server only — `dbo` (etc.) exists identically in every database on a connection, so
+ *  omitting this when it matters silently targets whichever database happens to be current. */
+function resolveCatalogNameFromArgs(args: Record<string, unknown>): string | undefined {
+  const catalogName = typeof args.catalogName === "string" ? args.catalogName.trim() : "";
+  return catalogName || undefined;
+}
+
 async function executeTool(
   name: string,
   argsJson: string,
@@ -73,19 +111,13 @@ async function executeTool(
     throw new Error("Cancelled.");
   }
 
-  const profileId = resolveToolProfileId();
-  if (!profileId) {
-    return JSON.stringify({
-      error: "Connect a database profile before using DB tools.",
-    });
-  }
-
   const args = parseArgs(argsJson);
 
   try {
     switch (name) {
       case "get_plsql_source":
       case "get_object_ddl": {
+        const profileId = resolveProfileIdFromArgs(args);
         const schema = requireString(args, "schema");
         const objectName = requireString(args, "name");
         const kind = asObjectKind(args.kind);
@@ -112,6 +144,7 @@ async function executeTool(
           objectName,
           kind,
           packageBody,
+          resolveCatalogNameFromArgs(args),
         );
         return truncate(
           JSON.stringify({
@@ -126,6 +159,7 @@ async function executeTool(
         );
       }
       case "list_object_dependencies": {
+        const profileId = resolveProfileIdFromArgs(args);
         const schema = requireString(args, "schema");
         const objectName = requireString(args, "name");
         const kind = asObjectKind(args.kind);
@@ -148,6 +182,7 @@ async function executeTool(
           objectName,
           kind,
           packageBody,
+          resolveCatalogNameFromArgs(args),
         );
         return truncate(
           JSON.stringify({
@@ -162,9 +197,15 @@ async function executeTool(
         );
       }
       case "get_table_columns": {
+        const profileId = resolveProfileIdFromArgs(args);
         const schema = requireString(args, "schema");
         const table = requireString(args, "table");
-        const result = await bridgeListColumns(profileId, schema, table);
+        const result = await bridgeListColumns(
+          profileId,
+          schema,
+          table,
+          resolveCatalogNameFromArgs(args),
+        );
         const columns = result.columns.slice(0, MAX_COLUMNS).map((col) => ({
           name: col.name,
           typeName: col.typeName,
@@ -181,6 +222,64 @@ async function executeTool(
           }),
           MAX_RESULT_CHARS,
         );
+      }
+      case "find_object_by_name": {
+        const objectName = requireString(args, "name");
+        const profiles = ConnectionService.getConnectedProfiles();
+        if (profiles.length === 0) {
+          throw new Error("Connect a database profile before using DB tools.");
+        }
+        const matches: Array<{
+          connectionName: string;
+          catalogName?: string;
+          schemaName: string;
+          name: string;
+          kind: string;
+        }> = [];
+        for (const profile of profiles) {
+          try {
+            const result = await bridgeFindObjectsByName(profile.id, objectName);
+            for (const object of result.objects) {
+              matches.push({ connectionName: profile.name, ...object });
+            }
+          } catch {
+            // Best-effort across connections — one profile failing to search (e.g. a transient
+            // connection hiccup) shouldn't fail the search on every other connected profile.
+          }
+        }
+        return truncate(
+          JSON.stringify({ name: objectName, matches }),
+          MAX_RESULT_CHARS,
+        );
+      }
+      case "open_object_editor": {
+        const schema = requireString(args, "schema");
+        const objectName = requireString(args, "name");
+        const kind = asObjectKind(args.kind);
+        if (!kind) {
+          throw new Error(
+            "kind must be table|view|procedure|function|package",
+          );
+        }
+        const connectionName =
+          typeof args.connectionName === "string" ? args.connectionName.trim() : "";
+        const catalogName = resolveCatalogNameFromArgs(args);
+        const profileId = resolveProfileIdFromArgs(args);
+        openObjectEditor({
+          profileId,
+          schemaName: schema,
+          object: { name: objectName, kind },
+          catalogName,
+        });
+        return JSON.stringify({
+          opened: true,
+          connectionName: connectionName || undefined,
+          catalogName,
+          schema,
+          name: objectName,
+          kind,
+          note: "Properties tab opened. No query was run — the Data tab (if any) is still empty until the user opens it or you propose a SELECT.",
+        });
       }
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` });

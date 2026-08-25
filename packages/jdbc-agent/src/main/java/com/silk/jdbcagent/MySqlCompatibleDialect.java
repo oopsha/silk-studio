@@ -156,6 +156,29 @@ abstract class MySqlCompatibleDialect implements DbDialect {
         objects);
   }
 
+  @Override
+  public void findObjectsByName(
+      Connection connection, String catalog, String name, ArrayNode objects)
+      throws SQLException {
+    // No schema predicate at all — "schema" is the database name for this dialect, and the
+    // whole point is finding which database(s) have this table without the caller knowing.
+    String sql =
+        "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES "
+            + "WHERE TABLE_NAME = ? AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, name);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          ObjectNode object = objects.addObject();
+          object.put("schemaName", rs.getString("TABLE_SCHEMA"));
+          object.put("name", rs.getString("TABLE_NAME"));
+          String tableType = rs.getString("TABLE_TYPE");
+          object.put("kind", "VIEW".equalsIgnoreCase(tableType) ? "view" : "table");
+        }
+      }
+    }
+  }
+
   /** Runs a single-column {@code (NAME) WHERE schema = ?} query and appends {@code kind} objects. */
   private static void appendSimpleObjects(
       Connection connection, String sql, String schemaName, String kind, ArrayNode objects)

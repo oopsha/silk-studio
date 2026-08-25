@@ -248,6 +248,10 @@ public final class Main {
           response.put("ok", true);
           response.set("result", runtime.prefetchCatalog(params));
         }
+        case "connection.findObjectsByName" -> {
+          response.put("ok", true);
+          response.set("result", runtime.findObjectsByName(params));
+        }
         case "connection.columns" -> {
           response.put("ok", true);
           response.set("result", runtime.listColumns(params));
@@ -751,6 +755,43 @@ public final class Main {
             "Prefetch stopped early (limit reached) — " + schemas.size() + "/"
                 + schemaNames.size() + " schemas covered.");
       }
+      return result;
+    }
+
+    /**
+     * Finds tables/views named exactly {@code params.name}, across every schema (and, for
+     * catalog-explorer dialects like SQL Server, every catalog/database) the connection can see
+     * — backs the AI assistant's "find an object without knowing its schema" tool. See {@link
+     * DbDialect#findObjectsByName} for why this is scoped to tables/views only.
+     */
+    ObjectNode findObjectsByName(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      Connection connection = session.connection;
+      DbDialect dialect = session.dialect;
+      String name = params.path("name").asText("").trim();
+      if (name.isEmpty()) {
+        throw new RuntimeException("Missing params.name");
+      }
+
+      ArrayNode objects = MAPPER.createArrayNode();
+      if (dialect.usesCatalogExplorer()) {
+        for (String catalogName : dialect.listCatalogNames(connection)) {
+          ArrayNode found = MAPPER.createArrayNode();
+          dialect.findObjectsByName(connection, catalogName, name, found);
+          for (JsonNode object : found) {
+            ObjectNode tagged = objects.addObject();
+            tagged.put("catalogName", catalogName);
+            tagged.put("schemaName", object.path("schemaName").asText(""));
+            tagged.put("name", object.path("name").asText(""));
+            tagged.put("kind", object.path("kind").asText(""));
+          }
+        }
+      } else {
+        dialect.findObjectsByName(connection, null, name, objects);
+      }
+
+      ObjectNode result = MAPPER.createObjectNode();
+      result.set("objects", objects);
       return result;
     }
 

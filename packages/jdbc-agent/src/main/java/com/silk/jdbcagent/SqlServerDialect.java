@@ -288,6 +288,31 @@ final class SqlServerDialect implements DbDialect {
     }
   }
 
+  @Override
+  public void findObjectsByName(
+      Connection connection, String catalog, String name, ArrayNode objects)
+      throws SQLException {
+    // Only ever looks at the one `catalog` given (or the connection's current database when
+    // blank) — the AI tool's caller loops listCatalogNames() itself to cover every database.
+    String prefix = CatalogQualifier.prefix(catalog);
+    String sql =
+        "SELECT s.name AS SCHEMA_NAME, o.name AS OBJECT_NAME, o.type AS OBJ_TYPE "
+            + "FROM " + prefix + "sys.objects o "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
+            + "WHERE o.name = ? AND o.type IN ('U', 'V')";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, name);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          ObjectNode object = objects.addObject();
+          object.put("schemaName", rs.getString("SCHEMA_NAME"));
+          object.put("name", rs.getString("OBJECT_NAME"));
+          object.put("kind", "V".equals(rs.getString("OBJ_TYPE")) ? "view" : "table");
+        }
+      }
+    }
+  }
+
   /** Runs a single-column {@code (NAME) WHERE schema = ?} query and appends {@code kind} objects. */
   private static void appendSimpleObjects(
       Connection connection, String sql, String schemaName, String kind, ArrayNode objects)

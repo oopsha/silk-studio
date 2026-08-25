@@ -205,6 +205,30 @@ final class PostgreSqlDialect implements DbDialect {
         objects);
   }
 
+  @Override
+  public void findObjectsByName(
+      Connection connection, String catalog, String name, ArrayNode objects)
+      throws SQLException {
+    // relkind: r/p = table (partitioned tables included), v/m = view/materialized view.
+    String sql =
+        "SELECT n.nspname AS SCHEMA_NAME, c.relname AS OBJECT_NAME, c.relkind AS REL_KIND "
+            + "FROM pg_catalog.pg_class c "
+            + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            + "WHERE c.relname = ? AND c.relkind IN ('r', 'p', 'v', 'm')";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, name);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          ObjectNode object = objects.addObject();
+          object.put("schemaName", rs.getString("SCHEMA_NAME"));
+          object.put("name", rs.getString("OBJECT_NAME"));
+          String relKind = rs.getString("REL_KIND");
+          object.put("kind", "v".equals(relKind) || "m".equals(relKind) ? "view" : "table");
+        }
+      }
+    }
+  }
+
   /** Runs a single-column {@code (NAME) WHERE schema = ?} query and appends {@code kind} objects. */
   private static void appendSimpleObjects(
       Connection connection, String sql, String schemaName, String kind, ArrayNode objects)
