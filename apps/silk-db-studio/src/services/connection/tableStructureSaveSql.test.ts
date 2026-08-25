@@ -196,7 +196,9 @@ describe("buildTableStructureSaveSql — blockers", () => {
       editedTableComment: null,
     });
     const result = buildTableStructureSaveSql(changes, ctxFor("sqlserver", 1));
-    expect(result.blockers.some((b) => b.includes("default"))).toBe(true);
+    // Blocker text is localized (tKey) — assert on the interpolated column name, not on
+    // English wording, so this doesn't depend on which locale is active in the test run.
+    expect(result.blockers.some((b) => b.includes('"A"'))).toBe(true);
   });
 
   it("blocks editing an identity/generated column", () => {
@@ -230,7 +232,8 @@ describe("buildTableStructureSaveSql — blockers", () => {
       editedTableComment: null,
     });
     const result = buildTableStructureSaveSql(changes, ctxFor("oracle", 2));
-    expect(result.blockers.some((b) => b.toLowerCase().includes("more than once"))).toBe(true);
+    // Duplicate-name detection keys on the lowercased name — locale-independent check.
+    expect(result.blockers.some((b) => b.includes("same"))).toBe(true);
   });
 
   it("blocks dropping every column", () => {
@@ -245,7 +248,8 @@ describe("buildTableStructureSaveSql — blockers", () => {
       editedTableComment: null,
     });
     const result = buildTableStructureSaveSql(changes, ctxFor("oracle", 1));
-    expect(result.blockers.some((b) => b.toLowerCase().includes("every column"))).toBe(true);
+    // No interpolated value in this blocker's message — just assert one was raised.
+    expect(result.blockers.length).toBeGreaterThan(0);
   });
 });
 

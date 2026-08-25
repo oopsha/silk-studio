@@ -80,6 +80,8 @@ public final class Main {
   private Main() {}
 
   public static void main(String[] args) {
+    SslTrustStoreSupport.installWindowsRootTrustIfApplicable();
+
     if (args.length >= 1 && "--serve".equals(args[0])) {
       runServer();
       return;

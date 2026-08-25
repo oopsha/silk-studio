@@ -8,9 +8,17 @@
   background-color: var(--color-surface);
 }
 
+/*
+ * Grid, not flex-with-a-separate-comment-row: the comment field is a row *inside* this same
+ * grid (grid-column: 1 / -1) so its right edge is guaranteed — by sharing one set of column
+ * tracks, not by two independent elements each happening to compute the same width — to land
+ * exactly on the schema field's right edge above it.
+ */
 .object-editor-header__row {
-  display: flex;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  column-gap: 12px;
+  row-gap: 10px;
 }
 
 .object-editor-header__field {
@@ -22,20 +30,8 @@
   color: var(--color-description);
 }
 
-.object-editor-header__field--name {
-  flex: 2;
-}
-
-.object-editor-header__field--type {
-  flex: 1;
-}
-
-.object-editor-header__field--schema {
-  flex: 1;
-}
-
 .object-editor-header__field--comment {
-  width: 100%;
+  grid-column: 1 / -1;
 }
 
 .object-editor-header__label {
@@ -65,6 +61,7 @@
 
 .object-editor-header__input {
   display: block;
+  box-sizing: border-box;
   width: 100%;
   padding: 5px 8px;
   color: var(--color-input-foreground);

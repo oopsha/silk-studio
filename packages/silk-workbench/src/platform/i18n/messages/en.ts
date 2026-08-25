@@ -451,6 +451,8 @@ export const enMessages = {
       ssmProgressLoadingInstances: "Loading SSM-managed instances…",
       tunnelProgressStartingTunnel: "Starting tunnel…",
       tunnelProgressConnectingDatabase: "Connecting to database…",
+      connectingHint:
+        "Depending on network conditions and any retry settings in the connection string, this can take a minute or more — it's normal for the screen to look stuck.",
       sshTunnelToggle: "Connect via SSH jump host",
       sshTunnelHint:
         "Connects through an SSH jump host (bastion) to reach a private database. The host/port fields must be the database address as reachable from the jump host, not the jump host itself.",
@@ -548,6 +550,8 @@ export const enMessages = {
       nameCopied: "Name copied",
       refreshFailed: "Refresh failed.",
       actionFailed: "Action failed.",
+      deleteConnectionConfirm:
+        'Delete the connection profile "{name}"? This cannot be undone.',
       openData: "Open Data",
       editSpec: "Edit Spec",
       editBody: "Edit Body",

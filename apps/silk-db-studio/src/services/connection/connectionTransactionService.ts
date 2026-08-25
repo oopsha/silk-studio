@@ -1,6 +1,7 @@
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import { formatErrorMessage } from "../formatErrorMessage";
+import { ConfirmDialogService } from "../ui/confirmDialogService";
 import { bridgeCommit, bridgeRollback } from "./connectionBridge";
 import { ConnectionService } from "./connectionService";
 import {
@@ -100,7 +101,13 @@ export async function commitConnection(connectionId: string): Promise<void> {
 /** Rolls back the pending transaction for `connectionId`, after user confirmation. */
 export async function rollbackConnection(connectionId: string): Promise<void> {
   const name = connectionDisplayName(connectionId);
-  if (!window.confirm(tKey("app.transaction.rollbackConfirm").replace("{name}", name))) {
+  const confirmed = await ConfirmDialogService.confirm({
+    title: tKey("app.transaction.rollback"),
+    message: tKey("app.transaction.rollbackConfirm").replace("{name}", name),
+    confirmLabel: tKey("app.transaction.rollback"),
+    danger: true,
+  });
+  if (!confirmed) {
     return;
   }
   try {

@@ -85,6 +85,7 @@
 }
 
 .table-structure-editor__cell-input {
+  box-sizing: border-box;
   width: 100%;
   min-width: 60px;
   font-size: 12px;

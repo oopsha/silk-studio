@@ -63,6 +63,27 @@ fn require_connection_id(connection_id: &str) -> Result<&str, String> {
     Ok(trimmed)
 }
 
+/// Runs `f` on Tauri's blocking-task pool instead of inline on the IPC-dispatch thread.
+///
+/// A plain (non-`async`) `#[tauri::command]` fn is invoked *synchronously, inline* by Tauri's
+/// generated wrapper (`tauri-macros`' `body_blocking` calls the function directly, no
+/// `spawn_blocking` involved) — so a command that can take a long time (a slow/retrying JDBC
+/// connect, a long-running query) blocks whatever thread is running IPC dispatch for as long as
+/// it takes. On Windows this manifests as the whole window going "Not Responding" (spinning
+/// cursor, DWM ghosting) the moment the user clicks anywhere else, because that thread stops
+/// pumping window messages. Wrapping the actual blocking call in this helper and making the
+/// command itself `async` routes it through Tauri's async command path instead, which awaits a
+/// real `tauri::async_runtime::spawn_blocking` future rather than running inline.
+async fn run_blocking<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|error| format!("Background task failed: {error}"))?
+}
+
 #[tauri::command]
 fn query_execute(
     connection_id: String,
@@ -133,24 +154,28 @@ fn connection_set_catalog(
 }
 
 #[tauri::command]
-fn connection_connect(
+async fn connection_connect(
     connection_id: String,
     url: String,
     user: String,
     password: String,
     schema: Option<String>,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.connect(
-        connection_id,
-        url.trim(),
-        user.trim(),
-        password.as_str(),
-        schema.as_deref(),
-        catalog.as_deref(),
-    )
+    require_connection_id(&connection_id)?;
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        state.jdbc_agent.connect(
+            &connection_id,
+            url.trim(),
+            user.trim(),
+            password.as_str(),
+            schema.as_deref(),
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -163,21 +188,25 @@ fn connection_disconnect(
 }
 
 #[tauri::command]
-fn connection_test(
+async fn connection_test(
     url: String,
     user: String,
     password: String,
     schema: Option<String>,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    state.jdbc_agent.test_connection(
-        url.trim(),
-        user.trim(),
-        password.as_str(),
-        schema.as_deref(),
-        catalog.as_deref(),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        state.jdbc_agent.test_connection(
+            url.trim(),
+            user.trim(),
+            password.as_str(),
+            schema.as_deref(),
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
