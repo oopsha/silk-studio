@@ -8,6 +8,7 @@ import type {
   MetadataObject,
   MetadataObjectKind,
 } from "@silk-studio/db-protocol";
+import { ConfirmDialogService } from "../../services/ui/confirmDialogService";
 import { ConnectionEditorService } from "../../services/connection/connectionEditorService";
 import { ConnectionService } from "../../services/connection/connectionService";
 import { ConnectionTreeService } from "../../services/connection/connectionTreeService";
@@ -558,6 +559,16 @@ function ProfileTree({
             disabled={busy}
             onClick={() =>
               void run(async () => {
+                const confirmed = await ConfirmDialogService.confirm({
+                  title: t("common.delete"),
+                  message: t("app.explorer.deleteConnectionConfirm").replace(
+                    "{name}",
+                    profile.name,
+                  ),
+                  confirmLabel: t("common.delete"),
+                  danger: true,
+                });
+                if (!confirmed) return;
                 await ConnectionService.deleteProfile(profile.id);
               })
             }

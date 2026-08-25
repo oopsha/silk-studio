@@ -102,25 +102,25 @@ function ObjectEditorHeader({ objectRef, tableEditor }: ObjectEditorHeaderProps)
           <span className="object-editor-header__label">{t("app.general.schema")}</span>
           <span className="object-editor-header__box">{objectRef.schemaName}</span>
         </div>
-      </div>
-      <div className="object-editor-header__field object-editor-header__field--comment">
-        <span className="object-editor-header__label">{t("app.general.comment")}</span>
-        {tableEditor ? (
-          <input
-            className="object-editor-header__input"
-            value={tableEditor.editedTableComment ?? ""}
-            disabled={!!tableEditor.blockedReason}
-            onChange={(e) =>
-              tableEditor.setEditedTableComment(e.target.value === "" ? null : e.target.value)
-            }
-          />
-        ) : (
-          <span className="object-editor-header__box object-editor-header__box--comment">
-            {commentState.status === "loading"
-              ? ""
-              : (commentState.comment ?? t("app.general.noComment"))}
-          </span>
-        )}
+        <div className="object-editor-header__field object-editor-header__field--comment">
+          <span className="object-editor-header__label">{t("app.general.comment")}</span>
+          {tableEditor ? (
+            <input
+              className="object-editor-header__input"
+              value={tableEditor.editedTableComment ?? ""}
+              disabled={!!tableEditor.blockedReason}
+              onChange={(e) =>
+                tableEditor.setEditedTableComment(e.target.value === "" ? null : e.target.value)
+              }
+            />
+          ) : (
+            <span className="object-editor-header__box object-editor-header__box--comment">
+              {commentState.status === "loading"
+                ? ""
+                : (commentState.comment ?? t("app.general.noComment"))}
+            </span>
+          )}
+        </div>
       </div>
       {tableEditor ? (
         <div className="object-editor-header__actions">

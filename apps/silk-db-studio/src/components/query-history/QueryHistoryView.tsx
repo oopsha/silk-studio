@@ -2,6 +2,7 @@ import { useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
+import { ConfirmDialogService } from "../../services/ui/confirmDialogService";
 import { QueryFavoritesService } from "../../services/query/queryFavoritesService";
 import { QueryHistoryService } from "../../services/query/queryHistoryService";
 import type {
@@ -238,12 +239,17 @@ function QueryHistoryView() {
             aria-label={t("app.query.clearHistory")}
             disabled={history.length === 0}
             onClick={() => {
-              if (
-                history.length > 0 &&
-                window.confirm(t("app.query.clearHistoryConfirm"))
-              ) {
-                QueryHistoryService.clear();
-              }
+              if (history.length === 0) return;
+              void ConfirmDialogService.confirm({
+                title: t("app.query.clearHistory"),
+                message: t("app.query.clearHistoryConfirm"),
+                confirmLabel: t("app.query.clearHistory"),
+                danger: true,
+              }).then((confirmed) => {
+                if (confirmed) {
+                  QueryHistoryService.clear();
+                }
+              });
             }}
           >
             <Codicon name="trash" />

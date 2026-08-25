@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MetadataColumn } from "@silk-studio/db-protocol";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
+import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import {
   bridgeGetTableComment,
   bridgeListColumns,
 } from "../../services/connection/connectionBridge";
 import { bridgeListPrimaryKeys } from "../../services/connection/connectionPrimaryKeysBridge";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
+import { ConfirmDialogService } from "../../services/ui/confirmDialogService";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
 import type { ConnectionDriverId } from "../../services/connection/connectionTypes";
 import {
@@ -220,9 +222,15 @@ export function useTableStructureEditorState(
     setEditedColumns((prev) => [...prev, newColumnDraft()]);
   }, []);
 
-  const discardOrRefresh = useCallback(() => {
-    if (isDirty && !window.confirm(t("app.tableStructure.discard") + "?")) {
-      return;
+  const discardOrRefresh = useCallback(async () => {
+    if (isDirty) {
+      const confirmed = await ConfirmDialogService.confirm({
+        title: t("app.tableStructure.discard"),
+        message: t("app.tableStructure.discard") + "?",
+        confirmLabel: t("app.tableStructure.discard"),
+        danger: true,
+      });
+      if (!confirmed) return;
     }
     void load();
   }, [isDirty, load, t]);
@@ -239,7 +247,10 @@ export function useTableStructureEditorState(
         await load();
       }
     } catch (error) {
-      window.alert(formatErrorMessage(error, t("app.tableStructure.saveFailed")));
+      AppNotificationService.show(
+        formatErrorMessage(error, t("app.tableStructure.saveFailed")),
+        "error",
+      );
     }
   }, [tabId, objectRef, changes, originalColumns.length, load, t]);
 

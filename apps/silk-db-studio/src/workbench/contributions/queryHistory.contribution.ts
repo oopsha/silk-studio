@@ -2,6 +2,7 @@ import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { ViewService } from "@silk-studio/workbench/services/view/viewService.ts";
+import { ConfirmDialogService } from "../../services/ui/confirmDialogService";
 import { QueryFavoritesService } from "../../services/query/queryFavoritesService";
 import { QueryHistoryService } from "../../services/query/queryHistoryService";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
@@ -15,9 +16,15 @@ CommandsRegistry.registerCommand("silk.query.openHistory", () => {
   ViewService.openView("history");
 });
 
-CommandsRegistry.registerCommand("silk.query.clearHistory", () => {
+CommandsRegistry.registerCommand("silk.query.clearHistory", async () => {
   if (QueryHistoryService.getEntries().length === 0) return;
-  if (window.confirm("Clear all query history?")) {
+  const confirmed = await ConfirmDialogService.confirm({
+    title: "Clear Query History",
+    message: "Clear all query history? This cannot be undone.",
+    confirmLabel: "Clear",
+    danger: true,
+  });
+  if (confirmed) {
     QueryHistoryService.clear();
   }
 });

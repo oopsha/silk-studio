@@ -449,6 +449,8 @@ export const koMessages = {
       ssmProgressLoadingInstances: "SSM 관리 대상 인스턴스를 불러오는 중…",
       tunnelProgressStartingTunnel: "터널을 시작하는 중…",
       tunnelProgressConnectingDatabase: "데이터베이스에 연결하는 중…",
+      connectingHint:
+        "네트워크 상태나 연결 문자열의 재시도 설정에 따라 1분 이상 걸릴 수 있습니다 — 화면이 멈춘 것처럼 보여도 정상입니다.",
       sshTunnelToggle: "SSH 점프 호스트로 연결",
       sshTunnelHint:
         "SSH 점프 호스트(배스천)를 경유해서 사설 데이터베이스에 접속합니다. 호스트/포트 필드는 점프 호스트가 아니라 점프 호스트 입장에서 실제로 접근 가능한 데이터베이스 주소여야 합니다.",
@@ -546,6 +548,7 @@ export const koMessages = {
       nameCopied: "이름을 복사했습니다",
       refreshFailed: "새로 고침에 실패했습니다.",
       actionFailed: "작업에 실패했습니다.",
+      deleteConnectionConfirm: '연결 프로필 "{name}"을(를) 삭제할까요? 되돌릴 수 없습니다.',
       openData: "데이터 열기",
       editSpec: "스펙 편집",
       editBody: "본문 편집",

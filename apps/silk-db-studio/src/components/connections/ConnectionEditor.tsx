@@ -316,6 +316,9 @@ function ConnectionEditor() {
           {message}
         </p>
       ) : null}
+      {busy && message === t("app.connection.tunnelProgressConnectingDatabase") ? (
+        <p className="connection-editor__feedback">{t("app.connection.connectingHint")}</p>
+      ) : null}
       {error ? (
         <p className="connection-editor__feedback connection-editor__feedback--error">
           {error}
