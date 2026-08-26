@@ -80,22 +80,33 @@ interface DbDialect {
       throws SQLException;
 
   /**
-   * Populates {@code objects} with every table/view named exactly {@code name}, across every
+   * Populates {@code objects} with every table/view whose name matches {@code name}, across every
    * schema visible within {@code catalog} (for dialects with no catalog concept, {@code catalog}
    * is ignored and every schema on the connection is searched). Each entry carries {@code
    * schemaName}/{@code name}/{@code kind} ({@code "table"} or {@code "view"}).
    *
-   * <p>Backs the AI assistant's "find an object without knowing its schema" tool — deliberately
-   * scoped to tables/views only (the common "open this table" case) rather than routines/
-   * packages too, to keep the per-dialect query (a single {@code WHERE name = ?} against the
-   * dictionary/system catalog, no schema predicate) simple and uniform across dialects. Callers
-   * that need every catalog searched (SQL Server) loop {@link #listCatalogNames} and call this
-   * once per catalog themselves — this method only ever looks at the one {@code catalog} given.
+   * <p>When {@code contains} is {@code false}, {@code name} must match exactly (case-sensitively,
+   * per the dialect's normal identifier comparison). Backs the AI assistant's "find an object
+   * without knowing its schema" tool — deliberately scoped to tables/views only (the common "open
+   * this table" case) rather than routines/packages too, to keep the per-dialect query (a single
+   * {@code WHERE name = ?} against the dictionary/system catalog, no schema predicate) simple and
+   * uniform across dialects.
+   *
+   * <p>When {@code contains} is {@code true}, {@code name} is matched as a case-insensitive
+   * substring anywhere in the object name (a {@code LIKE '%name%'}-style query, built via {@link
+   * LikeEscape#containsPattern}) — backs the Explorer's opt-in "search all connections" quick-pick
+   * action. This mode is deliberately never triggered on keystroke/debounce, only on an explicit
+   * click, since a substring scan can't use a standard index and may be slow on large schemas.
+   *
+   * <p>Callers that need every catalog searched (SQL Server) loop {@link #listCatalogNames} and
+   * call this once per catalog themselves — this method only ever looks at the one {@code
+   * catalog} given.
    */
   void findObjectsByName(
       Connection connection,
       String catalog,
       String name,
+      boolean contains,
       ArrayNode objects)
       throws SQLException;
 

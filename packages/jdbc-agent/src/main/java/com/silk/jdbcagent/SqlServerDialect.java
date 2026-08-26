@@ -290,18 +290,23 @@ final class SqlServerDialect implements DbDialect {
 
   @Override
   public void findObjectsByName(
-      Connection connection, String catalog, String name, ArrayNode objects)
+      Connection connection, String catalog, String name, boolean contains, ArrayNode objects)
       throws SQLException {
     // Only ever looks at the one `catalog` given (or the connection's current database when
     // blank) — the AI tool's caller loops listCatalogNames() itself to cover every database.
     String prefix = CatalogQualifier.prefix(catalog);
+    // SQL Server's default instance collation is usually case-insensitive already, but a target
+    // instance could be configured with a case-sensitive collation — wrap both sides in UPPER()
+    // to be explicit, consistent with the other three dialects.
+    String predicate =
+        contains ? "UPPER(o.name) LIKE UPPER(?) ESCAPE '\\'" : "o.name = ?";
     String sql =
         "SELECT s.name AS SCHEMA_NAME, o.name AS OBJECT_NAME, o.type AS OBJ_TYPE "
             + "FROM " + prefix + "sys.objects o "
             + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
-            + "WHERE o.name = ? AND o.type IN ('U', 'V')";
+            + "WHERE " + predicate + " AND o.type IN ('U', 'V')";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
-      statement.setString(1, name);
+      statement.setString(1, contains ? LikeEscape.containsPattern(name) : name);
       try (ResultSet rs = statement.executeQuery()) {
         while (rs.next()) {
           ObjectNode object = objects.addObject();

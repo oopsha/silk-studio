@@ -11,10 +11,13 @@ import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
+import { bridgeFindObjectsByName } from "../../services/connection/connectionBridge";
 import { ConnectionService } from "../../services/connection/connectionService";
 import { ConnectionTreeService } from "../../services/connection/connectionTreeService";
 import {
   buildExplorerSearchPicksAcrossProfiles,
+  buildLiveSearchResultPick,
+  type ExplorerLiveSearchActionPick,
   type ExplorerSearchPick,
 } from "../../services/connection/explorerSearchItems";
 import { runWithConcurrency } from "../../services/connection/explorerSearchPrefetchService";
@@ -34,6 +37,16 @@ import {
 import "@silk-studio/workbench/components/layout/TitleBar/OpenEditorsQuickPick/OpenEditorsQuickPick.css";
 import "./ExplorerSearchQuickPick.css";
 
+/**
+ * Below this, an all-connections substring scan is more noise than signal (near-every table
+ * matches a 1-character needle) — the live-search action pick only appears once the filter is at
+ * least this long.
+ */
+const MIN_LIVE_SEARCH_TERM_LENGTH = 2;
+
+/** Concurrency cap for per-profile live searches — matches the loadCatalog pick's schema-loading loop below, for consistency. */
+const LIVE_SEARCH_CONCURRENCY = 3;
+
 function ExplorerSearchQuickPick() {
   const { t } = useI18n();
   const [open, setOpen] = useState(() => ExplorerSearchQuickPickService.isOpen());
@@ -42,8 +55,17 @@ function ExplorerSearchQuickPick() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [busySchema, setBusySchema] = useState<string | null>(null);
   const [placed, setPlaced] = useState(false);
+  // Non-null once a live "search all connections" query has resolved — overrides the
+  // cache-based picks entirely (see the `picks` memo below) until the filter changes again.
+  const [liveResults, setLiveResults] = useState<ExplorerSearchPick[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  // Monotonic "search generation" — bumped on every new live search (explicit re-click, or the
+  // filter changing while one is in flight) so a slow, superseded response is silently discarded
+  // instead of clobbering a newer search's results. Mirrors AG Grid's infinite-row-model
+  // block-versioning pattern: capture the generation before the async work starts, compare it to
+  // the current ref value when the work finishes, and bail out if they differ.
+  const searchGenerationRef = useRef(0);
 
   const connection = useConnectionState();
   // Every connected profile, not just the one bound to the active tab — a table can live on
@@ -60,9 +82,19 @@ function ExplorerSearchQuickPick() {
         setFilter("");
         setFocusedIndex(0);
         setStatusMessage(null);
+        setLiveResults(null);
       }
     });
   }, []);
+
+  // Typing further after a live search resolved (or while one is in flight) invalidates it — the
+  // results/in-flight query no longer match what's in the box. Bumping the generation here (not
+  // just in the live-search handler itself) makes an in-flight response for the old filter get
+  // silently discarded when it eventually resolves.
+  useEffect(() => {
+    searchGenerationRef.current += 1;
+    setLiveResults(null);
+  }, [filter]);
 
   const profiles = useMemo(
     () =>
@@ -80,10 +112,30 @@ function ExplorerSearchQuickPick() {
     [connectedProfileIds, trees],
   );
 
+  const trimmedFilter = filter.trim();
+  const connected = profiles.length > 0;
+  const showLiveSearchAction =
+    connected && trimmedFilter.length >= MIN_LIVE_SEARCH_TERM_LENGTH;
+
+  const liveSearchActionPick: ExplorerLiveSearchActionPick | null = showLiveSearchAction
+    ? {
+        type: "liveSearch",
+        id: `liveSearch:${trimmedFilter}`,
+        label: t("app.explorer.searchLiveAction").replace("{term}", trimmedFilter),
+        description: t("app.explorer.searchLiveActionDescription"),
+        icon: "search",
+        searchTerm: trimmedFilter,
+      }
+    : null;
+
   const picks = useMemo(() => {
+    // Once a live search has resolved, it fully replaces the cache-based list (and the action
+    // pick itself) until the filter changes again — see the `filter`-keyed effect above.
+    if (liveResults) return liveResults;
     if (profiles.length === 0 || !open) return [] as ExplorerSearchPick[];
-    return buildExplorerSearchPicksAcrossProfiles(profiles, filter);
-  }, [profiles, filter, open]);
+    const cachePicks = buildExplorerSearchPicksAcrossProfiles(profiles, filter);
+    return liveSearchActionPick ? [...cachePicks, liveSearchActionPick] : cachePicks;
+  }, [profiles, filter, open, liveResults, liveSearchActionPick]);
 
   // Prefetch progress (only meaningful for catalog-style dialects, e.g. SQL Server) — summed
   // across every connected profile being searched.
@@ -236,6 +288,56 @@ function ExplorerSearchQuickPick() {
         return;
       }
 
+      if (pick.type === "liveSearch") {
+        searchGenerationRef.current += 1;
+        const generation = searchGenerationRef.current;
+        setStatusMessage(t("app.explorer.searchLiveSearching"));
+        setLiveResults(null);
+
+        const connectedProfiles = ConnectionService.getConnectedProfiles();
+        const showLabels = connectedProfiles.length > 1;
+        const results: ExplorerSearchPick[] = [];
+        await runWithConcurrency(
+          connectedProfiles,
+          LIVE_SEARCH_CONCURRENCY,
+          async (profile) => {
+            try {
+              const response = await bridgeFindObjectsByName(
+                profile.id,
+                pick.searchTerm,
+                { contains: true },
+              );
+              for (const found of response.objects) {
+                results.push(
+                  buildLiveSearchResultPick(
+                    profile.id,
+                    showLabels ? profile.name : undefined,
+                    found,
+                  ),
+                );
+              }
+            } catch {
+              // Best-effort across connections — one profile failing/timing out shouldn't blank
+              // the search results from every other connected profile.
+            }
+          },
+        );
+
+        // Stale-response guard: a newer search (re-click, or the filter changed) has started
+        // since this one began — discard this response silently rather than clobbering it.
+        if (searchGenerationRef.current !== generation) return;
+
+        results.sort((a, b) => {
+          const byLabel = a.label.localeCompare(b.label);
+          if (byLabel !== 0) return byLabel;
+          return a.description.localeCompare(b.description);
+        });
+        setLiveResults(results);
+        setStatusMessage(null);
+        inputRef.current?.focus();
+        return;
+      }
+
       const ref: ExplorerObjectRef = {
         profileId: pick.profileId,
         schemaName: pick.schemaName,
@@ -308,20 +410,21 @@ function ExplorerSearchQuickPick() {
     return null;
   }
 
-  const connected = profiles.length > 0;
   const anyLoading = profiles.some(({ cache }) => cache.status === "loading");
   const anySchemasKnown = profiles.some(
     ({ cache }) => cache.catalogs.length > 0 || cache.schemas.length > 0,
   );
-  const emptyHint = !connected
-    ? t("app.explorer.searchNeedConnect")
-    : anyLoading && !anySchemasKnown
-      ? t("app.explorer.loadingSchemas")
-      : !anySchemasKnown
-        ? t("app.explorer.searchNoSchemas")
-        : filter.trim()
-          ? t("app.explorer.searchNoMatch")
-          : t("app.explorer.searchHint");
+  const emptyHint = liveResults
+    ? t("app.explorer.searchLiveNoMatches")
+    : !connected
+      ? t("app.explorer.searchNeedConnect")
+      : anyLoading && !anySchemasKnown
+        ? t("app.explorer.loadingSchemas")
+        : !anySchemasKnown
+          ? t("app.explorer.searchNoSchemas")
+          : filter.trim()
+            ? t("app.explorer.searchNoMatch")
+            : t("app.explorer.searchHint");
 
   return createPortal(
     <div

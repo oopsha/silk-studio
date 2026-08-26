@@ -1,4 +1,8 @@
-import type { MetadataObject, MetadataObjectKind } from "@silk-studio/db-protocol";
+import type {
+  FoundMetadataObject,
+  MetadataObject,
+  MetadataObjectKind,
+} from "@silk-studio/db-protocol";
 import { getMetadataGroupDefinition } from "./metadataGroups";
 import type { ProfileTreeCache, SchemaTreeNode } from "./connectionTreeService";
 import { matchesTreeFilter } from "./connectionTreeFilter";
@@ -36,10 +40,29 @@ export type ExplorerLoadCatalogSearchPick = {
   catalogName: string;
 };
 
-export type ExplorerSearchPick =
+/**
+ * The opt-in "search all connections" action — appended to the end of the cache-based picks
+ * (never automatically, only on an explicit click) so Ctrl+Shift+O can also find objects that
+ * were never loaded into any profile's client-side tree cache. Backed by a live, uncached
+ * substring (`LIKE '%term%'`) query against every already-connected profile's database — see
+ * {@link ExplorerSearchQuickPick}'s live-search handler.
+ */
+export type ExplorerLiveSearchActionPick = {
+  type: "liveSearch";
+  id: string;
+  label: string;
+  description: string;
+  icon: string;
+  searchTerm: string;
+};
+
+/** The cache-only picks — everything {@link buildExplorerSearchPicks} can produce. */
+export type ExplorerCacheSearchPick =
   | ExplorerObjectSearchPick
   | ExplorerLoadSchemaSearchPick
   | ExplorerLoadCatalogSearchPick;
+
+export type ExplorerSearchPick = ExplorerCacheSearchPick | ExplorerLiveSearchActionPick;
 
 const MAX_OBJECT_PICKS = 100;
 const MAX_LOAD_SCHEMA_PICKS = 20;
@@ -207,7 +230,7 @@ export function buildExplorerSearchPicks(
   cache: ProfileTreeCache,
   filter: string,
   profileLabel?: string,
-): ExplorerSearchPick[] {
+): ExplorerCacheSearchPick[] {
   const needle = filter.trim();
   const objects: ExplorerObjectSearchPick[] = [];
   const loadSchemas: ExplorerLoadSchemaSearchPick[] = [];
@@ -273,6 +296,38 @@ export function buildExplorerSearchPicks(
 }
 
 /**
+ * Maps one live-search result (`connection.findObjectsByName` in {@code contains} mode) into the
+ * same {@link ExplorerObjectSearchPick} shape the cache-based picks use, so clicking a live
+ * result behaves identically to clicking a cached one. Mirrors the object-pick shape built by
+ * {@link collectFromSchemas} and the response mapping in `configureAiToolHost.ts`'s
+ * `find_object_by_name` tool case (that one stays exact-match; this is the substring-match twin).
+ */
+export function buildLiveSearchResultPick(
+  profileId: string,
+  profileLabel: string | undefined,
+  found: FoundMetadataObject,
+): ExplorerObjectSearchPick {
+  const catalogName = found.catalogName;
+  const object: MetadataObject = { name: found.name, kind: found.kind };
+  return {
+    type: "object",
+    id: `liveObject:${profileId}:${catalogName ?? ""}:${found.schemaName}:${found.kind}:${found.name}`,
+    label: found.name,
+    description: withProfilePrefix(
+      catalogName
+        ? `${catalogName}.${found.schemaName} · ${kindLabel(found.kind)}`
+        : `${found.schemaName} · ${kindLabel(found.kind)}`,
+      profileLabel,
+    ),
+    icon: iconForKind(found.kind),
+    profileId,
+    schemaName: found.schemaName,
+    catalogName,
+    object,
+  };
+}
+
+/**
  * Merges {@link buildExplorerSearchPicks} across every connected profile so Ctrl+Shift+O finds
  * an object regardless of which connection it lives on — not just the one bound to the active
  * editor tab. Each profile's picks are prefixed with its connection name once more than one
@@ -281,7 +336,7 @@ export function buildExplorerSearchPicks(
 export function buildExplorerSearchPicksAcrossProfiles(
   profiles: readonly { profileId: string; cache: ProfileTreeCache; label: string }[],
   filter: string,
-): ExplorerSearchPick[] {
+): ExplorerCacheSearchPick[] {
   const showLabels = profiles.length > 1;
   const objects: ExplorerObjectSearchPick[] = [];
   const loadSchemas: ExplorerLoadSchemaSearchPick[] = [];

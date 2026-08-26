@@ -207,16 +207,19 @@ final class PostgreSqlDialect implements DbDialect {
 
   @Override
   public void findObjectsByName(
-      Connection connection, String catalog, String name, ArrayNode objects)
+      Connection connection, String catalog, String name, boolean contains, ArrayNode objects)
       throws SQLException {
     // relkind: r/p = table (partitioned tables included), v/m = view/materialized view.
+    // ILIKE is Postgres's native case-insensitive LIKE — preferred over UPPER(...) LIKE
+    // UPPER(...) here since it's available and idiomatic for this dialect.
+    String predicate = contains ? "c.relname ILIKE ? ESCAPE '\\'" : "c.relname = ?";
     String sql =
         "SELECT n.nspname AS SCHEMA_NAME, c.relname AS OBJECT_NAME, c.relkind AS REL_KIND "
             + "FROM pg_catalog.pg_class c "
             + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
-            + "WHERE c.relname = ? AND c.relkind IN ('r', 'p', 'v', 'm')";
+            + "WHERE " + predicate + " AND c.relkind IN ('r', 'p', 'v', 'm')";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
-      statement.setString(1, name);
+      statement.setString(1, contains ? LikeEscape.containsPattern(name) : name);
       try (ResultSet rs = statement.executeQuery()) {
         while (rs.next()) {
           ObjectNode object = objects.addObject();

@@ -588,6 +588,11 @@ export const enMessages = {
       searchHint:
         "Type to filter loaded objects, or a schema name to load.",
       searchLoadFailed: "Failed to load schema.",
+      searchLiveAction: 'Search all connections for names containing "{term}"',
+      searchLiveActionDescription: "Live query — may take a moment on large schemas",
+      searchLiveSearching: "Searching all connections…",
+      searchLiveNoMatches: "No matches in any connected database for that search.",
+      searchLiveFailed: "Search across connections failed.",
       retry: "Retry",
       expandToLoadObjects: "Expand to load objects.",
       expandToLoadSchemas: "Expand to load schemas.",

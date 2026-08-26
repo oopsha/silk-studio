@@ -158,15 +158,22 @@ abstract class MySqlCompatibleDialect implements DbDialect {
 
   @Override
   public void findObjectsByName(
-      Connection connection, String catalog, String name, ArrayNode objects)
+      Connection connection, String catalog, String name, boolean contains, ArrayNode objects)
       throws SQLException {
     // No schema predicate at all — "schema" is the database name for this dialect, and the
     // whole point is finding which database(s) have this table without the caller knowing.
+    //
+    // information_schema.TABLES.TABLE_NAME's collation is server/version dependent (case
+    // sensitivity of MySQL identifiers themselves also depends on the OS/lower_case_table_names
+    // setting), so we don't rely on the connection's default collation for case-insensitivity —
+    // UPPER(...) LIKE UPPER(...) is explicit and correct regardless of collation.
+    String predicate =
+        contains ? "UPPER(TABLE_NAME) LIKE UPPER(?) ESCAPE '\\\\'" : "TABLE_NAME = ?";
     String sql =
         "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES "
-            + "WHERE TABLE_NAME = ? AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')";
+            + "WHERE " + predicate + " AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
-      statement.setString(1, name);
+      statement.setString(1, contains ? LikeEscape.containsPattern(name) : name);
       try (ResultSet rs = statement.executeQuery()) {
         while (rs.next()) {
           ObjectNode object = objects.addObject();

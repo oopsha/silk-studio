@@ -586,6 +586,11 @@ export const koMessages = {
       searchHint:
         "로드된 개체를 필터하거나, 스키마 이름을 입력해 로드하세요.",
       searchLoadFailed: "스키마 로드에 실패했습니다.",
+      searchLiveAction: '전체 연결에서 "{term}" 포함하는 이름 찾기',
+      searchLiveActionDescription: "실시간 조회 — 스키마가 크면 시간이 걸릴 수 있습니다",
+      searchLiveSearching: "전체 연결에서 찾는 중…",
+      searchLiveNoMatches: "연결된 어떤 데이터베이스에서도 일치하는 항목을 찾지 못했습니다.",
+      searchLiveFailed: "전체 연결 검색에 실패했습니다.",
       retry: "다시 시도",
       expandToLoadObjects: "펼치면 개체를 로드합니다.",
       expandToLoadSchemas: "펼치면 스키마를 로드합니다.",
