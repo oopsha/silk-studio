@@ -94,6 +94,7 @@ function objectSelectionKey(
 function ProfileTree({
   profile,
   isConnected,
+  isConnecting,
   isActive,
   filter,
   selectedKey,
@@ -104,6 +105,7 @@ function ProfileTree({
 }: {
   profile: ConnectionProfile;
   isConnected: boolean;
+  isConnecting: boolean;
   isActive: boolean;
   filter: string;
   selectedKey: SelectedObjectKey | null;
@@ -438,6 +440,7 @@ function ProfileTree({
           aria-label={profileExpanded ? t("common.collapse") : t("common.expand")}
           onClick={() => {
             if (!isConnected) {
+              if (isConnecting) return;
               void run(async () => {
                 await ConnectionService.connect(profile.id);
                 setExpandedValue(`profile:${profile.id}`, true);
@@ -463,19 +466,33 @@ function ProfileTree({
               : `${profile.user} · ${profile.url}`
           }
           onClick={() => ConnectionService.setActiveProfile(profile.id)}
-          onDoubleClick={() =>
+          onDoubleClick={() => {
+            if (!isConnected && isConnecting) return;
             void run(async () => {
               if (isConnected) {
                 await ConnectionService.disconnect(profile.id);
               } else {
                 await ConnectionService.connect(profile.id);
               }
-            })
-          }
+            });
+          }}
         >
           <Codicon name="database" />
-          <span className="connections-explorer__status" aria-hidden>
-            {isConnected ? "●" : "○"}
+          <span
+            className="connections-explorer__status"
+            aria-hidden
+            title={isConnecting ? t("app.explorer.connecting") : undefined}
+          >
+            {isConnecting ? (
+              <Codicon
+                name="loading"
+                className="connections-explorer__status-spinner"
+              />
+            ) : isConnected ? (
+              "●"
+            ) : (
+              "○"
+            )}
           </span>
           <span>{profile.name}</span>
         </button>
@@ -1134,6 +1151,7 @@ function ConnectionsExplorer() {
               profile={profile}
               isActive={connection.activeProfileId === profile.id}
               isConnected={connection.connectedProfileIds.includes(profile.id)}
+              isConnecting={connection.connectingProfileIds.includes(profile.id)}
               filter={filter}
               selectedKey={selectedKey}
               onSelectObject={setSelectedKey}

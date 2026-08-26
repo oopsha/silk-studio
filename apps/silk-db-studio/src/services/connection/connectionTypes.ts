@@ -71,6 +71,14 @@ export type ConnectionState = {
   /** All currently open JDBC sessions (profile ids = agent connectionIds). */
   connectedProfileIds: string[];
   /**
+   * Profiles with a `connect()` currently in flight (tunnel setup + JDBC handshake) — unlike
+   * `status`, which only ever reflects the single most recent connect attempt, this supports
+   * several profiles connecting at once (e.g. a cross-connection search bringing multiple
+   * disconnected profiles online in parallel), so the Explorer can show a per-row "connecting…"
+   * state instead of a plain unconnected dot for the whole duration.
+   */
+  connectingProfileIds: string[];
+  /**
    * Most recently connected profile. Convenience for callers not yet multi-aware;
    * prefer {@link connectedProfileIds} / `isProfileConnected` when checking a specific profile.
    */
@@ -84,6 +92,13 @@ export function isProfileConnected(
   profileId: string,
 ): boolean {
   return state.connectedProfileIds.includes(profileId);
+}
+
+export function isProfileConnecting(
+  state: Pick<ConnectionState, "connectingProfileIds">,
+  profileId: string,
+): boolean {
+  return state.connectingProfileIds.includes(profileId);
 }
 
 export const DEFAULT_ORACLE_URL =

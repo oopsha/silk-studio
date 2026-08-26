@@ -527,6 +527,7 @@ export const koMessages = {
       rollbackFailed: "롤백 실패 — {message}",
     },
     explorer: {
+      connecting: "연결 중…",
       filterPlaceholder: "스키마·개체 필터…",
       filterAria: "스키마 및 개체 필터",
       clearFilter: "필터 지우기",

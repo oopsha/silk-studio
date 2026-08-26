@@ -529,6 +529,7 @@ export const enMessages = {
       rollbackFailed: "Rollback failed — {message}",
     },
     explorer: {
+      connecting: "Connecting…",
       filterPlaceholder: "Filter schemas & objects…",
       filterAria: "Filter schemas and objects",
       clearFilter: "Clear filter",
