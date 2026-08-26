@@ -120,6 +120,10 @@ function stageAgent() {
     join(AGENT_PKG, "THIRD_PARTY_NOTICES.md"),
     join(OUT_AGENT, "THIRD_PARTY_NOTICES.md"),
   );
+  // The rmSync above also wipes the tracked `.gitkeep` placeholder — recreate it so `git status`
+  // doesn't show it as deleted after every staging run (the jar/lib/notices above are gitignored,
+  // but `.gitkeep` itself is intentionally tracked so the folder exists after a fresh clone).
+  writeFileSync(join(OUT_AGENT, ".gitkeep"), "", "utf8");
   log(`Staged jdbc-agent → ${OUT_AGENT}`);
 }
 
