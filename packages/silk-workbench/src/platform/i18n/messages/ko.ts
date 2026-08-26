@@ -786,6 +786,16 @@ export const koMessages = {
       invalidTab: "잘못된 개체 편집기 탭입니다.",
       dataLoadFailed: "데이터를 불러오지 못했습니다.",
     },
+    search: {
+      placeholder: "모든 연결에서 개체 검색…",
+      inputAria: "모든 연결에서 개체 검색",
+      hint: "2자 이상 입력한 뒤 Enter를 누르거나 검색 버튼을 클릭하세요.",
+      searchButton: "검색",
+      connecting: "{name} 연결하는 중…",
+      searching: "전체 연결에서 검색하는 중…",
+      noMatches: "연결된 어떤 데이터베이스에서도 일치하는 항목을 찾지 못했습니다.",
+      resultCount: "{n}개 결과",
+    },
     query: {
       runStatement: "문 실행",
       executeScript: "스크립트 실행",
