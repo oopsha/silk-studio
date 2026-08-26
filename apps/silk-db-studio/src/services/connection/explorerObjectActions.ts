@@ -45,6 +45,10 @@ export const EXPLORER_COMMANDS = {
   refreshCatalog: "silk.explorer.refreshCatalog",
   copyName: "silk.explorer.copyName",
   searchObjects: "silk.explorer.searchObjects",
+  /** Opens the Ctrl+Shift+O quick pick pre-filled with a term and immediately runs a live search
+   *  for it — see registerSqlCompletion.ts's "search all connections" completion item, which is
+   *  this command's only caller today. */
+  searchObjectsForTerm: "silk.explorer.searchObjectsForTerm",
   refresh: "silk.explorer.refresh",
   collapseAll: "silk.explorer.collapseAll",
   dropObject: "silk.explorer.dropObject",

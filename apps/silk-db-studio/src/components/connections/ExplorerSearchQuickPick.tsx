@@ -73,16 +73,81 @@ function ExplorerSearchQuickPick() {
   const connectedProfileIds = connection.connectedProfileIds;
   const trees = useConnectionTrees(connectedProfileIds);
 
+  // Set by the onDidChange handler below when opened via `show({ autoRunLiveSearch: true })`
+  // (the Ctrl+Space fallback item) — names the filter value that should trigger an automatic
+  // live search once it's actually reflected in `filter` state. Consumed (and cleared) by the
+  // `[filter]`-keyed effect further down, *after* that effect's own generation bump, so the
+  // auto-run search's generation is never immediately invalidated by its own filter-change.
+  const autoRunFilterRef = useRef<string | null>(null);
+
+  const runLiveSearch = useCallback(
+    async (searchTerm: string) => {
+      searchGenerationRef.current += 1;
+      const generation = searchGenerationRef.current;
+      setStatusMessage(t("app.explorer.searchLiveSearching"));
+      setLiveResults(null);
+
+      const connectedProfiles = ConnectionService.getConnectedProfiles();
+      const showLabels = connectedProfiles.length > 1;
+      const results: ExplorerSearchPick[] = [];
+      await runWithConcurrency(
+        connectedProfiles,
+        LIVE_SEARCH_CONCURRENCY,
+        async (profile) => {
+          try {
+            const response = await bridgeFindObjectsByName(
+              profile.id,
+              searchTerm,
+              { contains: true },
+            );
+            for (const found of response.objects) {
+              results.push(
+                buildLiveSearchResultPick(
+                  profile.id,
+                  showLabels ? profile.name : undefined,
+                  found,
+                ),
+              );
+            }
+          } catch {
+            // Best-effort across connections — one profile failing/timing out shouldn't blank
+            // the search results from every other connected profile.
+          }
+        },
+      );
+
+      // Stale-response guard: a newer search (re-click, or the filter changed) has started
+      // since this one began — discard this response silently rather than clobbering it.
+      if (searchGenerationRef.current !== generation) return;
+
+      results.sort((a, b) => {
+        const byLabel = a.label.localeCompare(b.label);
+        if (byLabel !== 0) return byLabel;
+        return a.description.localeCompare(b.description);
+      });
+      setLiveResults(results);
+      setStatusMessage(null);
+      inputRef.current?.focus();
+    },
+    [t],
+  );
+
   useEffect(() => {
     return ExplorerSearchQuickPickService.onDidChange(() => {
       const next = ExplorerSearchQuickPickService.isOpen();
       setOpen(next);
       setPlaced(false);
       if (next) {
-        setFilter("");
+        const pending = ExplorerSearchQuickPickService.consumePendingRequest();
+        const initialFilter = pending?.initialFilter ?? "";
+        setFilter(initialFilter);
         setFocusedIndex(0);
         setStatusMessage(null);
         setLiveResults(null);
+        autoRunFilterRef.current =
+          pending?.autoRunLiveSearch && initialFilter.trim()
+            ? initialFilter.trim()
+            : null;
       }
     });
   }, []);
@@ -94,6 +159,18 @@ function ExplorerSearchQuickPick() {
   useEffect(() => {
     searchGenerationRef.current += 1;
     setLiveResults(null);
+
+    // Auto-run request from opening via `show({ autoRunLiveSearch: true })` — fires *after* the
+    // generation bump above, once `filter` state actually reflects the pre-filled term, so the
+    // search this kicks off isn't immediately treated as stale by the bump that just happened.
+    if (autoRunFilterRef.current !== null && autoRunFilterRef.current === filter.trim()) {
+      const term = autoRunFilterRef.current;
+      autoRunFilterRef.current = null;
+      void runLiveSearch(term);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runLiveSearch is stable enough in
+    // practice (see its own useCallback deps); including it here would refire this effect (and
+    // re-bump the generation) on every render where its identity changes for unrelated reasons.
   }, [filter]);
 
   const profiles = useMemo(
@@ -289,52 +366,7 @@ function ExplorerSearchQuickPick() {
       }
 
       if (pick.type === "liveSearch") {
-        searchGenerationRef.current += 1;
-        const generation = searchGenerationRef.current;
-        setStatusMessage(t("app.explorer.searchLiveSearching"));
-        setLiveResults(null);
-
-        const connectedProfiles = ConnectionService.getConnectedProfiles();
-        const showLabels = connectedProfiles.length > 1;
-        const results: ExplorerSearchPick[] = [];
-        await runWithConcurrency(
-          connectedProfiles,
-          LIVE_SEARCH_CONCURRENCY,
-          async (profile) => {
-            try {
-              const response = await bridgeFindObjectsByName(
-                profile.id,
-                pick.searchTerm,
-                { contains: true },
-              );
-              for (const found of response.objects) {
-                results.push(
-                  buildLiveSearchResultPick(
-                    profile.id,
-                    showLabels ? profile.name : undefined,
-                    found,
-                  ),
-                );
-              }
-            } catch {
-              // Best-effort across connections — one profile failing/timing out shouldn't blank
-              // the search results from every other connected profile.
-            }
-          },
-        );
-
-        // Stale-response guard: a newer search (re-click, or the filter changed) has started
-        // since this one began — discard this response silently rather than clobbering it.
-        if (searchGenerationRef.current !== generation) return;
-
-        results.sort((a, b) => {
-          const byLabel = a.label.localeCompare(b.label);
-          if (byLabel !== 0) return byLabel;
-          return a.description.localeCompare(b.description);
-        });
-        setLiveResults(results);
-        setStatusMessage(null);
-        inputRef.current?.focus();
+        await runLiveSearch(pick.searchTerm);
         return;
       }
 
@@ -375,7 +407,7 @@ function ExplorerSearchQuickPick() {
         console.error("[silk.explorer.search]", error);
       }
     },
-    [close, t],
+    [close, t, runLiveSearch],
   );
 
   const handleInputKeyDown = (
