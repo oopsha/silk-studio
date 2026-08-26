@@ -50,15 +50,6 @@ pub fn resolve_runtime_paths(app: &AppHandle) -> RuntimePaths {
 }
 
 fn resolve_agent_jar(resource_dir: Option<&Path>) -> (PathBuf, bool) {
-    if let Some(dir) = resource_dir {
-        for root in resource_search_roots(dir) {
-            let packaged = root.join(AGENT_DIR_NAME).join(AGENT_JAR_NAME);
-            if packaged.is_file() {
-                return (packaged, true);
-            }
-        }
-    }
-
     let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
@@ -68,6 +59,40 @@ fn resolve_agent_jar(resource_dir: Option<&Path>) -> (PathBuf, bool) {
         .join("build")
         .join("libs")
         .join(AGENT_JAR_NAME);
+
+    let find_packaged = || {
+        resource_dir.and_then(|dir| {
+            resource_search_roots(dir).into_iter().find_map(|root| {
+                let packaged = root.join(AGENT_DIR_NAME).join(AGENT_JAR_NAME);
+                packaged.is_file().then_some(packaged)
+            })
+        })
+    };
+
+    // In a `cargo tauri dev` / debug build, prefer the monorepo's own Gradle build output
+    // whenever it's present, checking it BEFORE any staged packaged resource. Without this,
+    // `resources/jdbc-agent/` left populated by a previous `tauri:build` run would keep winning
+    // forever after — `tauri dev` would keep loading that stale jar no matter how many times
+    // `gradlew build` reruns, since the staged copy would always be found first. A release build
+    // (`tauri:build`, or a local release build used to verify packaging) does the opposite —
+    // packaged resource first — so testing a built package on the same dev machine actually
+    // exercises the bundled jar instead of silently falling through to the dev one.
+    if cfg!(debug_assertions) {
+        if dev.is_file() {
+            return (dev, false);
+        }
+        if let Some(packaged) = find_packaged() {
+            return (packaged, true);
+        }
+    } else {
+        if let Some(packaged) = find_packaged() {
+            return (packaged, true);
+        }
+        if dev.is_file() {
+            return (dev, false);
+        }
+    }
+
     (dev, false)
 }
 
