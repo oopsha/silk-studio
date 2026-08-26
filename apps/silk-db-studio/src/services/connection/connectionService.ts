@@ -25,6 +25,7 @@ import {
   effectiveDefaultSchema,
   getConnectionDriver,
   isProfileConnected,
+  isProfileConnecting,
 } from "./connectionTypes";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { reportError } from "../formatErrorMessage";
@@ -58,6 +59,7 @@ const INITIAL_STATE: ConnectionState = {
   profiles: loadConnectionProfiles(),
   activeProfileId: loadActiveProfileId(),
   connectedProfileIds: [],
+  connectingProfileIds: [],
   connectedProfileId: null,
   status: "disconnected",
   errorMessage: null,
@@ -102,6 +104,11 @@ class ConnectionServiceImpl {
       return isProfileConnected(this.state, profileId);
     }
     return this.state.connectedProfileIds.length > 0;
+  }
+
+  /** True while {@code profileId} has a `connect()` in flight (tunnel + JDBC handshake). */
+  isConnecting(profileId: string): boolean {
+    return isProfileConnecting(this.state, profileId);
   }
 
   /**
@@ -319,6 +326,9 @@ class ConnectionServiceImpl {
       ...this.state,
       status: "connecting",
       errorMessage: null,
+      connectingProfileIds: this.state.connectingProfileIds.includes(profileId)
+        ? this.state.connectingProfileIds
+        : [...this.state.connectingProfileIds, profileId],
     });
 
     const tunnel = profile.ssmTunnel;
@@ -326,6 +336,12 @@ class ConnectionServiceImpl {
     const sshTunnel = profile.sshTunnel;
     const sshTunnelEnabled = sshTunnel ? isSshTunnelConfigComplete(sshTunnel) : false;
     if (tunnelEnabled && sshTunnelEnabled) {
+      this.setState({
+        ...this.state,
+        connectingProfileIds: this.state.connectingProfileIds.filter(
+          (id) => id !== profileId,
+        ),
+      });
       throw new Error("A connection can use only one tunnel type at a time.");
     }
 
@@ -376,6 +392,9 @@ class ConnectionServiceImpl {
       this.setState({
         ...this.state,
         connectedProfileIds,
+        connectingProfileIds: this.state.connectingProfileIds.filter(
+          (id) => id !== profileId,
+        ),
         connectedProfileId: profileId,
         status: "connected",
         errorMessage: null,
@@ -397,6 +416,9 @@ class ConnectionServiceImpl {
       this.setState({
         ...this.state,
         connectedProfileIds: stillConnected,
+        connectingProfileIds: this.state.connectingProfileIds.filter(
+          (id) => id !== profileId,
+        ),
         connectedProfileId: stillConnected[stillConnected.length - 1] ?? null,
         status: stillConnected.length > 0 ? "connected" : "error",
         errorMessage: message,

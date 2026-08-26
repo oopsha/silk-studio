@@ -197,6 +197,17 @@ html.silk-explorer-dragging * {
   font-size: 10px;
 }
 
+.connections-explorer__status-spinner {
+  font-size: 10px;
+  animation: connections-explorer-spin 1s linear infinite;
+}
+
+@keyframes connections-explorer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .connections-explorer__row-actions {
   display: none;
   align-items: center;
