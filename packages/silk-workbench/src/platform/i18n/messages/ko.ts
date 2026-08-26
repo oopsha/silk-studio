@@ -591,6 +591,8 @@ export const koMessages = {
       searchLiveSearching: "전체 연결에서 찾는 중…",
       searchLiveNoMatches: "연결된 어떤 데이터베이스에서도 일치하는 항목을 찾지 못했습니다.",
       searchLiveFailed: "전체 연결 검색에 실패했습니다.",
+      searchAllConnectionsLabel: '🔍 모든 연결에서 "{term}" 검색',
+      searchAllConnectionsDetail: "연결된 모든 데이터베이스에서 이 이름을 검색합니다",
       retry: "다시 시도",
       expandToLoadObjects: "펼치면 개체를 로드합니다.",
       expandToLoadSchemas: "펼치면 스키마를 로드합니다.",

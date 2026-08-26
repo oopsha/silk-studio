@@ -1,8 +1,10 @@
 import type { Monaco } from "@monaco-editor/react";
 import type { languages, Position, editor, IRange } from "monaco-editor";
 import type { MetadataColumn } from "@silk-studio/db-protocol";
+import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import { ConnectionService } from "../connection/connectionService";
 import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
+import { EXPLORER_COMMANDS } from "../connection/explorerObjectActions";
 import {
   detectSqlClause,
   extractCurrentStatement,
@@ -45,6 +47,7 @@ import {
   MAX_SCHEMA_SUGGESTIONS,
   MAX_TABLE_SUGGESTIONS,
   MAX_TOTAL_SUGGESTIONS,
+  MIN_SEARCH_ALL_CONNECTIONS_TERM_LENGTH,
 } from "./sqlCompletionRanking";
 import { parseSqlQueryScope, type SqlCteDef } from "./sqlCompletionScope";
 import { isSqlLanguageId, resolveActiveDriverId } from "./sqlDialect";
@@ -291,6 +294,21 @@ async function buildSuggestions(
       suggestions.push(
         ...tableSuggestions(monaco, range, profileId, schema, partial, clause),
       );
+    }
+
+    // One "search all connections" item per completion request (not per scanned schema) — the
+    // client-side cache above only covers the schema(s) this session is currently pointed at, so
+    // a table living in another database/schema (or another connected profile entirely) can't be
+    // found here. Reuses the Ctrl+Shift+O quick pick's own cross-connection live search instead of
+    // duplicating it inside Monaco's completion dropdown.
+    const searchAllConnectionsItem = searchAllConnectionsSuggestion(
+      monaco,
+      range,
+      profileId,
+      partial,
+    );
+    if (searchAllConnectionsItem) {
+      suggestions.push(searchAllConnectionsItem);
     }
   }
 
@@ -814,6 +832,51 @@ function tableSuggestions(
       })),
     MAX_TABLE_SUGGESTIONS,
   );
+}
+
+/**
+ * Builds the single "🔍 Search all connections for …" table-bucket item, or null when it
+ * shouldn't be shown (no bound connection, or the typed term is too short to be worth a modal).
+ * Synchronous and built entirely from data already in hand — no async work, so it rides the
+ * existing `completionEpoch` staleness guard in `provideCompletionItems` for free, same as every
+ * other suggestion in this file.
+ */
+function searchAllConnectionsSuggestion(
+  monaco: Monaco,
+  range: IRange,
+  profileId: string | null,
+  partial: string,
+): languages.CompletionItem | null {
+  const term = partial.trim();
+  if (!profileId || term.length < MIN_SEARCH_ALL_CONNECTIONS_TERM_LENGTH) {
+    return null;
+  }
+  const label = I18nService.t("app.explorer.searchAllConnectionsLabel").replace(
+    "{term}",
+    term,
+  );
+  return {
+    label,
+    kind: monaco.languages.CompletionItemKind.Event,
+    // Re-insert the typed text unchanged rather than clearing it (insertText: "" would delete
+    // the partial word from the buffer on accept before the quick pick even opens) — Monaco
+    // applies `insertText` to the buffer *and then* runs `command`, so this keeps the edit a
+    // no-op and leaves the command purely as a side effect.
+    insertText: partial,
+    range,
+    filterText: partial,
+    // Forced to the very bottom of the whole suggestion list: "~" sorts after every digit, and
+    // every real sortText in this file is "<2-digit bucket rank>_<match rank>_<name>" (see
+    // bucketSortPrefix/matchSortSuffix in sqlCompletionRanking.ts), so this always compares
+    // greater regardless of clause/bucket ordering.
+    sortText: "~zzz_searchAllConnections",
+    detail: I18nService.t("app.explorer.searchAllConnectionsDetail"),
+    command: {
+      id: EXPLORER_COMMANDS.searchObjectsForTerm,
+      title: "Search all connections",
+      arguments: [term],
+    },
+  };
 }
 
 function routineSuggestions(

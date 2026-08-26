@@ -151,6 +151,18 @@ CommandsRegistry.registerCommand(EXPLORER_COMMANDS.searchObjects, async () => {
   ExplorerSearchQuickPickService.show();
 });
 
+CommandsRegistry.registerCommand(
+  EXPLORER_COMMANDS.searchObjectsForTerm,
+  async (...args: unknown[]) => {
+    const term = args[0];
+    if (typeof term !== "string" || !term) return;
+    ExplorerSearchQuickPickService.show({
+      initialFilter: term,
+      autoRunLiveSearch: true,
+    });
+  },
+);
+
 CommandsRegistry.registerCommand(EXPLORER_COMMANDS.refresh, async () => {
   const ids = ConnectionService.getState().connectedProfileIds;
   if (ids.length === 0) {

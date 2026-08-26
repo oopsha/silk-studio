@@ -10,6 +10,14 @@ export const MAX_FUNCTION_SUGGESTIONS = 60;
 export const MAX_ROUTINE_SUGGESTIONS = 80;
 export const MAX_TOTAL_SUGGESTIONS = 200;
 
+/**
+ * Minimum typed-length before the table bucket's "search all connections" item appears — avoids
+ * dangling it under every single keystroke. Mirrors MIN_LIVE_SEARCH_TERM_LENGTH in
+ * ExplorerSearchQuickPick.tsx (the Ctrl+Shift+O quick pick's own live-search gate); kept as a
+ * separate constant since the two modules don't otherwise share dependencies.
+ */
+export const MIN_SEARCH_ALL_CONNECTIONS_TERM_LENGTH = 2;
+
 /** How long column JDBC results stay warm (connection switch still clears). */
 export const COLUMN_CACHE_TTL_MS = 5 * 60 * 1000;
 

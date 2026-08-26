@@ -593,6 +593,8 @@ export const enMessages = {
       searchLiveSearching: "Searching all connections…",
       searchLiveNoMatches: "No matches in any connected database for that search.",
       searchLiveFailed: "Search across connections failed.",
+      searchAllConnectionsLabel: '🔍 Search all connections for "{term}"',
+      searchAllConnectionsDetail: "Search every connected database for this name",
       retry: "Retry",
       expandToLoadObjects: "Expand to load objects.",
       expandToLoadSchemas: "Expand to load schemas.",
