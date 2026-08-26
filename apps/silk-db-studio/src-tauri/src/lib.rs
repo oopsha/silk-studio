@@ -113,6 +113,46 @@ fn query_execute(
 }
 
 #[tauri::command]
+async fn query_execute_paged(
+    connection_id: String,
+    sql: String,
+    known_columns: Vec<String>,
+    offset: u32,
+    limit: u32,
+    filters: Option<Vec<Value>>,
+    sort: Option<Vec<Value>>,
+    query_timeout_sec: Option<u32>,
+    auto_commit: Option<bool>,
+    read_only: Option<bool>,
+    binds: Option<Vec<Option<String>>>,
+    app: tauri::AppHandle,
+) -> Result<Value, String> {
+    require_connection_id(&connection_id)?;
+    let statement = sql.trim().to_string();
+    if statement.is_empty() {
+        return Err("Query is empty.".into());
+    }
+
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        state.jdbc_agent.execute_query_paged(
+            &connection_id,
+            &statement,
+            &known_columns,
+            offset,
+            limit,
+            filters,
+            sort,
+            query_timeout_sec,
+            auto_commit,
+            read_only,
+            binds.as_deref(),
+        )
+    })
+    .await
+}
+
+#[tauri::command]
 fn query_cancel(
     connection_id: String,
     state: tauri::State<'_, AppState>,
@@ -429,24 +469,28 @@ fn connection_triggers(
 }
 
 #[tauri::command]
-fn connection_ddl(
+async fn connection_ddl(
     connection_id: String,
     schema: String,
     name: String,
     kind: String,
     package_body: Option<bool>,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.fetch_object_ddl(
-        connection_id,
-        schema.trim(),
-        name.trim(),
-        kind.trim(),
-        package_body,
-        catalog.as_deref(),
-    )
+    require_connection_id(&connection_id)?;
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        state.jdbc_agent.fetch_object_ddl(
+            &connection_id,
+            &schema,
+            &name,
+            &kind,
+            package_body,
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -525,6 +569,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ensure_title_bar_overlay,
             query_execute,
+            query_execute_paged,
             query_cancel,
             connection_commit,
             connection_rollback,

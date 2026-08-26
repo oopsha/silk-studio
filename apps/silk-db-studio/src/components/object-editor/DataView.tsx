@@ -108,6 +108,8 @@ function DataView({ objectRef }: DataViewProps) {
             key={activeResultTab.id}
             tabId={activeResultTab.id}
             sql={activeResultTab.sql}
+            executedSql={activeResultTab.executedSql}
+            binds={activeResultTab.binds}
             result={gridResult}
             relationKind={activeResultTab.relationKind}
             connectionId={activeResultTab.connectionId}

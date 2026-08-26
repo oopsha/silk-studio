@@ -1042,4 +1042,36 @@ final class SqlServerDialect implements DbDialect {
     int index = name.lastIndexOf(';');
     return index >= 0 ? name.substring(0, index) : name;
   }
+
+  private static String quoteSqlServerIdent(String value) {
+    return "[" + value.replace("]", "]]") + "]";
+  }
+
+  @Override
+  public String quoteIdentifier(String raw) {
+    return quoteSqlServerIdent(raw);
+  }
+
+  /**
+   * OFFSET/FETCH NEXT requires an ORDER BY on the outer query — when the caller has no active
+   * sort, fall back to {@code ORDER BY (SELECT NULL)}, a standard zero-cost SQL Server idiom that
+   * satisfies the syntax requirement without implying any real ordering or referencing a column.
+   */
+  @Override
+  public String wrapPagedQuery(
+      String innerSql, String whereFragment, String orderByFragment, int offset, int limit) {
+    StringBuilder sql = new StringBuilder("SELECT * FROM (").append(innerSql).append(") sq");
+    if (whereFragment != null && !whereFragment.isBlank()) {
+      sql.append(" WHERE ").append(whereFragment);
+    }
+    sql.append(" ORDER BY ");
+    if (orderByFragment != null && !orderByFragment.isBlank()) {
+      sql.append(orderByFragment);
+    } else {
+      sql.append("(SELECT NULL)");
+    }
+    sql.append(" OFFSET ").append(offset).append(" ROWS FETCH NEXT ").append(limit)
+        .append(" ROWS ONLY");
+    return sql.toString();
+  }
 }

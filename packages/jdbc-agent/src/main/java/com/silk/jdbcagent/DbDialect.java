@@ -332,6 +332,33 @@ interface DbDialect {
     // no-op
   }
 
+  /**
+   * Quotes {@code raw} as a delimited identifier in this dialect's own syntax (double quotes for
+   * Oracle/PostgreSQL, backticks for MySQL/MariaDB, brackets for SQL Server), including the
+   * wrapping delimiters — e.g. Oracle's {@code COL} becomes {@code "COL"}. Used to safely embed
+   * caller-supplied column names (already validated against the result's own column list by the
+   * caller) into generated WHERE/ORDER BY fragments for {@link #wrapPagedQuery}.
+   */
+  String quoteIdentifier(String raw);
+
+  /**
+   * Wraps an arbitrary caller-supplied {@code SELECT} statement ({@code innerSql}, executed
+   * as-is, unmodified) as a derived table and applies an optional filter, optional sort, and
+   * mandatory offset/limit pagination, in this dialect's own syntax. Backs the large-result
+   * scroll/filter feature (5-D v2): the frontend re-issues the *original* query text with a page
+   * window (and, once implemented, a translated AG-Grid filter/sort) rather than the agent
+   * tracking any server-side cursor state between calls.
+   *
+   * <p>{@code whereFragment}/{@code orderByFragment} are fully-formed SQL text (identifiers
+   * already quoted via {@link #quoteIdentifier}, value placeholders already {@code ?}) with no
+   * leading {@code WHERE}/{@code ORDER BY} keyword — pass {@code null} or blank to omit the
+   * clause entirely. Implementations that require an ORDER BY for pagination syntax to be valid
+   * (SQL Server) must supply their own deterministic fallback when {@code orderByFragment} is
+   * absent, since the caller does not guarantee one.
+   */
+  String wrapPagedQuery(
+      String innerSql, String whereFragment, String orderByFragment, int offset, int limit);
+
   /** Shared helper: run {@code testSql} with a timeout and require at least one row back. */
   default void runTestQuery(Connection connection, int timeoutSeconds, String testSql)
       throws SQLException {

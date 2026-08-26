@@ -99,6 +99,49 @@ export function buildDeleteStatements(input: {
   );
 }
 
+export function buildInsertStatement(input: {
+  catalog?: string | null;
+  schema: string | null;
+  table: string;
+  driverId: ConnectionDriverId;
+  columns: string[];
+  row: Record<string, string | null>;
+}): string {
+  const tableRef = formatTableReference(
+    input.schema,
+    input.table,
+    input.driverId,
+    input.catalog,
+  );
+  const columnList = input.columns
+    .map((column) => quoteIdentifier(column, input.driverId))
+    .join(", ");
+  const valueList = input.columns
+    .map((column) => formatSqlLiteral(input.row[column] ?? null, input.driverId))
+    .join(", ");
+  return `INSERT INTO ${tableRef} (${columnList}) VALUES (${valueList})`;
+}
+
+export function buildInsertStatements(input: {
+  catalog?: string | null;
+  schema: string | null;
+  table: string;
+  driverId: ConnectionDriverId;
+  columns: string[];
+  rows: Array<Record<string, string | null>>;
+}): string[] {
+  return input.rows.map((row) =>
+    buildInsertStatement({
+      catalog: input.catalog,
+      schema: input.schema,
+      table: input.table,
+      driverId: input.driverId,
+      columns: input.columns,
+      row,
+    }),
+  );
+}
+
 export function buildUpdateStatements(input: {
   catalog?: string | null;
   schema: string | null;

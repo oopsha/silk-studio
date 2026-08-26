@@ -533,6 +533,26 @@ final class PostgreSqlDialect implements DbDialect {
     return "\"" + identifier.replace("\"", "\"\"") + "\"";
   }
 
+  @Override
+  public String quoteIdentifier(String raw) {
+    return quoteIdent(raw);
+  }
+
+  /** LIMIT/OFFSET — no ORDER BY requirement, so it's simply omitted when absent. */
+  @Override
+  public String wrapPagedQuery(
+      String innerSql, String whereFragment, String orderByFragment, int offset, int limit) {
+    StringBuilder sql = new StringBuilder("SELECT * FROM (").append(innerSql).append(") sq");
+    if (whereFragment != null && !whereFragment.isBlank()) {
+      sql.append(" WHERE ").append(whereFragment);
+    }
+    if (orderByFragment != null && !orderByFragment.isBlank()) {
+      sql.append(" ORDER BY ").append(orderByFragment);
+    }
+    sql.append(" LIMIT ").append(limit).append(" OFFSET ").append(offset);
+    return sql.toString();
+  }
+
   private String fetchPostgreSqlRoutineDdl(
       Connection connection, String schemaName, String objectName) throws SQLException {
     String sql =

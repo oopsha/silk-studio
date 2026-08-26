@@ -17,10 +17,13 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -315,6 +318,14 @@ public final class Main {
           }
           response.put("ok", true);
           response.set("result", runtime.executeQuery(sql, params));
+        }
+        case "query.executePaged" -> {
+          String sql = params.path("sql").asText("").trim();
+          if (sql.isEmpty()) {
+            throw new RuntimeException("Missing params.sql");
+          }
+          response.put("ok", true);
+          response.set("result", runtime.executePagedQuery(sql, params));
         }
         case "query.cancel" -> {
           boolean cancelled = runtime.cancelActiveQuery(requireConnectionId(params));
@@ -1234,6 +1245,105 @@ public final class Main {
         result.put("truncated", false);
         result.put("message", "OK. " + updated + " row(s) affected.");
         return result;
+      } finally {
+        if (session.activeStatement == statement) {
+          session.activeStatement = null;
+        }
+        try {
+          statement.close();
+        } catch (SQLException ignored) {
+        }
+      }
+    }
+
+    /**
+     * Re-runs {@code sql} (the original, unmodified statement text) wrapped as a derived table
+     * with offset/limit pagination (and, from a later stage, a translated filter/sort) in the
+     * connection's own dialect syntax — backs the large-result scroll feature (5-D v2). Unlike
+     * {@link #executeQuery}, this always expects a result set (paging a non-SELECT is nonsensical)
+     * and has no {@code maxRows} concept of its own beyond the requested page size.
+     */
+    ObjectNode executePagedQuery(String sql, JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+
+      boolean readOnly = params.path("readOnly").asBoolean(false);
+      if (readOnly && isWriteSql(sql)) {
+        throw new RuntimeException(
+            "Read-only mode is enabled. Write statements are blocked.");
+      }
+
+      applyConnectionSettings(session, params);
+
+      int offset = Math.max(0, params.path("offset").asInt(0));
+      int limit = params.path("limit").asInt(-1);
+      if (limit <= 0) {
+        throw new RuntimeException("Missing or invalid params.limit");
+      }
+
+      int timeoutOverride = params.hasNonNull("queryTimeoutSec")
+          ? params.path("queryTimeoutSec").asInt(-1)
+          : -1;
+      int effectiveTimeout = timeoutOverride >= 0 ? timeoutOverride : timeoutSeconds;
+
+      Set<String> knownColumns = new LinkedHashSet<>();
+      for (JsonNode column : params.path("knownColumns")) {
+        knownColumns.add(column.asText(""));
+      }
+      List<String> filterBinds = new ArrayList<>();
+      String whereFragment =
+          FilterSqlBuilder.buildWhereFragment(
+              params.path("filters"), knownColumns, session.dialect::quoteIdentifier, filterBinds);
+      String orderByFragment =
+          FilterSqlBuilder.buildOrderByFragment(
+              params.path("sort"), knownColumns, session.dialect::quoteIdentifier);
+
+      // Fetch one extra row (like executeQuery's own maxRows+1 trick) so the caller can tell
+      // whether this page was full (more rows may follow) without a separate COUNT(*) query.
+      String pagedSql =
+          session.dialect.wrapPagedQuery(sql, whereFragment, orderByFragment, offset, limit + 1);
+
+      JsonNode originalBindsNode = params.path("binds");
+      List<String> originalBinds = new ArrayList<>();
+      if (originalBindsNode.isArray()) {
+        for (JsonNode bind : originalBindsNode) {
+          originalBinds.add(bind == null || bind.isNull() ? null : bind.asText());
+        }
+      }
+      // Placeholder order in the final SQL text: any `?` already inside the caller's original
+      // `sql` comes first (lexically earlier), the filter's own `?`s (in the outer WHERE) after.
+      List<String> finalBinds = new ArrayList<>(originalBinds);
+      finalBinds.addAll(filterBinds);
+      boolean useBinds = !finalBinds.isEmpty();
+
+      Statement statement =
+          useBinds
+              ? session.connection.prepareStatement(pagedSql)
+              : session.connection.createStatement();
+      session.activeStatement = statement;
+      try {
+        statement.setQueryTimeout(effectiveTimeout);
+
+        ResultSet rs;
+        if (useBinds) {
+          PreparedStatement prepared = (PreparedStatement) statement;
+          for (int i = 0; i < finalBinds.size(); i++) {
+            String bind = finalBinds.get(i);
+            if (bind == null) {
+              prepared.setNull(i + 1, Types.VARCHAR);
+            } else {
+              prepared.setString(i + 1, bind);
+            }
+          }
+          rs = prepared.executeQuery();
+        } else {
+          rs = statement.executeQuery(pagedSql);
+        }
+
+        try {
+          return formatResultSet(rs, limit);
+        } finally {
+          rs.close();
+        }
       } finally {
         if (session.activeStatement == statement) {
           session.activeStatement = null;

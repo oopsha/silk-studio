@@ -8,6 +8,10 @@ type TabDirtyStore = {
   originalRows: Array<Record<string, string | null>>;
   dirtyByRow: Map<number, Map<string, DirtyCell>>;
   deletedRows: Set<number>;
+  /** Not-yet-saved rows added via "Add row"/"Duplicate row" — keyed by their synthetic negative
+   *  `rowIndex` (see `nextNewRowIndex`), which never collides with a real 0+ query-result index. */
+  newRows: Set<number>;
+  nextNewRowIndex: number;
 };
 
 type DirtyListener = () => void;
@@ -34,7 +38,123 @@ class QueryResultDirtyServiceImpl {
       originalRows,
       dirtyByRow: new Map(),
       deletedRows: new Set(),
+      newRows: new Set(),
+      nextNewRowIndex: 0,
     });
+    this.emit();
+  }
+
+  /**
+   * Registers the "original" (pre-edit) values for one page of rows fetched after `initTab` —
+   * Infinite Row Model scrolling (`QueryResultGrid`'s `useInfiniteMode`) loads rows in blocks well
+   * beyond the tab's initial batch, and `setCell`'s dirty-tracking needs an original snapshot for
+   * *every* row a user might edit, not just the first page. `startIndex` must match the row's own
+   * stamped `__rowIndex` (see `toQueryResultRows`'s `startIndex` param) so indices line up.
+   */
+  appendOriginalRows(
+    tabId: string,
+    startIndex: number,
+    columns: string[],
+    rows: Array<Array<string | null>>,
+  ): void {
+    const store = this.stores.get(tabId);
+    if (!store) return;
+    rows.forEach((cells, offset) => {
+      const row: Record<string, string | null> = {};
+      columns.forEach((column, index) => {
+        row[column] = cells[index] ?? null;
+      });
+      store.originalRows[startIndex + offset] = row;
+    });
+  }
+
+  /** True when `tabId` has any unsaved cell edits, delete marks, or added/duplicated rows. */
+  hasPendingChanges(tabId: string): boolean {
+    const store = this.stores.get(tabId);
+    if (!store) return false;
+    return (
+      store.dirtyByRow.size > 0 ||
+      store.deletedRows.size > 0 ||
+      store.newRows.size > 0
+    );
+  }
+
+  /**
+   * Reconstructs the "as currently shown" values for `rowIndex` — its original snapshot with any
+   * pending cell edits overlaid. Shared by `duplicateRow` (source row's live values) and the
+   * INSERT-statement builder (a new/duplicated row's full column set, since untouched columns
+   * never get a `dirtyByRow` entry and must still be read from their `originalRows` seed).
+   */
+  getEffectiveRow(tabId: string, rowIndex: number): Record<string, string | null> | null {
+    const store = this.stores.get(tabId);
+    const original = store?.originalRows[rowIndex];
+    if (!store || !original) return null;
+    const overlay = store.dirtyByRow.get(rowIndex);
+    if (!overlay) return { ...original };
+    const effective = { ...original };
+    for (const [column, cell] of overlay) {
+      effective[column] = cell.currentValue;
+    }
+    return effective;
+  }
+
+  /** Adds a blank new row (all columns `null`) and returns its synthetic (negative) rowIndex. */
+  addNewRow(tabId: string, columns: string[]): number | null {
+    const store = this.stores.get(tabId);
+    if (!store) return null;
+    const rowIndex = (store.nextNewRowIndex -= 1);
+    const blank: Record<string, string | null> = {};
+    columns.forEach((column) => {
+      blank[column] = null;
+    });
+    store.originalRows[rowIndex] = blank;
+    store.newRows.add(rowIndex);
+    this.emit();
+    return rowIndex;
+  }
+
+  /**
+   * Adds a new row seeded from `sourceRowIndex`'s current (edit-overlaid) values, including its
+   * primary key — PK columns are editable on new/duplicated rows (see `QueryResultGrid`'s
+   * `editable` callback), so the user can change them before saving; if left as-is, the INSERT
+   * will simply fail on the database's own PK/unique constraint, which is the authoritative
+   * duplicate check anyway (no point re-implementing it client-side).
+   */
+  duplicateRow(tabId: string, sourceRowIndex: number): number | null {
+    const store = this.stores.get(tabId);
+    if (!store) return null;
+    const sourceValues = this.getEffectiveRow(tabId, sourceRowIndex);
+    if (!sourceValues) return null;
+    const rowIndex = (store.nextNewRowIndex -= 1);
+    store.originalRows[rowIndex] = { ...sourceValues };
+    store.newRows.add(rowIndex);
+    this.emit();
+    return rowIndex;
+  }
+
+  isNewRow(tabId: string, rowIndex: number): boolean {
+    return this.stores.get(tabId)?.newRows.has(rowIndex) ?? false;
+  }
+
+  getNewRowCount(tabId: string): number {
+    return this.stores.get(tabId)?.newRows.size ?? 0;
+  }
+
+  getNewRowIndexes(tabId: string): number[] {
+    const store = this.stores.get(tabId);
+    if (!store) return [];
+    // Descending — rows are added most-recent-first (each new index is lower than the last).
+    return [...store.newRows].sort((a, b) => b - a);
+  }
+
+  /** Discards a not-yet-saved added/duplicated row entirely (as opposed to marking it deleted —
+   *  it was never saved, so there's nothing in the database to target with a DELETE). */
+  discardNewRow(tabId: string, rowIndex: number): void {
+    const store = this.stores.get(tabId);
+    if (!store || !store.newRows.has(rowIndex)) return;
+    store.newRows.delete(rowIndex);
+    delete store.originalRows[rowIndex];
+    store.dirtyByRow.delete(rowIndex);
     this.emit();
   }
 
@@ -58,11 +178,20 @@ class QueryResultDirtyServiceImpl {
 
   clearTab(tabId: string): void {
     const store = this.stores.get(tabId);
-    if (!store || (store.dirtyByRow.size === 0 && store.deletedRows.size === 0)) {
+    if (
+      !store ||
+      (store.dirtyByRow.size === 0 &&
+        store.deletedRows.size === 0 &&
+        store.newRows.size === 0)
+    ) {
       return;
     }
     store.dirtyByRow.clear();
     store.deletedRows.clear();
+    for (const rowIndex of store.newRows) {
+      delete store.originalRows[rowIndex];
+    }
+    store.newRows.clear();
     this.emit();
   }
 

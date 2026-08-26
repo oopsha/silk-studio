@@ -17,6 +17,18 @@ export function isStaleSessionError(error: unknown): boolean {
 }
 
 /**
+ * Exact substring of the error `silk-db-agent-client`'s `ensure_connection` (Rust) returns when
+ * this connectionId was never opened at all (as opposed to `STALE_SESSION_MARKER`, where it was
+ * opened and later dropped) — this is a Rust-side string, never routed through the i18n system,
+ * so it always shows up untranslated unless intercepted here.
+ */
+const NO_ACTIVE_CONNECTION_MARKER = "No active database connection (";
+
+function isNoActiveConnectionError(error: unknown): boolean {
+  return formatErrorMessage(error, "").includes(NO_ACTIVE_CONNECTION_MARKER);
+}
+
+/**
  * Invokes a JDBC-session-scoped Tauri command, transparently self-healing the common case where
  * the frontend still believes `connectionId` is connected (see `ConnectionService`'s
  * `connectedProfileIds`) but the backend's in-memory JDBC session for it is actually gone —
@@ -38,6 +50,9 @@ export async function invokeJdbcCommand<T>(
   try {
     return await invoke<T>(command, args);
   } catch (error) {
+    if (isNoActiveConnectionError(error)) {
+      throw new Error(tKey("app.query.noConnection"));
+    }
     if (!isStaleSessionError(error)) {
       throw error;
     }

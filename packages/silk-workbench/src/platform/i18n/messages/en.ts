@@ -815,14 +815,30 @@ export const enMessages = {
       dirtyCellsTitle: "{n} edited cell(s) not saved",
       truncatedTitle:
         "Result limited to {n} rows (Settings → Query Result → Max Rows). More rows may exist.",
+      scrollableTitle:
+        "Large result — scroll to load more rows from the database. Filtering and sorting re-query the database.",
       saveChanges: "Save changes",
       saveChangesTitle:
         "Preview and execute UPDATE/DELETE statements for edited cells and deleted rows",
       deleteRow: "Delete Row",
       deleteRowTitle:
-        "Mark selected row(s) for deletion (not executed until Save) — click again on a marked row to undo",
+        "Mark selected row(s) for deletion (not executed until Save) — click again on a marked row to undo. A not-yet-saved added/duplicated row is discarded instead of marked.",
+      cancelChanges: "Cancel Changes",
+      cancelChangesTitle:
+        "Discard all unsaved cell edits, delete marks, and added/duplicated rows",
+      changesCancelled: "Unsaved changes discarded",
+      addRow: "Add Row",
+      addRowTitle: "Add a blank row and start editing it",
+      duplicateRow: "Duplicate Row",
+      duplicateRowTitle:
+        "Duplicate the selected row (including its primary key — edit it before saving)",
+      duplicateRowSelectOne: "Select exactly one row to duplicate",
+      rowAddDisabledInfiniteMode:
+        "Not available for large (scrollable) results — narrow the query or increase Max Rows",
       badgeDeleted: "{n} to delete",
       deletedRowsTitle: "{n} row(s) marked for deletion, not yet saved",
+      badgeNew: "{n} new",
+      newRowsTitle: "{n} added/duplicated row(s), not yet saved",
       copySelectionTitle: "Copy selection (cells, or rows)",
       copyRowsTitle: "Copy selected rows",
       copyFilteredTitle: "Copy all filtered rows (TSV)",
@@ -834,6 +850,10 @@ export const enMessages = {
       statusHintEdit: "Edited cells require preview + confirm before UPDATE",
       badgeUnsaved: "{n} unsaved",
       badgeTruncated: "Truncated at {n}",
+      badgeScrollable: "Large result — scroll for more",
+      pagedFetchFailed: "Failed to load more rows: {message}",
+      pendingEditsDiscardedOnReshuffle:
+        "Changing filter/sort discarded unsaved edits (row positions changed)",
       badgeFiltered: "Filtered",
       badgeSorted: "Sorted",
       badgeLayout: "Layout saved",
@@ -934,13 +954,16 @@ export const enMessages = {
         "Only simple single-table SELECT results can be saved.",
       confirmUpdateTitle: "Confirm UPDATE",
       confirmDeleteTitle: "Confirm DELETE",
+      confirmInsertTitle: "Confirm INSERT",
       confirmChangesTitle: "Confirm Changes",
       confirmUpdateSummary:
         "Save {cells} edited cell(s) across {rows} row(s) on {table}?",
       confirmDeleteSummary: "Delete {rows} row(s) from {table}?",
+      confirmInsertSummary: "Insert {rows} new row(s) into {table}?",
       confirmUpdateHint:
         "Review the generated SQL below. Nothing is written until you confirm.",
       executeDelete: "Execute DELETE",
+      executeInsert: "Execute INSERT",
       executeChanges: "Execute Changes",
       copySql: "Copy SQL",
       sqlCopied: "SQL copied",
