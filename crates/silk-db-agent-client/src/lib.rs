@@ -639,6 +639,59 @@ impl JdbcAgentClient {
         self.send_request("query.execute", params)
     }
 
+    /// Re-runs `sql` (the original, unmodified statement text) wrapped with offset/limit
+    /// pagination in the connection's own dialect syntax. Backs the large-result scroll feature
+    /// (5-D v2) — unlike [`Self::execute_query`], `offset`/`limit` are required, not optional.
+    #[allow(clippy::too_many_arguments)]
+    pub fn execute_query_paged(
+        &self,
+        connection_id: &str,
+        sql: &str,
+        known_columns: &[String],
+        offset: u32,
+        limit: u32,
+        filters: Option<Vec<Value>>,
+        sort: Option<Vec<Value>>,
+        query_timeout_sec: Option<u32>,
+        auto_commit: Option<bool>,
+        read_only: Option<bool>,
+        binds: Option<&[Option<String>]>,
+    ) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let mut params = json!({
+            "connectionId": connection_id.trim(),
+            "sql": sql,
+            "knownColumns": known_columns,
+            "offset": offset,
+            "limit": limit
+        });
+        if let Some(filters) = filters {
+            if !filters.is_empty() {
+                params["filters"] = json!(filters);
+            }
+        }
+        if let Some(sort) = sort {
+            if !sort.is_empty() {
+                params["sort"] = json!(sort);
+            }
+        }
+        if let Some(query_timeout_sec) = query_timeout_sec {
+            params["queryTimeoutSec"] = json!(query_timeout_sec);
+        }
+        if let Some(auto_commit) = auto_commit {
+            params["autoCommit"] = json!(auto_commit);
+        }
+        if let Some(read_only) = read_only {
+            params["readOnly"] = json!(read_only);
+        }
+        if let Some(binds) = binds {
+            if !binds.is_empty() {
+                params["binds"] = json!(binds);
+            }
+        }
+        self.send_request("query.executePaged", params)
+    }
+
     /// Cancels the in-flight JDBC statement for {@code connection_id}.
     /// Safe to call while [`Self::execute_query`] waits.
     pub fn cancel_query(&self, connection_id: &str) -> Result<Value, String> {

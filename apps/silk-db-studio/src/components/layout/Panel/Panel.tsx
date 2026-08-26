@@ -264,6 +264,8 @@ function Panel({ groupId }: { groupId: EditorGroupId }) {
                 key={activeTab.id}
                 tabId={activeTab.id}
                 sql={activeTab.sql}
+                executedSql={activeTab.executedSql}
+                binds={activeTab.binds}
                 result={gridResult}
                 relationKind={activeTab.relationKind}
                 connectionId={activeTab.connectionId}

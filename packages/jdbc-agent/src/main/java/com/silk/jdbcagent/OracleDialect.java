@@ -1173,6 +1173,27 @@ final class OracleDialect implements DbDialect {
     return "\"" + value.replace("\"", "\"\"") + "\"";
   }
 
+  @Override
+  public String quoteIdentifier(String raw) {
+    return quoteOracleIdent(raw);
+  }
+
+  /** OFFSET/FETCH NEXT (12c+) — no ORDER BY requirement, so it's simply omitted when absent. */
+  @Override
+  public String wrapPagedQuery(
+      String innerSql, String whereFragment, String orderByFragment, int offset, int limit) {
+    StringBuilder sql = new StringBuilder("SELECT * FROM (").append(innerSql).append(") sq");
+    if (whereFragment != null && !whereFragment.isBlank()) {
+      sql.append(" WHERE ").append(whereFragment);
+    }
+    if (orderByFragment != null && !orderByFragment.isBlank()) {
+      sql.append(" ORDER BY ").append(orderByFragment);
+    }
+    sql.append(" OFFSET ").append(offset).append(" ROWS FETCH NEXT ").append(limit)
+        .append(" ROWS ONLY");
+    return sql.toString();
+  }
+
   private static String[] distinctCases(String value) {
     String upper = value.toUpperCase(java.util.Locale.ROOT);
     if (value.equals(upper)) {

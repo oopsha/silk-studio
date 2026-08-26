@@ -11,6 +11,16 @@ export type QueryResultTab = {
   /** Short label shown on the tab strip (e.g. Result 3). */
   title: string;
   sql: string;
+  /**
+   * The exact statement text actually sent to the driver, with any named/anonymous/MyBatis-style
+   * parameters already rewritten to positional `?` placeholders — only differs from `sql` when
+   * the statement had bind parameters. Falls back to `sql` (no rewrite happened) when absent.
+   * Needed (together with `binds`) to correctly re-run the *same* statement for refresh or
+   * server-paged scrolling; `sql` alone lacks the resolved parameter values.
+   */
+  executedSql?: string;
+  /** Resolved bind values for `executedSql`'s `?` placeholders, in order. */
+  binds?: Array<string | null>;
   status: QueryResultTabStatus;
   output: string;
   /**

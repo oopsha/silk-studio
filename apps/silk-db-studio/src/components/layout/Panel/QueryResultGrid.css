@@ -60,6 +60,11 @@
   color: #f48771;
 }
 
+.query-result-grid__badge--new {
+  background-color: color-mix(in srgb, #89d185 30%, transparent);
+  color: #89d185;
+}
+
 .query-result-grid__action-msg {
   color: #89d185;
 }
@@ -135,15 +140,40 @@
   border-bottom: 1px solid var(--color-border);
 }
 
-/* Pending-delete row (marked, not yet saved) */
-.query-result-grid .ag-row.query-result-grid__row--deleted {
-  background-color: color-mix(in srgb, #f14c4c 14%, transparent);
-}
-
+/*
+ * Pending-delete / added-duplicated row backgrounds. AG Grid paints row backgrounds through
+ * several independent layers — a row-level `:after` overlay for the base color, a `:before`
+ * overlay for hover/selection, and (for pinned columns, e.g. the "#" row-number column) a
+ * *separate* sticky container (`.ag-grid-pinned-left-cells`) with its own `background-image`
+ * gradient — CSS-variable overrides on `.ag-row` alone don't reliably reach all of these.
+ * Targeting `.ag-cell` directly with `!important` paints every cell in the row uniformly
+ * (pinned or not) regardless of which internal layer AG Grid is using underneath.
+ */
 .query-result-grid .ag-row.query-result-grid__row--deleted .ag-cell {
+  background-color: color-mix(in srgb, #f14c4c 26%, transparent) !important;
   text-decoration: line-through;
   text-decoration-color: #f48771;
   opacity: 0.75;
+}
+
+/* Selected and hovered share one (slightly brighter than base) color on purpose. */
+.query-result-grid .ag-row.query-result-grid__row--deleted:hover .ag-cell,
+.query-result-grid .ag-row.query-result-grid__row--deleted.ag-row-selected .ag-cell {
+  background-color: color-mix(in srgb, #f14c4c 30%, transparent) !important;
+}
+
+/* Added/duplicated row (not yet saved) — see the note above. */
+.query-result-grid .ag-row.query-result-grid__row--new {
+  box-shadow: inset 3px 0 0 #89d185;
+}
+
+.query-result-grid .ag-row.query-result-grid__row--new .ag-cell {
+  background-color: color-mix(in srgb, #89d185 32%, transparent) !important;
+}
+
+.query-result-grid .ag-row.query-result-grid__row--new:hover .ag-cell,
+.query-result-grid .ag-row.query-result-grid__row--new.ag-row-selected .ag-cell {
+  background-color: color-mix(in srgb, #89d185 38%, transparent) !important;
 }
 
 /* AG Grid scroll containers — match VS Code slider tones */

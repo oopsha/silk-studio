@@ -515,4 +515,24 @@ abstract class MySqlCompatibleDialect implements DbDialect {
   private static String quoteMySqlIdentifier(String value) {
     return value.replace("`", "``");
   }
+
+  @Override
+  public String quoteIdentifier(String raw) {
+    return "`" + quoteMySqlIdentifier(raw) + "`";
+  }
+
+  /** LIMIT/OFFSET — no ORDER BY requirement, so it's simply omitted when absent. */
+  @Override
+  public String wrapPagedQuery(
+      String innerSql, String whereFragment, String orderByFragment, int offset, int limit) {
+    StringBuilder sql = new StringBuilder("SELECT * FROM (").append(innerSql).append(") sq");
+    if (whereFragment != null && !whereFragment.isBlank()) {
+      sql.append(" WHERE ").append(whereFragment);
+    }
+    if (orderByFragment != null && !orderByFragment.isBlank()) {
+      sql.append(" ORDER BY ").append(orderByFragment);
+    }
+    sql.append(" LIMIT ").append(limit).append(" OFFSET ").append(offset);
+    return sql.toString();
+  }
 }

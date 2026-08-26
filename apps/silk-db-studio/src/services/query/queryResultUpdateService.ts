@@ -13,7 +13,11 @@ import { formatErrorMessage } from "../formatErrorMessage";
 import { resolveActiveDriverId } from "../sql/sqlDialect";
 import { QueryExecutionService } from "./queryExecutionService";
 import { QueryResultDirtyService } from "./queryResultDirtyService";
-import { buildDeleteStatements, buildUpdateStatements } from "./safeUpdateSql";
+import {
+  buildDeleteStatements,
+  buildInsertStatements,
+  buildUpdateStatements,
+} from "./safeUpdateSql";
 import { assertReadOnlyQueryAllowed } from "./sqlGuard";
 import { parseSingleTableFromSelect } from "./sqlTableReference";
 
@@ -44,6 +48,7 @@ export type UpdatePreview = {
   dirtyRowCount: number;
   dirtyCellCount: number;
   deletedRowCount: number;
+  insertedRowCount: number;
 };
 
 type UpdateEligibilityOptions = {
@@ -234,9 +239,19 @@ export async function buildUpdatePreview(
   resultColumns: string[],
   options?: UpdateEligibilityOptions,
 ): Promise<UpdatePreview | { blocked: true; reason: string }> {
-  const dirtyRows = QueryResultDirtyService.getDirtyRows(tabId);
+  const newRowIndexes = QueryResultDirtyService.getNewRowIndexes(tabId);
+  // Cell edits inside a not-yet-saved added/duplicated row still flow through the same
+  // dirty-cell tracking as an existing row's edits — excluded here so they contribute to the
+  // row's INSERT values (below) instead of leaking into a bogus UPDATE statement.
+  const dirtyRows = QueryResultDirtyService.getDirtyRows(tabId).filter(
+    (row) => !QueryResultDirtyService.isNewRow(tabId, row.rowIndex),
+  );
   const deletedRowIndexes = QueryResultDirtyService.getDeletedRowIndexes(tabId);
-  if (dirtyRows.length === 0 && deletedRowIndexes.length === 0) {
+  if (
+    dirtyRows.length === 0 &&
+    deletedRowIndexes.length === 0 &&
+    newRowIndexes.length === 0
+  ) {
     return { blocked: true, reason: tKey("app.query.saveNoEditedCells") };
   }
 
@@ -250,7 +265,18 @@ export async function buildUpdatePreview(
   }
 
   const originalRows = QueryResultDirtyService.getOriginalRows(tabId);
+  const newRows = newRowIndexes
+    .map((rowIndex) => QueryResultDirtyService.getEffectiveRow(tabId, rowIndex))
+    .filter((row): row is Record<string, string | null> => row != null);
   const statements = [
+    ...buildInsertStatements({
+      catalog: eligibility.catalog,
+      schema: eligibility.schema,
+      table: eligibility.table,
+      driverId: eligibility.driverId,
+      columns: resultColumns,
+      rows: newRows,
+    }),
     ...buildUpdateStatements({
       catalog: eligibility.catalog,
       schema: eligibility.schema,
@@ -271,13 +297,17 @@ export async function buildUpdatePreview(
     }),
   ];
 
-  const dirtyCellCount = QueryResultDirtyService.getDirtyCount(tabId);
+  const dirtyCellCount = dirtyRows.reduce(
+    (sum, row) => sum + row.changes.length,
+    0,
+  );
   return {
     eligibility,
     statements,
     dirtyRowCount: dirtyRows.length,
     dirtyCellCount,
     deletedRowCount: deletedRowIndexes.length,
+    insertedRowCount: newRows.length,
   };
 }
 

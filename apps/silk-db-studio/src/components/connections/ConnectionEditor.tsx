@@ -378,6 +378,33 @@ function ConnectionEditor() {
             value={form.driverId}
             onChange={(event) => {
               const nextDriverId = event.target.value as ConnectionDriverId;
+
+              if (!rawMode) {
+                // Structured mode: the URL is derived from host/port/catalog, so rebuild it
+                // for the new driver's scheme instead of reusing the old driver's URL string —
+                // that string uses a different JDBC scheme and will never parse under the new
+                // driver, which used to force Raw mode on every structured driver switch.
+                const nextCatalog = getConnectionDriver(nextDriverId).supportsCatalog
+                  ? (nextDriverId === "oracle" ? "" : form.catalog)
+                  : "";
+                const nextUrl = buildUrlFromCurrentFields(
+                  nextDriverId,
+                  hostPort,
+                  nextCatalog,
+                  oracleFields,
+                );
+                setRawModeHint(null);
+                setForm((current) => ({
+                  ...current,
+                  driverId: nextDriverId,
+                  url: nextUrl,
+                  catalog: nextCatalog,
+                }));
+                return;
+              }
+
+              // Raw mode: keep the user's custom URL text, only switching to structured
+              // mode if it happens to parse cleanly for the new driver.
               const previousDefault = getConnectionDriver(form.driverId).defaultUrl;
               const nextDefault = getConnectionDriver(nextDriverId).defaultUrl;
               const urlIsUnset =

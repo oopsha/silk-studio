@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildUpdateStatement } from "./safeUpdateSql";
+import { buildInsertStatement, buildUpdateStatement } from "./safeUpdateSql";
 
 describe("buildUpdateStatement", () => {
   it("prefixes string literals with N for SQL Server (Unicode literal)", () => {
@@ -35,6 +35,36 @@ describe("buildUpdateStatement", () => {
 
     expect(sql).toBe(
       'UPDATE "public"."orders" SET "note" = \'한글\' WHERE "id" = \'1\'',
+    );
+  });
+});
+
+describe("buildInsertStatement", () => {
+  it("emits every column, using NULL for untouched ones", () => {
+    const sql = buildInsertStatement({
+      schema: "public",
+      table: "orders",
+      driverId: "postgresql",
+      columns: ["id", "note", "amount"],
+      row: { id: "5", note: null, amount: "10.5" },
+    });
+
+    expect(sql).toBe(
+      'INSERT INTO "public"."orders" ("id", "note", "amount") VALUES (\'5\', NULL, \'10.5\')',
+    );
+  });
+
+  it("prefixes string literals with N for SQL Server (Unicode literal)", () => {
+    const sql = buildInsertStatement({
+      schema: "dbo",
+      table: "PST_PAYMENT_50",
+      driverId: "sqlserver",
+      columns: ["TRAN_DT", "INPUT_DATA_99"],
+      row: { TRAN_DT: "20251107", INPUT_DATA_99: "마리오상품권 1만원권" },
+    });
+
+    expect(sql).toBe(
+      "INSERT INTO [dbo].[PST_PAYMENT_50] ([TRAN_DT], [INPUT_DATA_99]) VALUES (N'20251107', N'마리오상품권 1만원권')",
     );
   });
 });

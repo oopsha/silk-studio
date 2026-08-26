@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "allow-query-execute"
 description = "Allows executing and cancelling SQL queries through jdbc-agent."
-commands.allow = ["query_execute", "query_cancel"]
+commands.allow = ["query_execute", "query_execute_paged", "query_cancel"]

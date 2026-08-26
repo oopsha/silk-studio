@@ -324,7 +324,15 @@ class QueryExecutionServiceImpl {
     assertReadOnlyQueryAllowed(tab.sql, readOnly);
     await ensureExecutionConnection(connectionId);
 
-    const payload = await this.invokeQuery(connectionId, tab.sql, readOnly);
+    // Re-run the exact statement actually executed (bind parameters already resolved to `?` +
+    // values), not `tab.sql` — for a bound query, `tab.sql` still has the original `:name`/`#{}`/
+    // anonymous placeholder syntax, which the driver can't execute as literal SQL text.
+    const payload = await this.invokeQuery(
+      connectionId,
+      tab.executedSql ?? tab.sql,
+      readOnly,
+      tab.binds,
+    );
     if (!isQueryResultPayload(payload)) {
       throw new Error("Invalid query result payload from desktop bridge.");
     }
@@ -560,6 +568,8 @@ class QueryExecutionServiceImpl {
 
           this.commitTab(ownerId, {
             sql: item.sql,
+            executedSql: item.bound.sql,
+            binds: item.bound.binds,
             output: payload.message,
             result: payload,
             status: "success",
@@ -862,6 +872,8 @@ class QueryExecutionServiceImpl {
             resultSetCount += 1;
             this.commitTab(ownerId, {
               sql: item.sql,
+              executedSql: item.bound.sql,
+              binds: item.bound.binds,
               output: payload.message,
               result: payload,
               status: "success",
@@ -1151,6 +1163,8 @@ class QueryExecutionServiceImpl {
       const output = capturedMessage || `${plan.label} completed.`;
       this.commitTab(ownerId, {
         sql: displaySql,
+        executedSql: bound.sql,
+        binds: bound.binds,
         output,
         result: captured,
         status: "success",
@@ -1289,6 +1303,8 @@ class QueryExecutionServiceImpl {
     ownerId: string,
     input: {
       sql: string;
+      executedSql?: string;
+      binds?: Array<string | null>;
       output: string;
       logParts?: QueryLogPart[] | null;
       result: QueryResultPayload | null;
@@ -1312,6 +1328,8 @@ class QueryExecutionServiceImpl {
           runtime.runTabOrdinal,
         ),
       sql: input.sql,
+      executedSql: input.executedSql,
+      binds: input.binds,
       status: input.status,
       output: input.output,
       logParts: input.logParts ?? undefined,

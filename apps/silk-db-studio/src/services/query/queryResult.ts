@@ -11,11 +11,18 @@ export const QUERY_RESULT_ROW_NUMBER_COL_ID = "__rowNum";
 
 export type QueryResultRow = Record<string, string | null>;
 
+/**
+ * `startIndex` offsets the stamped `__rowIndex` — required when `rows` is one page of a larger,
+ * server-paginated result (AG-Grid Infinite Row Model), so each page's rows get globally-unique
+ * indices (`startIndex + i`) instead of colliding with every other page's own `0..n` range.
+ */
 export function toQueryResultRows(
   columns: string[],
   rows: Array<Array<string | null>>,
+  startIndex = 0,
 ): QueryResultRow[] {
-  return rows.map((cells, rowIndex) => {
+  return rows.map((cells, offset) => {
+    const rowIndex = startIndex + offset;
     const row: QueryResultRow = {
       [QUERY_RESULT_ROW_INDEX_KEY]: String(rowIndex),
     };

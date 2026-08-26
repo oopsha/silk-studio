@@ -6,12 +6,12 @@
 
 ## 현재 상태 (기준)
 
-- AG Grid Community 기반 `QueryResultGrid` — 정렬·필터·복사·CSV(5-A), 컬럼 레이아웃 저장(5-B), **다중 결과 탭(5-C)**, **maxRows truncate·대용량 UX v1(5-D)**까지 반영
+- AG Grid Community 기반 `QueryResultGrid` — 정렬·필터·복사·CSV(5-A), 컬럼 레이아웃 저장(5-B), **다중 결과 탭(5-C)**, **maxRows truncate·대용량 UX v1+v2(5-D)**, **안전 UPDATE(5-E)**까지 반영
 - 설정: `queryResult.maxRows` / `rowHeight` / `fontSize` / `nullDisplay` / `filterEnabled`
 - 실행 결과는 `QueryExecutionService`의 **탭 목록** (`tabs` / `activeTabId`) — **실행마다 이전 탭을 교체**, 이번 배치만 표시 (상한 10)
   - Ctrl+Enter: 커서 문장 1개 → 탭 1개(탭 스트립 숨김) / 선택 영역 N문장 → 탭 N개
   - Ctrl+Shift+Enter: 버퍼 전체 문장을 각각 실행 → 탭 N개
-- 미구현: 안전 UPDATE(커밋); 서버 페이징은 5-D v2
+- 미구현: 총 건수(`COUNT(*)`) 표시
 - 그리드 라이브러리: 당분간 AG Grid Community 유지 (DevExtreme/Enterprise 전환은 별도)
 
 ---
@@ -102,7 +102,7 @@
 
 ## 5-D. 대용량 / 페이지
 
-**상태:** 구현 완료 — v1 (검증은 앱에서 확인)
+**상태:** 구현 완료 — v1 + v2 (검증은 앱에서 확인)
 
 **의존성:** 5-A (행 수·상태 표시). 서버 페이징은 agent 변경 가능
 
@@ -112,17 +112,37 @@
   - agent: `setMaxRows(max+1)`로 truncate 감지 → payload `truncated` + 메시지
   - 그리드: **Truncated at N** 경고 배지
 - AG Grid 행/컬럼 가상화 유지, `animateRows=false`, `rowBuffer=8`
-- 서버 OFFSET 페이지 UI는 **넣지 않음**
+- 서버 OFFSET 페이지 UI는 v1에서는 넣지 않음 (v2에서 구현)
 
-### 범위 (v2 — 필요할 때만, 별도 요청 권장)
+### 범위 (v2 — 서버 사이드 페이지 / 필터 / 정렬) ✅
 
-- 서버 사이드 페이지 / FETCH NEXT / ROWNUM 래핑
-- 드라이버별 SQL 생성과 agent API
+- `truncated=true`인 결과만 AG Grid **Infinite Row Model**로 전환 (비-truncated는 기존 CSRM 그대로)
+  - `QueryResultGrid.tsx`: `truncated` 여부로 그리드 `key`를 바꿔 리마운트, `IDatasource.getRows()`가 스크롤마다 서버 재쿼리
+  - 편집(안전 UPDATE, 5-E)도 이 모드에서 그대로 동작 — `QueryResultDirtyService.appendOriginalRows()`가 스크롤로 불러온 페이지마다 원본 값을 등록해, 첫 페이지 밖에서 편집해도 안전한 WHERE 절을 만들 수 있음. 단, 필터/정렬이 바뀌면 행 위치(`__rowIndex`)의 의미 자체가 달라지므로 저장하지 않은 편집은 자동으로 폐기(안내 메시지 표시) — CSRM 모드는 필터/정렬이 표시만 바꿀 뿐 원본 데이터 위치는 그대로라 이 처리가 필요 없음
+- 신규 agent RPC `query.executePaged` (Tauri `query_execute_paged`, 기존 `query_execute`는 그대로 유지 — Ctrl+Enter 단발 실행 경로 영향 없음)
+  - 원본 SQL을 서브쿼리로 감싸 다이얼렉트별 페이징 문법 적용: Oracle/SQL Server `OFFSET…FETCH NEXT`(SQL Server는 정렬 없을 때 `ORDER BY (SELECT NULL)` 폴백), PostgreSQL/MySQL·MariaDB `LIMIT…OFFSET`
+  - `DbDialect.wrapPagedQuery()`/`quoteIdentifier()` — 4개 다이얼렉트 각각 구현
+- 필터: AG Grid `filterModel` → `FilterSqlBuilder.java`가 WHERE 조각 + 바인드값으로 변환 (컬럼명은 결과의 실제 컬럼 목록으로 검증, 값은 전부 바인드 파라미터 — SQL 인젝션 방지). **두 모드(CSRM/Infinite) 모두** `filterParams: { buttons: ["apply","reset"] }`로 통일 — 즉시 적용이 아니라 Apply/Enter가 필요하며, 결과 크기에 따라 동작이 달라 보이지 않도록 인터랙션을 일관되게 유지
+- 정렬: `sortModel` → `FilterSqlBuilder.buildOrderByFragment()`로 ORDER BY 변환, 두 모드 모두 정렬 가능
+- 총 건수(`COUNT(*)`)는 조회하지 않음 — v1과 동일하게 페이지가 요청한 크기보다 적게 오면 "더 없음"으로 판단
+- 바인드 파라미터(`?`/`:name`/`#{}`)가 있는 쿼리도 스크롤 가능 — `QueryResultTab`에 `executedSql`/`binds`(실제 실행된 SQL과 바인드 값)를 저장해 재사용
 
 ### 완료 기준 (v1)
 
 - maxRows에 걸리면 사용자에게 명확히 보임
 - 수천 행(설정 상한 내)에서도 그리드가 버벅이지 않음
+
+### 완료 기준 (v2)
+
+- truncated 결과에서 스크롤하면 추가 행이 로드됨 (4개 다이얼렉트 모두)
+- truncated 결과에서 필터/정렬을 적용하면 서버에 재쿼리되어 전체 데이터 기준으로 동작함
+- 바인드 파라미터가 있는 쿼리도 첫 페이지 이후 스크롤 가능
+- truncated 결과에서 스크롤로 불러온 행도 편집 → 안전 UPDATE 미리보기·저장이 정상 동작함
+- 편집 중 필터/정렬을 바꾸면 저장하지 않은 편집이 안내와 함께 폐기됨 (행 위치가 달라진 편집이 잘못된 대상에 저장되는 것을 방지)
+
+### 남은 항목 (후속 작업 권장)
+
+- 총 건수 표시(`COUNT(*)`) 없음 — 필요해지면 별도 요청으로
 
 ### 요청 문구 예
 
@@ -165,10 +185,11 @@
  → 5-C 다중 결과 탭  ✅
  → 5-D 대용량/페이지 (v1)  ✅
  → 5-E 안전 UPDATE  ✅
+ → 5-D 대용량/페이지 (v2: 서버 페이지·필터·정렬)  ✅
 ```
 
 - `5-B`와 `5-C`는 서로 의존이 약해서, A 이후 순서를 바꿔도 된다.
-- `5-D` v2(서버 페이지)와 `5-E`는 agent/메타 의존이 커서 뒤로 둔다.
+- `5-D` v2는 5단계(백엔드 페이징 배관 → 프론트 Infinite Row Model 연동 → 필터 → 정렬 → 마무리)로 나눠 진행했다.
 - 한 채팅에 `5-A+5-B`까지는 가능하나, `5-C`부터는 단독 요청을 권장한다.
 
 ---
@@ -185,5 +206,6 @@
 
 ## 다음 단계
 
-결과 그리드(로드맵 5) 5-A~5-E가 완료되었다.  
+결과 그리드(로드맵 5) 5-A~5-E, 5-D v2(서버 페이지·필터·정렬·대용량 결과에서의 안전 UPDATE)까지 완료되었다.  
+남은 항목: 총 건수 표시.  
 그리드 라이브러리 전환(DevExtreme/Enterprise)은 별도 결정 후 진행.

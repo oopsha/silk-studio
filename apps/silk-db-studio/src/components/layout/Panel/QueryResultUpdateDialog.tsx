@@ -9,6 +9,7 @@ type QueryResultUpdateDialogProps = {
   dirtyRowCount: number;
   dirtyCellCount: number;
   deletedRowCount: number;
+  insertedRowCount: number;
   statements: string[];
   errorMessage: string | null;
   executing: boolean;
@@ -21,6 +22,7 @@ function QueryResultUpdateDialog({
   dirtyRowCount,
   dirtyCellCount,
   deletedRowCount,
+  insertedRowCount,
   statements,
   errorMessage,
   executing,
@@ -30,20 +32,26 @@ function QueryResultUpdateDialog({
   const { t } = useI18n();
   const sqlText = statements.join("\n\n");
   const backdropDismiss = useBackdropDismiss(onCancel, !executing);
+  const hasInserts = insertedRowCount > 0;
   const hasUpdates = dirtyRowCount > 0;
   const hasDeletes = deletedRowCount > 0;
+  const kindCount = [hasInserts, hasUpdates, hasDeletes].filter(Boolean).length;
   const titleKey =
-    hasUpdates && hasDeletes
+    kindCount > 1
       ? "app.query.confirmChangesTitle"
-      : hasDeletes
-        ? "app.query.confirmDeleteTitle"
-        : "app.query.confirmUpdateTitle";
+      : hasInserts
+        ? "app.query.confirmInsertTitle"
+        : hasDeletes
+          ? "app.query.confirmDeleteTitle"
+          : "app.query.confirmUpdateTitle";
   const confirmKey =
-    hasUpdates && hasDeletes
+    kindCount > 1
       ? "app.query.executeChanges"
-      : hasDeletes
-        ? "app.query.executeDelete"
-        : "app.query.executeUpdate";
+      : hasInserts
+        ? "app.query.executeInsert"
+        : hasDeletes
+          ? "app.query.executeDelete"
+          : "app.query.executeUpdate";
 
   const handleCopy = async () => {
     try {
@@ -83,6 +91,13 @@ function QueryResultUpdateDialog({
         </header>
 
         <div className="query-result-update-dialog__body">
+          {insertedRowCount > 0 ? (
+            <p className="query-result-update-dialog__summary">
+              {t("app.query.confirmInsertSummary")
+                .replace("{rows}", String(insertedRowCount))
+                .replace("{table}", tableLabel)}
+            </p>
+          ) : null}
           {dirtyRowCount > 0 ? (
             <p className="query-result-update-dialog__summary">
               {t("app.query.confirmUpdateSummary")
