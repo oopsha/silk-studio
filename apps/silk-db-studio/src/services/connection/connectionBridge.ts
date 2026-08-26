@@ -130,6 +130,7 @@ export async function bridgeConnectionPrefetchCatalog(
 export async function bridgeFindObjectsByName(
   connectionId: string,
   name: string,
+  options?: { contains?: boolean },
 ): Promise<ConnectionFindObjectsByNameResult> {
   if (!isTauri()) {
     throw new Error("Database metadata is available in the desktop app only.");
@@ -140,7 +141,7 @@ export async function bridgeFindObjectsByName(
   }
   const payload = await invokeJdbcCommand<unknown>(
     "connection_find_objects_by_name",
-    { connectionId: id, name: name.trim() },
+    { connectionId: id, name: name.trim(), contains: options?.contains ?? false },
     id,
   );
   if (!isConnectionFindObjectsByNameResult(payload)) {

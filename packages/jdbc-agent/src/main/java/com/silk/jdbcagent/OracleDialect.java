@@ -1301,13 +1301,17 @@ final class OracleDialect implements DbDialect {
 
   @Override
   public void findObjectsByName(
-      Connection connection, String catalog, String name, ArrayNode objects)
+      Connection connection, String catalog, String name, boolean contains, ArrayNode objects)
       throws SQLException {
+    String predicate =
+        contains
+            ? "UPPER(OBJECT_NAME) LIKE UPPER(?) ESCAPE '\\'"
+            : "OBJECT_NAME = ?";
     String sql =
         "SELECT OWNER, OBJECT_NAME, OBJECT_TYPE FROM ALL_OBJECTS "
-            + "WHERE OBJECT_NAME = ? AND OBJECT_TYPE IN ('TABLE', 'VIEW')";
+            + "WHERE " + predicate + " AND OBJECT_TYPE IN ('TABLE', 'VIEW')";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
-      statement.setString(1, name);
+      statement.setString(1, contains ? LikeEscape.containsPattern(name) : name);
       try (ResultSet rs = statement.executeQuery()) {
         while (rs.next()) {
           ObjectNode object = objects.addObject();

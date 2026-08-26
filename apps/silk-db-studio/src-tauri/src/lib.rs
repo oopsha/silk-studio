@@ -286,12 +286,15 @@ fn connection_prefetch_catalog(
 async fn connection_find_objects_by_name(
     connection_id: String,
     name: String,
+    contains: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<Value, String> {
     require_connection_id(&connection_id)?;
     run_blocking(move || {
         let state = app.state::<AppState>();
-        state.jdbc_agent.find_objects_by_name(&connection_id, &name)
+        state
+            .jdbc_agent
+            .find_objects_by_name(&connection_id, &name, contains)
     })
     .await
 }

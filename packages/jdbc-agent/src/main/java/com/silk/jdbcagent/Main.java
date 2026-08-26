@@ -770,10 +770,12 @@ public final class Main {
     }
 
     /**
-     * Finds tables/views named exactly {@code params.name}, across every schema (and, for
-     * catalog-explorer dialects like SQL Server, every catalog/database) the connection can see
-     * — backs the AI assistant's "find an object without knowing its schema" tool. See {@link
-     * DbDialect#findObjectsByName} for why this is scoped to tables/views only.
+     * Finds tables/views matching {@code params.name}, across every schema (and, for
+     * catalog-explorer dialects like SQL Server, every catalog/database) the connection can see.
+     * {@code params.contains} (default {@code false}) selects exact vs. case-insensitive
+     * substring matching — see {@link DbDialect#findObjectsByName}. Exact mode backs the AI
+     * assistant's "find an object without knowing its schema" tool; substring mode backs the
+     * Explorer's opt-in "search all connections" quick-pick action.
      */
     ObjectNode findObjectsByName(JsonNode params) throws SQLException {
       Session session = requireSession(params);
@@ -783,12 +785,13 @@ public final class Main {
       if (name.isEmpty()) {
         throw new RuntimeException("Missing params.name");
       }
+      boolean contains = params.path("contains").asBoolean(false);
 
       ArrayNode objects = MAPPER.createArrayNode();
       if (dialect.usesCatalogExplorer()) {
         for (String catalogName : dialect.listCatalogNames(connection)) {
           ArrayNode found = MAPPER.createArrayNode();
-          dialect.findObjectsByName(connection, catalogName, name, found);
+          dialect.findObjectsByName(connection, catalogName, name, contains, found);
           for (JsonNode object : found) {
             ObjectNode tagged = objects.addObject();
             tagged.put("catalogName", catalogName);
@@ -798,7 +801,7 @@ public final class Main {
           }
         }
       } else {
-        dialect.findObjectsByName(connection, null, name, objects);
+        dialect.findObjectsByName(connection, null, name, contains, objects);
       }
 
       ObjectNode result = MAPPER.createObjectNode();

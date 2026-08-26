@@ -200,13 +200,20 @@ impl JdbcAgentClient {
         self.send_request("connection.prefetchCatalog", params)
     }
 
+    /// `contains`: `None`/`Some(false)` matches `name` exactly (default, preserves existing
+    /// callers' behavior); `Some(true)` matches `name` as a case-insensitive substring anywhere
+    /// in the object name. See `DbDialect#findObjectsByName` in jdbc-agent for details.
     pub fn find_objects_by_name(
         &self,
         connection_id: &str,
         name: &str,
+        contains: Option<bool>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
-        let params = json!({ "connectionId": connection_id.trim(), "name": name.trim() });
+        let mut params = json!({ "connectionId": connection_id.trim(), "name": name.trim() });
+        if let Some(contains) = contains {
+            params["contains"] = json!(contains);
+        }
         self.send_request("connection.findObjectsByName", params)
     }
 
