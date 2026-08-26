@@ -38,6 +38,7 @@ import DdlEditorView from "../../ddl/DdlEditorView.tsx";
 import PlsqlEditorView from "../../plsql/PlsqlEditorView.tsx";
 import ObjectEditorView from "../../object-editor/ObjectEditorView.tsx";
 import QueryHistoryView from "../../query-history/QueryHistoryView.tsx";
+import SearchExplorer from "../../search/SearchExplorer.tsx";
 import { ConnectionEditorService } from "../../../services/connection/connectionEditorService.ts";
 import { isDdlEditorTab } from "../../../services/connection/ddlEditorConstants.ts";
 import { isPlsqlEditorTab } from "../../../services/connection/plsqlEditorConstants.ts";
@@ -312,6 +313,7 @@ function AppShell() {
                       connectionsActions={connectionsActions}
                       renderConnections={() => <ConnectionsExplorer />}
                       renderHistory={() => <QueryHistoryView />}
+                      renderSearch={() => <SearchExplorer />}
                     />
                   </div>
                   <WorkbenchSash

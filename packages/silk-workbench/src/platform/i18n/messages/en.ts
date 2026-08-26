@@ -790,6 +790,16 @@ export const enMessages = {
       invalidTab: "Invalid object editor tab.",
       dataLoadFailed: "Failed to load data.",
     },
+    search: {
+      placeholder: "Search objects across all connections…",
+      inputAria: "Search objects across all connections",
+      hint: "Type at least 2 characters, then press Enter or click Search.",
+      searchButton: "Search",
+      connecting: "Connecting {name}…",
+      searching: "Searching all connections…",
+      noMatches: "No matches in any connection for that search.",
+      resultCount: "{n} result(s)",
+    },
     query: {
       runStatement: "Run Statement",
       executeScript: "Execute Script",

@@ -9,6 +9,7 @@ type SidebarProps = {
   connectionsTitle?: string;
   connectionsActions?: ReactNode;
   renderHistory?: () => ReactNode;
+  renderSearch?: () => ReactNode;
 };
 
 function Sidebar({
@@ -16,6 +17,7 @@ function Sidebar({
   connectionsTitle,
   connectionsActions,
   renderHistory,
+  renderSearch,
 }: SidebarProps) {
   const activeViewId = useActiveView();
   const { t } = useI18n();
@@ -31,9 +33,13 @@ function Sidebar({
           />
         ) : null}
         {activeViewId === "search" ? (
-          <div className="sidebar-view-placeholder">
-            {t("workbench.activityBar.search")}
-          </div>
+          renderSearch ? (
+            renderSearch()
+          ) : (
+            <div className="sidebar-view-placeholder">
+              {t("workbench.activityBar.search")}
+            </div>
+          )
         ) : null}
         {activeViewId === "scm" ? (
           <div className="sidebar-view-placeholder">
