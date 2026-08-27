@@ -2,6 +2,7 @@ package com.silk.jdbcagent;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -1002,38 +1003,162 @@ final class SqlServerDialect implements DbDialect {
       Connection connection, String catalog, String schemaName, String objectName)
       throws SQLException {
     String prefix = CatalogQualifier.prefix(catalog);
-    String sql =
-        "SELECT "
-            + "'CREATE TABLE ' + QUOTENAME(?) + '.' + QUOTENAME(?) + ' (' + CHAR(13) + CHAR(10) + "
-            + "STUFF(("
-            + "  SELECT CHAR(13) + CHAR(10) + '    , ' + QUOTENAME(c.COLUMN_NAME) + ' ' + "
-            + "         c.DATA_TYPE + "
-            + "         CASE "
-            + "           WHEN c.CHARACTER_MAXIMUM_LENGTH IS NOT NULL "
-            + "             THEN '(' + CASE WHEN c.CHARACTER_MAXIMUM_LENGTH = -1 THEN 'max' "
-            + "               ELSE CAST(c.CHARACTER_MAXIMUM_LENGTH AS varchar(20)) END + ')' "
-            + "           WHEN c.NUMERIC_PRECISION IS NOT NULL "
-            + "             THEN '(' + CAST(c.NUMERIC_PRECISION AS varchar(20)) + "
-            + "               CASE WHEN c.NUMERIC_SCALE IS NOT NULL AND c.NUMERIC_SCALE > 0 "
-            + "                 THEN ',' + CAST(c.NUMERIC_SCALE AS varchar(20)) ELSE '' END + ')' "
-            + "           ELSE '' "
-            + "         END + "
-            + "         CASE WHEN c.IS_NULLABLE = 'NO' THEN ' NOT NULL' ELSE '' END "
-            + "  FROM " + prefix + "INFORMATION_SCHEMA.COLUMNS c "
-            + "  WHERE c.TABLE_SCHEMA = ? AND c.TABLE_NAME = ? "
-            + "  ORDER BY c.ORDINAL_POSITION "
-            + "  FOR XML PATH(''), TYPE).value('.', 'nvarchar(max)'), 1, 7, '    ') + "
-            + "CHAR(13) + CHAR(10) + ');'";
-
-    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+    String columnsSql =
+        "SELECT c.COLUMN_NAME AS COLUMN_NAME, c.DATA_TYPE AS DATA_TYPE, "
+            + "c.CHARACTER_MAXIMUM_LENGTH AS CHAR_LEN, c.NUMERIC_PRECISION AS NUM_PRECISION, "
+            + "c.NUMERIC_SCALE AS NUM_SCALE, c.IS_NULLABLE AS IS_NULLABLE "
+            + "FROM " + prefix + "INFORMATION_SCHEMA.COLUMNS c "
+            + "WHERE c.TABLE_SCHEMA = ? AND c.TABLE_NAME = ? "
+            + "ORDER BY c.ORDINAL_POSITION";
+    List<String> columnLines = new ArrayList<>();
+    try (PreparedStatement statement = connection.prepareStatement(columnsSql)) {
       statement.setString(1, schemaName);
       statement.setString(2, objectName);
-      statement.setString(3, schemaName);
-      statement.setString(4, objectName);
       try (ResultSet rs = statement.executeQuery()) {
-        return MetadataDdl.readFirstColumnAsString(rs);
+        while (rs.next()) {
+          columnLines.add(formatSqlServerColumnLine(rs));
+        }
       }
     }
+    if (columnLines.isEmpty()) {
+      return null;
+    }
+
+    ArrayNode constraints = JsonNodeFactory.instance.arrayNode();
+    collectTableConstraints(connection, catalog, schemaName, objectName, constraints);
+    ArrayNode foreignKeys = JsonNodeFactory.instance.arrayNode();
+    collectTableForeignKeys(connection, catalog, schemaName, objectName, foreignKeys);
+    ArrayNode indexes = JsonNodeFactory.instance.arrayNode();
+    collectTableIndexes(connection, catalog, schemaName, objectName, indexes);
+    ArrayNode columns = JsonNodeFactory.instance.arrayNode();
+    collectTableColumns(connection, catalog, schemaName, objectName, columns);
+    String tableComment = fetchTableComment(connection, catalog, schemaName, objectName);
+
+    String qualifiedName = quoteSqlServerIdent(schemaName) + "." + quoteSqlServerIdent(objectName);
+    List<String> tableLines = new ArrayList<>(columnLines);
+    Set<String> constraintBackedIndexNames = new LinkedHashSet<>();
+    for (JsonNode constraint : constraints) {
+      String type = constraint.path("type").asText("");
+      String name = constraint.path("name").asText("");
+      if (!name.isBlank()) {
+        constraintBackedIndexNames.add(name);
+      }
+      switch (type) {
+        case "primaryKey" ->
+            tableLines.add(
+                "    CONSTRAINT "
+                    + quoteSqlServerIdent(name)
+                    + " PRIMARY KEY ("
+                    + MetadataDdl.joinQuotedColumns(constraint.path("columns"), this::quoteIdentifier)
+                    + ")");
+        case "unique" ->
+            tableLines.add(
+                "    CONSTRAINT "
+                    + quoteSqlServerIdent(name)
+                    + " UNIQUE ("
+                    + MetadataDdl.joinQuotedColumns(constraint.path("columns"), this::quoteIdentifier)
+                    + ")");
+        case "check" ->
+            tableLines.add(
+                "    CONSTRAINT "
+                    + quoteSqlServerIdent(name)
+                    + " CHECK "
+                    + constraint.path("expression").asText(""));
+        default -> {}
+      }
+    }
+
+    StringBuilder ddl = new StringBuilder();
+    ddl.append("CREATE TABLE ").append(qualifiedName).append(" (\n");
+    ddl.append(String.join(",\n", tableLines));
+    ddl.append("\n);");
+
+    for (JsonNode fk : foreignKeys) {
+      ddl.append("\n\n")
+          .append(
+              MetadataDdl.buildAddForeignKeyStatement(
+                  qualifiedName, fk, this::quoteIdentifier, schemaName));
+    }
+
+    for (JsonNode index : indexes) {
+      String indexName = index.path("name").asText("");
+      if (indexName.isBlank() || constraintBackedIndexNames.contains(indexName)) {
+        continue;
+      }
+      boolean unique = index.path("unique").asBoolean(false);
+      ddl.append("\n\n")
+          .append("CREATE ")
+          .append(unique ? "UNIQUE " : "")
+          .append("INDEX ")
+          .append(quoteSqlServerIdent(indexName))
+          .append(" ON ")
+          .append(qualifiedName)
+          .append(" (")
+          .append(MetadataDdl.joinQuotedColumns(index.path("columns"), this::quoteIdentifier))
+          .append(");");
+    }
+
+    if (tableComment != null && !tableComment.isBlank()) {
+      ddl.append("\n\n")
+          .append(buildSqlServerExtendedPropertyStatement(tableComment, schemaName, objectName, null));
+    }
+
+    for (JsonNode column : columns) {
+      String comment = column.path("comment").asText("");
+      if (comment.isBlank()) {
+        continue;
+      }
+      ddl.append("\n\n")
+          .append(
+              buildSqlServerExtendedPropertyStatement(
+                  comment, schemaName, objectName, column.path("name").asText("")));
+    }
+
+    return ddl.toString();
+  }
+
+  private static String formatSqlServerColumnLine(ResultSet rs) throws SQLException {
+    StringBuilder line = new StringBuilder("    ");
+    line.append(quoteSqlServerIdent(rs.getString("COLUMN_NAME"))).append(' ');
+    line.append(rs.getString("DATA_TYPE"));
+    Integer charLen = rs.getObject("CHAR_LEN", Integer.class);
+    Integer numPrecision = rs.getObject("NUM_PRECISION", Integer.class);
+    Integer numScale = rs.getObject("NUM_SCALE", Integer.class);
+    if (charLen != null) {
+      line.append('(').append(charLen == -1 ? "max" : String.valueOf(charLen)).append(')');
+    } else if (numPrecision != null) {
+      line.append('(').append(numPrecision);
+      if (numScale != null && numScale > 0) {
+        line.append(',').append(numScale);
+      }
+      line.append(')');
+    }
+    if ("NO".equals(rs.getString("IS_NULLABLE"))) {
+      line.append(" NOT NULL");
+    }
+    return line.toString();
+  }
+
+  /**
+   * Builds an {@code EXEC sp_addextendedproperty} statement carrying an {@code MS_Description}
+   * comment — the same mechanism {@link #fetchTableComment} and {@link #applyColumnComments}
+   * read back. {@code columnName} is {@code null} for a table-level comment.
+   */
+  private static String buildSqlServerExtendedPropertyStatement(
+      String value, String schemaName, String tableName, String columnName) {
+    StringBuilder sql = new StringBuilder();
+    sql.append("EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N")
+        .append(MetadataDdl.quoteStringLiteral(value))
+        .append(",\n    @level0type = N'SCHEMA', @level0name = N")
+        .append(MetadataDdl.quoteStringLiteral(schemaName))
+        .append(",\n    @level1type = N'TABLE', @level1name = N")
+        .append(MetadataDdl.quoteStringLiteral(tableName));
+    if (columnName != null && !columnName.isBlank()) {
+      sql.append(",\n    @level2type = N'COLUMN', @level2name = N")
+          .append(MetadataDdl.quoteStringLiteral(columnName));
+    }
+    sql.append(";");
+    return sql.toString();
   }
 
   /**
