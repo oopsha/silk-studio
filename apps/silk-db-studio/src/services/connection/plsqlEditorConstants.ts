@@ -76,7 +76,7 @@ export function isPlsqlEditorTab(uri: string | undefined): boolean {
  * PL/SQL source: a dedicated PL/SQL editor tab (`silk://plsql/...`, packages only — see
  * DdlEditorView's doc comment for why procedures/functions no longer use this), an embedded
  * Object Editor tab (`silk://object/...`) for a view, or the unified DDL viewer tab
- * (`silk://ddl/...`) for a standalone procedure/function. Each of these reuses the same
+ * (`silk://ddl/...`) for a standalone procedure/function/trigger. Each of these reuses the same
  * save/snapshot/compile machinery from inside a differently-shaped tab rather than assuming
  * the active tab *is* a dedicated PL/SQL tab. Returns null for any other case (tables, package
  * DDL views, etc. stay read-only and never resolve here).
@@ -97,7 +97,10 @@ export function resolvePlsqlSourceRef(uri: string | undefined): PlsqlEditorRef |
   }
 
   const ddlRef = parseDdlEditorUri(uri);
-  if (ddlRef && (ddlRef.kind === "procedure" || ddlRef.kind === "function")) {
+  if (
+    ddlRef &&
+    (ddlRef.kind === "procedure" || ddlRef.kind === "function" || ddlRef.kind === "trigger")
+  ) {
     return {
       profileId: ddlRef.profileId,
       schemaName: ddlRef.schemaName,

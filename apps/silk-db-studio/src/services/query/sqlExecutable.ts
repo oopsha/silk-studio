@@ -396,6 +396,15 @@ export function splitSqlStatements(content: string): StatementRange[] {
         i += word.length;
         continue;
       }
+      // A trigger/procedure/function body can have its own DECLARE section before BEGIN (e.g.
+      // `CREATE TRIGGER ... DECLARE x INTEGER; BEGIN ... END;`) — enters the same plsqlBlock
+      // state the bare top-level DECLARE case does (depth still 0, not "entered begin" yet),
+      // so the `;` after the declaration isn't mistaken for the end of the CREATE statement.
+      if (createBlockKindSeen && lower === "declare") {
+        plsqlBlock = true;
+        i += word.length;
+        continue;
+      }
       // Header noise: OR REPLACE, EDITIONABLE, schema/object name, parameter list, AS/IS, ...
       i += word.length;
       continue;
@@ -473,7 +482,15 @@ export function stripTrailingSemicolon(sql: string): string {
 const PLSQL_CREATE_HEADER =
   /^\s*create(?:\s+or\s+replace)?\s+(?:editionable\s+|noneditionable\s+)?(?:procedure|function|package(?:\s+body)?|trigger|type(?:\s+body)?)\b/i;
 
-function isPlsqlBlockRequiringSemicolon(sql: string): boolean {
+/**
+ * True for an anonymous PL/SQL block (`DECLARE`/`BEGIN ... END`) or a stored
+ * `CREATE [OR REPLACE] PROCEDURE/FUNCTION/PACKAGE/TRIGGER/TYPE` definition — i.e. text the
+ * database treats as an opaque source blob, not a query. Exported so callers besides
+ * `stripTrailingSemicolon` (see {@link isPlsqlBlockRequiringSemicolon}'s other use in
+ * `queryExecutionService.ts`, gating bind-parameter detection) can reuse the same detection
+ * rather than duplicating it.
+ */
+export function isPlsqlBlockRequiringSemicolon(sql: string): boolean {
   const stripped = stripSqlComments(sql);
   return /^\s*(?:declare|begin)\b/i.test(stripped) || PLSQL_CREATE_HEADER.test(stripped);
 }

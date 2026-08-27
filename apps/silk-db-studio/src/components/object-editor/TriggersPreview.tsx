@@ -3,7 +3,9 @@ import type { MetadataTrigger } from "@silk-studio/db-protocol";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { bridgeListTriggers } from "../../services/connection/connectionBridge";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
+import type { ExplorerObjectRef } from "../../services/connection/explorerObjectActions";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
+import { openObjectDdl } from "../../services/connection/ddlEditorService";
 import {
   getCachedObjectPreview,
   setCachedObjectPreview,
@@ -20,6 +22,17 @@ type LoadState =
 type TriggersPreviewProps = {
   objectRef: ObjectEditorRef;
 };
+
+/** Double-click opens the trigger's own DDL tab, same as PackageMembersPreview does for members. */
+function openTrigger(objectRef: ObjectEditorRef, trigger: MetadataTrigger): void {
+  const target: ExplorerObjectRef = {
+    profileId: objectRef.profileId,
+    schemaName: objectRef.schemaName,
+    object: { name: trigger.name, kind: "trigger" },
+    catalogName: objectRef.catalogName,
+  };
+  openObjectDdl(target);
+}
 
 function TriggersPreview({ objectRef }: TriggersPreviewProps) {
   const { t } = useI18n();
@@ -103,7 +116,12 @@ function TriggersPreview({ objectRef }: TriggersPreviewProps) {
         </thead>
         <tbody>
           {loadState.triggers.map((trigger, position) => (
-            <tr key={trigger.name}>
+            <tr
+              key={trigger.name}
+              className="table-property-section__row--clickable"
+              onDoubleClick={() => openTrigger(objectRef, trigger)}
+              title={t("app.triggers.openHint")}
+            >
               <td className="table-property-section__index-cell">{position + 1}</td>
               <td>{trigger.name}</td>
               <td>{trigger.timing ?? ""}</td>

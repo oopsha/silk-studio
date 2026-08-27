@@ -38,7 +38,7 @@ export function getPlsqlCompileBlockedReason(tabId?: string): string | null {
     return "Active editor is not a PL/SQL source tab.";
   }
   if (!isEditablePlsqlKind(ref.kind)) {
-    return "Compile is only supported for procedures, functions, packages, and views.";
+    return "Compile is only supported for procedures, functions, packages, views, and triggers.";
   }
   if (ConfigurationService.getValue("database.readOnly")) {
     return "Read-only mode is enabled. PL/SQL Compile is blocked.";

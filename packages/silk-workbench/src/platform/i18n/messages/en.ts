@@ -702,6 +702,7 @@ export const enMessages = {
       enabled: "Enabled",
       yes: "Yes",
       no: "No",
+      openHint: "Double-click to open the trigger's DDL",
     },
     dependencies: {
       loading: "Loading dependencies...",

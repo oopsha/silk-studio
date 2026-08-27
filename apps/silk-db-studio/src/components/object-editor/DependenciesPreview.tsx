@@ -39,6 +39,8 @@ function resolveOpenableKind(dependencyType: string): MetadataObjectKind | null 
     case "PACKAGE":
     case "PACKAGE BODY":
       return "package";
+    case "TRIGGER":
+      return "trigger";
     default:
       return null;
   }
