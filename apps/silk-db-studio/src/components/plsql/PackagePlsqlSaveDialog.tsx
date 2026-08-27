@@ -11,44 +11,42 @@ import {
   defineWorkbenchMonacoThemes,
   monacoThemeForColorTheme,
 } from "@silk-studio/editor/themes/dark2026-monaco.ts";
-import { PlsqlSaveDialogService } from "../../services/connection/plsqlSaveDialogService";
-import {
-  executePlsqlSave,
-  formatPlsqlSaveError,
-} from "../../services/connection/plsqlSaveService";
+import { PackagePlsqlSaveDialogService } from "../../services/connection/packagePlsqlSaveDialogService";
+import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { registerSqlLanguages } from "../../services/sql/registerSqlLanguages";
 import { useResizableDialogSize } from "../../services/ui/useResizableDialogSize";
 import "../connections/ExplorerObjectMutationDialog.css";
 import "./PlsqlSnapshotDialog.css";
 import "./PlsqlSaveDialog.css";
 
-type SaveView = "diff" | "sql";
-
-function PlsqlSaveDialog() {
+function PackagePlsqlSaveDialog() {
   const { t } = useI18n();
   const [request, setRequest] = useState(() =>
-    PlsqlSaveDialogService.getRequest(),
+    PackagePlsqlSaveDialogService.getRequest(),
+  );
+  const [activeSectionId, setActiveSectionId] = useState<"spec" | "body" | null>(
+    null,
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
-  const [view, setView] = useState<SaveView>("diff");
   const configuration = useConfiguration();
-  const resizableRef = useResizableDialogSize("silk-db-studio.plsqlSaveDialog.size");
+  const resizableRef = useResizableDialogSize("silk-db-studio.packagePlsqlSaveDialog.size");
   const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
 
   function close() {
     if (executing) return;
-    PlsqlSaveDialogService.close(false);
+    PackagePlsqlSaveDialogService.close();
   }
 
   const backdropDismiss = useBackdropDismiss(close, !executing);
 
   useEffect(() => {
-    return PlsqlSaveDialogService.onDidChange(() => {
-      setRequest(PlsqlSaveDialogService.getRequest());
+    return PackagePlsqlSaveDialogService.onDidChange(() => {
+      const next = PackagePlsqlSaveDialogService.getRequest();
+      setRequest(next);
+      setActiveSectionId(next?.sections[0]?.id ?? null);
       setErrorMessage(null);
       setExecuting(false);
-      setView("diff");
     });
   }, []);
 
@@ -56,18 +54,19 @@ function PlsqlSaveDialog() {
     return null;
   }
 
+  const activeSection =
+    request.sections.find((section) => section.id === activeSectionId) ??
+    request.sections[0];
+
   async function handleConfirm() {
     if (!request || executing) return;
-    const current = request;
     setExecuting(true);
     setErrorMessage(null);
     try {
-      await executePlsqlSave(current.tabId, current.ref, current.statements);
-      PlsqlSaveDialogService.close(true);
+      await request.onConfirm();
+      PackagePlsqlSaveDialogService.close();
     } catch (error) {
-      setErrorMessage(
-        formatPlsqlSaveError(error, t("app.plsql.saveFailed")),
-      );
+      setErrorMessage(formatErrorMessage(error, t("app.plsql.saveFailed")));
       setExecuting(false);
     }
   }
@@ -94,10 +93,12 @@ function PlsqlSaveDialog() {
         className="explorer-mutation-dialog plsql-snapshot-dialog--diff plsql-save-dialog"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="plsql-save-dialog-title"
+        aria-labelledby="package-plsql-save-dialog-title"
       >
         <header className="explorer-mutation-dialog__header">
-          <h2 id="plsql-save-dialog-title">{t("app.plsql.saveDialogTitle")}</h2>
+          <h2 id="package-plsql-save-dialog-title">
+            {t("app.plsql.saveDialogTitle")}
+          </h2>
           <button
             type="button"
             className="explorer-mutation-dialog__close"
@@ -117,40 +118,35 @@ function PlsqlSaveDialog() {
             )}
           </p>
 
-          <div className="plsql-save-dialog__tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "diff"}
-              className={`plsql-save-dialog__tab${
-                view === "diff" ? " plsql-save-dialog__tab--active" : ""
-              }`}
-              disabled={executing}
-              onClick={() => setView("diff")}
-            >
-              {t("app.plsql.diffVsDatabase")}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "sql"}
-              className={`plsql-save-dialog__tab${
-                view === "sql" ? " plsql-save-dialog__tab--active" : ""
-              }`}
-              disabled={executing}
-              onClick={() => setView("sql")}
-            >
-              {t("app.plsql.sqlTab")}
-            </button>
-          </div>
+          {request.sections.length > 1 ? (
+            <div className="plsql-save-dialog__tabs" role="tablist">
+              {request.sections.map((section) => (
+                <button
+                  key={section.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={section.id === activeSection?.id}
+                  className={`plsql-save-dialog__tab${
+                    section.id === activeSection?.id
+                      ? " plsql-save-dialog__tab--active"
+                      : ""
+                  }`}
+                  disabled={executing}
+                  onClick={() => setActiveSectionId(section.id)}
+                >
+                  {section.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
-          {view === "diff" ? (
+          {activeSection ? (
             <>
               <div className="plsql-save-dialog__diff-toolbar">
                 <p className="explorer-mutation-dialog__hint">
-                  Left: current database source · Right: editor buffer
+                  {t("app.plsql.diffVsDatabase")}
                 </p>
-                {!request.dbSourceLoading && request.dbSource ? (
+                {!activeSection.beforeLoading && activeSection.before !== null ? (
                   <div className="plsql-save-dialog__diff-nav">
                     <button
                       type="button"
@@ -171,23 +167,23 @@ function PlsqlSaveDialog() {
                   </div>
                 ) : null}
               </div>
-              {request.dbSourceLoading ? (
+              {activeSection.beforeLoading ? (
                 <p className="explorer-mutation-dialog__hint">
-                  Loading database source…
+                  {t("app.plsql.sourceLoading")}
                 </p>
               ) : null}
-              {request.dbSourceError ? (
+              {activeSection.beforeError ? (
                 <p className="explorer-mutation-dialog__error" role="alert">
-                  {request.dbSourceError}
+                  {activeSection.beforeError}
                 </p>
               ) : null}
-              {!request.dbSourceLoading && request.dbSource ? (
+              {!activeSection.beforeLoading && activeSection.before !== null ? (
                 <div className="plsql-snapshot-dialog__diff">
                   <DiffEditor
                     height="100%"
                     language="plsql"
-                    original={request.dbSource}
-                    modified={request.bufferContent}
+                    original={activeSection.before}
+                    modified={activeSection.after}
                     theme={theme}
                     beforeMount={handleBeforeMount}
                     onMount={handleDiffMount}
@@ -203,23 +199,8 @@ function PlsqlSaveDialog() {
                   />
                 </div>
               ) : null}
-              {!request.dbSourceLoading &&
-              !request.dbSource &&
-              !request.dbSourceError ? (
-                <p className="explorer-mutation-dialog__hint">
-                  No database source available for diff. Review the SQL tab
-                  before confirming.
-                </p>
-              ) : null}
             </>
-          ) : (
-            <>
-              <p className="explorer-mutation-dialog__hint">
-                Review the SQL below. Nothing is written until you confirm.
-              </p>
-              <pre className="explorer-mutation-dialog__sql">{request.sql}</pre>
-            </>
-          )}
+          ) : null}
 
           {request.warnings.length > 0 ? (
             <ul className="explorer-mutation-dialog__hint" role="status">
@@ -260,4 +241,4 @@ function PlsqlSaveDialog() {
   );
 }
 
-export default PlsqlSaveDialog;
+export default PackagePlsqlSaveDialog;

@@ -80,13 +80,14 @@ export function defaultObjectAction(
   if (kind === "table" || kind === "view") {
     return "openObjectEditor";
   }
-  // Procedures/functions always go through the unified DDL viewer tab now (Dependencies/
-  // Arguments/Declaration) instead of the dedicated PL/SQL source tab — see DdlEditorView.tsx
-  // and resolvePlsqlSourceRef's doc comment. The Declaration section renders editable when
-  // supportsPlsqlSourceEdit is true for this driver, read-only otherwise; either way "DDL 보기"
-  // (now labeled "속성 열기" for these kinds — see buildObjectMenuItems) is the single entry
-  // point, so there's no more "editSource" branch here for them.
-  if (kind === "procedure" || kind === "function") {
+  // Procedures/functions/packages always go through the unified DDL viewer tab now
+  // (Dependencies/Arguments/Declaration for routines; Dependencies/Spec/Body/Procedure/Function
+  // for packages, via PackageDdlEditorView) instead of the dedicated PL/SQL source tab — see
+  // DdlEditorView.tsx and resolvePlsqlSourceRef's doc comment. The editable section renders
+  // editable when supportsPlsqlSourceEdit is true for this driver, read-only otherwise; either
+  // way "DDL 보기" (now labeled "속성 열기" for these kinds — see buildObjectMenuItems) is the
+  // single entry point, so there's no more "editSource"/"editPackageBody" branch here for them.
+  if (kind === "procedure" || kind === "function" || kind === "package") {
     return "viewDdl";
   }
   if (driverId && supportsPlsqlSourceEdit(driverId, kind)) {
@@ -100,11 +101,11 @@ export function buildObjectMenuItems(
   options: ExplorerMenuOptions = {},
 ): ExplorerMenuItem[] {
   const isRelation = kind === "table" || kind === "view";
-  // Procedures/functions merged "편집"/"DDL 보기" into a single "속성 열기" entry (the
-  // unified DdlEditorView tab — Dependencies/Arguments/Declaration, Declaration editable
-  // when supportsPlsqlSourceEdit is true for this driver) — see defaultObjectAction's doc
-  // comment. Packages keep their separate spec/body edit entries; that merge is deferred.
-  const isRoutine = kind === "procedure" || kind === "function";
+  // Procedures/functions/packages merged "편집"/"편집(바디)"/"DDL 보기" into a single
+  // "속성 열기" entry (the unified DdlEditorView tab — Dependencies/Arguments/Declaration for
+  // routines, Dependencies/Spec/Body/Procedure/Function for packages via
+  // PackageDdlEditorView) — see defaultObjectAction's doc comment.
+  const isRoutine = kind === "procedure" || kind === "function" || kind === "package";
   const readOnly = options.readOnly ?? false;
   const driverId = options.driverId;
   const canMutate = options.canMutate ?? false;
@@ -150,16 +151,6 @@ export function buildObjectMenuItems(
                 : undefined,
           } satisfies ExplorerMenuItem,
         ]),
-    ...(isPackage
-      ? [
-          {
-            id: "editPackageBody",
-            label: t("app.explorer.editBody"),
-            commandId: EXPLORER_COMMANDS.openPackageBody,
-            enabled: canEditSource,
-          } satisfies ExplorerMenuItem,
-        ]
-      : []),
     {
       id: "viewDdl",
       label: isRoutine ? t("app.explorer.openProperties") : t("app.explorer.viewDdl"),

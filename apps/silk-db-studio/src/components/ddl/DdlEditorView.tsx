@@ -9,15 +9,16 @@ import ArgumentsPreview from "../object-editor/ArgumentsPreview";
 import DependenciesPreview from "../object-editor/DependenciesPreview";
 import ViewDdlEditor from "../object-editor/ViewDdlEditor";
 import DdlPreview from "./DdlPreview";
+import PackageDdlEditorView from "./PackageDdlEditorView";
 import "../object-editor/PropertiesView.css";
 import "./DdlEditorView.css";
 
 type SectionId = "dependencies" | "arguments" | "declaration";
 
 const ROUTINE_SECTIONS: { id: SectionId; labelKey: MessageKey }[] = [
-  { id: "dependencies", labelKey: "app.objectEditor.dependenciesSection" },
-  { id: "arguments", labelKey: "app.objectEditor.argumentsSection" },
   { id: "declaration", labelKey: "app.objectEditor.declarationSection" },
+  { id: "arguments", labelKey: "app.objectEditor.argumentsSection" },
+  { id: "dependencies", labelKey: "app.objectEditor.dependenciesSection" },
 ];
 
 /** Per-tab section memory, same rationale as PropertiesView's own map: switching to another
@@ -36,21 +37,24 @@ function DdlEditorView() {
   // renders the same editable editor "편집" used to open — see ViewDdlEditor's doc comment and
   // resolvePlsqlSourceRef, which now also resolves this tab's URI — when the driver supports
   // PL/SQL source editing for this kind (currently Oracle only for procedure/function); every
-  // other driver still sees a plain read-only DDL preview there. Packages keep their existing
-  // separate spec/body edit tabs (out of scope for this merge), so they and everything else
-  // keep the plain single-pane DDL view below.
+  // other driver still sees a plain read-only DDL preview there. Packages get their own shell
+  // (Dependencies/Spec/Body/Procedure/Function) in PackageDdlEditorView — see below — since
+  // spec/body need two independently-dirty buffers that don't fit ViewDdlEditor's single-tab
+  // model; everything else keeps the plain single-pane DDL view below.
   const isRoutine = ref?.kind === "procedure" || ref?.kind === "function";
   const driverId = ref ? ConnectionService.getProfile(ref.profileId)?.driverId : undefined;
   const isEditableDeclaration =
     isRoutine && driverId !== undefined && supportsPlsqlSourceEdit(driverId, ref!.kind);
+  const isEditablePackage =
+    ref?.kind === "package" && driverId !== undefined && supportsPlsqlSourceEdit(driverId, "package");
 
   const [activeSectionId, setActiveSectionIdState] = useState<SectionId>(
-    () => (tabId && activeSectionIdByTabId.get(tabId)) || "dependencies",
+    () => (tabId && activeSectionIdByTabId.get(tabId)) || "declaration",
   );
 
   useEffect(() => {
     if (!tabId) return;
-    setActiveSectionIdState(activeSectionIdByTabId.get(tabId) ?? "dependencies");
+    setActiveSectionIdState(activeSectionIdByTabId.get(tabId) ?? "declaration");
   }, [tabId]);
 
   const setActiveSectionId = (id: SectionId) => {
@@ -59,6 +63,10 @@ function DdlEditorView() {
       activeSectionIdByTabId.set(tabId, id);
     }
   };
+
+  if (isEditablePackage && ref && tabId) {
+    return <PackageDdlEditorView objectRef={ref} tabId={tabId} />;
+  }
 
   if (!isRoutine || !ref) {
     return (

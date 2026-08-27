@@ -18,7 +18,8 @@ export type ObjectPreviewCacheKind =
   | "constraints"
   | "triggers"
   | "dependencies"
-  | "arguments";
+  | "arguments"
+  | "packageMembers";
 
 const cache = new Map<string, unknown>();
 
