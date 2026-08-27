@@ -11,7 +11,7 @@ import {
 } from "./plsqlEditorConstants";
 
 export function isEditablePlsqlKind(kind: MetadataObjectKind): boolean {
-  return kind === "procedure" || kind === "function" || kind === "package";
+  return kind === "view" || kind === "procedure" || kind === "function" || kind === "package";
 }
 
 /**
@@ -79,6 +79,7 @@ export function openPlsqlObjectSource(
     kind: ref.object.kind,
     objectName: ref.object.name,
     packageBody,
+    catalogName: ref.catalogName,
   };
 
   const uri = plsqlEditorUri(editorRef);

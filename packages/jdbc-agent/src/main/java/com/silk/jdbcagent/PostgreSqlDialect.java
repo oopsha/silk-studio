@@ -521,16 +521,57 @@ final class PostgreSqlDialect implements DbDialect {
     if (definition == null || definition.isBlank()) {
       return definition;
     }
-    // pg_get_viewdef only returns the bare SELECT — wrap it in a CREATE OR REPLACE VIEW header
-    // so this round-trips through the same "Save" path as every other object kind (which
-    // requires the buffer to start with CREATE) and so the DDL viewer shows a complete,
-    // directly-executable statement rather than a headless query.
-    return "CREATE OR REPLACE VIEW "
-        + quoteIdent(schemaName)
-        + "."
-        + quoteIdent(objectName)
-        + " AS\n"
-        + definition.stripTrailing();
+    // pg_get_viewdef returns the bare SELECT (some Postgres versions include its own trailing
+    // ';', others don't — strip it either way rather than risk a doubled ";;") — wrap it in a
+    // CREATE OR REPLACE VIEW header so this round-trips through the same "Save" path as every
+    // other object kind (which requires the buffer to start with CREATE) and so the DDL viewer
+    // shows a complete, directly-executable statement rather than a headless query.
+    String selectBody = definition.stripTrailing();
+    if (selectBody.endsWith(";")) {
+      selectBody = selectBody.substring(0, selectBody.length() - 1).stripTrailing();
+    }
+    String qualifiedName = quoteIdent(schemaName) + "." + quoteIdent(objectName);
+    String viewDdl = "CREATE OR REPLACE VIEW " + qualifiedName + " AS\n" + selectBody;
+
+    // COMMENT ON VIEW/COLUMN doesn't touch the query itself, so it's appended (rather than
+    // baked into pg_get_viewdef's output) as trailing statements after a terminating ';' — the
+    // frontend's Save path (buildPlsqlSaveSql) splits a VIEW buffer on statement boundaries and
+    // replays each one in order, specifically so this round-trips: editing/saving the view keeps
+    // reapplying whatever comments are still present in the buffer, which is also what makes this
+    // safe for Postgres (CREATE OR REPLACE VIEW itself already preserves existing comments, so
+    // this is a no-op reapplication, not a workaround for lost comments).
+    String tableComment = fetchTableComment(connection, null, schemaName, objectName);
+    ArrayNode columns = JsonNodeFactory.instance.arrayNode();
+    collectTableColumns(connection, null, schemaName, objectName, columns);
+
+    StringBuilder ddl = new StringBuilder(viewDdl);
+    boolean terminated = false;
+    if (tableComment != null && !tableComment.isBlank()) {
+      ddl.append(";\n\n");
+      terminated = true;
+      ddl.append("COMMENT ON VIEW ")
+          .append(qualifiedName)
+          .append(" IS ")
+          .append(MetadataDdl.quoteStringLiteral(tableComment))
+          .append(";");
+    }
+    for (JsonNode column : columns) {
+      String comment = column.path("comment").asText("");
+      if (comment.isBlank()) {
+        continue;
+      }
+      ddl.append(terminated ? "\n\n" : ";\n\n");
+      terminated = true;
+      ddl.append("COMMENT ON COLUMN ")
+          .append(qualifiedName)
+          .append(".")
+          .append(quoteIdent(column.path("name").asText("")))
+          .append(" IS ")
+          .append(MetadataDdl.quoteStringLiteral(comment))
+          .append(";");
+    }
+
+    return ddl.toString();
   }
 
   private static String quoteIdent(String identifier) {

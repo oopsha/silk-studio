@@ -21,7 +21,7 @@ import { buildPlsqlSaveSql } from "./plsqlSaveSql";
 import { recordPlsqlSnapshot } from "./plsqlSnapshotService";
 import { bridgeFetchObjectDdl } from "./connectionDdlBridge";
 import { reportPlsqlCompileDiagnostics } from "./plsqlCompileService";
-import { supportsCompileDiagnostics } from "../sql/sqlDialect";
+import { driverAutoCommitsDdl, supportsCompileDiagnostics } from "../sql/sqlDialect";
 
 function assertSaveAllowed(ref: PlsqlEditorRef): void {
   const readOnly = ConfigurationService.getValue("database.readOnly");
@@ -118,6 +118,7 @@ export async function openPlsqlSaveDialog(tabId?: string): Promise<boolean> {
     ref.objectName,
     ref.kind,
     ref.packageBody,
+    ref.catalogName ?? undefined,
   )
     .then((result) => {
       const current = PlsqlSaveDialogService.getRequest();
@@ -156,17 +157,43 @@ export async function executePlsqlSave(
     assertReadOnlyQueryAllowed(statement, readOnly);
   }
 
-  // Sequential, not parallel — MySQL/MariaDB's DROP-then-CREATE pair (see
-  // buildPlsqlSaveSql) depends on running in this exact order, and every other driver only
-  // ever has one statement anyway.
-  for (const statement of statements) {
-    await QueryExecutionService.executeWriteStatement(statement, {
-      connectionId: ref.profileId,
-    });
+  const profile = ConnectionService.getProfile(ref.profileId);
+  if (!profile) {
+    throw new Error("Connection profile not found.");
+  }
+
+  // Sequential, not parallel — MySQL/MariaDB's DROP-then-CREATE pair (see buildPlsqlSaveSql)
+  // depends on running in this exact order; a VIEW buffer carrying trailing COMMENT ON
+  // statements (see buildPlsqlSaveSql's view-splitting block) is the same shape. A failure
+  // partway through still needs surfacing which statements already ran — same as
+  // executeTableStructureSave — since on Postgres/SQL Server those already-run statements are
+  // sitting uncommitted in the connection's pending transaction, not silently undone.
+  for (let index = 0; index < statements.length; index += 1) {
+    try {
+      // eslint-disable-next-line no-await-in-loop -- must run in exact array order, not in parallel.
+      await QueryExecutionService.executeWriteStatement(statements[index], {
+        connectionId: ref.profileId,
+      });
+    } catch (error) {
+      const message = formatErrorMessage(
+        error,
+        `Failed to execute statement ${index + 1} of ${statements.length}.`,
+      );
+      if (index > 0) {
+        const committedNote = driverAutoCommitsDdl(profile.driverId)
+          ? " and are already committed"
+          : "";
+        throw new Error(
+          `${message} Statements 1-${index} already ran${committedNote} — see the SQL tab for what ran and what didn't.`,
+        );
+      }
+      throw new Error(message);
+    }
   }
   await ConnectionTreeService.invalidateAndRefreshSchema(
     ref.profileId,
     ref.schemaName,
+    ref.catalogName ?? undefined,
   );
 
   const tab = EditorService.getTabs().find((item) => item.id === tabId);
@@ -197,6 +224,7 @@ export async function executePlsqlSave(
     } else {
       recordPlsqlSnapshot(ref, savedContent, "save");
       EditorService.markTabSaved(tabId, savedUri, savedLabel);
+      AppNotificationService.show(tKey("app.plsql.saveSucceeded"), "success");
     }
   }
 
@@ -204,8 +232,7 @@ export async function executePlsqlSave(
   // object was just replaced either way, so this dialog-confirmed path shouldn't leave the
   // user unaware the object came out INVALID. Only Oracle has this diagnostics step; other
   // dialects already surfaced any syntax/reference error as a failed statement above.
-  const profile = ConnectionService.getProfile(ref.profileId);
-  if (profile && supportsCompileDiagnostics(profile.driverId)) {
+  if (supportsCompileDiagnostics(profile.driverId)) {
     await reportPlsqlCompileDiagnostics(tabId, ref);
   }
 }

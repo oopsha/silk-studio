@@ -711,6 +711,7 @@ export const koMessages = {
       usesEmpty: "이 오브젝트는 다른 것을 참조하지 않습니다.",
       usedByTitle: "Dependent (참조받는 것)",
       usedByEmpty: "이 오브젝트를 참조하는 것이 없습니다.",
+      openHint: "더블클릭하면 오브젝트 에디터에서 엽니다",
     },
     arguments: {
       loading: "아규먼트 로드 중...",
@@ -1075,6 +1076,7 @@ export const koMessages = {
       savePendingCommit:
         "저장했지만 아직 커밋 대기 중입니다 — 상태 표시줄에서 커밋해야 최종 반영됩니다.",
       saveRolledBack: "롤백되어 이 저장은 취소되었습니다.",
+      saveSucceeded: "저장되었습니다.",
     },
     ai: {
       emptyHint:

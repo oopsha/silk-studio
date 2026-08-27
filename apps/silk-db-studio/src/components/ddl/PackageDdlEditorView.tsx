@@ -154,6 +154,7 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
     kind: "package",
     objectName: objectRef.objectName,
     packageBody,
+    catalogName: objectRef.catalogName,
   });
 
   const handleOpenMember = (name: string) => {
@@ -307,6 +308,7 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
       await ConnectionTreeService.invalidateAndRefreshSchema(
         objectRef.profileId,
         objectRef.schemaName,
+        objectRef.catalogName ?? undefined,
       );
     } catch (error) {
       setSaving(false);

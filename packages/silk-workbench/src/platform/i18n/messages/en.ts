@@ -713,6 +713,7 @@ export const enMessages = {
       usesEmpty: "This object doesn't reference anything else.",
       usedByTitle: "Dependent (used by)",
       usedByEmpty: "Nothing else references this object.",
+      openHint: "Double-click to open in the Object Editor",
     },
     arguments: {
       loading: "Loading arguments...",
@@ -1084,6 +1085,7 @@ export const enMessages = {
       savePendingCommit:
         "Saved, but still pending commit — commit it from the status bar for it to take effect.",
       saveRolledBack: "This save was rolled back and did not take effect.",
+      saveSucceeded: "Saved.",
     },
     ai: {
       emptyHint:

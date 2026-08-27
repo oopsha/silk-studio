@@ -14,6 +14,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Shared behavior for the MySQL-protocol-compatible dialects (MySQL Connector/J, MariaDB
@@ -515,8 +517,31 @@ abstract class MySqlCompatibleDialect implements DbDialect {
         return null;
       }
       String ddl = rs.getString(2);
-      return ddl == null ? null : ddl.trim();
+      if (ddl == null) {
+        return null;
+      }
+      ddl = ddl.trim();
+      return "view".equals(kind) ? insertOrReplace(ddl) : ddl;
     }
+  }
+
+  private static final Pattern MYSQL_CREATE_HEADER = Pattern.compile("(?i)^\\s*CREATE\\s+");
+
+  /**
+   * {@code SHOW CREATE VIEW} never includes {@code OR REPLACE} — it returns the object's current
+   * definition, not the statement that (re)created it — so the DDL text shown to the user doesn't
+   * match what the frontend's Save path actually executes (it silently rewrites {@code CREATE} to
+   * {@code CREATE OR REPLACE} only in the statement it sends to the DB, per buildPlsqlSaveSql.ts).
+   * Inserting it here means the displayed/copy-pastable text is directly re-executable against an
+   * existing view without that silent rewrite (MySQL/MariaDB have supported {@code CREATE OR
+   * REPLACE VIEW} since well before any version this app targets).
+   */
+  private static String insertOrReplace(String ddl) {
+    Matcher matcher = MYSQL_CREATE_HEADER.matcher(ddl);
+    if (!matcher.find()) {
+      return ddl;
+    }
+    return matcher.replaceFirst(Matcher.quoteReplacement("CREATE OR REPLACE "));
   }
 
   private static String quoteMySqlIdentifier(String value) {

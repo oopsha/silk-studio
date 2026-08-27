@@ -15,6 +15,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Microsoft SQL Server (mssql-jdbc) dialect. Scope: SQL authentication only — Windows Integrated
@@ -989,14 +991,52 @@ final class SqlServerDialect implements DbDialect {
             + "INNER JOIN " + prefix + "sys.objects o ON m.object_id = o.object_id "
             + "INNER JOIN " + prefix + "sys.schemas s ON o.schema_id = s.schema_id "
             + "WHERE s.name = ? AND o.name = ? AND o.type = ?";
+    String definition;
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
       statement.setString(1, schemaName);
       statement.setString(2, objectName);
       statement.setString(3, objectType);
       try (ResultSet rs = statement.executeQuery()) {
-        return MetadataDdl.readFirstColumnAsString(rs);
+        definition = MetadataDdl.readFirstColumnAsString(rs);
       }
     }
+    if (definition == null || definition.isBlank() || !"view".equals(kind)) {
+      return definition;
+    }
+    definition = normalizeSqlServerViewHeader(definition);
+
+    // MS_Description doesn't touch the view's query, so — same as the table DDL builder and for
+    // the same "round-trips through Save" reason documented on the Postgres equivalent — it's
+    // appended as trailing EXEC sp_addextendedproperty statements after a terminating ';'.
+    String tableComment = fetchTableComment(connection, catalog, schemaName, objectName);
+    ArrayNode columns = JsonNodeFactory.instance.arrayNode();
+    collectTableColumns(connection, catalog, schemaName, objectName, columns);
+
+    String base = definition.stripTrailing();
+    if (base.endsWith(";")) {
+      base = base.substring(0, base.length() - 1).stripTrailing();
+    }
+    StringBuilder ddl = new StringBuilder(base);
+    boolean terminated = false;
+    if (tableComment != null && !tableComment.isBlank()) {
+      ddl.append(";\n\n");
+      terminated = true;
+      ddl.append(
+          buildSqlServerExtendedPropertyStatement(
+              catalog, tableComment, schemaName, objectName, null, "VIEW"));
+    }
+    for (JsonNode column : columns) {
+      String comment = column.path("comment").asText("");
+      if (comment.isBlank()) {
+        continue;
+      }
+      ddl.append(terminated ? "\n\n" : ";\n\n");
+      terminated = true;
+      ddl.append(
+          buildSqlServerExtendedPropertyStatement(
+              catalog, comment, schemaName, objectName, column.path("name").asText(""), "VIEW"));
+    }
+    return ddl.toString();
   }
 
   private String fetchSqlServerTableDdl(
@@ -1100,7 +1140,9 @@ final class SqlServerDialect implements DbDialect {
 
     if (tableComment != null && !tableComment.isBlank()) {
       ddl.append("\n\n")
-          .append(buildSqlServerExtendedPropertyStatement(tableComment, schemaName, objectName, null));
+          .append(
+              buildSqlServerExtendedPropertyStatement(
+                  catalog, tableComment, schemaName, objectName, null, "TABLE"));
     }
 
     for (JsonNode column : columns) {
@@ -1111,10 +1153,32 @@ final class SqlServerDialect implements DbDialect {
       ddl.append("\n\n")
           .append(
               buildSqlServerExtendedPropertyStatement(
-                  comment, schemaName, objectName, column.path("name").asText("")));
+                  catalog, comment, schemaName, objectName, column.path("name").asText(""), "TABLE"));
     }
 
     return ddl.toString();
+  }
+
+  private static final Pattern SQLSERVER_VIEW_HEADER =
+      Pattern.compile("(?i)^\\s*(?:CREATE(?:\\s+OR\\s+ALTER)?|ALTER)\\s+VIEW\\b");
+
+  /**
+   * {@code sys.sql_modules.definition} stores the view's source verbatim as originally
+   * executed — {@code CREATE VIEW} if that's how it was first created, forever, even after
+   * later edits (the frontend's Save path rewrites the leading keyword to {@code ALTER} only in
+   * the statement it sends to the DB, never in what's stored/re-fetched). That means the DDL
+   * text shown to the user doesn't match what Save actually runs, so copy-pasting it into a
+   * script tab and executing it fails against an existing view ("there is already an object
+   * named ..."). Normalizing to {@code CREATE OR ALTER VIEW} (supported since SQL Server 2016
+   * SP1) here fixes that: the displayed text is now directly re-executable either way, and the
+   * frontend's rewrite becomes a no-op for it (see buildPlsqlSaveSql.ts's matching guard).
+   */
+  private static String normalizeSqlServerViewHeader(String definition) {
+    Matcher matcher = SQLSERVER_VIEW_HEADER.matcher(definition);
+    if (!matcher.find()) {
+      return definition;
+    }
+    return matcher.replaceFirst(Matcher.quoteReplacement("CREATE OR ALTER VIEW"));
   }
 
   private static String formatSqlServerColumnLine(ResultSet rs) throws SQLException {
@@ -1142,23 +1206,83 @@ final class SqlServerDialect implements DbDialect {
   /**
    * Builds an {@code EXEC sp_addextendedproperty} statement carrying an {@code MS_Description}
    * comment — the same mechanism {@link #fetchTableComment} and {@link #applyColumnComments}
-   * read back. {@code columnName} is {@code null} for a table-level comment.
+   * read back. {@code columnName} is {@code null} for a table/view-level comment. {@code
+   * level1Type} must be {@code "TABLE"} or {@code "VIEW"} to match the object being commented —
+   * SQL Server tracks them as distinct {@code @level1type} values, not interchangeable.
+   *
+   * <p>{@code sp_addextendedproperty} errors ("Property cannot be added. Property
+   * 'MS_Description' already exists...") if the property is already set — unlike Postgres'
+   * {@code COMMENT ON} / Oracle's {@code COMMENT ON TABLE}, which always overwrite. Since a VIEW's
+   * DDL text is re-executed on every Save (see the frontend's {@code buildPlsqlSaveSql}), a flat
+   * {@code sp_addextendedproperty} call would only ever succeed once, so this wraps it as a single
+   * {@code IF EXISTS(...) sp_updateextendedproperty ELSE sp_addextendedproperty} statement —
+   * still one statement (no embedded {@code ;}, so the frontend's statement splitter doesn't
+   * fragment it), safe to run any number of times.
    */
   private static String buildSqlServerExtendedPropertyStatement(
-      String value, String schemaName, String tableName, String columnName) {
-    StringBuilder sql = new StringBuilder();
-    sql.append("EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N")
+      String catalog,
+      String value,
+      String schemaName,
+      String objectName,
+      String columnName,
+      String level1Type) {
+    String prefix = CatalogQualifier.prefix(catalog);
+    String quotedSchema = MetadataDdl.quoteStringLiteral(schemaName);
+    String quotedObject = MetadataDdl.quoteStringLiteral(objectName);
+    boolean hasColumn = columnName != null && !columnName.isBlank();
+
+    // Queried directly against sys.extended_properties (same join shape as fetchTableComment/
+    // applyColumnComments) rather than fn_listextendedproperty — that function treats a NULL
+    // @level2type/@level2name argument as "match any level" rather than "match no level", which
+    // would make an EXISTS check for the table/view-level comment also come back true when only
+    // a *column*-level comment exists, picking the wrong branch below.
+    StringBuilder existsCheck = new StringBuilder();
+    existsCheck
+        .append("SELECT 1 FROM ")
+        .append(prefix)
+        .append("sys.extended_properties ep JOIN ")
+        .append(prefix)
+        .append("sys.objects o ON o.object_id = ep.major_id JOIN ")
+        .append(prefix)
+        .append("sys.schemas s ON s.schema_id = o.schema_id ");
+    if (hasColumn) {
+      existsCheck
+          .append("JOIN ")
+          .append(prefix)
+          .append("sys.columns c ON c.object_id = o.object_id AND c.column_id = ep.minor_id ");
+    }
+    existsCheck
+        .append("WHERE ep.name = N'MS_Description' AND s.name = N")
+        .append(quotedSchema)
+        .append(" AND o.name = N")
+        .append(quotedObject);
+    if (hasColumn) {
+      existsCheck.append(" AND c.name = N").append(MetadataDdl.quoteStringLiteral(columnName));
+    } else {
+      existsCheck.append(" AND ep.minor_id = 0");
+    }
+
+    StringBuilder call = new StringBuilder();
+    call.append("@name = N'MS_Description', @value = N")
         .append(MetadataDdl.quoteStringLiteral(value))
-        .append(",\n    @level0type = N'SCHEMA', @level0name = N")
-        .append(MetadataDdl.quoteStringLiteral(schemaName))
-        .append(",\n    @level1type = N'TABLE', @level1name = N")
-        .append(MetadataDdl.quoteStringLiteral(tableName));
-    if (columnName != null && !columnName.isBlank()) {
-      sql.append(",\n    @level2type = N'COLUMN', @level2name = N")
+        .append(", @level0type = N'SCHEMA', @level0name = N")
+        .append(quotedSchema)
+        .append(", @level1type = N'")
+        .append(level1Type)
+        .append("', @level1name = N")
+        .append(quotedObject);
+    if (hasColumn) {
+      call.append(", @level2type = N'COLUMN', @level2name = N")
           .append(MetadataDdl.quoteStringLiteral(columnName));
     }
-    sql.append(";");
-    return sql.toString();
+
+    return "IF EXISTS ("
+        + existsCheck
+        + ")\n    EXEC sys.sp_updateextendedproperty "
+        + call
+        + "\nELSE\n    EXEC sys.sp_addextendedproperty "
+        + call
+        + ";";
   }
 
   /**
