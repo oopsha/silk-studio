@@ -34,6 +34,8 @@ import PlsqlSaveDialog from "../../plsql/PlsqlSaveDialog.tsx";
 import TableStructureSaveDialog from "../../object-editor/TableStructureSaveDialog.tsx";
 import ConfirmDialog from "../../dialogs/ConfirmDialog.tsx";
 import PlsqlSnapshotDialog from "../../plsql/PlsqlSnapshotDialog.tsx";
+import PackagePlsqlSaveDialog from "../../plsql/PackagePlsqlSaveDialog.tsx";
+import PackagePlsqlHistoryDialog from "../../plsql/PackagePlsqlHistoryDialog.tsx";
 import DdlEditorView from "../../ddl/DdlEditorView.tsx";
 import PlsqlEditorView from "../../plsql/PlsqlEditorView.tsx";
 import ObjectEditorView from "../../object-editor/ObjectEditorView.tsx";
@@ -387,6 +389,8 @@ function AppShell() {
       <TableStructureSaveDialog />
       <ConfirmDialog />
       <PlsqlSnapshotDialog />
+      <PackagePlsqlSaveDialog />
+      <PackagePlsqlHistoryDialog />
       <AboutDialog />
       <AiAuditLogDialog />
       <AppToast />

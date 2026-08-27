@@ -42,3 +42,11 @@
   text-align: right;
   color: var(--color-description);
 }
+
+.table-property-section__row--clickable {
+  cursor: pointer;
+}
+
+.table-property-section__row--clickable:hover {
+  background-color: var(--color-list-hover, rgba(255, 255, 255, 0.04));
+}

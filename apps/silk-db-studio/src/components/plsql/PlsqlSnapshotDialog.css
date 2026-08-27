@@ -1,6 +1,20 @@
 .plsql-snapshot-dialog--diff {
   width: min(1100px, 100%);
-  max-height: min(90vh, 820px);
+  height: min(90vh, 820px);
+  /* Fixed (not JS-measured) floor — see useResizableDialogSize's doc comment for why: computing
+     the floor from the element's rendered size at mount time was one more moving part than
+     needed and made the box get stuck unable to shrink back down. CSS `min-width` always wins
+     over an inline `width` in the box model, so even a stored size smaller than this is
+     automatically clamped up — this is the one true floor, in both directions. */
+  min-width: min(1100px, 100%);
+  min-height: min(90vh, 820px);
+  max-width: 95vw;
+  max-height: 95vh;
+  /* Resizable via the browser's native corner handle — see useResizableDialogSize, which
+     persists whatever size the user drags it to. */
+  resize: both;
+  overflow: auto;
+  box-sizing: border-box;
 }
 
 .plsql-snapshot-dialog__body {
@@ -60,7 +74,9 @@
 }
 
 .plsql-snapshot-dialog__diff {
-  height: min(60vh, 520px);
+  /* `flex: 1` (rather than a fixed height) so dragging the dialog's resize handle taller actually
+     grows the diff view instead of just adding blank space below it. */
+  flex: 1;
   min-height: 280px;
   border: 1px solid var(--color-border);
   border-radius: 4px;
