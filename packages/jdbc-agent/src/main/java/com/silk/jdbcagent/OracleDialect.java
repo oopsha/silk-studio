@@ -787,6 +787,14 @@ final class OracleDialect implements DbDialect {
             String ddl = MetadataDdl.readFirstColumnAsString(rs);
             if (ddl != null && !ddl.isBlank()) {
               ddl = ddl.trim();
+              // A view's DDL text doubles as the editable Save buffer (ViewDdlEditor), but
+              // buildPlsqlSaveSql (frontend) now splits a VIEW buffer on statement boundaries
+              // and replays each one in order on save — so appending COMMENT ON TABLE/COLUMN
+              // here round-trips safely instead of corrupting Save, and as a bonus reapplies the
+              // comment on every save, working around Oracle's CREATE OR REPLACE VIEW otherwise
+              // silently dropping it. A table's DDL tab has no such Save path (structure edits
+              // go through ALTER statements built elsewhere) but gets the same treatment for
+              // display consistency.
               if (kind.equals("table") || kind.equals("view")) {
                 String comments = fetchOracleCommentDdl(connection, object, schema);
                 if (comments != null && !comments.isBlank()) {

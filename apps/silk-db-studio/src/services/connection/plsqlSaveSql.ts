@@ -1,14 +1,16 @@
 import type { MetadataObjectKind } from "@silk-studio/db-protocol";
-import { stripTrailingSemicolon } from "../query/sqlExecutable";
+import { splitSqlStatements, stripTrailingSemicolon } from "../query/sqlExecutable";
 import { qualifyTableName } from "../query/sqlLiteral";
 import type { ConnectionDriverId } from "./connectionTypes";
 import type { PlsqlEditorRef } from "./plsqlEditorConstants";
 
 export type PlsqlSaveSqlResult = {
   /**
-   * One statement for every driver/kind except MySQL/MariaDB procedures/functions, which have
+   * One statement for every driver/kind except: MySQL/MariaDB procedures/functions, which have
    * no `CREATE OR REPLACE` and so need a `DROP IF EXISTS` + `CREATE` pair (two statements) —
-   * see the MySQL/MariaDB branch below. Always execute in array order.
+   * see the MySQL/MariaDB branch below; and views whose fetched DDL carries trailing
+   * `COMMENT ON VIEW`/`COMMENT ON COLUMN` statements after the `CREATE OR REPLACE VIEW`/`ALTER
+   * VIEW` (see the view-splitting block below). Always execute in array order.
    */
   statements: string[];
   warnings: string[];
@@ -62,7 +64,7 @@ export function extractPlsqlObjectName(
   const identToken =
     String.raw`(?:"[^"]+"|` + "`[^`]+`" + String.raw`|\[[^\]]+\]|[A-Za-z_][\w$#]*)`;
   const header = new RegExp(
-    String.raw`^\s*(?:CREATE(?:\s+OR\s+REPLACE)?|ALTER)\s+(?:EDITIONABLE\s+|NONEDITIONABLE\s+)?(?:${keyword})(?:\s+BODY)?\s+(${identToken}(?:\s*\.\s*${identToken})?)`,
+    String.raw`^\s*(?:CREATE(?:\s+OR\s+(?:REPLACE|ALTER))?|ALTER)\s+(?:EDITIONABLE\s+|NONEDITIONABLE\s+)?(?:${keyword})(?:\s+BODY)?\s+(${identToken}(?:\s*\.\s*${identToken})?)`,
     "i",
   );
   const match = header.exec(sql);
@@ -104,6 +106,28 @@ export function buildPlsqlSaveSql(
   // SQL*Plus style terminator sometimes appended after DBMS_METADATA.
   body = body.replace(/(?:^|\n)\s*\/\s*$/, "").trimEnd();
 
+  // Views are the only kind whose fetched DDL may carry statements after the CREATE/ALTER VIEW
+  // itself — COMMENT ON VIEW/COMMENT ON COLUMN, appended by the dialects' fetchObjectDdl so the
+  // comment round-trips through this same Save path. Split those off before the single-statement
+  // pipeline below runs on just the CREATE/ALTER VIEW header; they need no CREATE→ALTER/OR
+  // REPLACE rewriting, so they're appended to the result as-is. Procedures/functions/packages
+  // never carry trailing statements (Oracle has no COMMENT ON PROCEDURE/FUNCTION/PACKAGE, and
+  // MySQL/MariaDB routines have no comment concept either) and packages specifically can't be
+  // split this way at all — splitSqlStatements treats PACKAGE as opaque, since a body can hold
+  // several sibling procedures/functions each with their own BEGIN/END that its single-block
+  // depth counter can't disambiguate — so this only ever runs for kind === "view".
+  let trailingStatements: string[] = [];
+  if (ref.kind === "view") {
+    const ranges = splitSqlStatements(body);
+    if (ranges.length > 1) {
+      trailingStatements = ranges
+        .slice(1)
+        .map((range) => body.slice(range.start, range.end).trim())
+        .filter((statement) => statement.length > 0);
+      body = body.slice(ranges[0].start, ranges[0].end).trim();
+    }
+  }
+
   let sql = stripTrailingSemicolon(body);
   if (!sql.trim()) {
     throw new Error("Source is empty. Nothing to save.");
@@ -137,10 +161,13 @@ export function buildPlsqlSaveSql(
   }
 
   if (isSqlServer) {
-    // SQL Server has no CREATE OR REPLACE VIEW/PROCEDURE/FUNCTION; this editor only ever edits
-    // an existing object, so rewrite a leading CREATE to ALTER. A buffer already starting with
-    // ALTER (re-saving after a prior save already did this rewrite) is left as-is.
-    if (startsWithCreate) {
+    // A buffer already starting with CREATE OR ALTER (the normalized form the jdbc-agent now
+    // returns for views — see SqlServerDialect#normalizeSqlServerViewHeader) or ALTER (re-saving
+    // after a prior save already did the old rewrite below) is directly executable as-is either
+    // way and needs no rewrite. Only a plain leading CREATE (a manually pasted/older buffer, or
+    // a routine kind the agent doesn't normalize) still gets rewritten to ALTER, since SQL
+    // Server has no bare CREATE OR REPLACE and this editor only ever edits an existing object.
+    if (startsWithCreate && !/^\s*CREATE\s+OR\s+ALTER\b/i.test(sql)) {
       sql = sql.replace(/^\s*CREATE\b/i, "ALTER");
       warnings.push("Rewrote CREATE to ALTER (SQL Server has no CREATE OR REPLACE).");
     }
@@ -187,8 +214,8 @@ export function buildPlsqlSaveSql(
       "MySQL/MariaDB has no CREATE OR REPLACE for procedures/functions — this DROPs and " +
         "recreates the object as two separate statements (see the SQL tab).",
     );
-    return { statements: [dropStatement, createStatement], warnings };
+    return { statements: [dropStatement, createStatement, ...trailingStatements], warnings };
   }
 
-  return { statements: [createStatement], warnings };
+  return { statements: [createStatement, ...trailingStatements], warnings };
 }

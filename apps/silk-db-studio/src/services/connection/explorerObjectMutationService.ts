@@ -90,6 +90,7 @@ export async function executeExplorerMutation(
   await ConnectionTreeService.invalidateAndRefreshSchema(
     ref.profileId,
     ref.schemaName,
+    ref.catalogName ?? undefined,
   );
 }
 

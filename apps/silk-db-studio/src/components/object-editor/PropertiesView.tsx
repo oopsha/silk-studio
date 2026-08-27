@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import type { MetadataObjectKind } from "@silk-studio/db-protocol";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import type { MessageKey } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
@@ -34,6 +35,16 @@ type PropertiesSection = {
   id: string;
   labelKey: MessageKey;
   render: (ctx: PropertiesRenderCtx) => ReactNode;
+  /**
+   * Kinds this section applies to; omit for "every kind". A VIEW has no physical storage, so
+   * it can never carry a FOREIGN KEY, be the target of one (REFERENCES), or declare a
+   * PRIMARY KEY/UNIQUE/CHECK constraint — those three sections would always render empty for
+   * a view and are hidden for it. INDEXES is hidden too: an ordinary view can't have one either
+   * (a Postgres materialized view technically can, but this app doesn't expose materialized
+   * views as their own kind, so there's no way to special-case just those). TRIGGERS stays
+   * visible — Oracle/SQL Server/PostgreSQL all support INSTEAD OF triggers on views.
+   */
+  kinds?: MetadataObjectKind[];
 };
 
 const PROPERTIES_SECTIONS: PropertiesSection[] = [
@@ -51,21 +62,25 @@ const PROPERTIES_SECTIONS: PropertiesSection[] = [
     id: "indexes",
     labelKey: "app.objectEditor.indexesSection",
     render: (ctx) => <IndexesPreview objectRef={ctx.objectRef} />,
+    kinds: ["table"],
   },
   {
     id: "foreignKeys",
     labelKey: "app.objectEditor.foreignKeysSection",
     render: (ctx) => <ForeignKeysPreview objectRef={ctx.objectRef} />,
+    kinds: ["table"],
   },
   {
     id: "references",
     labelKey: "app.objectEditor.referencesSection",
     render: (ctx) => <ReferencesPreview objectRef={ctx.objectRef} />,
+    kinds: ["table"],
   },
   {
     id: "constraints",
     labelKey: "app.objectEditor.constraintsSection",
     render: (ctx) => <ConstraintsPreview objectRef={ctx.objectRef} />,
+    kinds: ["table"],
   },
   {
     id: "triggers",
@@ -126,8 +141,11 @@ const activeSectionIdByTabId = new Map<string, string>();
 
 function PropertiesView({ objectRef, tabId, tabUri, bufferedContent }: PropertiesViewProps) {
   const { t } = useI18n();
+  const sections = PROPERTIES_SECTIONS.filter(
+    (section) => !section.kinds || section.kinds.includes(objectRef.kind),
+  );
   const [activeSectionId, setActiveSectionIdState] = useState(
-    () => activeSectionIdByTabId.get(tabId) ?? PROPERTIES_SECTIONS[0].id,
+    () => activeSectionIdByTabId.get(tabId) ?? sections[0].id,
   );
 
   const driverId = ConnectionService.getProfile(objectRef.profileId)?.driverId;
@@ -148,12 +166,14 @@ function PropertiesView({ objectRef, tabId, tabUri, bufferedContent }: Propertie
   // No remount when switching directly between two object-editor tabs (same
   // component instance, different `tabId`) — resync from the per-tab map.
   useEffect(() => {
-    setActiveSectionIdState(activeSectionIdByTabId.get(tabId) ?? PROPERTIES_SECTIONS[0].id);
+    setActiveSectionIdState(activeSectionIdByTabId.get(tabId) ?? sections[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `sections` is derived from
+    // objectRef.kind, which is fixed for a tab's lifetime; keying off `tabId` alone matches
+    // the resync this effect is for (switching between two already-open object-editor tabs).
   }, [tabId]);
 
   const active =
-    PROPERTIES_SECTIONS.find((section) => section.id === activeSectionId) ??
-    PROPERTIES_SECTIONS[0];
+    sections.find((section) => section.id === activeSectionId) ?? sections[0];
 
   return (
     <div className="object-editor-properties-page">
@@ -161,7 +181,7 @@ function PropertiesView({ objectRef, tabId, tabUri, bufferedContent }: Propertie
       <div className="object-editor-properties">
         <aside className="object-editor-properties__sidebar">
           <nav className="object-editor-properties__nav">
-            {PROPERTIES_SECTIONS.map((section) => (
+            {sections.map((section) => (
               <button
                 key={section.id}
                 type="button"

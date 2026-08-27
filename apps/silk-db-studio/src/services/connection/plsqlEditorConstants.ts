@@ -17,6 +17,8 @@ export type PlsqlEditorRef = {
    * - `false` / omit → PACKAGE (spec)
    */
   packageBody?: boolean;
+  /** SQL Server catalog/database the object was resolved in, when not the session's current one. */
+  catalogName?: string | null;
 };
 
 export function isPackageBodyRef(ref: PlsqlEditorRef): boolean {
@@ -29,17 +31,17 @@ export function plsqlEditorUri(ref: PlsqlEditorRef): string {
     `${encodeURIComponent(ref.profileId)}/` +
     `${encodeURIComponent(ref.schemaName)}/` +
     `${encodeURIComponent(ref.kind)}/` +
-    `${encodeURIComponent(ref.objectName)}`;
-  if (isPackageBodyRef(ref)) {
-    return `${base}/body`;
-  }
-  return base;
+    `${encodeURIComponent(ref.objectName)}` +
+    (isPackageBodyRef(ref) ? "/body" : "");
+  const catalog = ref.catalogName?.trim();
+  return catalog ? `${base}?catalog=${encodeURIComponent(catalog)}` : base;
 }
 
 export function parsePlsqlEditorUri(uri: string | undefined): PlsqlEditorRef | null {
   if (!uri?.startsWith(PLSQL_EDITOR_URI_PREFIX)) return null;
   const rest = uri.slice(PLSQL_EDITOR_URI_PREFIX.length);
-  const parts = rest.split("/");
+  const [path, query] = rest.split("?", 2);
+  const parts = path.split("/");
   if (parts.length !== 4 && parts.length !== 5) return null;
   try {
     const profileId = decodeURIComponent(parts[0]);
@@ -55,7 +57,11 @@ export function parsePlsqlEditorUri(uri: string | undefined): PlsqlEditorRef | n
       packageBody = true;
     }
 
-    return { profileId, schemaName, kind, objectName, packageBody };
+    const catalogName = query
+      ? (new URLSearchParams(query).get("catalog") ?? undefined)
+      : undefined;
+
+    return { profileId, schemaName, kind, objectName, packageBody, catalogName };
   } catch {
     return null;
   }
@@ -86,6 +92,7 @@ export function resolvePlsqlSourceRef(uri: string | undefined): PlsqlEditorRef |
       schemaName: objectRef.schemaName,
       kind: objectRef.kind,
       objectName: objectRef.objectName,
+      catalogName: objectRef.catalogName,
     };
   }
 
@@ -96,6 +103,7 @@ export function resolvePlsqlSourceRef(uri: string | undefined): PlsqlEditorRef |
       schemaName: ddlRef.schemaName,
       kind: ddlRef.kind,
       objectName: ddlRef.objectName,
+      catalogName: ddlRef.catalogName,
     };
   }
 

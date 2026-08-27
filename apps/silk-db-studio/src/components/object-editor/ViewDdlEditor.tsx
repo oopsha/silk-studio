@@ -6,6 +6,7 @@ import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
+import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import {
   monacoModelPathForTab,
@@ -92,6 +93,7 @@ function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEdi
     schemaName: objectRef.schemaName,
     kind: objectRef.kind,
     objectName: objectRef.objectName,
+    catalogName: objectRef.catalogName,
   };
 
   const hasCompileDiagnostics = useMemo(() => {
@@ -135,7 +137,14 @@ function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEdi
     let cancelled = false;
     setLoadState({ status: "loading" });
 
-    void bridgeFetchObjectDdl(ref.profileId, ref.schemaName, ref.objectName, ref.kind)
+    void bridgeFetchObjectDdl(
+      ref.profileId,
+      ref.schemaName,
+      ref.objectName,
+      ref.kind,
+      undefined,
+      ref.catalogName ?? undefined,
+    )
       .then((result) => {
         if (cancelled) return;
         const source = result.ddl.endsWith("\n") ? result.ddl : `${result.ddl}\n`;
@@ -158,6 +167,7 @@ function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEdi
     ref.schemaName,
     ref.objectName,
     ref.kind,
+    ref.catalogName,
     tabId,
     bufferedContent,
     t,
@@ -236,16 +246,22 @@ function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEdi
     try {
       openPlsqlSnapshotHistory(tabId);
     } catch (error) {
-      window.alert(formatErrorMessage(error, "Failed to open snapshot history."));
+      AppNotificationService.show(
+        formatErrorMessage(error, "Failed to open snapshot history."),
+        "error",
+      );
     }
   };
 
   const handleSnapshot = () => {
     try {
       takeManualPlsqlSnapshot(tabId);
-      window.alert("Snapshot saved locally.");
+      AppNotificationService.show("Snapshot saved locally.", "success");
     } catch (error) {
-      window.alert(formatErrorMessage(error, "Failed to take snapshot."));
+      AppNotificationService.show(
+        formatErrorMessage(error, "Failed to take snapshot."),
+        "error",
+      );
     }
   };
 
@@ -253,19 +269,31 @@ function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEdi
     try {
       openPlsqlReloadConfirm(tabId);
     } catch (error) {
-      window.alert(formatErrorMessage(error, "Failed to prepare reload."));
+      AppNotificationService.show(
+        formatErrorMessage(error, "Failed to prepare reload."),
+        "error",
+      );
     }
   };
 
   const handleCompile = () => {
     void compileActivePlsqlObject(tabId).catch((error) => {
-      window.alert(formatErrorMessage(error, "Failed to compile view."));
+      // The failure is already surfaced inline via PlsqlCompileStateService (the
+      // view-ddl-editor__errors banner below) — this toast is just a secondary heads-up, not
+      // the primary error surface, so it stays out of the way once the inline banner is visible.
+      AppNotificationService.show(
+        formatErrorMessage(error, "Failed to compile view."),
+        "error",
+      );
     });
   };
 
   const handleSave = () => {
     void openPlsqlSaveDialog(tabId).catch((error) => {
-      window.alert(formatErrorMessage(error, "Failed to prepare view save."));
+      AppNotificationService.show(
+        formatErrorMessage(error, "Failed to prepare view save."),
+        "error",
+      );
     });
   };
 

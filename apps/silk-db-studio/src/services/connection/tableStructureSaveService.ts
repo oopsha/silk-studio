@@ -132,7 +132,11 @@ export async function executeTableStructureSave(
     }
   }
 
-  await ConnectionTreeService.invalidateAndRefreshSchema(ref.profileId, ref.schemaName);
+  await ConnectionTreeService.invalidateAndRefreshSchema(
+    ref.profileId,
+    ref.schemaName,
+    ref.catalogName ?? undefined,
+  );
   invalidateObjectPreviewCache(ref.profileId, ref.schemaName, ref.objectName);
 
   const newTableName = changes.tableRename?.after ?? null;
@@ -162,6 +166,7 @@ export async function executeTableStructureSave(
     AppNotificationService.show(tKey("app.plsql.savePendingCommit"), "info");
   } else {
     finalize();
+    AppNotificationService.show(tKey("app.plsql.saveSucceeded"), "success");
   }
 }
 

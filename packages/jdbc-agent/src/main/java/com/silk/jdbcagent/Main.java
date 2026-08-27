@@ -542,7 +542,16 @@ public final class Main {
         session.connection.setAutoCommit(params.path("autoCommit").asBoolean(true));
       }
       if (params.has("readOnly")) {
-        session.connection.setReadOnly(params.path("readOnly").asBoolean(false));
+        boolean readOnly = params.path("readOnly").asBoolean(false);
+        // Skip the call entirely when the value isn't actually changing. This is called before
+        // every single statement (not just the first in a session), and pgJDBC's setReadOnly()
+        // unconditionally rejects being called at all once a transaction is open — regardless of
+        // whether the value is actually different — so re-asserting the same value on the 2nd+
+        // statement of a script/multi-statement save under autoCommit=false previously failed
+        // with "Cannot change transaction read-only property in the middle of a transaction."
+        if (session.connection.isReadOnly() != readOnly) {
+          session.connection.setReadOnly(readOnly);
+        }
       }
     }
 

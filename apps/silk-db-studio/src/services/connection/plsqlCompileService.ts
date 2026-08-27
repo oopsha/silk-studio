@@ -24,7 +24,7 @@ import { isEditablePlsqlKind, supportsPlsqlSourceEdit } from "./plsqlEditorServi
 import { registerPendingDdlSave } from "./pendingDdlSaveService";
 import { buildPlsqlSaveSql } from "./plsqlSaveSql";
 import { recordPlsqlSnapshot } from "./plsqlSnapshotService";
-import { supportsCompileDiagnostics } from "../sql/sqlDialect";
+import { driverAutoCommitsDdl, supportsCompileDiagnostics } from "../sql/sqlDialect";
 
 export function getPlsqlCompileBlockedReason(tabId?: string): string | null {
   const tab = tabId
@@ -144,11 +144,29 @@ export async function compileActivePlsqlObject(tabId?: string): Promise<void> {
   clearPlsqlCompileMarkers();
 
   try {
-    // Sequential, not parallel — see executePlsqlSave's identical comment.
-    for (const statement of statements) {
-      await QueryExecutionService.executeWriteStatement(statement, {
-        connectionId: ref.profileId,
-      });
+    // Sequential, not parallel — see executePlsqlSave's identical comment (a VIEW buffer can
+    // carry trailing COMMENT ON statements after the CREATE/ALTER VIEW).
+    for (let index = 0; index < statements.length; index += 1) {
+      try {
+        // eslint-disable-next-line no-await-in-loop -- must run in exact array order, not in parallel.
+        await QueryExecutionService.executeWriteStatement(statements[index], {
+          connectionId: ref.profileId,
+        });
+      } catch (error) {
+        const message = formatErrorMessage(
+          error,
+          `Failed to execute statement ${index + 1} of ${statements.length}.`,
+        );
+        if (index > 0) {
+          const committedNote = driverAutoCommitsDdl(saveDriverId)
+            ? " and are already committed"
+            : "";
+          throw new Error(
+            `${message} Statements 1-${index} already ran${committedNote} — see the SQL tab for what ran and what didn't.`,
+          );
+        }
+        throw new Error(message);
+      }
     }
   } catch (error) {
     const message = formatErrorMessage(error, "Failed to save PL/SQL object.");
@@ -183,19 +201,26 @@ export async function compileActivePlsqlObject(tabId?: string): Promise<void> {
   } else {
     recordPlsqlSnapshot(ref, savedContent, "compile");
     EditorService.markTabSaved(tab.id, savedUri, savedLabel);
+    AppNotificationService.show(tKey("app.plsql.saveSucceeded"), "success");
   }
 
   await ConnectionTreeService.invalidateAndRefreshSchema(
     ref.profileId,
     ref.schemaName,
+    ref.catalogName ?? undefined,
   );
 
   if (warnings.length > 0) {
     AppNotificationService.show(warnings.join(" "), "info");
   }
 
-  const profile = ConnectionService.getProfile(ref.profileId);
-  if (profile && supportsCompileDiagnostics(profile.driverId)) {
+  if (supportsCompileDiagnostics(saveDriverId)) {
     await reportPlsqlCompileDiagnostics(tab.id, ref);
+  } else {
+    // Non-Oracle drivers have no separate compile step (the push above already *is* the
+    // "compile") and never call setResult/setFailed past this point, so the "compiling" status
+    // set at the top of this function would otherwise never resolve — leaving canCompile stuck
+    // false and the button permanently disabled after the very first successful save.
+    PlsqlCompileStateService.clear(tab.id);
   }
 }
