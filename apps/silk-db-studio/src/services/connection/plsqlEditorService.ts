@@ -11,20 +11,29 @@ import {
 } from "./plsqlEditorConstants";
 
 export function isEditablePlsqlKind(kind: MetadataObjectKind): boolean {
-  return kind === "view" || kind === "procedure" || kind === "function" || kind === "package";
+  return (
+    kind === "view" ||
+    kind === "procedure" ||
+    kind === "function" ||
+    kind === "package" ||
+    kind === "trigger"
+  );
 }
 
 /**
  * Drivers that support the DDL editor's history/snapshot/reload/save/compare-save machinery
- * for VIEWS and standalone PROCEDURES/FUNCTIONS. All five round-trip via some form of replace:
- * Oracle and PostgreSQL natively (Postgres routine source is `pg_get_functiondef`, already
- * `CREATE OR REPLACE FUNCTION/PROCEDURE`; view source is `pg_get_viewdef` wrapped in a CREATE
- * OR REPLACE header server-side). SQL Server has no `CREATE OR REPLACE` at all — its source
- * (`sys.sql_modules.definition`) is already a full `CREATE ... AS ...` statement, and
- * `buildPlsqlSaveSql` rewrites the leading `CREATE` to `ALTER` for it instead. MySQL/MariaDB
- * views round-trip via `CREATE OR REPLACE VIEW` the same way, but procedures/functions have no
- * such syntax — those go through a `DROP IF EXISTS` + `CREATE` pair instead (see
- * `buildPlsqlSaveSql`'s MySQL/MariaDB branch; DBeaver's `MySQLProcedureManager` does the same).
+ * for VIEWS, TRIGGERS, and standalone PROCEDURES/FUNCTIONS. All five round-trip via some form
+ * of replace: Oracle and PostgreSQL natively (Postgres routine source is `pg_get_functiondef`,
+ * already `CREATE OR REPLACE FUNCTION/PROCEDURE`; view source is `pg_get_viewdef` wrapped in a
+ * CREATE OR REPLACE header server-side; both dialects also support `CREATE OR REPLACE TRIGGER`
+ * natively — Postgres since v14). SQL Server has no `CREATE OR REPLACE` at all for any of these
+ * — its source (`sys.sql_modules.definition`) is already a full `CREATE ... AS ...` statement,
+ * and `buildPlsqlSaveSql` rewrites the leading `CREATE` to `ALTER` for it instead (or leaves a
+ * pre-normalized `CREATE OR ALTER` as-is — SQL Server has supported that since 2016 SP1).
+ * MySQL/MariaDB views round-trip via `CREATE OR REPLACE VIEW` the same way, but procedures/
+ * functions/triggers have no such syntax — those go through a `DROP IF EXISTS` + `CREATE` pair
+ * instead (see `buildPlsqlSaveSql`'s MySQL/MariaDB branch; DBeaver's `MySQLProcedureManager`
+ * does the same).
  *
  * Packages are Oracle-only — no other dialect here has an equivalent spec/body construct.
  */
@@ -40,7 +49,7 @@ export function supportsPlsqlSourceEdit(
   driverId: ConnectionDriverId,
   kind: MetadataObjectKind,
 ): boolean {
-  if (kind === "view" || kind === "procedure" || kind === "function") {
+  if (kind === "view" || kind === "procedure" || kind === "function" || kind === "trigger") {
     return SOURCE_EDIT_DRIVERS.has(driverId);
   }
   return driverId === "oracle" && isEditablePlsqlKind(kind);

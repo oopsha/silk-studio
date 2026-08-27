@@ -36,17 +36,22 @@ function DdlEditorView() {
   // "편집" (its own silk://plsql/... tab) and "DDL 보기" (this tab, read-only). Declaration
   // renders the same editable editor "편집" used to open — see ViewDdlEditor's doc comment and
   // resolvePlsqlSourceRef, which now also resolves this tab's URI — when the driver supports
-  // PL/SQL source editing for this kind (currently Oracle only for procedure/function); every
-  // other driver still sees a plain read-only DDL preview there. Packages get their own shell
-  // (Dependencies/Spec/Body/Procedure/Function) in PackageDdlEditorView — see below — since
-  // spec/body need two independently-dirty buffers that don't fit ViewDdlEditor's single-tab
-  // model; everything else keeps the plain single-pane DDL view below.
+  // PL/SQL source editing for this kind; every other driver still sees a plain read-only DDL
+  // preview there. Packages get their own shell (Dependencies/Spec/Body/Procedure/Function) in
+  // PackageDdlEditorView — see below — since spec/body need two independently-dirty buffers
+  // that don't fit ViewDdlEditor's single-tab model. Triggers have no Arguments (no parameter
+  // list) and no Dependencies support server-side (Oracle's collectObjectDependencies/-Dependents
+  // explicitly reject kind=trigger), so they skip the side-tab shell entirely and use the same
+  // single-pane editable/read-only split as the fallback branch below, just swapping in
+  // ViewDdlEditor instead of DdlPreview when the driver supports it.
   const isRoutine = ref?.kind === "procedure" || ref?.kind === "function";
   const driverId = ref ? ConnectionService.getProfile(ref.profileId)?.driverId : undefined;
   const isEditableDeclaration =
     isRoutine && driverId !== undefined && supportsPlsqlSourceEdit(driverId, ref!.kind);
   const isEditablePackage =
     ref?.kind === "package" && driverId !== undefined && supportsPlsqlSourceEdit(driverId, "package");
+  const isEditableTrigger =
+    ref?.kind === "trigger" && driverId !== undefined && supportsPlsqlSourceEdit(driverId, "trigger");
 
   const [activeSectionId, setActiveSectionIdState] = useState<SectionId>(
     () => (tabId && activeSectionIdByTabId.get(tabId)) || "declaration",
@@ -69,6 +74,21 @@ function DdlEditorView() {
   }
 
   if (!isRoutine || !ref) {
+    // ViewDdlEditor renders its own contextual banner + History/Snapshot/Reload/Save/Compare&Save
+    // actions — showing the generic (and, here, actively wrong) "read-only" banner above it would
+    // both duplicate and contradict it. Same reasoning as the routine branch's showGenericBanner.
+    if (isEditableTrigger && ref && tabId) {
+      return (
+        <div className="ddl-editor-view">
+          <ViewDdlEditor
+            objectRef={ref}
+            tabId={tabId}
+            tabUri={activeTab?.uri}
+            bufferedContent={activeTab?.content}
+          />
+        </div>
+      );
+    }
     return (
       <div className="ddl-editor-view">
         <div className="ddl-editor-view__banner" role="status">

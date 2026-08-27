@@ -499,8 +499,38 @@ final class PostgreSqlDialect implements DbDialect {
       case "table" -> fetchPostgreSqlTableDdl(connection, schemaName, objectName);
       case "view" -> fetchPostgreSqlViewDdl(connection, schemaName, objectName);
       case "function", "procedure" -> fetchPostgreSqlRoutineDdl(connection, schemaName, objectName);
+      case "trigger" -> fetchPostgreSqlTriggerDdl(connection, schemaName, objectName);
       default -> throw new RuntimeException("Unsupported object kind for DDL: " + kind);
     };
+  }
+
+  /**
+   * Trigger names are only unique per-table in Postgres (not per-schema), so a schema+name pair
+   * can in principle match more than one — takes the first, same "good enough for a single
+   * schema-scoped lookup" tradeoff the Explorer's own trigger listing already makes.
+   * {@code tgisinternal} excludes the hidden triggers Postgres creates to back constraints
+   * (foreign keys, etc.) — those aren't independently addressable objects.
+   */
+  private String fetchPostgreSqlTriggerDdl(
+      Connection connection, String schemaName, String objectName) throws SQLException {
+    String sql =
+        "SELECT pg_get_triggerdef(t.oid, true) "
+            + "FROM pg_catalog.pg_trigger t "
+            + "JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid "
+            + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            + "WHERE n.nspname = ? AND t.tgname = ? AND NOT t.tgisinternal";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schemaName);
+      statement.setString(2, objectName);
+      try (ResultSet rs = statement.executeQuery()) {
+        String ddl = MetadataDdl.readFirstColumnAsString(rs);
+        if (ddl == null) {
+          return null;
+        }
+        ddl = ddl.trim();
+        return ddl.endsWith(";") ? ddl : ddl + ";";
+      }
+    }
   }
 
   private String fetchPostgreSqlViewDdl(

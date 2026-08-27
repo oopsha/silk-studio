@@ -508,6 +508,8 @@ abstract class MySqlCompatibleDialect implements DbDialect {
               + quoteMySqlIdentifier(objectName) + "`";
           case "function" -> "SHOW CREATE FUNCTION `" + quoteMySqlIdentifier(schemaName) + "`.`"
               + quoteMySqlIdentifier(objectName) + "`";
+          case "trigger" -> "SHOW CREATE TRIGGER `" + quoteMySqlIdentifier(schemaName) + "`.`"
+              + quoteMySqlIdentifier(objectName) + "`";
           default -> throw new RuntimeException("Unsupported object kind for DDL: " + kind);
         };
 

@@ -126,6 +126,7 @@ final class MetadataDdl {
       case "function" -> "FUNCTION";
       case "package" ->
           Boolean.TRUE.equals(packageBody) ? "PACKAGE_BODY" : "PACKAGE";
+      case "trigger" -> "TRIGGER";
       default -> throw new IllegalArgumentException("Unsupported object kind for DDL: " + kind);
     };
   }

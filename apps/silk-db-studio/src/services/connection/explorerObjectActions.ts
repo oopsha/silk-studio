@@ -58,16 +58,15 @@ export const EXPLORER_COMMANDS = {
 } as const;
 
 /**
- * Indexes/sequences/synonyms/triggers/types are listed in the Explorer (v1) but have no DDL
- * fetch wired up in the jdbc-agent yet — every dialect's `fetchObjectDdl` only handles
- * table/view/procedure/function/package.
+ * Indexes/sequences/synonyms/types are listed in the Explorer (v1) but have no DDL fetch wired
+ * up in the jdbc-agent yet — every dialect's `fetchObjectDdl` only handles
+ * table/view/procedure/function/package/trigger.
  */
 export function supportsDdlView(kind: MetadataObjectKind): boolean {
   return (
     kind !== "index" &&
     kind !== "sequence" &&
     kind !== "synonym" &&
-    kind !== "trigger" &&
     kind !== "type"
   );
 }

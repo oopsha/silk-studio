@@ -981,6 +981,7 @@ final class SqlServerDialect implements DbDialect {
           case "view" -> "V";
           case "procedure" -> "P";
           case "function" -> "FN";
+          case "trigger" -> "TR";
           default -> throw new RuntimeException("Unsupported object kind for DDL: " + kind);
         };
 

@@ -700,6 +700,7 @@ export const koMessages = {
       enabled: "활성화",
       yes: "예",
       no: "아니오",
+      openHint: "더블클릭하면 트리거 DDL을 엽니다",
     },
     dependencies: {
       loading: "디펜던시 로드 중...",

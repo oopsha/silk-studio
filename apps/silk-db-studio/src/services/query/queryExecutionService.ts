@@ -29,7 +29,7 @@ import {
 } from "./queryLogNav";
 import { buildExplainPlan } from "./sqlExplain";
 import { assertReadOnlyQueryAllowed, isDdlSql, isWriteSql } from "./sqlGuard";
-import { stripTrailingSemicolon } from "./sqlExecutable";
+import { isPlsqlBlockRequiringSemicolon, stripTrailingSemicolon } from "./sqlExecutable";
 import {
   buildQueryResultTabTitle,
   MAX_QUERY_RESULT_TABS,
@@ -1433,6 +1433,14 @@ class QueryExecutionServiceImpl {
   private async resolveStatementBinds(
     sql: string,
   ): Promise<BoundSql | "cancelled"> {
+    // Stored PL/SQL source (CREATE [OR REPLACE] TRIGGER/PROCEDURE/FUNCTION/PACKAGE/TYPE, or an
+    // anonymous DECLARE/BEGIN block) is opaque text sent to the DB as a single unit, not a query
+    // — a trigger's `:new`/`:old` correlation-variable references (or any other `:name` inside
+    // the body) are PL/SQL syntax, not client-side bind parameters, and must never be prompted
+    // for here (matches DBeaver: Alt+X on a trigger body doesn't ask for `:old`/`:new` either).
+    if (isPlsqlBlockRequiringSemicolon(sql)) {
+      return { sql, binds: [] };
+    }
     const options = {
       anonymousEnabled: ConfigurationService.getValue(
         "sql.parameters.anonymousEnabled",

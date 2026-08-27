@@ -26,6 +26,8 @@ function oracleKindKeyword(kind: MetadataObjectKind): string {
       return "PACKAGE";
     case "view":
       return "VIEW";
+    case "trigger":
+      return "TRIGGER";
     default:
       throw new Error(`Unsupported PL/SQL object kind: ${kind}`);
   }
@@ -103,21 +105,26 @@ export function buildPlsqlSaveSql(
     throw new Error("Source is not loaded yet.");
   }
 
-  // SQL*Plus style terminator sometimes appended after DBMS_METADATA.
-  body = body.replace(/(?:^|\n)\s*\/\s*$/, "").trimEnd();
+  // SQL*Plus style terminator sometimes appended after DBMS_METADATA — a trailing one (common
+  // after a routine's `END;`) and, for Oracle triggers specifically (DBMS_METADATA.GET_DDL puts
+  // the trigger's ENABLE/DISABLE status in a separate ALTER TRIGGER statement after it — see
+  // OracleDialect's trigger DDL path), one sitting *between* two statements too. Neither is real
+  // SQL, so both are stripped globally rather than just at the end.
+  body = body.replace(/^[ \t]*\/[ \t]*$/gm, "").replace(/(?:^|\n)\s*\/\s*$/, "").trimEnd();
 
-  // Views are the only kind whose fetched DDL may carry statements after the CREATE/ALTER VIEW
-  // itself — COMMENT ON VIEW/COMMENT ON COLUMN, appended by the dialects' fetchObjectDdl so the
-  // comment round-trips through this same Save path. Split those off before the single-statement
-  // pipeline below runs on just the CREATE/ALTER VIEW header; they need no CREATE→ALTER/OR
-  // REPLACE rewriting, so they're appended to the result as-is. Procedures/functions/packages
-  // never carry trailing statements (Oracle has no COMMENT ON PROCEDURE/FUNCTION/PACKAGE, and
-  // MySQL/MariaDB routines have no comment concept either) and packages specifically can't be
-  // split this way at all — splitSqlStatements treats PACKAGE as opaque, since a body can hold
-  // several sibling procedures/functions each with their own BEGIN/END that its single-block
-  // depth counter can't disambiguate — so this only ever runs for kind === "view".
+  // Views and triggers are the only kinds whose fetched DDL may carry statements after the
+  // CREATE/ALTER header itself — COMMENT ON VIEW/COMMENT ON COLUMN for views, and Oracle's
+  // ALTER TRIGGER ... ENABLE/DISABLE for triggers, both appended by the dialects' fetchObjectDdl
+  // so they round-trip through this same Save path. Split those off before the single-statement
+  // pipeline below runs on just the header; they need no CREATE→ALTER/OR REPLACE rewriting, so
+  // they're appended to the result as-is. Procedures/functions/packages never carry trailing
+  // statements (Oracle has no COMMENT ON PROCEDURE/FUNCTION/PACKAGE, and MySQL/MariaDB routines
+  // have no comment concept either) and packages specifically can't be split this way at all —
+  // splitSqlStatements treats PACKAGE as opaque, since a body can hold several sibling
+  // procedures/functions each with their own BEGIN/END that its single-block depth counter can't
+  // disambiguate.
   let trailingStatements: string[] = [];
-  if (ref.kind === "view") {
+  if (ref.kind === "view" || ref.kind === "trigger") {
     const ranges = splitSqlStatements(body);
     if (ranges.length > 1) {
       trailingStatements = ranges
@@ -134,8 +141,8 @@ export function buildPlsqlSaveSql(
   }
 
   const isSqlServer = driverId === "sqlserver";
-  // MySQL/MariaDB support CREATE OR REPLACE for views/triggers but NOT for procedures/
-  // functions — those need a DROP IF EXISTS + CREATE pair instead (same approach DBeaver's
+  // MySQL/MariaDB support CREATE OR REPLACE for views but NOT for procedures/functions/
+  // triggers — those need a DROP IF EXISTS + CREATE pair instead (same approach DBeaver's
   // MySQLProcedureManager uses, DEFINER clause and all — no attempt is made to strip it).
   // Both statements auto-commit immediately in MySQL regardless of any surrounding
   // transaction (DDL isn't transactional there): if CREATE fails after DROP already
@@ -143,7 +150,7 @@ export function buildPlsqlSaveSql(
   // save dialog's still-visible "before" diff text.
   const needsDropCreate =
     (driverId === "mysql" || driverId === "mariadb") &&
-    (ref.kind === "procedure" || ref.kind === "function");
+    (ref.kind === "procedure" || ref.kind === "function" || ref.kind === "trigger");
   const startsWithCreate = /^\s*CREATE\b/i.test(sql);
   const startsWithAlter = /^\s*ALTER\b/i.test(sql);
 
