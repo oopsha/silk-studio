@@ -1,12 +1,78 @@
 package com.silk.jdbcagent;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.sql.Clob;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.function.Function;
 
 /** Shared helpers for {@link DbDialect#fetchObjectDdl}. */
 final class MetadataDdl {
   private MetadataDdl() {}
+
+  /** Comma-joins a {@code columns}-shaped JSON array (see {@link MetadataConstraints}), quoting each name via {@code quoter}. */
+  static String joinQuotedColumns(JsonNode columnsNode, Function<String, String> quoter) {
+    StringBuilder out = new StringBuilder();
+    if (columnsNode != null && columnsNode.isArray()) {
+      for (JsonNode column : columnsNode) {
+        if (out.length() > 0) {
+          out.append(", ");
+        }
+        out.append(quoter.apply(column.asText()));
+      }
+    }
+    return out.toString();
+  }
+
+  /** Escapes {@code value} as a single-quoted SQL string literal (doubling embedded quotes). */
+  static String quoteStringLiteral(String value) {
+    return "'" + value.replace("'", "''") + "'";
+  }
+
+  /**
+   * Builds an {@code ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY} statement from a {@code
+   * foreignKeys}-shaped JSON object (see {@link MetadataForeignKeys}). Emitted as a separate
+   * ALTER (rather than inlined in the CREATE TABLE) so the generated DDL doesn't depend on the
+   * referenced table already existing.
+   */
+  static String buildAddForeignKeyStatement(
+      String qualifiedChildTable,
+      JsonNode fk,
+      Function<String, String> quoter,
+      String defaultReferencedSchema) {
+    String name = fk.path("name").asText("");
+    String columns = joinQuotedColumns(fk.path("columns"), quoter);
+    String referencedSchema = fk.path("referencedSchema").asText("");
+    if (referencedSchema.isBlank()) {
+      referencedSchema = defaultReferencedSchema;
+    }
+    String referencedTable = fk.path("referencedTable").asText("");
+    String referencedColumns = joinQuotedColumns(fk.path("referencedColumns"), quoter);
+    StringBuilder sql = new StringBuilder();
+    sql.append("ALTER TABLE ")
+        .append(qualifiedChildTable)
+        .append(" ADD CONSTRAINT ")
+        .append(quoter.apply(name))
+        .append(" FOREIGN KEY (")
+        .append(columns)
+        .append(") REFERENCES ")
+        .append(quoter.apply(referencedSchema))
+        .append(".")
+        .append(quoter.apply(referencedTable))
+        .append(" (")
+        .append(referencedColumns)
+        .append(")");
+    String updateRule = fk.path("updateRule").asText("");
+    if (!updateRule.isBlank() && !"NO ACTION".equals(updateRule)) {
+      sql.append(" ON UPDATE ").append(updateRule);
+    }
+    String deleteRule = fk.path("deleteRule").asText("");
+    if (!deleteRule.isBlank() && !"NO ACTION".equals(deleteRule)) {
+      sql.append(" ON DELETE ").append(deleteRule);
+    }
+    sql.append(";");
+    return sql.toString();
+  }
 
   static String readFirstColumnAsString(ResultSet rs) throws SQLException {
     if (!rs.next()) {

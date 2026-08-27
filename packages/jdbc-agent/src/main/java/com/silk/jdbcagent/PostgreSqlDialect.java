@@ -2,6 +2,7 @@ package com.silk.jdbcagent;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -575,26 +576,128 @@ final class PostgreSqlDialect implements DbDialect {
 
   private String fetchPostgreSqlTableDdl(
       Connection connection, String schemaName, String objectName) throws SQLException {
-    String sql =
-        "SELECT "
-            + "'CREATE TABLE ' || quote_ident(n.nspname) || '.' || quote_ident(c.relname) || E' (\\n' || "
-            + "pg_catalog.array_to_string(ARRAY("
-            + "  SELECT '    ' || quote_ident(a.attname) || ' ' || "
-            + "         pg_catalog.format_type(a.atttypid, a.atttypmod) || "
-            + "         CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END "
-            + "  FROM pg_catalog.pg_attribute a "
-            + "  WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped "
-            + "  ORDER BY a.attnum"
-            + "), E',\\n') || E'\\n);' "
-            + "FROM pg_catalog.pg_class c "
+    String columnsSql =
+        "SELECT '    ' || quote_ident(a.attname) || ' ' || "
+            + "       pg_catalog.format_type(a.atttypid, a.atttypmod) || "
+            + "       CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END AS COLUMN_DEF "
+            + "FROM pg_catalog.pg_attribute a "
+            + "JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
             + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
-            + "WHERE n.nspname = ? AND c.relname = ? AND c.relkind IN ('r', 'p')";
-    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            + "WHERE n.nspname = ? AND c.relname = ? AND a.attnum > 0 AND NOT a.attisdropped "
+            + "  AND c.relkind IN ('r', 'p') "
+            + "ORDER BY a.attnum";
+    List<String> columnLines = new ArrayList<>();
+    try (PreparedStatement statement = connection.prepareStatement(columnsSql)) {
       statement.setString(1, schemaName);
       statement.setString(2, objectName);
       try (ResultSet rs = statement.executeQuery()) {
-        return MetadataDdl.readFirstColumnAsString(rs);
+        while (rs.next()) {
+          columnLines.add(rs.getString("COLUMN_DEF"));
+        }
       }
     }
+    if (columnLines.isEmpty()) {
+      return null;
+    }
+
+    ArrayNode constraints = JsonNodeFactory.instance.arrayNode();
+    collectTableConstraints(connection, null, schemaName, objectName, constraints);
+    ArrayNode foreignKeys = JsonNodeFactory.instance.arrayNode();
+    collectTableForeignKeys(connection, null, schemaName, objectName, foreignKeys);
+    ArrayNode indexes = JsonNodeFactory.instance.arrayNode();
+    collectTableIndexes(connection, null, schemaName, objectName, indexes);
+    ArrayNode columns = JsonNodeFactory.instance.arrayNode();
+    collectTableColumns(connection, null, schemaName, objectName, columns);
+    String tableComment = fetchTableComment(connection, null, schemaName, objectName);
+
+    String qualifiedName = quoteIdent(schemaName) + "." + quoteIdent(objectName);
+    List<String> tableLines = new ArrayList<>(columnLines);
+    Set<String> constraintBackedIndexNames = new LinkedHashSet<>();
+    for (JsonNode constraint : constraints) {
+      String type = constraint.path("type").asText("");
+      String name = constraint.path("name").asText("");
+      if (!name.isBlank()) {
+        constraintBackedIndexNames.add(name);
+      }
+      switch (type) {
+        case "primaryKey" ->
+            tableLines.add(
+                "    CONSTRAINT "
+                    + quoteIdent(name)
+                    + " PRIMARY KEY ("
+                    + MetadataDdl.joinQuotedColumns(constraint.path("columns"), this::quoteIdentifier)
+                    + ")");
+        case "unique" ->
+            tableLines.add(
+                "    CONSTRAINT "
+                    + quoteIdent(name)
+                    + " UNIQUE ("
+                    + MetadataDdl.joinQuotedColumns(constraint.path("columns"), this::quoteIdentifier)
+                    + ")");
+        case "check" ->
+            tableLines.add(
+                "    CONSTRAINT "
+                    + quoteIdent(name)
+                    + " CHECK "
+                    + constraint.path("expression").asText(""));
+        default -> {}
+      }
+    }
+
+    StringBuilder ddl = new StringBuilder();
+    ddl.append("CREATE TABLE ").append(qualifiedName).append(" (\n");
+    ddl.append(String.join(",\n", tableLines));
+    ddl.append("\n);");
+
+    for (JsonNode fk : foreignKeys) {
+      ddl.append("\n\n")
+          .append(
+              MetadataDdl.buildAddForeignKeyStatement(
+                  qualifiedName, fk, this::quoteIdentifier, schemaName));
+    }
+
+    for (JsonNode index : indexes) {
+      String indexName = index.path("name").asText("");
+      if (indexName.isBlank() || constraintBackedIndexNames.contains(indexName)) {
+        continue;
+      }
+      boolean unique = index.path("unique").asBoolean(false);
+      ddl.append("\n\n")
+          .append("CREATE ")
+          .append(unique ? "UNIQUE " : "")
+          .append("INDEX ")
+          .append(quoteIdent(indexName))
+          .append(" ON ")
+          .append(qualifiedName)
+          .append(" (")
+          .append(MetadataDdl.joinQuotedColumns(index.path("columns"), this::quoteIdentifier))
+          .append(");");
+    }
+
+    if (tableComment != null && !tableComment.isBlank()) {
+      ddl.append("\n\n")
+          .append("COMMENT ON TABLE ")
+          .append(qualifiedName)
+          .append(" IS ")
+          .append(MetadataDdl.quoteStringLiteral(tableComment))
+          .append(";");
+    }
+
+    for (JsonNode column : columns) {
+      String comment = column.path("comment").asText("");
+      if (comment.isBlank()) {
+        continue;
+      }
+      ddl.append("\n\n")
+          .append("COMMENT ON COLUMN ")
+          .append(qualifiedName)
+          .append(".")
+          .append(quoteIdent(column.path("name").asText("")))
+          .append(" IS ")
+          .append(MetadataDdl.quoteStringLiteral(comment))
+          .append(";");
+    }
+
+    return ddl.toString();
   }
 }

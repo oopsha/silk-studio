@@ -786,13 +786,47 @@ final class OracleDialect implements DbDialect {
           try (ResultSet rs = statement.executeQuery()) {
             String ddl = MetadataDdl.readFirstColumnAsString(rs);
             if (ddl != null && !ddl.isBlank()) {
-              return ddl.trim();
+              ddl = ddl.trim();
+              if (kind.equals("table") || kind.equals("view")) {
+                String comments = fetchOracleCommentDdl(connection, object, schema);
+                if (comments != null && !comments.isBlank()) {
+                  ddl = ddl + "\n\n" + comments;
+                }
+              }
+              return ddl;
             }
           }
         }
       }
     }
     return null;
+  }
+
+  /**
+   * {@code DBMS_METADATA.GET_DDL} never includes {@code COMMENT ON TABLE/COLUMN} statements for
+   * TABLE/VIEW — unlike {@code CONSTRAINTS}/{@code REF_CONSTRAINTS}, there's no session transform
+   * param for comments; they're a separate dependent-object type fetched via
+   * {@code GET_DEPENDENT_DDL}.
+   *
+   * @return {@code null} when the object has no comments at all (ORA-31608, "no object found")
+   */
+  private String fetchOracleCommentDdl(Connection connection, String objectName, String schemaName)
+      throws SQLException {
+    try (PreparedStatement statement =
+        connection.prepareStatement(
+            "SELECT DBMS_METADATA.GET_DEPENDENT_DDL('COMMENT', ?, ?) FROM DUAL")) {
+      statement.setString(1, objectName);
+      statement.setString(2, schemaName);
+      try (ResultSet rs = statement.executeQuery()) {
+        String ddl = MetadataDdl.readFirstColumnAsString(rs);
+        return ddl == null ? null : ddl.trim();
+      }
+    } catch (SQLException e) {
+      if (e.getErrorCode() == 31608) {
+        return null;
+      }
+      throw e;
+    }
   }
 
   /**
