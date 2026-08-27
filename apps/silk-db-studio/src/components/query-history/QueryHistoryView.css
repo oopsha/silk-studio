@@ -57,6 +57,63 @@
   opacity: 1;
 }
 
+.query-history__filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  margin: 6px 8px 2px;
+  padding: 0 4px 0 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background-color: var(--color-input-background, transparent);
+  color: var(--color-description);
+}
+
+.query-history__filter .codicon {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.query-history__filter-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-foreground);
+  font: inherit;
+  font-size: 12px;
+}
+
+.query-history__filter-input::placeholder {
+  color: var(--color-description);
+}
+
+.query-history__filter-clear {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--color-foreground);
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.query-history__filter-clear:hover {
+  background: var(--color-list-hover);
+  opacity: 1;
+}
+
 .query-history__list {
   flex: 1;
   min-height: 0;

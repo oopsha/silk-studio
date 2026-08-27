@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
@@ -204,11 +204,41 @@ function FavoriteItem({ favorite }: { favorite: QueryFavorite }) {
   );
 }
 
+function matchesHistoryFilter(entry: QueryHistoryEntry, filter: string): boolean {
+  return [entry.sql, entry.summary, entry.connectionName, entry.status]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLocaleLowerCase().includes(filter));
+}
+
+function matchesFavoriteFilter(favorite: QueryFavorite, filter: string): boolean {
+  return [favorite.name, favorite.sql].some((value) =>
+    value.toLocaleLowerCase().includes(filter),
+  );
+}
+
 function QueryHistoryView() {
   const { t } = useI18n();
   const history = useQueryHistory();
   const favorites = useQueryFavorites();
   const [tab, setTab] = useState<TabId>("history");
+  const [filter, setFilter] = useState("");
+  const normalizedFilter = filter.trim().toLocaleLowerCase();
+  const filteredHistory = useMemo(
+    () =>
+      normalizedFilter
+        ? history.filter((entry) => matchesHistoryFilter(entry, normalizedFilter))
+        : history,
+    [history, normalizedFilter],
+  );
+  const filteredFavorites = useMemo(
+    () =>
+      normalizedFilter
+        ? favorites.filter((favorite) =>
+            matchesFavoriteFilter(favorite, normalizedFilter),
+          )
+        : favorites,
+    [favorites, normalizedFilter],
+  );
 
   return (
     <div className="query-history">
@@ -257,21 +287,52 @@ function QueryHistoryView() {
         ) : null}
       </div>
 
+      <div className="query-history__filter">
+        <Codicon name="search" />
+        <input
+          type="search"
+          className="query-history__filter-input"
+          placeholder={t("app.query.filterPlaceholder")}
+          aria-label={t("app.query.filterAria")}
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          spellCheck={false}
+          autoComplete="off"
+        />
+        {filter ? (
+          <button
+            type="button"
+            className="query-history__filter-clear"
+            title={t("app.query.clearFilter")}
+            aria-label={t("app.query.clearFilter")}
+            onClick={() => setFilter("")}
+          >
+            <Codicon name="clear-all" />
+          </button>
+        ) : null}
+      </div>
+
       <div className="query-history__list">
         {tab === "history" ? (
-          history.length === 0 ? (
+          filteredHistory.length === 0 ? (
             <div className="query-history__empty">
-              {t("app.query.historyEmpty")}
+              {history.length === 0
+                ? t("app.query.historyEmpty")
+                : t("app.query.filterEmpty")}
             </div>
           ) : (
-            history.map((entry) => <HistoryItem key={entry.id} entry={entry} />)
+            filteredHistory.map((entry) => (
+              <HistoryItem key={entry.id} entry={entry} />
+            ))
           )
-        ) : favorites.length === 0 ? (
+        ) : filteredFavorites.length === 0 ? (
           <div className="query-history__empty">
-            {t("app.query.favoritesEmpty")}
+            {favorites.length === 0
+              ? t("app.query.favoritesEmpty")
+              : t("app.query.filterEmpty")}
           </div>
         ) : (
-          favorites.map((favorite) => (
+          filteredFavorites.map((favorite) => (
             <FavoriteItem key={favorite.id} favorite={favorite} />
           ))
         )}
