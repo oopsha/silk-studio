@@ -54,10 +54,26 @@ export type TabBarLabels = {
   closeTabAriaLabel: (tabLabel: string) => string;
 };
 
+/**
+ * Cross-group drag-to-split, injected from the app layer (silk-editor can't depend on
+ * app-specific pane drop-target markers). `updateHover`/`commitDrop` return true when a
+ * foreign-pane target is active — TabBar defers to its own same-tabbar reorder logic otherwise.
+ */
+export type TabBarCrossGroupDnd = {
+  updateHover: (
+    clientX: number,
+    clientY: number,
+    sourceGroupId: EditorGroupId,
+  ) => boolean;
+  commitDrop: (tabId: string, sourceGroupId: EditorGroupId) => boolean;
+  cancel: () => void;
+};
+
 type TabBarProps = {
   groupId: EditorGroupId;
   commands: TabBarCommandAdapter;
   labels: TabBarLabels;
+  crossGroupDnd?: TabBarCrossGroupDnd;
 };
 
 type DropIndicator = {
@@ -78,7 +94,7 @@ type PointerDragSession = {
  * Pointer-based tab reorder (not HTML5 DnD).
  * Tauri keeps native OS file-drop; HTML5 DnD cannot coexist on Windows WebView2.
  */
-function TabBar({ groupId, commands, labels }: TabBarProps) {
+function TabBar({ groupId, commands, labels, crossGroupDnd }: TabBarProps) {
   const group = EditorGroupsService.getGroup(groupId);
   const tabs = useEditorTabs(groupId);
   const activeTab = useActiveEditor(groupId);
@@ -191,15 +207,21 @@ function TabBar({ groupId, commands, labels }: TabBarProps) {
     (session: PointerDragSession, clientX: number) => {
       if (session.active) {
         suppressClickRef.current = true;
-        const indicator = resolveIndicatorAtPoint(clientX, session.tabId);
-        if (indicator) {
-          commitReorder(session.tabId, indicator);
+        const consumedByForeignPane =
+          crossGroupDnd?.commitDrop(session.tabId, groupId) ?? false;
+        if (!consumedByForeignPane) {
+          const indicator = resolveIndicatorAtPoint(clientX, session.tabId);
+          if (indicator) {
+            commitReorder(session.tabId, indicator);
+          }
         }
+      } else {
+        crossGroupDnd?.cancel();
       }
       dragSessionRef.current = null;
       clearDragVisuals();
     },
-    [clearDragVisuals, commitReorder, resolveIndicatorAtPoint],
+    [clearDragVisuals, commitReorder, crossGroupDnd, groupId, resolveIndicatorAtPoint],
   );
 
   useEffect(() => {
@@ -221,8 +243,16 @@ function TabBar({ groupId, commands, labels }: TabBarProps) {
       if (!session.active) return;
 
       event.preventDefault();
-      const indicator = resolveIndicatorAtPoint(event.clientX, session.tabId);
-      setDropIndicator(indicator);
+      const overForeignPane =
+        crossGroupDnd?.updateHover(event.clientX, event.clientY, groupId) ??
+        false;
+      // A foreign pane's overlay is showing — don't also draw this tab bar's
+      // own same-tabbar insertion line at whatever position the pointer left it.
+      setDropIndicator(
+        overForeignPane
+          ? null
+          : resolveIndicatorAtPoint(event.clientX, session.tabId),
+      );
     };
 
     const onPointerUp = (event: PointerEvent) => {
@@ -234,6 +264,7 @@ function TabBar({ groupId, commands, labels }: TabBarProps) {
     const onPointerCancel = (event: PointerEvent) => {
       const session = dragSessionRef.current;
       if (!session || event.pointerId !== session.pointerId) return;
+      crossGroupDnd?.cancel();
       dragSessionRef.current = null;
       clearDragVisuals();
     };
@@ -246,7 +277,13 @@ function TabBar({ groupId, commands, labels }: TabBarProps) {
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerCancel);
     };
-  }, [clearDragVisuals, endPointerDrag, resolveIndicatorAtPoint]);
+  }, [
+    clearDragVisuals,
+    crossGroupDnd,
+    endPointerDrag,
+    groupId,
+    resolveIndicatorAtPoint,
+  ]);
 
   function handleCloseTab(event: React.MouseEvent, tabId: string) {
     event.stopPropagation();

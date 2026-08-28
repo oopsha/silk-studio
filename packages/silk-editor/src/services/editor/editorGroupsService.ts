@@ -165,6 +165,73 @@ class EditorGroupsServiceImpl {
     return newGroupId;
   }
 
+  /**
+   * Moves an existing tab from one group into another *existing* group (drag-to-merge). Keeps
+   * the tab's id (see `EditorServiceImpl.extractTab`'s doc comment for why — other services key
+   * their own state by tabId). No-op if source and target are the same group, or the tab isn't
+   * found. Closes the source group afterward if it's now empty.
+   */
+  moveTabToGroup(
+    tabId: string,
+    fromGroupId: EditorGroupId,
+    toGroupId: EditorGroupId,
+    index?: number,
+  ): void {
+    if (fromGroupId === toGroupId) return;
+    const fromGroup = this.groups.get(fromGroupId);
+    const toGroup = this.groups.get(toGroupId);
+    if (!fromGroup || !toGroup) return;
+    const entry = fromGroup.extractTab(tabId);
+    if (!entry) return;
+
+    toGroup.insertTab(entry, index);
+    this.focusedGroupId = toGroupId;
+    this.collapseIfEmpty(fromGroupId, fromGroup);
+    this.syncEditorHost();
+    this.fireDidChange();
+    this.fireAnyGroupDidChange();
+  }
+
+  /**
+   * Moves `tabId` out of `fromGroupId` into a brand-new group split off from `referenceGroupId`
+   * (drag-to-split) — `position` controls which side of the reference group the new group lands
+   * on. Closes the source group afterward if it's now empty. Returns the new group's id, or
+   * `null` if the tab wasn't found.
+   */
+  moveTabToNewSplit(
+    tabId: string,
+    fromGroupId: EditorGroupId,
+    referenceGroupId: EditorGroupId,
+    direction: SplitDirection,
+    position: "before" | "after",
+  ): EditorGroupId | null {
+    const fromGroup = this.groups.get(fromGroupId);
+    if (!fromGroup) return null;
+    const entry = fromGroup.extractTab(tabId);
+    if (!entry) return null;
+
+    const newGroupId = createGroupId();
+    const newGroup = new EditorServiceImpl();
+    newGroup.setEnablePreviewEditors(fromGroup.getEnablePreviewEditors());
+    // Register before insertTab(): registerGroup() wires the untitled-label factory and
+    // change listeners other code assumes are present as soon as the group exists.
+    this.registerGroup(newGroupId, newGroup, fromGroupId);
+    newGroup.insertTab(entry);
+    this.layout = splitLeaf(
+      this.layout,
+      referenceGroupId,
+      direction,
+      newGroupId,
+      position,
+    );
+    this.focusedGroupId = newGroupId;
+    this.collapseIfEmpty(fromGroupId, fromGroup);
+    this.syncEditorHost();
+    this.fireDidChange();
+    this.fireAnyGroupDidChange();
+    return newGroupId;
+  }
+
   /** Closes `id`. No-op when it is the last remaining group. */
   closeGroup(id: EditorGroupId): void {
     if (this.getGroupIds().length <= 1) return;

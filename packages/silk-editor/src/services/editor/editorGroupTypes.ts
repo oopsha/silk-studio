@@ -32,7 +32,9 @@ export function collectGroupIds(node: EditorLayoutNode): EditorGroupId[] {
 
 /**
  * Splits the `targetId` leaf into a 2-child split node containing the
- * original leaf and a new leaf `newGroupId`. No-op (returns `root`
+ * original leaf and a new leaf `newGroupId`. `position` controls which side
+ * of `targetId` the new leaf lands on ("after" — right/down — is the
+ * default, matching the original 2-arg behavior). No-op (returns `root`
  * unchanged) if `targetId` is not found.
  */
 export function splitLeaf(
@@ -40,21 +42,23 @@ export function splitLeaf(
   targetId: EditorGroupId,
   direction: SplitDirection,
   newGroupId: EditorGroupId,
+  position: "before" | "after" = "after",
 ): EditorLayoutNode {
   if (root.type === "group") {
     if (root.id !== targetId) return root;
+    const newLeaf: EditorLayoutNode = { type: "group", id: newGroupId };
     return {
       type: "split",
       id: createSplitNodeId(),
       direction,
-      children: [root, { type: "group", id: newGroupId }],
+      children: position === "before" ? [newLeaf, root] : [root, newLeaf],
       sizes: [0.5, 0.5],
     };
   }
   return {
     ...root,
     children: root.children.map((child) =>
-      splitLeaf(child, targetId, direction, newGroupId),
+      splitLeaf(child, targetId, direction, newGroupId, position),
     ),
   };
 }
