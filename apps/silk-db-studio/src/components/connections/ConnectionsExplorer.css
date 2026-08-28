@@ -97,6 +97,16 @@
   background-color: var(--color-list-active-selection-background, rgba(57, 148, 188, 0.28));
 }
 
+/* Insertion-line indicator while dragging a profile row over another one — see
+   profileReorderDrag.ts, which toggles these classes directly on the hovered row. */
+.connections-explorer__row--drop-before {
+  box-shadow: inset 0 1px 0 0 var(--color-focus-border, #007fd4);
+}
+
+.connections-explorer__row--drop-after {
+  box-shadow: inset 0 -1px 0 0 var(--color-focus-border, #007fd4);
+}
+
 .connections-explorer__row--object {
   cursor: grab;
   outline: none;
