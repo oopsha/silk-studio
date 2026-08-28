@@ -526,6 +526,68 @@ export class EditorServiceImpl {
     disposeMonacoModelForTab(tab);
   }
 
+  /**
+   * Removes and returns `tabId` plus its private per-tab state (dirty baseline, Monaco view
+   * state), *without* disposing its Monaco model — used to transplant a tab into a different
+   * group's `EditorServiceImpl` instance (drag-to-split) while keeping the same `tab.id`. Many
+   * other services key their own state by tabId (query grid dirty edits, panel layout, snapshot
+   * dialogs, compile results, …); recreating the tab under a new id on a cross-group move would
+   * silently orphan all of that. Returns `null` if not found.
+   */
+  extractTab(
+    tabId: string,
+  ): {
+    tab: EditorTab;
+    savedContent: string | undefined;
+    viewState: editor.ICodeEditorViewState | undefined;
+  } | null {
+    const index = this.tabs.findIndex((item) => item.id === tabId);
+    if (index === -1) return null;
+
+    const [tab] = this.tabs.splice(index, 1);
+    const savedContent = this.savedContent.get(tabId);
+    const viewState = this.viewStates.get(tabId);
+    this.savedContent.delete(tabId);
+    this.viewStates.delete(tabId);
+
+    if (this.activeTabId === tabId) {
+      const nextTab = this.tabs[index] ?? this.tabs[index - 1] ?? null;
+      this.activeTabId = nextTab?.id ?? null;
+    }
+
+    // Emptying out is allowed here — EditorGroupsService decides whether to close this group.
+    this.updateContextKeys();
+    this.fireDidChange();
+    return { tab, savedContent, viewState };
+  }
+
+  /** Inserts a tab extracted via {@link extractTab} from another group, at `index` (default:
+   * end), and activates it. */
+  insertTab(
+    entry: {
+      tab: EditorTab;
+      savedContent: string | undefined;
+      viewState: editor.ICodeEditorViewState | undefined;
+    },
+    index?: number,
+  ): void {
+    this.initialized = true;
+    const insertAt =
+      index === undefined
+        ? this.tabs.length
+        : Math.max(0, Math.min(index, this.tabs.length));
+    this.tabs.splice(insertAt, 0, entry.tab);
+    if (entry.savedContent !== undefined) {
+      this.savedContent.set(entry.tab.id, entry.savedContent);
+    }
+    if (entry.viewState !== undefined) {
+      this.viewStates.set(entry.tab.id, entry.viewState);
+    }
+    this.activeTabId = entry.tab.id;
+    this.updateContextKeys();
+    this.fireDidChange();
+  }
+
   pinTab(id: string): void {
     const tab = this.tabs.find((item) => item.id === id);
     if (!tab) return;

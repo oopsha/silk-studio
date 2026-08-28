@@ -3,6 +3,7 @@ import type { Monaco } from "@monaco-editor/react";
 import TabBar from "@silk-studio/editor/components/layout/TabBar/index.ts";
 import type {
   TabBarCommandAdapter,
+  TabBarCrossGroupDnd,
   TabBarLabels,
 } from "@silk-studio/editor/components/layout/TabBar/TabBar.tsx";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
@@ -27,7 +28,18 @@ import {
   SILK_EDITOR_DROP_ATTR,
   SILK_EDITOR_DROP_GROUP_ATTR,
 } from "../../../services/dnd/explorerObjectDrag.ts";
+import {
+  cancelEditorTabSplitDrag,
+  commitEditorTabSplitDrop,
+  updateEditorTabSplitHover,
+} from "../../../services/dnd/editorTabSplitDrag.ts";
 import "./EditorGroupsView.css";
+
+const crossGroupDnd: TabBarCrossGroupDnd = {
+  updateHover: updateEditorTabSplitHover,
+  commitDrop: commitEditorTabSplitDrop,
+  cancel: cancelEditorTabSplitDrag,
+};
 
 type EditorAreaSharedProps = {
   configuration: EditorConfigurationOptions;
@@ -157,7 +169,12 @@ function EditorGroupPane({
     <div
       className={`editor-groups-pane__editor${showEditorHalf ? "" : " editor-groups-pane__editor--hidden"}`}
     >
-      <TabBar groupId={groupId} commands={commands} labels={labels} />
+      <TabBar
+        groupId={groupId}
+        commands={commands}
+        labels={labels}
+        crossGroupDnd={crossGroupDnd}
+      />
       <EditorArea groupId={groupId} isFocusedGroup={isFocused} {...editorProps} />
     </div>
   );
