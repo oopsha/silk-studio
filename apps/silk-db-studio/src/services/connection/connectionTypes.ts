@@ -238,3 +238,19 @@ export function effectiveDefaultSchema(
 export function defaultUrlForDriver(driverId: ConnectionDriverId): string {
   return getConnectionDriver(driverId).defaultUrl;
 }
+
+/** Codicon name for this driver's vendor icon (see Codicon.tsx's `db-*` custom icons). */
+export function driverIconName(driverId: ConnectionDriverId): string {
+  switch (driverId) {
+    case "oracle":
+      return "db-oracle";
+    case "sqlserver":
+      return "db-sqlserver";
+    case "mysql":
+      return "db-mysql";
+    case "mariadb":
+      return "db-mariadb";
+    case "postgresql":
+      return "db-postgresql";
+  }
+}

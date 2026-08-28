@@ -279,6 +279,32 @@ class ConnectionServiceImpl {
     }
   }
 
+  /**
+   * Moves `profileId` to sit immediately before/after `targetProfileId` in the top-level list.
+   * Profile order has no dedicated field — the array order in storage *is* the display order —
+   * so this is just a splice-and-persist, same as every other mutation here.
+   */
+  reorderProfile(
+    profileId: string,
+    targetProfileId: string,
+    position: "before" | "after",
+  ): void {
+    if (profileId === targetProfileId) return;
+    const profiles = [...this.state.profiles];
+    const fromIndex = profiles.findIndex((profile) => profile.id === profileId);
+    if (fromIndex === -1) return;
+    const [moved] = profiles.splice(fromIndex, 1);
+
+    let targetIndex = profiles.findIndex((profile) => profile.id === targetProfileId);
+    if (targetIndex === -1) {
+      profiles.push(moved);
+    } else {
+      if (position === "after") targetIndex += 1;
+      profiles.splice(targetIndex, 0, moved);
+    }
+    this.persistProfiles(profiles);
+  }
+
   setActiveProfile(profileId: string | null): void {
     saveActiveProfileId(profileId);
     this.setState({

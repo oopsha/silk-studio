@@ -38,12 +38,17 @@ import {
 import { useConnectionState } from "../../services/connection/useConnectionState";
 import { useConnectionTree } from "../../services/connection/useConnectionTree";
 import type { ConnectionProfile } from "../../services/connection/connectionTypes";
-import { effectiveDefaultSchema } from "../../services/connection/connectionTypes";
+import { driverIconName, effectiveDefaultSchema } from "../../services/connection/connectionTypes";
 import ExplorerContextMenu from "./ExplorerContextMenu";
 import {
   beginExplorerObjectPointerDrag,
   shouldSuppressExplorerObjectClick,
 } from "../../services/dnd/explorerObjectDrag";
+import {
+  beginProfileReorderDrag,
+  shouldSuppressProfileReorderClick,
+  SILK_PROFILE_ROW_ATTR,
+} from "../../services/dnd/profileReorderDrag";
 import "./ConnectionsExplorer.css";
 
 
@@ -433,7 +438,7 @@ function ProfileTree({
         isActive ? " connections-explorer__profile--active" : ""
       }${isConnected ? " connections-explorer__profile--connected" : ""}`}
     >
-      <div className="connections-explorer__row">
+      <div className="connections-explorer__row" {...{ [SILK_PROFILE_ROW_ATTR]: profile.id }}>
         <button
           type="button"
           className="connections-explorer__twistie"
@@ -465,7 +470,23 @@ function ProfileTree({
               ? `${profile.user} · ${profile.catalog} · ${profile.url}`
               : `${profile.user} · ${profile.url}`
           }
-          onClick={() => ConnectionService.setActiveProfile(profile.id)}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            beginProfileReorderDrag({
+              profileId: profile.id,
+              label: profile.name,
+              pointerId: event.pointerId,
+              clientX: event.clientX,
+              clientY: event.clientY,
+              onDrop: (targetProfileId, position) => {
+                ConnectionService.reorderProfile(profile.id, targetProfileId, position);
+              },
+            });
+          }}
+          onClick={() => {
+            if (shouldSuppressProfileReorderClick()) return;
+            ConnectionService.setActiveProfile(profile.id);
+          }}
           onDoubleClick={() => {
             if (!isConnected && isConnecting) return;
             void run(async () => {
@@ -477,7 +498,7 @@ function ProfileTree({
             });
           }}
         >
-          <Codicon name="database" />
+          <Codicon name={driverIconName(profile.driverId)} />
           <span
             className="connections-explorer__status"
             aria-hidden
