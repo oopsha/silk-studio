@@ -15,6 +15,9 @@ import {
 } from "../../services/connection/explorerSearchItems";
 import { runWithConcurrency } from "../../services/connection/explorerSearchPrefetchService";
 import { useConnectionState } from "../../services/connection/useConnectionState";
+import { SearchConnectionSelectionService } from "../../services/search/searchConnectionSelectionService";
+import { useSearchConnectionSelection } from "../../services/search/useSearchConnectionSelection";
+import SearchConnectionPicker from "./SearchConnectionPicker";
 import "./SearchExplorer.css";
 
 /** Below this, a substring scan across every connection is more noise than signal. */
@@ -24,10 +27,13 @@ const SEARCH_CONCURRENCY = 3;
 
 function SearchExplorer() {
   const { t } = useI18n();
-  useConnectionState(); // Re-renders while ConnectionService.connect() below flips connecting/connected state.
+  const connection = useConnectionState(); // Re-renders while connect() flips connecting/connected state, and for the picker's live profile list.
+  const selection = useSearchConnectionSelection();
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<ExplorerObjectSearchPick[] | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const connectionsButtonRef = useRef<HTMLButtonElement>(null);
   // Monotonic "search generation" — bumped on every new search (re-click/re-Enter) so a slow,
   // superseded run (still connecting profiles, or still awaiting search responses) is silently
   // abandoned instead of clobbering a newer search's results. Mirrors the same pattern in
@@ -42,7 +48,12 @@ function SearchExplorer() {
     const generation = generationRef.current;
     setResults(null);
 
-    const disconnectedProfiles = ConnectionService.getState().profiles.filter(
+    // Narrow to the picker's selection before doing anything else — `null` means every profile,
+    // matching `SearchConnectionSelectionService`'s "all" sentinel.
+    const candidateProfiles = connection.profiles.filter(
+      (profile) => selection === null || selection.has(profile.id),
+    );
+    const disconnectedProfiles = candidateProfiles.filter(
       (profile) => !ConnectionService.isConnected(profile.id),
     );
 
@@ -64,7 +75,9 @@ function SearchExplorer() {
     if (generationRef.current !== generation) return;
 
     setStatusMessage(t("app.search.searching"));
-    const connectedProfiles = ConnectionService.getConnectedProfiles();
+    const connectedProfiles = candidateProfiles.filter((profile) =>
+      ConnectionService.isConnected(profile.id),
+    );
     const showLabels = connectedProfiles.length > 1;
     const found: ExplorerObjectSearchPick[] = [];
     await runWithConcurrency(connectedProfiles, SEARCH_CONCURRENCY, async (profile) => {
@@ -96,7 +109,7 @@ function SearchExplorer() {
     });
     setResults(found);
     setStatusMessage(null);
-  }, [term, t]);
+  }, [term, t, connection.profiles, selection]);
 
   const openResult = useCallback(async (pick: ExplorerObjectSearchPick) => {
     const ref: ExplorerObjectRef = {
@@ -161,6 +174,37 @@ function SearchExplorer() {
         >
           <Codicon name="search" />
         </button>
+      </div>
+
+      <div className="search-explorer__connections-row">
+        <button
+          ref={connectionsButtonRef}
+          type="button"
+          className="search-explorer__connections-button"
+          aria-haspopup="menu"
+          aria-expanded={pickerOpen}
+          onClick={() => setPickerOpen((open) => !open)}
+        >
+          <Codicon name="plug" />
+          <span>
+            {selection === null
+              ? t("app.search.connectionsButtonAll")
+              : t("app.search.connectionsButtonCount").replace(
+                  "{n}",
+                  String(selection.size),
+                )}
+          </span>
+          <Codicon name="chevron-down" />
+        </button>
+        {pickerOpen ? (
+          <SearchConnectionPicker
+            profiles={connection.profiles}
+            selection={selection}
+            anchorRef={connectionsButtonRef}
+            onChange={(next) => SearchConnectionSelectionService.setSelection(next)}
+            onClose={() => setPickerOpen(false)}
+          />
+        ) : null}
       </div>
 
       {statusMessage ? (

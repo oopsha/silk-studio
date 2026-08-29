@@ -779,12 +779,13 @@ public final class Main {
     }
 
     /**
-     * Finds tables/views matching {@code params.name}, across every schema (and, for
-     * catalog-explorer dialects like SQL Server, every catalog/database) the connection can see.
-     * {@code params.contains} (default {@code false}) selects exact vs. case-insensitive
-     * substring matching — see {@link DbDialect#findObjectsByName}. Exact mode backs the AI
-     * assistant's "find an object without knowing its schema" tool; substring mode backs the
-     * Explorer's opt-in "search all connections" quick-pick action.
+     * Finds objects matching {@code params.name}, across every schema (and, for catalog-explorer
+     * dialects like SQL Server, every catalog/database) the connection can see. {@code
+     * params.contains} (default {@code false}) selects exact vs. case-insensitive substring
+     * matching — see {@link DbDialect#findObjectsByName}. Exact mode backs the AI assistant's
+     * "find an object without knowing its schema" tool; substring mode backs the Explorer's
+     * opt-in "search all connections" quick-pick action, the SQL-completion fallback item, and
+     * the Search sidebar — and additionally matches table/view comments and column comments.
      */
     ObjectNode findObjectsByName(JsonNode params) throws SQLException {
       Session session = requireSession(params);
@@ -807,6 +808,10 @@ public final class Main {
             tagged.put("schemaName", object.path("schemaName").asText(""));
             tagged.put("name", object.path("name").asText(""));
             tagged.put("kind", object.path("kind").asText(""));
+            String commentSnippet = object.path("commentSnippet").asText(null);
+            if (commentSnippet != null && !commentSnippet.isBlank()) {
+              tagged.put("commentSnippet", commentSnippet);
+            }
           }
         }
       } else {
