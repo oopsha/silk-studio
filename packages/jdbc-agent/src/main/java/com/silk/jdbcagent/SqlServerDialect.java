@@ -291,6 +291,15 @@ final class SqlServerDialect implements DbDialect {
     }
   }
 
+  /**
+   * {@code sys.objects.type} values folded into the single {@link #findObjectsByName} query —
+   * table/view/procedure/function/trigger/synonym are all rows in {@code sys.objects} itself,
+   * unlike index/sequence/type (separate catalog views, queried on top in
+   * {@link #findOtherKindsByName}).
+   */
+  private static final String FIND_OBJECTS_TYPE_LIST =
+      "'U', 'V', 'P', 'FN', 'IF', 'TF', 'TR', 'SN'";
+
   @Override
   public void findObjectsByName(
       Connection connection, String catalog, String name, boolean contains, ArrayNode objects)
@@ -301,21 +310,123 @@ final class SqlServerDialect implements DbDialect {
     // SQL Server's default instance collation is usually case-insensitive already, but a target
     // instance could be configured with a case-sensitive collation — wrap both sides in UPPER()
     // to be explicit, consistent with the other three dialects.
-    String predicate =
-        contains ? "UPPER(o.name) LIKE UPPER(?) ESCAPE '\\'" : "o.name = ?";
-    String sql =
-        "SELECT s.name AS SCHEMA_NAME, o.name AS OBJECT_NAME, o.type AS OBJ_TYPE "
-            + "FROM " + prefix + "sys.objects o "
-            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
-            + "WHERE " + predicate + " AND o.type IN ('U', 'V')";
-    try (PreparedStatement statement = connection.prepareStatement(sql)) {
-      statement.setString(1, contains ? LikeEscape.containsPattern(name) : name);
+    String namePredicate = contains ? "UPPER(o.name) LIKE UPPER(?) ESCAPE '\\'" : "o.name = ?";
+    StringBuilder sql =
+        new StringBuilder(
+            "SELECT s.name AS SCHEMA_NAME, o.name AS OBJECT_NAME, o.type AS OBJ_TYPE, "
+                + "CAST(ep.value AS NVARCHAR(MAX)) AS TABLE_COMMENT "
+                + "FROM " + prefix + "sys.objects o "
+                + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
+                + "LEFT JOIN " + prefix + "sys.extended_properties ep "
+                + "  ON ep.major_id = o.object_id AND ep.minor_id = 0 "
+                + "  AND ep.name = 'MS_Description' AND o.type IN ('U', 'V') "
+                + "WHERE o.type IN (" + FIND_OBJECTS_TYPE_LIST + ") AND ("
+                + namePredicate);
+    // Comment matching is substring-only and table/view-only, same reasoning as every other
+    // dialect — see DbDialect#findObjectsByName's doc comment.
+    if (contains) {
+      sql.append(
+          " OR (o.type IN ('U', 'V') AND ("
+              + "UPPER(ep.value) LIKE UPPER(?) ESCAPE '\\' "
+              + "OR EXISTS (SELECT 1 FROM " + prefix + "sys.extended_properties cep "
+              + "WHERE cep.major_id = o.object_id AND cep.minor_id > 0 "
+              + "AND cep.name = 'MS_Description' "
+              + "AND UPPER(CAST(cep.value AS NVARCHAR(MAX))) LIKE UPPER(?) ESCAPE '\\')))");
+    }
+    sql.append(")");
+
+    try (PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+      statement.setMaxRows(FIND_OBJECTS_MAX_ROWS);
+      String pattern = contains ? LikeEscape.containsPattern(name) : name;
+      int index = 1;
+      statement.setString(index++, pattern);
+      if (contains) {
+        statement.setString(index++, pattern);
+        statement.setString(index++, pattern);
+      }
       try (ResultSet rs = statement.executeQuery()) {
         while (rs.next()) {
           ObjectNode object = objects.addObject();
           object.put("schemaName", rs.getString("SCHEMA_NAME"));
           object.put("name", rs.getString("OBJECT_NAME"));
-          object.put("kind", "V".equals(rs.getString("OBJ_TYPE")) ? "view" : "table");
+          object.put("kind", sqlServerFindObjectsKind(rs.getString("OBJ_TYPE")));
+          String tableComment = rs.getString("TABLE_COMMENT");
+          if (tableComment != null && !tableComment.isBlank()) {
+            object.put("commentSnippet", tableComment);
+          }
+        }
+      }
+    }
+    findOtherKindsByName(connection, prefix, name, contains, objects);
+  }
+
+  private static String sqlServerFindObjectsKind(String objType) {
+    if (objType == null) return "table";
+    return switch (objType.trim()) {
+      case "V" -> "view";
+      case "P" -> "procedure";
+      case "FN", "IF", "TF" -> "function";
+      case "TR" -> "trigger";
+      case "SN" -> "synonym";
+      default -> "table";
+    };
+  }
+
+  /**
+   * Indexes/sequences/types matching {@code name} (no schema predicate — every schema in
+   * {@code catalog} is searched) — the {@code sys.objects} kinds not covered above.
+   */
+  private static void findOtherKindsByName(
+      Connection connection, String prefix, String name, boolean contains, ArrayNode objects)
+      throws SQLException {
+    String pattern = contains ? LikeEscape.containsPattern(name) : name;
+    appendNameFilteredObjects(
+        connection,
+        "SELECT s.name AS SCHEMA_NAME, i.name AS NAME FROM " + prefix + "sys.indexes i "
+            + "JOIN " + prefix + "sys.objects o ON o.object_id = i.object_id "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
+            + "WHERE i.name IS NOT NULL AND o.is_ms_shipped = 0 AND "
+            + (contains ? "UPPER(i.name) LIKE UPPER(?) ESCAPE '\\'" : "i.name = ?"),
+        pattern,
+        "index",
+        objects);
+    appendNameFilteredObjects(
+        connection,
+        "SELECT s.name AS SCHEMA_NAME, sq.name AS NAME FROM " + prefix + "sys.sequences sq "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = sq.schema_id "
+            + "WHERE "
+            + (contains ? "UPPER(sq.name) LIKE UPPER(?) ESCAPE '\\'" : "sq.name = ?"),
+        pattern,
+        "sequence",
+        objects);
+    appendNameFilteredObjects(
+        connection,
+        "SELECT s.name AS SCHEMA_NAME, t.name AS NAME FROM " + prefix + "sys.types t "
+            + "JOIN " + prefix + "sys.schemas s ON s.schema_id = t.schema_id "
+            + "WHERE t.is_user_defined = 1 AND "
+            + (contains ? "UPPER(t.name) LIKE UPPER(?) ESCAPE '\\'" : "t.name = ?"),
+        pattern,
+        "type",
+        objects);
+  }
+
+  /** Runs a {@code (SCHEMA_NAME, NAME) WHERE ...predicate on NAME} query and appends {@code kind} objects. */
+  private static void appendNameFilteredObjects(
+      Connection connection, String sql, String pattern, String kind, ArrayNode objects)
+      throws SQLException {
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setMaxRows(FIND_OBJECTS_MAX_ROWS);
+      statement.setString(1, pattern);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          String name = rs.getString("NAME");
+          if (name == null || name.isBlank()) {
+            continue;
+          }
+          ObjectNode object = objects.addObject();
+          object.put("schemaName", rs.getString("SCHEMA_NAME"));
+          object.put("name", name);
+          object.put("kind", kind);
         }
       }
     }

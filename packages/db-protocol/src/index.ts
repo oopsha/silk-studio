@@ -148,15 +148,20 @@ export type ConnectionPrefetchCatalogResult = {
 };
 
 /**
- * A table/view found by `connection.findObjectsByName` — a name-only, no-schema-required lookup
- * across every schema (and catalog, for SQL Server) the connection can see. `catalogName` is
- * only present for catalog-explorer dialects (SQL Server).
+ * An object found by `connection.findObjectsByName` — a name-only, no-schema-required lookup
+ * across every schema (and catalog, for SQL Server) the connection can see, covering every kind
+ * the dialect supports (table/view/procedure/function/package/trigger/index/sequence/synonym/
+ * type). `catalogName` is only present for catalog-explorer dialects (SQL Server).
+ * `commentSnippet` is only present on table/view rows whose table/view comment is non-blank —
+ * populated whenever `contains: true` was used and the object matched via name, its own comment,
+ * or a column's comment (see the jdbc-agent's `findObjectsByName`).
  */
 export type FoundMetadataObject = {
   catalogName?: string;
   schemaName: string;
   name: string;
   kind: MetadataObjectKind;
+  commentSnippet?: string;
 };
 
 export type ConnectionFindObjectsByNameParams = {
@@ -657,7 +662,8 @@ function isFoundMetadataObject(value: unknown): value is FoundMetadataObject {
     typeof record.schemaName === "string" &&
     typeof record.name === "string" &&
     typeof record.kind === "string" &&
-    METADATA_OBJECT_KINDS.includes(record.kind)
+    METADATA_OBJECT_KINDS.includes(record.kind) &&
+    (record.commentSnippet === undefined || typeof record.commentSnippet === "string")
   );
 }
 

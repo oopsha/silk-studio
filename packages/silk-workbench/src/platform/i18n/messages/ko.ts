@@ -810,6 +810,11 @@ export const koMessages = {
       searching: "전체 연결에서 검색하는 중…",
       noMatches: "연결된 어떤 데이터베이스에서도 일치하는 항목을 찾지 못했습니다.",
       resultCount: "{n}개 결과",
+      connectionsButtonAll: "전체 연결",
+      connectionsButtonCount: "{n}개 연결",
+      connectionsMenuAria: "검색할 연결 선택",
+      connectionsMenuAllLabel: "전체 연결",
+      connectionsMenuEmpty: "아직 연결이 없습니다.",
     },
     query: {
       runStatement: "문 실행",

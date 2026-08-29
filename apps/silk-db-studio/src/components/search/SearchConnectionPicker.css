@@ -1,0 +1,96 @@
+.search-connection-picker {
+  position: fixed;
+  z-index: 5000;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 180px;
+  max-width: 320px;
+  margin: 0;
+  padding: 4px;
+  font-family: var(--font-family);
+  font-size: 13px;
+  line-height: 1.4;
+  background-color: var(--color-menu-background);
+  color: var(--color-menu-foreground);
+  border: 1px solid var(--color-menu-border);
+  border-radius: var(--corner-radius-large);
+  box-shadow: var(--shadow-lg);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.search-connection-picker__item {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--corner-radius-medium);
+  background: transparent;
+  color: var(--color-menu-foreground);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  outline: none;
+}
+
+.search-connection-picker__item:hover,
+.search-connection-picker__item:focus-visible {
+  background-color: var(--color-menu-selection-background);
+  color: var(--color-menu-selection-foreground);
+  outline: 1px solid var(--color-menu-selection-border);
+  outline-offset: -1px;
+}
+
+.search-connection-picker__check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 26px;
+  margin-left: 4px;
+  margin-right: 4px;
+}
+
+.search-connection-picker__check .codicon {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+  transform: translateY(1px);
+}
+
+.search-connection-picker__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 8px 0 0;
+  line-height: 26px;
+}
+
+.search-connection-picker__driver {
+  flex-shrink: 0;
+  padding: 0 8px 0 0;
+  opacity: 0.55;
+  font-size: 11px;
+}
+
+.search-connection-picker__separator {
+  height: 0;
+  margin: 4px 4px;
+  border: none;
+  border-bottom: 1px solid var(--color-menu-separator);
+}
+
+.search-connection-picker__empty {
+  padding: 6px 10px;
+  opacity: 0.6;
+  white-space: nowrap;
+}
