@@ -767,12 +767,26 @@ impl JdbcAgentClient {
 
     fn ensure_process(&self) -> Result<Arc<AgentIo>, String> {
         {
-            let guard = self
+            let mut guard = self
                 .io
                 .lock()
                 .map_err(|_| "Failed to lock jdbc-agent process slot".to_string())?;
             if let Some(existing) = guard.as_ref() {
-                return Ok(Arc::clone(existing));
+                // The shared jdbc-agent JVM can die between requests (crash, OOM, killed
+                // externally) with nothing here noticing — `try_wait()` is non-blocking and
+                // returns `Ok(None)` while the child is still running. Without this check, a
+                // stale handle would sit in `self.io` forever and every subsequent request for
+                // every connection profile would fail identically with a broken-pipe write
+                // error until the app is restarted.
+                let alive = existing
+                    .child
+                    .lock()
+                    .map(|mut child| matches!(child.try_wait(), Ok(None)))
+                    .unwrap_or(false);
+                if alive {
+                    return Ok(Arc::clone(existing));
+                }
+                *guard = None;
             }
         }
 
@@ -901,7 +915,28 @@ For local development, install JDK/JRE 17+ and ensure `java` is on PATH.",
         Ok(created)
     }
 
+    /// Retries once, against a freshly spawned process, when the failure looks like the shared
+    /// jdbc-agent JVM having died mid-write (a `send_request_once` write-stage error). Without
+    /// this, one process death would otherwise fail every connection's every request identically
+    /// until the app restarts — `ensure_process`'s liveness check catches death *between*
+    /// requests, but a write that fails because the process died *during* this exact call still
+    /// needs its own recovery path here.
     fn send_request(&self, method: &str, params: Value) -> Result<Value, String> {
+        match self.send_request_once(method, params.clone()) {
+            Err(error)
+                if error.starts_with("Failed to write request")
+                    || error.starts_with("Failed to flush request") =>
+            {
+                if let Ok(mut guard) = self.io.lock() {
+                    *guard = None;
+                }
+                self.send_request_once(method, params)
+            }
+            result => result,
+        }
+    }
+
+    fn send_request_once(&self, method: &str, params: Value) -> Result<Value, String> {
         let io = self.ensure_process()?;
         let id = io.next_id.fetch_add(1, Ordering::SeqCst);
 
