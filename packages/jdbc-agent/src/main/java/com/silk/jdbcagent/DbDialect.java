@@ -25,6 +25,15 @@ import java.util.List;
  * catalogs post-connect (PostgreSQL) simply ignore the parameter.
  */
 interface DbDialect {
+  /**
+   * Row cap every {@link #findObjectsByName} query applies via {@link Statement#setMaxRows(int)}
+   * — a plain JDBC-standard cap rather than dialect-specific {@code ROWNUM}/{@code TOP}/
+   * {@code LIMIT} syntax, since every JDBC driver honors it uniformly. Widening the search to
+   * every object kind plus comment matching can otherwise return far more rows than the old
+   * table/view-only, name-only query ever did.
+   */
+  int FIND_OBJECTS_MAX_ROWS = 200;
+
   /** Stable id surfaced in error messages; matches the frontend's {@code ConnectionDriverId}. */
   String id();
 
@@ -80,23 +89,28 @@ interface DbDialect {
       throws SQLException;
 
   /**
-   * Populates {@code objects} with every table/view whose name matches {@code name}, across every
+   * Populates {@code objects} with every object whose name matches {@code name}, across every
    * schema visible within {@code catalog} (for dialects with no catalog concept, {@code catalog}
-   * is ignored and every schema on the connection is searched). Each entry carries {@code
-   * schemaName}/{@code name}/{@code kind} ({@code "table"} or {@code "view"}).
+   * is ignored and every schema on the connection is searched). Covers every kind the dialect
+   * actually supports — table/view/procedure/function/package/trigger/index/sequence/synonym/
+   * type, whichever of those the underlying RDBMS has a concept of (e.g. MySQL/MariaDB has no
+   * package/sequence/synonym/type, so those are simply never emitted there). Each entry carries
+   * {@code schemaName}/{@code name}/{@code kind}, plus {@code commentSnippet} (optional, table/
+   * view rows only) when that table/view has a non-blank comment.
    *
    * <p>When {@code contains} is {@code false}, {@code name} must match exactly (case-sensitively,
-   * per the dialect's normal identifier comparison). Backs the AI assistant's "find an object
-   * without knowing its schema" tool — deliberately scoped to tables/views only (the common "open
-   * this table" case) rather than routines/packages too, to keep the per-dialect query (a single
-   * {@code WHERE name = ?} against the dictionary/system catalog, no schema predicate) simple and
-   * uniform across dialects.
+   * per the dialect's normal identifier comparison) against the object's own name only — no
+   * comment matching. Backs the AI assistant's "find an object without knowing its schema" tool.
    *
    * <p>When {@code contains} is {@code true}, {@code name} is matched as a case-insensitive
-   * substring anywhere in the object name (a {@code LIKE '%name%'}-style query, built via {@link
-   * LikeEscape#containsPattern}) — backs the Explorer's opt-in "search all connections" quick-pick
-   * action. This mode is deliberately never triggered on keystroke/debounce, only on an explicit
-   * click, since a substring scan can't use a standard index and may be slow on large schemas.
+   * substring anywhere in the object's name (a {@code LIKE '%name%'}-style query, built via
+   * {@link LikeEscape#containsPattern}) — backs the Explorer's opt-in "search all connections"
+   * quick-pick action, the SQL-completion fallback, and the Search sidebar. In this mode,
+   * table/view rows are additionally matched by substring against the table/view's own comment
+   * and against any of its columns' comments (never for other kinds — comment matching only
+   * makes sense for the common "search by description" case on tables/views). This mode is
+   * deliberately never triggered on keystroke/debounce, only on an explicit click, since a
+   * substring scan can't use a standard index and may be slow on large schemas.
    *
    * <p>Callers that need every catalog searched (SQL Server) loop {@link #listCatalogNames} and
    * call this once per catalog themselves — this method only ever looks at the one {@code
