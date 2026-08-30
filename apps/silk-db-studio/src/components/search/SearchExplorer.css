@@ -11,39 +11,8 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 8px 8px 4px;
-}
-
-.search-explorer__connections-row {
-  padding: 0 8px 8px;
+  padding: 8px;
   border-bottom: 1px solid var(--color-panel-border, rgba(128, 128, 128, 0.35));
-}
-
-.search-explorer__connections-button {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  background: transparent;
-  color: var(--color-foreground);
-  border: 1px solid var(--color-panel-border, rgba(128, 128, 128, 0.35));
-  border-radius: 3px;
-  padding: 3px 6px;
-  font-size: 12px;
-  cursor: pointer;
-  opacity: 0.85;
-}
-
-.search-explorer__connections-button:hover {
-  background: var(--color-list-hover);
-  opacity: 1;
-}
-
-.search-explorer__connections-button span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .search-explorer__input {

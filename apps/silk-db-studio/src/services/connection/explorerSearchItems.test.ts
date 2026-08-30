@@ -55,34 +55,6 @@ describe("buildLiveSearchResultPick", () => {
     expect(pick.description).toBe("[Prod DB] public · Table");
   });
 
-  it("appends a truncated comment snippet to the description when present", () => {
-    const found: FoundMetadataObject = {
-      schemaName: "APP",
-      name: "ORDERS",
-      kind: "table",
-      commentSnippet:
-        "  This is a very long table comment that goes on for quite a while and should  \n  get truncated well past eighty characters of total length here  ",
-    };
-    const pick = buildLiveSearchResultPick("profile-1", undefined, found);
-
-    expect(pick.description.startsWith("APP · Table — ")).toBe(true);
-    expect(pick.description.length).toBeLessThanOrEqual(
-      "APP · Table — ".length + 80,
-    );
-    expect(pick.description.endsWith("…")).toBe(true);
-  });
-
-  it("omits the comment separator when commentSnippet is absent", () => {
-    const found: FoundMetadataObject = {
-      schemaName: "APP",
-      name: "ORDERS",
-      kind: "table",
-    };
-    const pick = buildLiveSearchResultPick("profile-1", undefined, found);
-
-    expect(pick.description).not.toContain(" — ");
-  });
-
   it("produces a stable, unique id per profile/catalog/schema/kind/name", () => {
     const a = buildLiveSearchResultPick("profile-1", undefined, {
       schemaName: "APP",

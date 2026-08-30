@@ -302,16 +302,6 @@ export function buildExplorerSearchPicks(
  * {@link collectFromSchemas} and the response mapping in `configureAiToolHost.ts`'s
  * `find_object_by_name` tool case (that one stays exact-match; this is the substring-match twin).
  */
-/** Comment snippets are shown as search-result context, not read in full — keep them short. */
-const MAX_COMMENT_SNIPPET_LENGTH = 80;
-
-function truncateCommentSnippet(comment: string): string {
-  const trimmed = comment.trim().replace(/\s+/g, " ");
-  return trimmed.length > MAX_COMMENT_SNIPPET_LENGTH
-    ? `${trimmed.slice(0, MAX_COMMENT_SNIPPET_LENGTH - 1)}…`
-    : trimmed;
-}
-
 export function buildLiveSearchResultPick(
   profileId: string,
   profileLabel: string | undefined,
@@ -319,17 +309,16 @@ export function buildLiveSearchResultPick(
 ): ExplorerObjectSearchPick {
   const catalogName = found.catalogName;
   const object: MetadataObject = { name: found.name, kind: found.kind };
-  const location = catalogName
-    ? `${catalogName}.${found.schemaName} · ${kindLabel(found.kind)}`
-    : `${found.schemaName} · ${kindLabel(found.kind)}`;
-  const withComment = found.commentSnippet
-    ? `${location} — ${truncateCommentSnippet(found.commentSnippet)}`
-    : location;
   return {
     type: "object",
     id: `liveObject:${profileId}:${catalogName ?? ""}:${found.schemaName}:${found.kind}:${found.name}`,
     label: found.name,
-    description: withProfilePrefix(withComment, profileLabel),
+    description: withProfilePrefix(
+      catalogName
+        ? `${catalogName}.${found.schemaName} · ${kindLabel(found.kind)}`
+        : `${found.schemaName} · ${kindLabel(found.kind)}`,
+      profileLabel,
+    ),
     icon: iconForKind(found.kind),
     profileId,
     schemaName: found.schemaName,

@@ -210,47 +210,17 @@ final class PostgreSqlDialect implements DbDialect {
   public void findObjectsByName(
       Connection connection, String catalog, String name, boolean contains, ArrayNode objects)
       throws SQLException {
+    // relkind: r/p = table (partitioned tables included), v/m = view/materialized view.
     // ILIKE is Postgres's native case-insensitive LIKE — preferred over UPPER(...) LIKE
     // UPPER(...) here since it's available and idiomatic for this dialect.
-    findTablesAndViewsByName(connection, name, contains, objects);
-    // Exact-match mode (AI tool) still widens kind coverage, just without comment matching.
-    findOtherKindsByName(
-        connection, contains ? LikeEscape.containsPattern(name) : name, contains, objects);
-  }
-
-  /** Table/view portion of {@link #findObjectsByName}, with table/column comment matching. */
-  private static void findTablesAndViewsByName(
-      Connection connection, String name, boolean contains, ArrayNode objects)
-      throws SQLException {
-    String namePredicate = contains ? "c.relname ILIKE ? ESCAPE '\\'" : "c.relname = ?";
-    StringBuilder sql =
-        new StringBuilder(
-            "SELECT n.nspname AS SCHEMA_NAME, c.relname AS OBJECT_NAME, c.relkind AS REL_KIND, "
-                + "d.description AS TABLE_COMMENT "
-                + "FROM pg_catalog.pg_class c "
-                + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
-                + "LEFT JOIN pg_catalog.pg_description d ON d.objoid = c.oid AND d.objsubid = 0 "
-                + "WHERE c.relkind IN ('r', 'p', 'v', 'm') AND ("
-                + namePredicate);
-    if (contains) {
-      // objsubid = 0 is the relation's own comment; objsubid > 0 is one of its columns'.
-      sql.append(
-          " OR d.description ILIKE ? ESCAPE '\\' "
-              + "OR EXISTS (SELECT 1 FROM pg_catalog.pg_description cd "
-              + "WHERE cd.objoid = c.oid AND cd.objsubid > 0 AND cd.description ILIKE ? ESCAPE '\\')");
-    }
-    sql.append(")");
-
-    try (PreparedStatement statement = connection.prepareStatement(sql.toString())) {
-      statement.setMaxRows(FIND_OBJECTS_MAX_ROWS);
-      statement.setQueryTimeout(FIND_OBJECTS_TIMEOUT_SECONDS);
-      String pattern = contains ? LikeEscape.containsPattern(name) : name;
-      int index = 1;
-      statement.setString(index++, pattern);
-      if (contains) {
-        statement.setString(index++, pattern);
-        statement.setString(index++, pattern);
-      }
+    String predicate = contains ? "c.relname ILIKE ? ESCAPE '\\'" : "c.relname = ?";
+    String sql =
+        "SELECT n.nspname AS SCHEMA_NAME, c.relname AS OBJECT_NAME, c.relkind AS REL_KIND "
+            + "FROM pg_catalog.pg_class c "
+            + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            + "WHERE " + predicate + " AND c.relkind IN ('r', 'p', 'v', 'm')";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, contains ? LikeEscape.containsPattern(name) : name);
       try (ResultSet rs = statement.executeQuery()) {
         while (rs.next()) {
           ObjectNode object = objects.addObject();
@@ -258,92 +228,6 @@ final class PostgreSqlDialect implements DbDialect {
           object.put("name", rs.getString("OBJECT_NAME"));
           String relKind = rs.getString("REL_KIND");
           object.put("kind", "v".equals(relKind) || "m".equals(relKind) ? "view" : "table");
-          String tableComment = rs.getString("TABLE_COMMENT");
-          if (tableComment != null && !tableComment.isBlank()) {
-            object.put("commentSnippet", tableComment);
-          }
-        }
-      }
-    }
-  }
-
-  /**
-   * Procedures/functions/indexes/sequences/triggers/types matching {@code pattern} (no schema
-   * predicate — searches every schema on the connection, same as the table/view portion).
-   * PostgreSQL has no package/synonym concept, so those two kinds are never emitted here.
-   */
-  private static void findOtherKindsByName(
-      Connection connection, String pattern, boolean useLike, ArrayNode objects)
-      throws SQLException {
-    String cmp = useLike ? "ILIKE ? ESCAPE '\\'" : "= ?";
-    appendNameFilteredObjects(
-        connection,
-        "SELECT n.nspname AS SCHEMA_NAME, p.proname AS NAME, "
-            + "CASE WHEN p.prokind = 'p' THEN 'procedure' ELSE 'function' END AS KIND "
-            + "FROM pg_catalog.pg_proc p "
-            + "JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace "
-            + "WHERE p.proname " + cmp + " "
-            + "AND n.nspname NOT IN ('pg_catalog', 'information_schema')",
-        pattern,
-        null,
-        objects);
-    appendNameFilteredObjects(
-        connection,
-        "SELECT schemaname AS SCHEMA_NAME, indexname AS NAME FROM pg_catalog.pg_indexes "
-            + "WHERE indexname " + cmp,
-        pattern,
-        "index",
-        objects);
-    appendNameFilteredObjects(
-        connection,
-        "SELECT sequence_schema AS SCHEMA_NAME, sequence_name AS NAME "
-            + "FROM information_schema.sequences WHERE sequence_name " + cmp,
-        pattern,
-        "sequence",
-        objects);
-    appendNameFilteredObjects(
-        connection,
-        "SELECT DISTINCT trigger_schema AS SCHEMA_NAME, trigger_name AS NAME "
-            + "FROM information_schema.triggers WHERE trigger_name " + cmp,
-        pattern,
-        "trigger",
-        objects);
-    appendNameFilteredObjects(
-        connection,
-        "SELECT n.nspname AS SCHEMA_NAME, t.typname AS NAME FROM pg_catalog.pg_type t "
-            + "JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace "
-            + "LEFT JOIN pg_catalog.pg_class c ON c.oid = t.typrelid "
-            + "WHERE t.typname " + cmp + " "
-            + "AND (t.typrelid = 0 OR c.relkind = 'c') "
-            + "AND NOT EXISTS ("
-            + "  SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)",
-        pattern,
-        "type",
-        objects);
-  }
-
-  /**
-   * Runs a {@code (SCHEMA_NAME, NAME[, KIND])} query filtered by one bound name pattern and
-   * appends results — {@code fixedKind} is used verbatim when given, otherwise the row's own
-   * {@code KIND} column is read (procedures/functions distinguish kind per row).
-   */
-  private static void appendNameFilteredObjects(
-      Connection connection, String sql, String pattern, String fixedKind, ArrayNode objects)
-      throws SQLException {
-    try (PreparedStatement statement = connection.prepareStatement(sql)) {
-      statement.setMaxRows(FIND_OBJECTS_MAX_ROWS);
-      statement.setQueryTimeout(FIND_OBJECTS_TIMEOUT_SECONDS);
-      statement.setString(1, pattern);
-      try (ResultSet rs = statement.executeQuery()) {
-        while (rs.next()) {
-          String name = rs.getString("NAME");
-          if (name == null || name.isBlank()) {
-            continue;
-          }
-          ObjectNode object = objects.addObject();
-          object.put("schemaName", rs.getString("SCHEMA_NAME"));
-          object.put("name", name);
-          object.put("kind", fixedKind != null ? fixedKind : rs.getString("KIND"));
         }
       }
     }

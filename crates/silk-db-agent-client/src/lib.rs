@@ -47,29 +47,15 @@ struct AgentIo {
 pub struct JdbcAgentClient {
     agent_jar: PathBuf,
     java_bin: PathBuf,
-    /// Where the jdbc-agent JVM's stderr (uncaught exceptions, native crash traces) is appended.
-    /// `None` falls back to inheriting this process's own stderr (visible only when run from a
-    /// terminal, e.g. `pnpm tauri dev`) — see `ensure_process`.
-    stderr_log: Option<PathBuf>,
     io: Mutex<Option<Arc<AgentIo>>>,
-    /// When the last spawn attempt happened (regardless of whether it then died immediately) —
-    /// guards against a *sequential* crash-loop (the shared JVM dying on every single launch, not
-    /// just a concurrent thundering herd — see `ensure_process`'s spawn cooldown).
-    last_spawn_attempt: Mutex<Option<std::time::Instant>>,
 }
 
 impl JdbcAgentClient {
-    pub fn new(
-        agent_jar: impl Into<PathBuf>,
-        java_bin: impl Into<PathBuf>,
-        stderr_log: Option<PathBuf>,
-    ) -> Self {
+    pub fn new(agent_jar: impl Into<PathBuf>, java_bin: impl Into<PathBuf>) -> Self {
         Self {
             agent_jar: agent_jar.into(),
             java_bin: java_bin.into(),
-            stderr_log,
             io: Mutex::new(None),
-            last_spawn_attempt: Mutex::new(None),
         }
     }
 
@@ -780,36 +766,14 @@ impl JdbcAgentClient {
     }
 
     fn ensure_process(&self) -> Result<Arc<AgentIo>, String> {
-        // Held for the entire check-then-spawn sequence below, not just the liveness check —
-        // several profiles' requests can call this concurrently (`runWithConcurrency` in the
-        // Search sidebar/Ctrl+Shift+O live search fires up to 3 at once), and releasing the lock
-        // between "confirmed dead" and "installed the replacement" let every one of them spawn
-        // its own independent `java --serve` process in the same instant. That thundering herd —
-        // several copies of the same signed-but-unnotarized JVM binary launched back-to-back from
-        // one parent — is the likely trigger for the "SIGKILL (Code Signature Invalid)" crashes
-        // seen after the auto-respawn behavior was added; a single JVM launched by one request at
-        // a time never hit it. Every other caller now just blocks briefly on this same lock and
-        // gets the same `Arc` once the one spawn in flight finishes, instead of racing it.
-        let mut guard = self
-            .io
-            .lock()
-            .map_err(|_| "Failed to lock jdbc-agent process slot".to_string())?;
-        if let Some(existing) = guard.as_ref() {
-            // The shared jdbc-agent JVM can die between requests (crash, OOM, killed
-            // externally) with nothing here noticing — `try_wait()` is non-blocking and
-            // returns `Ok(None)` while the child is still running. Without this check, a
-            // stale handle would sit in `self.io` forever and every subsequent request for
-            // every connection profile would fail identically with a broken-pipe write
-            // error until the app is restarted.
-            let alive = existing
-                .child
+        {
+            let guard = self
+                .io
                 .lock()
-                .map(|mut child| matches!(child.try_wait(), Ok(None)))
-                .unwrap_or(false);
-            if alive {
+                .map_err(|_| "Failed to lock jdbc-agent process slot".to_string())?;
+            if let Some(existing) = guard.as_ref() {
                 return Ok(Arc::clone(existing));
             }
-            *guard = None;
         }
 
         if !self.agent_jar.exists() {
@@ -837,48 +801,6 @@ For local development, install JDK/JRE 17+ and ensure `java` is on PATH.",
             ));
         }
 
-        // Cooldown: still under `guard`, so this is checked/updated by exactly one caller at a
-        // time. If the JVM dies on every single launch (not just when raced concurrently), don't
-        // keep re-launching it every time a new request happens to come in right after — that's
-        // still a rapid sequential relaunch pattern of the same binary, which is plausibly what
-        // triggers the OS-level kill in the first place (see the comment at the top of this
-        // function). Surface a clear, distinct error instead of trying again immediately.
-        {
-            let mut last_attempt = self
-                .last_spawn_attempt
-                .lock()
-                .map_err(|_| "Failed to lock jdbc-agent spawn cooldown".to_string())?;
-            if let Some(previous) = *last_attempt {
-                if previous.elapsed() < Duration::from_secs(3) {
-                    return Err(
-                        "jdbc-agent keeps exiting right after launch — waiting a moment before \
-                         trying again. If this keeps happening, check the jdbc-agent.log in the \
-                         app's log folder for the reason."
-                            .to_string(),
-                    );
-                }
-            }
-            *last_attempt = Some(std::time::Instant::now());
-        }
-
-        let stderr_stdio = self
-            .stderr_log
-            .as_ref()
-            .and_then(|path| {
-                use std::fs::OpenOptions;
-                use std::io::Write;
-                let mut file = OpenOptions::new().create(true).append(true).open(path).ok()?;
-                let _ = writeln!(
-                    file,
-                    "\n===== jdbc-agent spawned at {} =====",
-                    unix_timestamp_secs()
-                );
-                Some(Stdio::from(file))
-            })
-            // No log path resolved (or the file couldn't be opened) — fall back to inheriting
-            // this process's own stderr, same as before this was added.
-            .unwrap_or_else(Stdio::inherit);
-
         let mut command = Command::new(&self.java_bin);
         command
             .arg("-Dfile.encoding=UTF-8")
@@ -888,7 +810,7 @@ For local development, install JDK/JRE 17+ and ensure `java` is on PATH.",
             .arg("--serve")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(stderr_stdio);
+            .stderr(Stdio::inherit());
         #[cfg(target_os = "windows")]
         command.creation_flags(CREATE_NO_WINDOW);
         let mut child = command
@@ -963,34 +885,23 @@ For local development, install JDK/JRE 17+ and ensure `java` is on PATH.",
             reader: Mutex::new(Some(reader)),
         });
 
-        // No re-check/race here: `guard` has been held continuously since the top of this
-        // function, so nothing else could have populated `self.io` in the meantime.
+        let mut guard = self
+            .io
+            .lock()
+            .map_err(|_| "Failed to lock jdbc-agent process slot".to_string())?;
+        if let Some(existing) = guard.as_ref() {
+            // Lost the startup race — discard this process and use the winner.
+            let _ = created.child.lock().map(|mut child| {
+                let _ = child.kill();
+                let _ = child.wait();
+            });
+            return Ok(Arc::clone(existing));
+        }
         *guard = Some(Arc::clone(&created));
         Ok(created)
     }
 
-    /// Retries once, against a freshly spawned process, when the failure looks like the shared
-    /// jdbc-agent JVM having died mid-write (a `send_request_once` write-stage error). Without
-    /// this, one process death would otherwise fail every connection's every request identically
-    /// until the app restarts — `ensure_process`'s liveness check catches death *between*
-    /// requests, but a write that fails because the process died *during* this exact call still
-    /// needs its own recovery path here.
     fn send_request(&self, method: &str, params: Value) -> Result<Value, String> {
-        match self.send_request_once(method, params.clone()) {
-            Err(error)
-                if error.starts_with("Failed to write request")
-                    || error.starts_with("Failed to flush request") =>
-            {
-                if let Ok(mut guard) = self.io.lock() {
-                    *guard = None;
-                }
-                self.send_request_once(method, params)
-            }
-            result => result,
-        }
-    }
-
-    fn send_request_once(&self, method: &str, params: Value) -> Result<Value, String> {
         let io = self.ensure_process()?;
         let id = io.next_id.fetch_add(1, Ordering::SeqCst);
 
@@ -1047,13 +958,6 @@ fn parse_agent_result(response: Value) -> Result<Value, String> {
     }
 
     Ok(response.get("result").cloned().unwrap_or_else(|| json!({})))
-}
-
-fn unix_timestamp_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
 }
 
 fn java_bin_usable(java_bin: &PathBuf) -> bool {
