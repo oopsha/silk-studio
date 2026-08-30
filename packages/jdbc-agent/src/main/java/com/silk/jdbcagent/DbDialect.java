@@ -63,6 +63,23 @@ interface DbDialect {
   List<String> listSchemaNames(Connection connection, String catalog) throws SQLException;
 
   /**
+   * Switches the session's current/default schema post-connect (Oracle: {@code ALTER SESSION SET
+   * CURRENT_SCHEMA}; PostgreSQL: {@code SET search_path}) — the schema-level counterpart of
+   * {@code Connection.setCatalog} for dialects where schema, not catalog, is the browsable
+   * namespace. Session-only — never touches connection profile defaults on the client.
+   *
+   * <p>Default: unsupported. SQL Server has no session-scoped equivalent (its "default schema" is
+   * an Explorer/UI hint only — see {@code SqlServerDialect}); MySQL/MariaDB fold schema into
+   * catalog and use {@code connection.setCatalog} for this instead.
+   *
+   * @return the schema now active, as reported back by the database (may differ in case/quoting
+   *     from {@code schema})
+   */
+  default String setSchema(Connection connection, String schema) throws SQLException {
+    throw new RuntimeException("Schema switching is not supported for " + id() + ".");
+  }
+
+  /**
    * When {@code true}, Explorer shows a Databases (catalog) level above schemas (SQL Server).
    * Dialects that fold catalogs into the schema list (MySQL) or have no catalogs (Oracle) return
    * {@code false}.

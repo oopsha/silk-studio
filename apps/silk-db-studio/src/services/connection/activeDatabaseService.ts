@@ -1,5 +1,5 @@
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
-import { bridgeListMetadata, bridgeSetCatalog } from "./connectionBridge";
+import { bridgeListMetadata, bridgeSetCatalog, bridgeSetSchema } from "./connectionBridge";
 import { ConnectionService } from "./connectionService";
 import { ConnectionTreeService } from "./connectionTreeService";
 import {
@@ -75,6 +75,65 @@ class ActiveDatabaseServiceImpl {
 
     ConnectionService.setDefaultCatalog(id, catalog);
     return this.useDatabase(id, catalog);
+  }
+
+  /**
+   * Switch the JDBC session's current schema (Oracle/PostgreSQL — dialects with no catalog
+   * concept, where schema is the browsable namespace) and rebind the active tab, mirroring
+   * {@link useDatabase} for catalog-capable dialects.
+   */
+  async useSchema(profileId: string, schemaName: string): Promise<string> {
+    const id = profileId.trim();
+    const schema = schemaName.trim();
+    if (!id || !schema) {
+      throw new Error(tKey("app.explorer.useSchemaFailed"));
+    }
+
+    const profile = ConnectionService.getProfile(id);
+    if (!profile) {
+      throw new Error(tKey("app.query.noConnectionTarget"));
+    }
+    if (!getConnectionDriver(profile.driverId).supportsRuntimeSchemaSwitch) {
+      throw new Error(tKey("app.explorer.useSchemaUnsupported"));
+    }
+
+    await ensureExecutionConnection(id, { skipCatalogApply: true });
+    const applied = await bridgeSetSchema(id, schema);
+    EditorConnectionBindingService.setSchemaForProfile(id, applied);
+    return applied;
+  }
+
+  /**
+   * Re-apply the active tab's bound schema before execute, for the same reason
+   * {@link applyBindingCatalogForExecute} does for catalog: the JDBC session is shared across
+   * every tab bound to this profile, so another tab's {@link useSchema} call can leave the
+   * session on a schema this tab didn't ask for.
+   */
+  async applyBindingSchemaForExecute(connectionId: string): Promise<void> {
+    const id = connectionId.trim();
+    if (!id) return;
+
+    const profile = ConnectionService.getProfile(id);
+    if (!profile || !getConnectionDriver(profile.driverId).supportsRuntimeSchemaSwitch) {
+      return;
+    }
+
+    const profileSchema = effectiveDefaultSchema(profile);
+    const binding = EditorConnectionBindingService.getActiveBinding();
+    const fromBinding =
+      binding.profileId === id ? binding.schema?.trim() || "" : "";
+    const bindingIsProfileDefault =
+      !fromBinding ||
+      (profileSchema.length > 0 &&
+        fromBinding.toLowerCase() === profileSchema.toLowerCase());
+    if (!fromBinding || bindingIsProfileDefault) return;
+
+    try {
+      const applied = await bridgeSetSchema(id, fromBinding);
+      EditorConnectionBindingService.setSchemaForProfile(id, applied);
+    } catch (error) {
+      console.warn("[active-database] apply schema before execute failed", error);
+    }
   }
 
   /**

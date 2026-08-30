@@ -7,6 +7,7 @@ import SecondarySidebar from "@silk-studio/workbench/components/layout/Secondary
 import WorkbenchSash from "@silk-studio/workbench/components/layout/WorkbenchSash/index.ts";
 import StatusBar from "@silk-studio/workbench/components/layout/StatusBar/index.ts";
 import ConnectionTargetStatusItem from "../StatusBar/ConnectionTargetStatusItem.tsx";
+import DatabaseTargetStatusItem from "../StatusBar/DatabaseTargetStatusItem.tsx";
 import TransactionStatusItem from "../StatusBar/TransactionStatusItem.tsx";
 import TitleBar from "@silk-studio/workbench/components/layout/TitleBar/index.ts";
 import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
@@ -371,6 +372,7 @@ function AppShell() {
           leftExtra={
             <>
               <ConnectionTargetStatusItem />
+              <DatabaseTargetStatusItem />
               <TransactionStatusItem />
             </>
           }

@@ -9,17 +9,17 @@ import {
 import { createPortal } from "react-dom";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
-import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { ConnectionService } from "../../../services/connection/connectionService";
-import { ConnectionTargetQuickPickService } from "../../../services/connection/connectionTargetQuickPickService";
+import { DatabaseTargetQuickPickService } from "../../../services/connection/databaseTargetQuickPickService";
 import {
-  bindingForProfile,
-  formatConnectionNameLabel,
+  formatDatabaseLabel,
+  formatSchemaLabel,
 } from "../../../services/connection/connectionTargetLabel";
-import { EditorConnectionBindingService } from "../../../services/connection/editorConnectionBindingService";
-import { useConnectionState } from "../../../services/connection/useConnectionState";
 import { useEditorConnectionBinding } from "../../../services/connection/useEditorConnectionBinding";
+import { getConnectionDriver } from "../../../services/connection/connectionTypes";
+import { ConnectionTreeService } from "../../../services/connection/connectionTreeService";
+import { ActiveDatabaseService } from "../../../services/connection/activeDatabaseService";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import { formatErrorMessage } from "../../../services/formatErrorMessage";
 import "@silk-studio/workbench/components/layout/TitleBar/OpenEditorsQuickPick/OpenEditorsQuickPick.css";
@@ -29,50 +29,55 @@ import {
 } from "@silk-studio/workbench/services/quickinput/titlebarQuickPickPlacement.ts";
 import "./ConnectionTargetStatusItem.css";
 
+type Mode = "catalog" | "schema";
+
 type PickItem =
   | { kind: "hint"; id: string; label: string }
-  | {
-      kind: "profile";
-      profileId: string;
-      label: string;
-      detail: string;
-      connected: boolean;
-      connecting: boolean;
-    };
+  | { kind: "item"; name: string; label: string };
 
-function isSelectable(pick: PickItem): boolean {
-  return pick.kind !== "hint";
-}
-
-/** Status bar picker for which *connection* the active editor tab targets.
- * Database/schema selection is a separate picker — see DatabaseTargetStatusItem. */
-function ConnectionTargetStatusItem() {
+/** Status bar picker for the *database or schema* within the active editor tab's bound
+ * connection — whichever is the browsable namespace for that driver:
+ *  - catalog (database) for SQL Server / MySQL / MariaDB / PostgreSQL-before-load
+ *  - schema for Oracle / PostgreSQL (once its schema-only metadata resolves)
+ * Hidden entirely when there is no bound connection, or the driver has neither concept. */
+function DatabaseTargetStatusItem() {
   const { t } = useI18n();
   const binding = useEditorConnectionBinding();
-  const connection = useConnectionState();
   const [open, setOpen] = useState(() =>
-    ConnectionTargetQuickPickService.isOpen(),
+    DatabaseTargetQuickPickService.isOpen(),
   );
   const [filter, setFilter] = useState("");
   const [focusedIndex, setFocusedIndex] = useState(0);
+  const [treeRev, setTreeRev] = useState(0);
   const [placed, setPlaced] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
 
-  const label = formatConnectionNameLabel(binding, {
-    noConnection: t("app.connectionTarget.noConnection"),
-    disconnected: t("app.connectionTarget.disconnected"),
-  });
+  const profileId = binding.profileId;
+  const profile = profileId ? ConnectionService.getProfile(profileId) : undefined;
+  const connected = Boolean(profileId) && ConnectionService.isConnected(profileId!);
+  const driver = profile ? getConnectionDriver(profile.driverId) : null;
+  const visible = Boolean(
+    profileId && driver && (driver.supportsCatalog || driver.showSchemaField),
+  );
 
-  const connected =
-    Boolean(binding.profileId) &&
-    ConnectionService.isConnected(binding.profileId!);
-  const hasBinding = Boolean(binding.profileId);
+  const cache = profileId ? ConnectionTreeService.getCache(profileId) : null;
+  const mode: Mode = useMemo(() => {
+    if (cache && cache.catalogs.length > 0) return "catalog";
+    if (cache && cache.schemas.length > 0) return "schema";
+    return driver?.supportsCatalog ? "catalog" : "schema";
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- treeRev drives cache refresh
+  }, [cache, driver, treeRev]);
+
+  const label =
+    mode === "catalog"
+      ? formatDatabaseLabel(binding, t("app.connectionTarget.noDatabase"))
+      : formatSchemaLabel(binding, t("app.connectionTarget.noSchema"));
 
   useEffect(() => {
-    return ConnectionTargetQuickPickService.onDidChange(() => {
-      const next = ConnectionTargetQuickPickService.isOpen();
+    return DatabaseTargetQuickPickService.onDidChange(() => {
+      const next = DatabaseTargetQuickPickService.isOpen();
       setOpen(next);
       setPlaced(false);
       if (next) {
@@ -83,7 +88,7 @@ function ConnectionTargetStatusItem() {
   }, []);
 
   const close = useCallback(() => {
-    ConnectionTargetQuickPickService.hide();
+    DatabaseTargetQuickPickService.hide();
   }, []);
 
   useLayoutEffect(() => {
@@ -112,7 +117,7 @@ function ConnectionTargetStatusItem() {
       window.removeEventListener("resize", handleResize);
       document.documentElement.classList.remove(TITLEBAR_QUICK_PICK_CLASS);
     };
-  }, [open, filter, focusedIndex]);
+  }, [open, filter, focusedIndex, treeRev]);
 
   useEffect(() => {
     if (!open) return;
@@ -138,53 +143,64 @@ function ConnectionTargetStatusItem() {
 
   useCloseOnAppBlur(close, open);
 
-  const picks = useMemo((): PickItem[] => {
-    if (!open) return [];
-    const query = filter.trim().toLowerCase();
-    // Show every saved profile — connected or not — like DBeaver's connection
-    // dropdown. Picking a disconnected one connects it (see acceptPick).
-    const profiles = connection.profiles.filter((profile) => {
-      if (!query) return true;
-      return (
-        profile.name.toLowerCase().includes(query) ||
-        profile.user.toLowerCase().includes(query)
-      );
+  // Close automatically if the bound connection stops being catalog/schema-capable
+  // (rebind to a different connection, or the tab loses its binding) while open.
+  useEffect(() => {
+    if (open && !visible) close();
+  }, [open, visible, close]);
+
+  useEffect(() => {
+    if (!open || !profileId || !connected) return;
+    const c = ConnectionTreeService.getCache(profileId);
+    if (c.catalogs.length > 0 || c.schemas.length > 0 || c.status === "loading") return;
+    void ConnectionTreeService.loadSchemas(profileId).catch(() => {
+      /* picker still opens empty */
     });
+  }, [open, profileId, connected]);
 
-    const items: PickItem[] = [];
+  useEffect(() => {
+    if (!open) return;
+    return ConnectionTreeService.onDidChange(() => {
+      setTreeRev((value) => value + 1);
+    });
+  }, [open]);
 
-    if (profiles.length === 0) {
-      items.push({
-        kind: "hint",
-        id: "connections-empty",
-        label: query
-          ? t("app.connectionTarget.pickerNoMatch")
-          : t("app.connectionTarget.pickerEmpty"),
-      });
-    } else {
-      for (const profile of profiles) {
-        items.push({
-          kind: "profile",
-          profileId: profile.id,
-          label: profile.name,
-          detail: profile.user
-            ? `${profile.user} · ${profile.driverId}`
-            : profile.driverId,
-          connected: connection.connectedProfileIds.includes(profile.id),
-          connecting: connection.connectingProfileIds.includes(profile.id),
-        });
-      }
+  const picks = useMemo((): PickItem[] => {
+    if (!open || !profileId) return [];
+    void treeRev;
+    const query = filter.trim().toLowerCase();
+    const c = ConnectionTreeService.getCache(profileId);
+    const names = (mode === "catalog" ? c.catalogs : c.schemas)
+      .map((item) => item.name)
+      .filter((name) => (query ? name.toLowerCase().includes(query) : true));
+
+    if (names.length === 0) {
+      return [
+        {
+          kind: "hint",
+          id: "empty",
+          label:
+            c.status === "loading"
+              ? mode === "catalog"
+                ? t("app.explorer.loadingDatabases")
+                : t("app.explorer.loadingSchemas")
+              : query
+                ? t("app.connectionTarget.pickerNoMatch")
+                : mode === "catalog"
+                  ? t("app.connectionTarget.databasesEmpty")
+                  : t("app.connectionTarget.schemasEmpty"),
+        },
+      ];
     }
 
-    return items;
-  }, [
-    open,
-    filter,
-    connection.profiles,
-    connection.connectedProfileIds,
-    connection.connectingProfileIds,
-    t,
-  ]);
+    return names.map((name) => ({
+      kind: "item" as const,
+      name,
+      label: name,
+    }));
+  }, [open, profileId, filter, mode, treeRev, t]);
+
+  const isSelectable = (pick: PickItem) => pick.kind === "item";
 
   const findSelectableIndex = useCallback(
     (from: number, delta: number): number => {
@@ -201,48 +217,40 @@ function ConnectionTargetStatusItem() {
   );
 
   useEffect(() => {
-    if (picks.length === 0) {
-      setFocusedIndex(0);
-      return;
-    }
-    setFocusedIndex((current) => {
-      const pick = picks[current];
-      if (pick && isSelectable(pick)) {
-        return Math.min(current, picks.length - 1);
-      }
-      for (let index = 0; index < picks.length; index += 1) {
-        if (isSelectable(picks[index]!)) return index;
-      }
-      return 0;
-    });
+    setFocusedIndex((current) => Math.min(current, Math.max(picks.length - 1, 0)));
   }, [picks]);
 
   const acceptPick = useCallback(
     (pick: PickItem) => {
-      if (!isSelectable(pick)) return;
-      if (pick.kind !== "profile") return;
-
-      const tab = EditorService.getActiveTab();
-      close();
-      if (!tab) return;
-
-      // Bind immediately so the status bar reflects the pick right away —
-      // query execution lazily connects anyway (resolveExecutionConnection).
-      EditorConnectionBindingService.setBinding(
-        tab.id,
-        bindingForProfile(pick.profileId),
-      );
-
-      if (!pick.connected && !pick.connecting) {
-        void ConnectionService.connect(pick.profileId).catch((error) => {
+      if (pick.kind !== "item" || !profileId) return;
+      const action =
+        mode === "catalog"
+          ? ActiveDatabaseService.useDatabase(profileId, pick.name)
+          : ActiveDatabaseService.useSchema(profileId, pick.name);
+      void action
+        .then(() => {
           AppNotificationService.show(
-            formatErrorMessage(error, t("app.connectionTarget.connectFailed")),
+            (mode === "catalog"
+              ? t("app.explorer.usingDatabase")
+              : t("app.explorer.usingSchema")
+            ).replace("{name}", pick.name),
+            "info",
+          );
+        })
+        .catch((error) => {
+          AppNotificationService.show(
+            formatErrorMessage(
+              error,
+              mode === "catalog"
+                ? t("app.explorer.useDatabaseFailed")
+                : t("app.explorer.useSchemaFailed"),
+            ),
             "error",
           );
         });
-      }
+      close();
     },
-    [close, t],
+    [close, mode, profileId, t],
   );
 
   const handleInputKeyDown = (
@@ -273,12 +281,25 @@ function ConnectionTargetStatusItem() {
     }
   };
 
-  const emptyHint =
-    connection.profiles.length === 0
-      ? t("app.connectionTarget.pickerEmpty")
-      : t("app.connectionTarget.pickerNoMatch");
+  if (!visible) return null;
 
   const hasSelectable = picks.some(isSelectable);
+  const pickerTitle = t(
+    mode === "catalog"
+      ? "app.connectionTarget.databasePickerTitle"
+      : "app.connectionTarget.schemaPickerTitle",
+  );
+  const pickerPlaceholder = t(
+    mode === "catalog"
+      ? "app.connectionTarget.databasePickerPlaceholder"
+      : "app.connectionTarget.schemaPickerPlaceholder",
+  );
+  const ariaLabel = t(
+    mode === "catalog"
+      ? "app.connectionTarget.databaseAriaLabel"
+      : "app.connectionTarget.schemaAriaLabel",
+  ).replace("{label}", label);
+  const boundSelector = mode === "catalog" ? binding.catalog : binding.schema;
 
   return (
     <>
@@ -286,24 +307,13 @@ function ConnectionTargetStatusItem() {
         ref={buttonRef}
         type="button"
         className="status-bar__item"
-        data-connection-target-anchor
-        title={t("app.connectionTarget.pickerTitle")}
-        aria-label={t("app.connectionTarget.ariaLabel").replace(
-          "{label}",
-          label,
-        )}
+        data-database-target-anchor
+        title={pickerTitle}
+        aria-label={ariaLabel}
         aria-expanded={open}
-        onClick={() => ConnectionTargetQuickPickService.toggle()}
+        onClick={() => DatabaseTargetQuickPickService.toggle()}
       >
-        <Codicon
-          name={
-            connected
-              ? "database"
-              : hasBinding
-                ? "debug-disconnect"
-                : "circle-outline"
-          }
-        />
+        <Codicon name="folder" />
         <span>{label}</span>
       </button>
 
@@ -314,7 +324,7 @@ function ConnectionTargetStatusItem() {
               className="quick-input-widget connection-target-picker"
               role="dialog"
               aria-modal="true"
-              aria-label={t("app.connectionTarget.pickerTitle")}
+              aria-label={pickerTitle}
               style={{
                 position: "fixed",
                 opacity: placed ? 1 : 0,
@@ -330,8 +340,8 @@ function ConnectionTargetStatusItem() {
                     value={filter}
                     spellCheck={false}
                     autoComplete="off"
-                    placeholder={t("app.connectionTarget.pickerPlaceholder")}
-                    aria-label={t("app.connectionTarget.pickerPlaceholder")}
+                    placeholder={pickerPlaceholder}
+                    aria-label={pickerPlaceholder}
                     onChange={(event) => setFilter(event.target.value)}
                     onKeyDown={handleInputKeyDown}
                   />
@@ -339,26 +349,19 @@ function ConnectionTargetStatusItem() {
               </div>
               <div className="quick-input-list" role="listbox">
                 {!hasSelectable ? (
-                  <div className="quick-input-list__empty">{emptyHint}</div>
+                  <div className="quick-input-list__empty">
+                    {picks[0]?.kind === "hint" ? picks[0].label : ""}
+                  </div>
                 ) : (
                   picks.map((pick, index) => {
-                    if (pick.kind === "hint") {
-                      return (
-                        <div
-                          key={`hint-${pick.id}`}
-                          className="connection-target-picker__hint"
-                          role="presentation"
-                        >
-                          {pick.label}
-                        </div>
-                      );
-                    }
-
-                    const selected = pick.profileId === binding.profileId;
+                    if (pick.kind === "hint") return null;
+                    const selected =
+                      pick.name.toLowerCase() ===
+                      (boundSelector ?? "").toLowerCase();
                     const focused = index === focusedIndex;
                     return (
                       <div
-                        key={pick.profileId}
+                        key={pick.name}
                         className={`quick-input-list-row${
                           focused ? " quick-input-list-row--focused" : ""
                         }`}
@@ -369,23 +372,10 @@ function ConnectionTargetStatusItem() {
                       >
                         <div className="quick-input-list-entry">
                           <span className="quick-input-list-icon" aria-hidden>
-                            <Codicon
-                              name={
-                                selected
-                                  ? "check"
-                                  : pick.connecting
-                                    ? "loading"
-                                    : pick.connected
-                                      ? "database"
-                                      : "circle-outline"
-                              }
-                            />
+                            <Codicon name={selected ? "check" : "folder"} />
                           </span>
                           <span className="quick-input-list-label connection-target-picker__label">
                             {pick.label}
-                          </span>
-                          <span className="connection-target-picker__detail">
-                            {pick.detail}
                           </span>
                         </div>
                       </div>
@@ -401,4 +391,4 @@ function ConnectionTargetStatusItem() {
   );
 }
 
-export default ConnectionTargetStatusItem;
+export default DatabaseTargetStatusItem;

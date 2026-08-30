@@ -345,6 +345,10 @@ public final class Main {
           response.put("ok", true);
           response.set("result", runtime.setCatalog(params));
         }
+        case "connection.setSchema" -> {
+          response.put("ok", true);
+          response.set("result", runtime.setSchema(params));
+        }
         case "agent.shutdown" -> {
           response.put("ok", true);
           ObjectNode result = response.putObject("result");
@@ -623,6 +627,28 @@ public final class Main {
       } else {
         result.put("catalog", catalog);
       }
+      return result;
+    }
+
+    /**
+     * Switches the session's current schema (Oracle {@code ALTER SESSION SET CURRENT_SCHEMA} /
+     * PostgreSQL {@code SET search_path}). Session-only — does not change connection profile
+     * defaults on the client. Throws for dialects with no post-connect schema switch (see {@link
+     * DbDialect#setSchema}).
+     */
+    ObjectNode setSchema(JsonNode params) throws SQLException {
+      Session session = requireSession(params);
+      ObjectNode result = MAPPER.createObjectNode();
+      Connection connection = session.connection;
+      if (connection == null || connection.isClosed()) {
+        throw new SQLException("Connection is closed.");
+      }
+      String schema = params.path("schema").asText("").trim();
+      if (schema.isEmpty()) {
+        throw new RuntimeException("Missing params.schema");
+      }
+      String current = session.dialect.setSchema(connection, schema);
+      result.put("schema", current != null && !current.isBlank() ? current : schema);
       return result;
     }
 

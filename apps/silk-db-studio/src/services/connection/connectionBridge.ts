@@ -469,3 +469,34 @@ export async function bridgeSetCatalog(
   }
   return name;
 }
+
+/** Sets the JDBC session's current schema (Oracle/PostgreSQL). Does not change profile defaults. */
+export async function bridgeSetSchema(
+  connectionId: string,
+  schema: string,
+): Promise<string> {
+  if (!isTauri()) {
+    throw new Error("Database connections are available in the desktop app only.");
+  }
+  const id = connectionId.trim();
+  const name = schema.trim();
+  if (!id) {
+    throw new Error("connectionId is required.");
+  }
+  if (!name) {
+    throw new Error("schema is required.");
+  }
+  const payload = await invokeJdbcCommand<unknown>("connection_set_schema", {
+    connectionId: id,
+    schema: name,
+  }, id);
+  if (
+    payload &&
+    typeof payload === "object" &&
+    typeof (payload as { schema?: unknown }).schema === "string" &&
+    (payload as { schema: string }).schema.trim()
+  ) {
+    return (payload as { schema: string }).schema.trim();
+  }
+  return name;
+}

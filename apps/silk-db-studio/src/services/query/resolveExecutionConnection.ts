@@ -59,4 +59,5 @@ export async function ensureExecutionConnection(
     "../connection/activeDatabaseService"
   );
   await ActiveDatabaseService.applyBindingCatalogForExecute(connectionId);
+  await ActiveDatabaseService.applyBindingSchemaForExecute(connectionId);
 }

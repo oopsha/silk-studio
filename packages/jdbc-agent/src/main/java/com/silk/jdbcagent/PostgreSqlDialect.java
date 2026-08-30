@@ -55,6 +55,24 @@ final class PostgreSqlDialect implements DbDialect {
   }
 
   @Override
+  public String setSchema(Connection connection, String schema) throws SQLException {
+    String quoted = "\"" + schema.replace("\"", "\"\"") + "\"";
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("SET search_path TO " + quoted + ", public");
+    }
+    try (Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery("SELECT current_schema()")) {
+      if (rs.next()) {
+        String current = rs.getString(1);
+        if (current != null && !current.isBlank()) {
+          return current;
+        }
+      }
+    }
+    return schema;
+  }
+
+  @Override
   public List<MetadataGroupId> supportedGroups() {
     // No PACKAGE or SYNONYM concept on PostgreSQL.
     return List.of(
