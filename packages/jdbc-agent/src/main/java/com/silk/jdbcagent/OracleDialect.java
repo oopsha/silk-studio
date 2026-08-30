@@ -50,6 +50,18 @@ final class OracleDialect implements DbDialect {
   }
 
   @Override
+  public String setSchema(Connection connection, String schema) throws SQLException {
+    String quoted = "\"" + schema.replace("\"", "\"\"") + "\"";
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("ALTER SESSION SET CURRENT_SCHEMA = " + quoted);
+    }
+    String current =
+        MetadataTableScope.querySingleString(
+            connection, "SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') FROM DUAL");
+    return current != null && !current.isBlank() ? current : schema;
+  }
+
+  @Override
   public List<MetadataGroupId> supportedGroups() {
     return List.of(
         MetadataGroupId.TABLES,

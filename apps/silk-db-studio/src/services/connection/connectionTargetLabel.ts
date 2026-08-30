@@ -38,6 +38,50 @@ export function formatConnectionTargetLabel(
   return schema ? `${name} › ${schema}` : name;
 }
 
+/** Connection-only status bar label — profile name, no catalog/schema. */
+export function formatConnectionNameLabel(
+  binding: EditorConnectionBinding,
+  labels: {
+    noConnection: string;
+    disconnected: string;
+  },
+): string {
+  if (!binding.profileId) {
+    return labels.noConnection;
+  }
+
+  const profile = ConnectionService.getProfile(binding.profileId);
+  const name = profile?.name?.trim() || binding.profileId;
+  const connected = ConnectionService.isConnected(binding.profileId);
+
+  return connected ? name : labels.disconnected.replace("{name}", name);
+}
+
+/** Database (catalog) status bar label for the currently bound profile. */
+export function formatDatabaseLabel(
+  binding: EditorConnectionBinding,
+  noDatabaseLabel: string,
+): string {
+  if (!binding.profileId) return noDatabaseLabel;
+  const profile = ConnectionService.getProfile(binding.profileId);
+  const catalog = binding.catalog?.trim() || profile?.catalog.trim() || "";
+  return catalog || noDatabaseLabel;
+}
+
+/** Schema status bar label for the currently bound profile (Oracle/PostgreSQL). */
+export function formatSchemaLabel(
+  binding: EditorConnectionBinding,
+  noSchemaLabel: string,
+): string {
+  if (!binding.profileId) return noSchemaLabel;
+  const profile = ConnectionService.getProfile(binding.profileId);
+  const schema =
+    binding.schema?.trim() ||
+    (profile ? effectiveDefaultSchema(profile) : "") ||
+    "";
+  return schema || noSchemaLabel;
+}
+
 /** Short muted tab suffix — profile name only (truncated). */
 export function formatConnectionTabSuffix(
   binding: EditorConnectionBinding,

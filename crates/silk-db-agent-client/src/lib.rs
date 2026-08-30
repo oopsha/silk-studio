@@ -766,6 +766,22 @@ impl JdbcAgentClient {
         )
     }
 
+    /// Sets the JDBC session's current schema (Oracle/PostgreSQL) for {@code connection_id}.
+    pub fn set_schema(&self, connection_id: &str, schema: &str) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        let schema = schema.trim();
+        if schema.is_empty() {
+            return Err("schema is required.".into());
+        }
+        self.send_request(
+            "connection.setSchema",
+            json!({
+                "connectionId": connection_id.trim(),
+                "schema": schema,
+            }),
+        )
+    }
+
     fn ensure_connection(&self, connection_id: &str) -> Result<(), String> {
         let connection_id = connection_id.trim();
         if connection_id.is_empty() {

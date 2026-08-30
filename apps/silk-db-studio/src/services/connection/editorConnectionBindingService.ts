@@ -49,9 +49,7 @@ class EditorConnectionBindingServiceImpl {
     if (this.started) return;
     this.started = true;
 
-    this.defaultProfileId =
-      ConnectionService.getState().connectedProfileId ??
-      ConnectionService.getState().activeProfileId;
+    this.defaultProfileId = ConnectionService.getState().connectedProfileId;
 
     EditorService.onDidChange(() => {
       this.syncWithEditorTabs();
@@ -189,6 +187,52 @@ class EditorConnectionBindingServiceImpl {
     }
   }
 
+  /**
+   * Update schema on SQL tabs for `profileId` (JDBC session is shared) — the schema-level
+   * counterpart of {@link setCatalogForProfile}, for dialects that switch schema instead of
+   * catalog (Oracle/PostgreSQL). Does not write connection profile storage.
+   */
+  setSchemaForProfile(profileId: string, schema: string | null): void {
+    const id = profileId.trim();
+    if (!id) return;
+    const nextSchema = schema?.trim() || null;
+    let changed = false;
+
+    for (const tab of EditorService.getTabs()) {
+      if (!isSqlLanguageId(tab.languageId)) continue;
+      const prev = this.bindings.get(tab.id) ?? emptyBinding();
+      if (prev.profileId !== id) continue;
+      if ((prev.schema ?? null) === nextSchema) continue;
+      this.bindings.set(tab.id, {
+        profileId: id,
+        catalog: prev.catalog ?? null,
+        schema: nextSchema,
+      });
+      changed = true;
+    }
+
+    const active = EditorService.getActiveTab();
+    if (active && isSqlLanguageId(active.languageId)) {
+      const prev = this.bindings.get(active.id) ?? emptyBinding();
+      if (
+        prev.profileId !== id ||
+        (prev.schema ?? null) !== nextSchema
+      ) {
+        this.bindings.set(active.id, {
+          profileId: id,
+          catalog: prev.catalog ?? null,
+          schema: nextSchema,
+        });
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.defaultProfileId = id;
+      this.fireDidChange();
+    }
+  }
+
   /** Assign default binding when missing (new SQL tabs). */
   ensureBinding(tabId: string): EditorConnectionBinding {
     const existing = this.bindings.get(tabId);
@@ -209,19 +253,20 @@ class EditorConnectionBindingServiceImpl {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * Only ever returns a *currently connected* profile — never a merely-saved one
+   * (`activeProfileId` is just the Explorer's last-selected row and may not be
+   * connected at all). A new tab with nothing connected must open unbound.
+   */
   private resolveDefaultProfileId(): string | null {
+    const state = ConnectionService.getState();
     if (
       this.defaultProfileId &&
-      ConnectionService.getProfile(this.defaultProfileId)
+      state.connectedProfileIds.includes(this.defaultProfileId)
     ) {
       return this.defaultProfileId;
     }
-    const state = ConnectionService.getState();
-    return (
-      state.connectedProfileId ??
-      state.connectedProfileIds[0] ??
-      state.activeProfileId
-    );
+    return state.connectedProfileIds[0] ?? null;
   }
 
   private syncWithEditorTabs(): void {

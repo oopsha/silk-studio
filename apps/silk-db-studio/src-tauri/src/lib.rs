@@ -194,6 +194,20 @@ fn connection_set_catalog(
 }
 
 #[tauri::command]
+fn connection_set_schema(
+    connection_id: String,
+    schema: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Value, String> {
+    let connection_id = require_connection_id(&connection_id)?;
+    let schema = schema.trim();
+    if schema.is_empty() {
+        return Err("schema is required.".into());
+    }
+    state.jdbc_agent.set_schema(connection_id, schema)
+}
+
+#[tauri::command]
 async fn connection_connect(
     connection_id: String,
     url: String,
@@ -583,6 +597,7 @@ pub fn run() {
             connection_commit,
             connection_rollback,
             connection_set_catalog,
+            connection_set_schema,
             connection_connect,
             connection_disconnect,
             connection_test,

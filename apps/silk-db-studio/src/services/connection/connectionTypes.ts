@@ -135,6 +135,13 @@ export type ConnectionDriverDefinition = {
   showSchemaField: boolean;
   schemaLabel: string;
   schemaHint: string;
+  /**
+   * Whether the schema can be switched mid-session (Oracle `ALTER SESSION SET CURRENT_SCHEMA`,
+   * PostgreSQL `SET search_path`), as opposed to only being applied once at connect. False for
+   * drivers with no schema field (MySQL/MariaDB — catalog covers it) and for SQL Server, which
+   * has no session-scoped equivalent (its default schema is an Explorer/UI hint only).
+   */
+  supportsRuntimeSchemaSwitch: boolean;
 };
 
 export const CONNECTION_DRIVERS: ConnectionDriverDefinition[] = [
@@ -149,6 +156,7 @@ export const CONNECTION_DRIVERS: ConnectionDriverDefinition[] = [
     schemaLabel: "Default Schema",
     schemaHint:
       "Applied on connect via ALTER SESSION SET CURRENT_SCHEMA. Leave empty to use the login user's schema.",
+    supportsRuntimeSchemaSwitch: true,
   },
   {
     id: "sqlserver",
@@ -161,6 +169,7 @@ export const CONNECTION_DRIVERS: ConnectionDriverDefinition[] = [
     schemaLabel: "Default Schema",
     schemaHint:
       "Highlighted in the Explorer as the default schema for this connection (SQL Server has no session-level equivalent of Oracle's CURRENT_SCHEMA).",
+    supportsRuntimeSchemaSwitch: false,
   },
   {
     id: "mysql",
@@ -174,6 +183,7 @@ export const CONNECTION_DRIVERS: ConnectionDriverDefinition[] = [
     showSchemaField: false,
     schemaLabel: "Default Schema",
     schemaHint: "",
+    supportsRuntimeSchemaSwitch: false,
   },
   {
     id: "mariadb",
@@ -186,6 +196,7 @@ export const CONNECTION_DRIVERS: ConnectionDriverDefinition[] = [
     showSchemaField: false,
     schemaLabel: "Default Schema",
     schemaHint: "",
+    supportsRuntimeSchemaSwitch: false,
   },
   {
     id: "postgresql",
@@ -199,6 +210,7 @@ export const CONNECTION_DRIVERS: ConnectionDriverDefinition[] = [
     schemaLabel: "Default Schema",
     schemaHint:
       "Applied on connect via SET search_path TO <schema>, public. Leave empty to use the login's default search_path.",
+    supportsRuntimeSchemaSwitch: true,
   },
 ];
 
