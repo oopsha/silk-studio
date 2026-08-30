@@ -164,50 +164,18 @@ abstract class MySqlCompatibleDialect implements DbDialect {
       throws SQLException {
     // No schema predicate at all — "schema" is the database name for this dialect, and the
     // whole point is finding which database(s) have this table without the caller knowing.
-    findTablesAndViewsByName(connection, name, contains, objects);
-    // Exact-match mode (AI tool) still widens kind coverage, just without comment matching.
-    findOtherKindsByName(
-        connection, contains ? LikeEscape.containsPattern(name) : name, contains, objects);
-  }
-
-  /** Table/view portion of {@link #findObjectsByName}, with table/column comment matching. */
-  private static void findTablesAndViewsByName(
-      Connection connection, String name, boolean contains, ArrayNode objects)
-      throws SQLException {
+    //
     // information_schema.TABLES.TABLE_NAME's collation is server/version dependent (case
     // sensitivity of MySQL identifiers themselves also depends on the OS/lower_case_table_names
     // setting), so we don't rely on the connection's default collation for case-insensitivity —
-    // UPPER(...) LIKE UPPER(...) is explicit and correct regardless of collation. Note the
-    // doubled backslash: MySQL's own string-literal parser un-escapes `\\` to `\` before the
-    // `LIKE ... ESCAPE` clause ever sees it, so the Java source needs two backslashes to produce
-    // one literal backslash in the SQL text (unlike the other three dialects, which use one).
-    String namePredicate =
-        contains ? "UPPER(t.TABLE_NAME) LIKE UPPER(?) ESCAPE '\\\\'" : "t.TABLE_NAME = ?";
-    StringBuilder sql =
-        new StringBuilder(
-            "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_COMMENT "
-                + "FROM information_schema.TABLES t "
-                + "WHERE t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND ("
-                + namePredicate);
-    if (contains) {
-      sql.append(
-          " OR UPPER(t.TABLE_COMMENT) LIKE UPPER(?) ESCAPE '\\\\' "
-              + "OR EXISTS (SELECT 1 FROM information_schema.COLUMNS col "
-              + "WHERE col.TABLE_SCHEMA = t.TABLE_SCHEMA AND col.TABLE_NAME = t.TABLE_NAME "
-              + "AND UPPER(col.COLUMN_COMMENT) LIKE UPPER(?) ESCAPE '\\\\')");
-    }
-    sql.append(")");
-
-    try (PreparedStatement statement = connection.prepareStatement(sql.toString())) {
-      statement.setMaxRows(FIND_OBJECTS_MAX_ROWS);
-      statement.setQueryTimeout(FIND_OBJECTS_TIMEOUT_SECONDS);
-      String pattern = contains ? LikeEscape.containsPattern(name) : name;
-      int index = 1;
-      statement.setString(index++, pattern);
-      if (contains) {
-        statement.setString(index++, pattern);
-        statement.setString(index++, pattern);
-      }
+    // UPPER(...) LIKE UPPER(...) is explicit and correct regardless of collation.
+    String predicate =
+        contains ? "UPPER(TABLE_NAME) LIKE UPPER(?) ESCAPE '\\\\'" : "TABLE_NAME = ?";
+    String sql =
+        "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES "
+            + "WHERE " + predicate + " AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, contains ? LikeEscape.containsPattern(name) : name);
       try (ResultSet rs = statement.executeQuery()) {
         while (rs.next()) {
           ObjectNode object = objects.addObject();
@@ -215,72 +183,6 @@ abstract class MySqlCompatibleDialect implements DbDialect {
           object.put("name", rs.getString("TABLE_NAME"));
           String tableType = rs.getString("TABLE_TYPE");
           object.put("kind", "VIEW".equalsIgnoreCase(tableType) ? "view" : "table");
-          String tableComment = rs.getString("TABLE_COMMENT");
-          if (tableComment != null && !tableComment.isBlank()) {
-            object.put("commentSnippet", tableComment);
-          }
-        }
-      }
-    }
-  }
-
-  /**
-   * Procedures/functions/indexes/triggers matching {@code pattern} (no schema predicate — every
-   * database on the connection is searched). MySQL/MariaDB has no package/sequence/synonym/type
-   * concept, so those kinds are never emitted here.
-   */
-  private static void findOtherKindsByName(
-      Connection connection, String pattern, boolean useLike, ArrayNode objects)
-      throws SQLException {
-    String cmp = useLike ? "LIKE UPPER(?) ESCAPE '\\\\'" : "= ?";
-    appendNameFilteredObjects(
-        connection,
-        "SELECT ROUTINE_SCHEMA AS SCHEMA_NAME, ROUTINE_NAME AS NAME, "
-            + "CASE WHEN ROUTINE_TYPE = 'PROCEDURE' THEN 'procedure' ELSE 'function' END AS KIND "
-            + "FROM information_schema.ROUTINES WHERE UPPER(ROUTINE_NAME) " + cmp,
-        pattern,
-        null,
-        objects);
-    appendNameFilteredObjects(
-        connection,
-        "SELECT DISTINCT TABLE_SCHEMA AS SCHEMA_NAME, INDEX_NAME AS NAME "
-            + "FROM information_schema.STATISTICS "
-            + "WHERE INDEX_NAME IS NOT NULL AND UPPER(INDEX_NAME) " + cmp,
-        pattern,
-        "index",
-        objects);
-    appendNameFilteredObjects(
-        connection,
-        "SELECT TRIGGER_SCHEMA AS SCHEMA_NAME, TRIGGER_NAME AS NAME "
-            + "FROM information_schema.TRIGGERS WHERE UPPER(TRIGGER_NAME) " + cmp,
-        pattern,
-        "trigger",
-        objects);
-  }
-
-  /**
-   * Runs a {@code (SCHEMA_NAME, NAME[, KIND])} query filtered by one bound name pattern and
-   * appends results — {@code fixedKind} is used verbatim when given, otherwise the row's own
-   * {@code KIND} column is read (procedures/functions distinguish kind per row). {@code pattern}
-   * is uppercased before binding since every query above compares against {@code UPPER(...)}.
-   */
-  private static void appendNameFilteredObjects(
-      Connection connection, String sql, String pattern, String fixedKind, ArrayNode objects)
-      throws SQLException {
-    try (PreparedStatement statement = connection.prepareStatement(sql)) {
-      statement.setMaxRows(FIND_OBJECTS_MAX_ROWS);
-      statement.setQueryTimeout(FIND_OBJECTS_TIMEOUT_SECONDS);
-      statement.setString(1, pattern.toUpperCase(Locale.ROOT));
-      try (ResultSet rs = statement.executeQuery()) {
-        while (rs.next()) {
-          String name = rs.getString("NAME");
-          if (name == null || name.isBlank()) {
-            continue;
-          }
-          ObjectNode object = objects.addObject();
-          object.put("schemaName", rs.getString("SCHEMA_NAME"));
-          object.put("name", name);
-          object.put("kind", fixedKind != null ? fixedKind : rs.getString("KIND"));
         }
       }
     }

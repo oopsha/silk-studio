@@ -1344,86 +1344,29 @@ final class OracleDialect implements DbDialect {
         objects);
   }
 
-  /**
-   * {@code ALL_OBJECTS.OBJECT_TYPE} values this dialect surfaces via {@link #findObjectsByName}
-   * — deliberately excludes {@code PACKAGE BODY}/{@code TYPE BODY} (the header row already
-   * represents the package/type) and every other Oracle object type this app has no use for.
-   */
-  private static final String FIND_OBJECTS_TYPE_LIST =
-      "'TABLE', 'VIEW', 'PROCEDURE', 'FUNCTION', 'PACKAGE', 'TRIGGER', 'INDEX', 'SEQUENCE', "
-          + "'SYNONYM', 'TYPE'";
-
   @Override
   public void findObjectsByName(
       Connection connection, String catalog, String name, boolean contains, ArrayNode objects)
       throws SQLException {
-    // ALL_OBJECTS already spans every kind we search (unlike the other three dialects, which
-    // need a second query for non-table/view kinds) — one query, comment matching folded in via
-    // a LEFT JOIN restricted to TABLE/VIEW rows.
-    String namePredicate =
-        contains ? "UPPER(o.OBJECT_NAME) LIKE UPPER(?) ESCAPE '\\'" : "o.OBJECT_NAME = ?";
-    StringBuilder sql =
-        new StringBuilder(
-            "SELECT o.OWNER, o.OBJECT_NAME, o.OBJECT_TYPE, tc.COMMENTS AS TABLE_COMMENT "
-                + "FROM ALL_OBJECTS o "
-                + "LEFT JOIN ALL_TAB_COMMENTS tc "
-                + "  ON tc.OWNER = o.OWNER AND tc.TABLE_NAME = o.OBJECT_NAME "
-                + "  AND o.OBJECT_TYPE IN ('TABLE', 'VIEW') "
-                + "WHERE o.OBJECT_TYPE IN ("
-                + FIND_OBJECTS_TYPE_LIST
-                + ") AND ("
-                + namePredicate);
-    // Comment matching is substring-only (an exact-equality match against free-text comments is
-    // never useful) and table/view-only (procedures/etc. don't carry a comparable comment here).
-    if (contains) {
-      sql.append(
-          " OR (o.OBJECT_TYPE IN ('TABLE', 'VIEW') AND ("
-              + "UPPER(tc.COMMENTS) LIKE UPPER(?) ESCAPE '\\' "
-              + "OR EXISTS (SELECT 1 FROM ALL_COL_COMMENTS cc "
-              + "WHERE cc.OWNER = o.OWNER AND cc.TABLE_NAME = o.OBJECT_NAME "
-              + "AND UPPER(cc.COMMENTS) LIKE UPPER(?) ESCAPE '\\')))");
-    }
-    sql.append(")");
-
-    try (PreparedStatement statement = connection.prepareStatement(sql.toString())) {
-      statement.setMaxRows(FIND_OBJECTS_MAX_ROWS);
-      statement.setQueryTimeout(FIND_OBJECTS_TIMEOUT_SECONDS);
-      String pattern = contains ? LikeEscape.containsPattern(name) : name;
-      int index = 1;
-      statement.setString(index++, pattern);
-      if (contains) {
-        statement.setString(index++, pattern);
-        statement.setString(index++, pattern);
-      }
+    String predicate =
+        contains
+            ? "UPPER(OBJECT_NAME) LIKE UPPER(?) ESCAPE '\\'"
+            : "OBJECT_NAME = ?";
+    String sql =
+        "SELECT OWNER, OBJECT_NAME, OBJECT_TYPE FROM ALL_OBJECTS "
+            + "WHERE " + predicate + " AND OBJECT_TYPE IN ('TABLE', 'VIEW')";
+    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, contains ? LikeEscape.containsPattern(name) : name);
       try (ResultSet rs = statement.executeQuery()) {
         while (rs.next()) {
           ObjectNode object = objects.addObject();
           object.put("schemaName", rs.getString("OWNER"));
           object.put("name", rs.getString("OBJECT_NAME"));
-          object.put("kind", oracleFindObjectsKind(rs.getString("OBJECT_TYPE")));
-          String tableComment = rs.getString("TABLE_COMMENT");
-          if (tableComment != null && !tableComment.isBlank()) {
-            object.put("commentSnippet", tableComment);
-          }
+          object.put(
+              "kind", "VIEW".equalsIgnoreCase(rs.getString("OBJECT_TYPE")) ? "view" : "table");
         }
       }
     }
-  }
-
-  private static String oracleFindObjectsKind(String objectType) {
-    if (objectType == null) return "table";
-    return switch (objectType) {
-      case "VIEW" -> "view";
-      case "PROCEDURE" -> "procedure";
-      case "FUNCTION" -> "function";
-      case "PACKAGE" -> "package";
-      case "TRIGGER" -> "trigger";
-      case "INDEX" -> "index";
-      case "SEQUENCE" -> "sequence";
-      case "SYNONYM" -> "synonym";
-      case "TYPE" -> "type";
-      default -> "table";
-    };
   }
 
   /** Runs a single-column {@code (name) WHERE owner/schema = ?} query and appends {@code kind} objects. */
