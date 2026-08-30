@@ -814,6 +814,11 @@ export const enMessages = {
       searching: "Searching all connections…",
       noMatches: "No matches in any connection for that search.",
       resultCount: "{n} result(s)",
+      connectionsButtonAll: "All connections",
+      connectionsButtonCount: "{n} connection(s)",
+      connectionsMenuAria: "Choose which connections to search",
+      connectionsMenuAllLabel: "All connections",
+      connectionsMenuEmpty: "No connections yet.",
     },
     query: {
       runStatement: "Run Statement",

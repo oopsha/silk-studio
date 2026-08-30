@@ -626,10 +626,18 @@ pub fn run() {
         .setup(|app| {
             let paths = runtime_paths::resolve_runtime_paths(app.handle());
             app.manage(app_log::ManagedRuntimePaths(paths.clone()));
+            // jdbc-agent's own stderr (JVM crash traces, uncaught driver errors) was previously
+            // inherited straight from this process — invisible in a packaged GUI build with no
+            // console. Redirect it to its own log file so a future jdbc-agent crash leaves
+            // something to diagnose instead of just "Broken pipe" on the next request.
+            let jdbc_agent_log = app_log::app_data_logs_dir(app.handle())
+                .ok()
+                .map(|dir| dir.join("jdbc-agent.log"));
             app.manage(AppState {
                 jdbc_agent: JdbcAgentClient::new(
                     paths.agent_jar.clone(),
                     paths.java_bin.clone(),
+                    jdbc_agent_log,
                 ),
             });
             // A leftover session-manager-plugin.exe at our exact bundled path can only be an
