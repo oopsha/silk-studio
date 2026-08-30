@@ -206,21 +206,66 @@ final class PostgreSqlDialect implements DbDialect {
         objects);
   }
 
+  /**
+   * Mirrors the frontend's {@code POSTGRES_SYSTEM_SCHEMAS} ({@code systemNamespaces.ts}) — kept
+   * independently since Java can't share that TS module. Temp schemas ({@code pg_temp_NN},
+   * {@code pg_toast_temp_NN}) are handled separately via a prefix check below.
+   */
+  private static final java.util.Set<String> POSTGRES_SYSTEM_SCHEMAS =
+      java.util.Set.of("information_schema", "pg_catalog", "pg_toast");
+
+  /**
+   * Builds a {@code nspname NOT IN (...) AND nspname NOT LIKE 'pg\_temp\_%' ...} fragment
+   * excluding this dialect's system schemas — empty when {@code includeSystemObjects} is true.
+   * Filtered early (a cheap equality/prefix check) rather than after the fact, same reasoning as
+   * the Oracle equivalent: on some installs {@code pg_catalog} alone can hold thousands of rows.
+   */
+  private static String systemSchemaExclusionSql(boolean includeSystemObjects, String column) {
+    if (includeSystemObjects) {
+      return "";
+    }
+    String schemaList =
+        POSTGRES_SYSTEM_SCHEMAS.stream()
+            .map(schema -> "'" + schema + "'")
+            .collect(java.util.stream.Collectors.joining(", "));
+    return "AND " + column + " NOT IN (" + schemaList + ") "
+        + "AND " + column + " NOT LIKE 'pg\\_temp\\_%' ESCAPE '\\' "
+        + "AND " + column + " NOT LIKE 'pg\\_toast\\_temp\\_%' ESCAPE '\\' ";
+  }
+
   @Override
   public void findObjectsByName(
-      Connection connection, String catalog, String name, boolean contains, ArrayNode objects)
+      Connection connection,
+      String catalog,
+      String name,
+      boolean contains,
+      java.util.Set<String> kinds,
+      boolean includeSystemObjects,
+      ArrayNode objects)
       throws SQLException {
+    boolean anyKind = kinds == null || kinds.isEmpty();
     // ILIKE is Postgres's native case-insensitive LIKE — preferred over UPPER(...) LIKE
     // UPPER(...) here since it's available and idiomatic for this dialect.
-    findTablesAndViewsByName(connection, name, contains, objects);
+    if (anyKind || kinds.contains("table") || kinds.contains("view")) {
+      findTablesAndViewsByName(connection, name, contains, includeSystemObjects, objects);
+    }
     // Exact-match mode (AI tool) still widens kind coverage, just without comment matching.
     findOtherKindsByName(
-        connection, contains ? LikeEscape.containsPattern(name) : name, contains, objects);
+        connection,
+        contains ? LikeEscape.containsPattern(name) : name,
+        contains,
+        anyKind ? null : kinds,
+        includeSystemObjects,
+        objects);
   }
 
   /** Table/view portion of {@link #findObjectsByName}, with table/column comment matching. */
   private static void findTablesAndViewsByName(
-      Connection connection, String name, boolean contains, ArrayNode objects)
+      Connection connection,
+      String name,
+      boolean contains,
+      boolean includeSystemObjects,
+      ArrayNode objects)
       throws SQLException {
     String namePredicate = contains ? "c.relname ILIKE ? ESCAPE '\\'" : "c.relname = ?";
     StringBuilder sql =
@@ -230,7 +275,9 @@ final class PostgreSqlDialect implements DbDialect {
                 + "FROM pg_catalog.pg_class c "
                 + "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
                 + "LEFT JOIN pg_catalog.pg_description d ON d.objoid = c.oid AND d.objsubid = 0 "
-                + "WHERE c.relkind IN ('r', 'p', 'v', 'm') AND ("
+                + "WHERE c.relkind IN ('r', 'p', 'v', 'm') "
+                + systemSchemaExclusionSql(includeSystemObjects, "n.nspname")
+                + "AND ("
                 + namePredicate);
     if (contains) {
       // objsubid = 0 is the relation's own comment; objsubid > 0 is one of its columns'.
@@ -243,6 +290,7 @@ final class PostgreSqlDialect implements DbDialect {
 
     try (PreparedStatement statement = connection.prepareStatement(sql.toString())) {
       statement.setMaxRows(FIND_OBJECTS_MAX_ROWS);
+      statement.setQueryTimeout(FIND_OBJECTS_TIMEOUT_SECONDS);
       String pattern = contains ? LikeEscape.containsPattern(name) : name;
       int index = 1;
       statement.setString(index++, pattern);
@@ -272,65 +320,98 @@ final class PostgreSqlDialect implements DbDialect {
    * PostgreSQL has no package/synonym concept, so those two kinds are never emitted here.
    */
   private static void findOtherKindsByName(
-      Connection connection, String pattern, boolean useLike, ArrayNode objects)
+      Connection connection,
+      String pattern,
+      boolean useLike,
+      java.util.Set<String> kinds,
+      boolean includeSystemObjects,
+      ArrayNode objects)
       throws SQLException {
     String cmp = useLike ? "ILIKE ? ESCAPE '\\'" : "= ?";
-    appendNameFilteredObjects(
-        connection,
-        "SELECT n.nspname AS SCHEMA_NAME, p.proname AS NAME, "
-            + "CASE WHEN p.prokind = 'p' THEN 'procedure' ELSE 'function' END AS KIND "
-            + "FROM pg_catalog.pg_proc p "
-            + "JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace "
-            + "WHERE p.proname " + cmp + " "
-            + "AND n.nspname NOT IN ('pg_catalog', 'information_schema')",
-        pattern,
-        null,
-        objects);
-    appendNameFilteredObjects(
-        connection,
-        "SELECT schemaname AS SCHEMA_NAME, indexname AS NAME FROM pg_catalog.pg_indexes "
-            + "WHERE indexname " + cmp,
-        pattern,
-        "index",
-        objects);
-    appendNameFilteredObjects(
-        connection,
-        "SELECT sequence_schema AS SCHEMA_NAME, sequence_name AS NAME "
-            + "FROM information_schema.sequences WHERE sequence_name " + cmp,
-        pattern,
-        "sequence",
-        objects);
-    appendNameFilteredObjects(
-        connection,
-        "SELECT DISTINCT trigger_schema AS SCHEMA_NAME, trigger_name AS NAME "
-            + "FROM information_schema.triggers WHERE trigger_name " + cmp,
-        pattern,
-        "trigger",
-        objects);
-    appendNameFilteredObjects(
-        connection,
-        "SELECT n.nspname AS SCHEMA_NAME, t.typname AS NAME FROM pg_catalog.pg_type t "
-            + "JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace "
-            + "LEFT JOIN pg_catalog.pg_class c ON c.oid = t.typrelid "
-            + "WHERE t.typname " + cmp + " "
-            + "AND (t.typrelid = 0 OR c.relkind = 'c') "
-            + "AND NOT EXISTS ("
-            + "  SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)",
-        pattern,
-        "type",
-        objects);
+    if (kinds == null || kinds.contains("procedure") || kinds.contains("function")) {
+      appendNameFilteredObjects(
+          connection,
+          "SELECT n.nspname AS SCHEMA_NAME, p.proname AS NAME, "
+              + "CASE WHEN p.prokind = 'p' THEN 'procedure' ELSE 'function' END AS KIND "
+              + "FROM pg_catalog.pg_proc p "
+              + "JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace "
+              + "WHERE p.proname " + cmp + " "
+              + "AND n.nspname NOT IN ('pg_catalog', 'information_schema') "
+              + systemSchemaExclusionSql(includeSystemObjects, "n.nspname"),
+          pattern,
+          null,
+          kinds,
+          objects);
+    }
+    if (kinds == null || kinds.contains("index")) {
+      appendNameFilteredObjects(
+          connection,
+          "SELECT schemaname AS SCHEMA_NAME, indexname AS NAME FROM pg_catalog.pg_indexes "
+              + "WHERE indexname " + cmp + " "
+              + systemSchemaExclusionSql(includeSystemObjects, "schemaname"),
+          pattern,
+          "index",
+          kinds,
+          objects);
+    }
+    if (kinds == null || kinds.contains("sequence")) {
+      appendNameFilteredObjects(
+          connection,
+          "SELECT sequence_schema AS SCHEMA_NAME, sequence_name AS NAME "
+              + "FROM information_schema.sequences WHERE sequence_name " + cmp + " "
+              + systemSchemaExclusionSql(includeSystemObjects, "sequence_schema"),
+          pattern,
+          "sequence",
+          kinds,
+          objects);
+    }
+    if (kinds == null || kinds.contains("trigger")) {
+      appendNameFilteredObjects(
+          connection,
+          "SELECT DISTINCT trigger_schema AS SCHEMA_NAME, trigger_name AS NAME "
+              + "FROM information_schema.triggers WHERE trigger_name " + cmp + " "
+              + systemSchemaExclusionSql(includeSystemObjects, "trigger_schema"),
+          pattern,
+          "trigger",
+          kinds,
+          objects);
+    }
+    if (kinds == null || kinds.contains("type")) {
+      appendNameFilteredObjects(
+          connection,
+          "SELECT n.nspname AS SCHEMA_NAME, t.typname AS NAME FROM pg_catalog.pg_type t "
+              + "JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace "
+              + "LEFT JOIN pg_catalog.pg_class c ON c.oid = t.typrelid "
+              + "WHERE t.typname " + cmp + " "
+              + "AND (t.typrelid = 0 OR c.relkind = 'c') "
+              + systemSchemaExclusionSql(includeSystemObjects, "n.nspname")
+              + "AND NOT EXISTS ("
+              + "  SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)",
+          pattern,
+          "type",
+          kinds,
+          objects);
+    }
   }
 
   /**
    * Runs a {@code (SCHEMA_NAME, NAME[, KIND])} query filtered by one bound name pattern and
    * appends results — {@code fixedKind} is used verbatim when given, otherwise the row's own
-   * {@code KIND} column is read (procedures/functions distinguish kind per row).
+   * {@code KIND} column is read (procedures/functions distinguish kind per row, so {@code kinds}
+   * — {@code null} meaning "any" — is applied per-row there to honor a filter that selected only
+   * one of the two despite both coming from the same query).
    */
   private static void appendNameFilteredObjects(
-      Connection connection, String sql, String pattern, String fixedKind, ArrayNode objects)
+      Connection connection,
+      String sql,
+      String pattern,
+      String fixedKind,
+      java.util.Set<String> kinds,
+      ArrayNode objects)
       throws SQLException {
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
       statement.setMaxRows(FIND_OBJECTS_MAX_ROWS);
+      statement.setQueryTimeout(FIND_OBJECTS_TIMEOUT_SECONDS);
       statement.setString(1, pattern);
       try (ResultSet rs = statement.executeQuery()) {
         while (rs.next()) {
@@ -338,10 +419,14 @@ final class PostgreSqlDialect implements DbDialect {
           if (name == null || name.isBlank()) {
             continue;
           }
+          String kind = fixedKind != null ? fixedKind : rs.getString("KIND");
+          if (kinds != null && !kinds.contains(kind)) {
+            continue;
+          }
           ObjectNode object = objects.addObject();
           object.put("schemaName", rs.getString("SCHEMA_NAME"));
           object.put("name", name);
-          object.put("kind", fixedKind != null ? fixedKind : rs.getString("KIND"));
+          object.put("kind", kind);
         }
       }
     }

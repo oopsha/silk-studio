@@ -217,11 +217,21 @@ impl JdbcAgentClient {
         connection_id: &str,
         name: &str,
         contains: Option<bool>,
+        kinds: Option<Vec<String>>,
+        include_system_objects: Option<bool>,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let mut params = json!({ "connectionId": connection_id.trim(), "name": name.trim() });
         if let Some(contains) = contains {
             params["contains"] = json!(contains);
+        }
+        if let Some(kinds) = kinds {
+            if !kinds.is_empty() {
+                params["kinds"] = json!(kinds);
+            }
+        }
+        if let Some(include_system_objects) = include_system_objects {
+            params["includeSystemObjects"] = json!(include_system_objects);
         }
         self.send_request("connection.findObjectsByName", params)
     }

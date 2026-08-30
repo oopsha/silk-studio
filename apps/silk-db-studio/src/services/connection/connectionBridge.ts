@@ -24,6 +24,7 @@ import {
   type ConnectionReferencesResult,
   type ConnectionTableCommentResult,
   type ConnectionTriggersResult,
+  type MetadataObjectKind,
 } from "@silk-studio/db-protocol";
 
 export async function bridgeConnect(
@@ -130,7 +131,13 @@ export async function bridgeConnectionPrefetchCatalog(
 export async function bridgeFindObjectsByName(
   connectionId: string,
   name: string,
-  options?: { contains?: boolean },
+  options?: {
+    contains?: boolean;
+    kinds?: MetadataObjectKind[];
+    /** Default `true` (search everything) — matches the pre-filter behavior for every caller
+     *  that doesn't pass this. */
+    includeSystemObjects?: boolean;
+  },
 ): Promise<ConnectionFindObjectsByNameResult> {
   if (!isTauri()) {
     throw new Error("Database metadata is available in the desktop app only.");
@@ -141,7 +148,13 @@ export async function bridgeFindObjectsByName(
   }
   const payload = await invokeJdbcCommand<unknown>(
     "connection_find_objects_by_name",
-    { connectionId: id, name: name.trim(), contains: options?.contains ?? false },
+    {
+      connectionId: id,
+      name: name.trim(),
+      contains: options?.contains ?? false,
+      kinds: options?.kinds && options.kinds.length > 0 ? options.kinds : undefined,
+      includeSystemObjects: options?.includeSystemObjects,
+    },
     id,
   );
   if (!isConnectionFindObjectsByNameResult(payload)) {

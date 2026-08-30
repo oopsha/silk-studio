@@ -158,21 +158,64 @@ abstract class MySqlCompatibleDialect implements DbDialect {
         objects);
   }
 
+  /**
+   * Mirrors the frontend's {@code MYSQL_SYSTEM_CATALOGS} ({@code systemNamespaces.ts}) — kept
+   * independently since Java can't share that TS module. MySQL/MariaDB has no schema-within-
+   * database concept, so this is the only exclusion level needed (unlike SQL Server's separate
+   * catalog + schema sets).
+   */
+  private static final java.util.Set<String> MYSQL_SYSTEM_SCHEMAS =
+      java.util.Set.of("information_schema", "mysql", "performance_schema", "sys");
+
+  /**
+   * Builds a {@code TABLE_SCHEMA NOT IN (...)} fragment (uppercased binds, since every caller
+   * here already compares against {@code UPPER(...)}) excluding MySQL/MariaDB's system
+   * databases — empty when {@code includeSystemObjects} is true.
+   */
+  private static String systemSchemaExclusionSql(boolean includeSystemObjects, String column) {
+    if (includeSystemObjects) {
+      return "";
+    }
+    String schemaList =
+        MYSQL_SYSTEM_SCHEMAS.stream()
+            .map(schema -> "'" + schema.toUpperCase(Locale.ROOT) + "'")
+            .collect(java.util.stream.Collectors.joining(", "));
+    return "AND UPPER(" + column + ") NOT IN (" + schemaList + ") ";
+  }
+
   @Override
   public void findObjectsByName(
-      Connection connection, String catalog, String name, boolean contains, ArrayNode objects)
+      Connection connection,
+      String catalog,
+      String name,
+      boolean contains,
+      java.util.Set<String> kinds,
+      boolean includeSystemObjects,
+      ArrayNode objects)
       throws SQLException {
+    boolean anyKind = kinds == null || kinds.isEmpty();
     // No schema predicate at all — "schema" is the database name for this dialect, and the
     // whole point is finding which database(s) have this table without the caller knowing.
-    findTablesAndViewsByName(connection, name, contains, objects);
+    if (anyKind || kinds.contains("table") || kinds.contains("view")) {
+      findTablesAndViewsByName(connection, name, contains, includeSystemObjects, objects);
+    }
     // Exact-match mode (AI tool) still widens kind coverage, just without comment matching.
     findOtherKindsByName(
-        connection, contains ? LikeEscape.containsPattern(name) : name, contains, objects);
+        connection,
+        contains ? LikeEscape.containsPattern(name) : name,
+        contains,
+        anyKind ? null : kinds,
+        includeSystemObjects,
+        objects);
   }
 
   /** Table/view portion of {@link #findObjectsByName}, with table/column comment matching. */
   private static void findTablesAndViewsByName(
-      Connection connection, String name, boolean contains, ArrayNode objects)
+      Connection connection,
+      String name,
+      boolean contains,
+      boolean includeSystemObjects,
+      ArrayNode objects)
       throws SQLException {
     // information_schema.TABLES.TABLE_NAME's collation is server/version dependent (case
     // sensitivity of MySQL identifiers themselves also depends on the OS/lower_case_table_names
@@ -187,7 +230,9 @@ abstract class MySqlCompatibleDialect implements DbDialect {
         new StringBuilder(
             "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_COMMENT "
                 + "FROM information_schema.TABLES t "
-                + "WHERE t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND ("
+                + "WHERE t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') "
+                + systemSchemaExclusionSql(includeSystemObjects, "t.TABLE_SCHEMA")
+                + "AND ("
                 + namePredicate);
     if (contains) {
       sql.append(
@@ -200,6 +245,7 @@ abstract class MySqlCompatibleDialect implements DbDialect {
 
     try (PreparedStatement statement = connection.prepareStatement(sql.toString())) {
       statement.setMaxRows(FIND_OBJECTS_MAX_ROWS);
+      statement.setQueryTimeout(FIND_OBJECTS_TIMEOUT_SECONDS);
       String pattern = contains ? LikeEscape.containsPattern(name) : name;
       int index = 1;
       statement.setString(index++, pattern);
@@ -229,45 +275,70 @@ abstract class MySqlCompatibleDialect implements DbDialect {
    * concept, so those kinds are never emitted here.
    */
   private static void findOtherKindsByName(
-      Connection connection, String pattern, boolean useLike, ArrayNode objects)
+      Connection connection,
+      String pattern,
+      boolean useLike,
+      java.util.Set<String> kinds,
+      boolean includeSystemObjects,
+      ArrayNode objects)
       throws SQLException {
     String cmp = useLike ? "LIKE UPPER(?) ESCAPE '\\\\'" : "= ?";
-    appendNameFilteredObjects(
-        connection,
-        "SELECT ROUTINE_SCHEMA AS SCHEMA_NAME, ROUTINE_NAME AS NAME, "
-            + "CASE WHEN ROUTINE_TYPE = 'PROCEDURE' THEN 'procedure' ELSE 'function' END AS KIND "
-            + "FROM information_schema.ROUTINES WHERE UPPER(ROUTINE_NAME) " + cmp,
-        pattern,
-        null,
-        objects);
-    appendNameFilteredObjects(
-        connection,
-        "SELECT DISTINCT TABLE_SCHEMA AS SCHEMA_NAME, INDEX_NAME AS NAME "
-            + "FROM information_schema.STATISTICS "
-            + "WHERE INDEX_NAME IS NOT NULL AND UPPER(INDEX_NAME) " + cmp,
-        pattern,
-        "index",
-        objects);
-    appendNameFilteredObjects(
-        connection,
-        "SELECT TRIGGER_SCHEMA AS SCHEMA_NAME, TRIGGER_NAME AS NAME "
-            + "FROM information_schema.TRIGGERS WHERE UPPER(TRIGGER_NAME) " + cmp,
-        pattern,
-        "trigger",
-        objects);
+    if (kinds == null || kinds.contains("procedure") || kinds.contains("function")) {
+      appendNameFilteredObjects(
+          connection,
+          "SELECT ROUTINE_SCHEMA AS SCHEMA_NAME, ROUTINE_NAME AS NAME, "
+              + "CASE WHEN ROUTINE_TYPE = 'PROCEDURE' THEN 'procedure' ELSE 'function' END AS KIND "
+              + "FROM information_schema.ROUTINES WHERE UPPER(ROUTINE_NAME) " + cmp + " "
+              + systemSchemaExclusionSql(includeSystemObjects, "ROUTINE_SCHEMA"),
+          pattern,
+          null,
+          kinds,
+          objects);
+    }
+    if (kinds == null || kinds.contains("index")) {
+      appendNameFilteredObjects(
+          connection,
+          "SELECT DISTINCT TABLE_SCHEMA AS SCHEMA_NAME, INDEX_NAME AS NAME "
+              + "FROM information_schema.STATISTICS "
+              + "WHERE INDEX_NAME IS NOT NULL AND UPPER(INDEX_NAME) " + cmp + " "
+              + systemSchemaExclusionSql(includeSystemObjects, "TABLE_SCHEMA"),
+          pattern,
+          "index",
+          kinds,
+          objects);
+    }
+    if (kinds == null || kinds.contains("trigger")) {
+      appendNameFilteredObjects(
+          connection,
+          "SELECT TRIGGER_SCHEMA AS SCHEMA_NAME, TRIGGER_NAME AS NAME "
+              + "FROM information_schema.TRIGGERS WHERE UPPER(TRIGGER_NAME) " + cmp + " "
+              + systemSchemaExclusionSql(includeSystemObjects, "TRIGGER_SCHEMA"),
+          pattern,
+          "trigger",
+          kinds,
+          objects);
+    }
   }
 
   /**
    * Runs a {@code (SCHEMA_NAME, NAME[, KIND])} query filtered by one bound name pattern and
    * appends results — {@code fixedKind} is used verbatim when given, otherwise the row's own
-   * {@code KIND} column is read (procedures/functions distinguish kind per row). {@code pattern}
-   * is uppercased before binding since every query above compares against {@code UPPER(...)}.
+   * {@code KIND} column is read (procedures/functions distinguish kind per row, so {@code kinds}
+   * is applied per-row there to honor a filter that selected only one of the two). {@code
+   * pattern} is uppercased before binding since every query above compares against {@code
+   * UPPER(...)}.
    */
   private static void appendNameFilteredObjects(
-      Connection connection, String sql, String pattern, String fixedKind, ArrayNode objects)
+      Connection connection,
+      String sql,
+      String pattern,
+      String fixedKind,
+      java.util.Set<String> kinds,
+      ArrayNode objects)
       throws SQLException {
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
       statement.setMaxRows(FIND_OBJECTS_MAX_ROWS);
+      statement.setQueryTimeout(FIND_OBJECTS_TIMEOUT_SECONDS);
       statement.setString(1, pattern.toUpperCase(Locale.ROOT));
       try (ResultSet rs = statement.executeQuery()) {
         while (rs.next()) {
@@ -275,10 +346,14 @@ abstract class MySqlCompatibleDialect implements DbDialect {
           if (name == null || name.isBlank()) {
             continue;
           }
+          String kind = fixedKind != null ? fixedKind : rs.getString("KIND");
+          if (kinds != null && !kinds.contains(kind)) {
+            continue;
+          }
           ObjectNode object = objects.addObject();
           object.put("schemaName", rs.getString("SCHEMA_NAME"));
           object.put("name", name);
-          object.put("kind", fixedKind != null ? fixedKind : rs.getString("KIND"));
+          object.put("kind", kind);
         }
       }
     }

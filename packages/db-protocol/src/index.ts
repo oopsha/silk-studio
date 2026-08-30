@@ -167,10 +167,18 @@ export type FoundMetadataObject = {
 export type ConnectionFindObjectsByNameParams = {
   connectionId: string;
   name: string;
+  /** Restricts the search to these kinds; omitted/empty means every kind (unchanged default). */
+  kinds?: MetadataObjectKind[];
 };
 
 export type ConnectionFindObjectsByNameResult = {
   objects: FoundMetadataObject[];
+  /**
+   * True when this is a catalog-explorer dialect (SQL Server) and at least one catalog's search
+   * failed/timed out — `objects` still carries whatever every other catalog found, but may be
+   * missing rows from the one(s) that didn't finish.
+   */
+  partial?: boolean;
 };
 
 /** Column metadata for SQL autocomplete and the object editor's Columns section (`connection.columns`). */

@@ -808,6 +808,10 @@ export const koMessages = {
       searchButton: "검색",
       connecting: "{name} 연결하는 중…",
       searching: "전체 연결에서 검색하는 중…",
+      searchingCount: "{n}개 연결에서 검색하는 중…",
+      cancel: "취소",
+      partialResultsWarning:
+        "다음 연결에서 응답 시간이 초과됐거나 오류가 발생하여 결과가 누락됐을 수 있습니다: {names}",
       noMatches: "연결된 어떤 데이터베이스에서도 일치하는 항목을 찾지 못했습니다.",
       resultCount: "{n}개 결과",
       connectionsButtonAll: "전체 연결",
@@ -815,6 +819,10 @@ export const koMessages = {
       connectionsMenuAria: "검색할 연결 선택",
       connectionsMenuAllLabel: "전체 연결",
       connectionsMenuEmpty: "아직 연결이 없습니다.",
+      kindsButtonAll: "전체 종류",
+      kindsButtonCount: "{n}개 종류",
+      kindsMenuAria: "검색할 오브젝트 종류 선택",
+      kindsMenuAllLabel: "전체 선택",
     },
     query: {
       runStatement: "문 실행",

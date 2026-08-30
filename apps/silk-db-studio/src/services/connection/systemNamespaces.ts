@@ -46,6 +46,9 @@ const POSTGRES_SYSTEM_SCHEMAS = new Set([
 /**
  * Common Oracle system / built-in schemas. Not exhaustive of every optional
  * component schema, but covers the ones JDBC typically surfaces for all installs.
+ * Also includes the Oracle Cloud Autonomous Database (ADB) built-ins — `APEX_<version>` is
+ * handled separately below (via a prefix check) since the version suffix changes per
+ * provisioning.
  */
 const ORACLE_SYSTEM_SCHEMAS = new Set([
   "ANONYMOUS",
@@ -77,6 +80,17 @@ const ORACLE_SYSTEM_SCHEMAS = new Set([
   "WMSYS",
   "XDB",
   "XS$NULL",
+  // Oracle Cloud Autonomous Database built-ins.
+  "ADBSNMP",
+  "ADB_APP_STORE",
+  "APEX_PUBLIC_USER",
+  "APEX_REST_PUBLIC_USER",
+  "APEX_INSTANCE_ADMIN_USER",
+  "ORDS_METADATA",
+  "ORDS_PUBLIC_USER",
+  "DBSFWUSER",
+  "GSMROOTUSER",
+  "PDBADMIN",
 ]);
 
 export type ExplorerFilterContext = {
@@ -115,8 +129,13 @@ export function isSystemNamespace(
       // Temporary schemas: pg_temp_NN, pg_toast_temp_NN
       return lower.startsWith("pg_temp_") || lower.startsWith("pg_toast_temp_");
     }
-    case "oracle":
-      return ORACLE_SYSTEM_SCHEMAS.has(trimmed.toUpperCase());
+    case "oracle": {
+      const upper = trimmed.toUpperCase();
+      // APEX workspace/component schemas carry the install's APEX version in the name
+      // (APEX_230100, APEX_260100, ...) — a prefix check covers every version instead of an
+      // exhaustive, always-stale list of exact names.
+      return ORACLE_SYSTEM_SCHEMAS.has(upper) || upper.startsWith("APEX_");
+    }
     default:
       return false;
   }
