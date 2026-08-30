@@ -52,6 +52,10 @@ pub struct JdbcAgentClient {
     /// terminal, e.g. `pnpm tauri dev`) — see `ensure_process`.
     stderr_log: Option<PathBuf>,
     io: Mutex<Option<Arc<AgentIo>>>,
+    /// When the last spawn attempt happened (regardless of whether it then died immediately) —
+    /// guards against a *sequential* crash-loop (the shared JVM dying on every single launch, not
+    /// just a concurrent thundering herd — see `ensure_process`'s spawn cooldown).
+    last_spawn_attempt: Mutex<Option<std::time::Instant>>,
 }
 
 impl JdbcAgentClient {
@@ -65,6 +69,7 @@ impl JdbcAgentClient {
             java_bin: java_bin.into(),
             stderr_log,
             io: Mutex::new(None),
+            last_spawn_attempt: Mutex::new(None),
         }
     }
 
@@ -775,28 +780,36 @@ impl JdbcAgentClient {
     }
 
     fn ensure_process(&self) -> Result<Arc<AgentIo>, String> {
-        {
-            let mut guard = self
-                .io
+        // Held for the entire check-then-spawn sequence below, not just the liveness check —
+        // several profiles' requests can call this concurrently (`runWithConcurrency` in the
+        // Search sidebar/Ctrl+Shift+O live search fires up to 3 at once), and releasing the lock
+        // between "confirmed dead" and "installed the replacement" let every one of them spawn
+        // its own independent `java --serve` process in the same instant. That thundering herd —
+        // several copies of the same signed-but-unnotarized JVM binary launched back-to-back from
+        // one parent — is the likely trigger for the "SIGKILL (Code Signature Invalid)" crashes
+        // seen after the auto-respawn behavior was added; a single JVM launched by one request at
+        // a time never hit it. Every other caller now just blocks briefly on this same lock and
+        // gets the same `Arc` once the one spawn in flight finishes, instead of racing it.
+        let mut guard = self
+            .io
+            .lock()
+            .map_err(|_| "Failed to lock jdbc-agent process slot".to_string())?;
+        if let Some(existing) = guard.as_ref() {
+            // The shared jdbc-agent JVM can die between requests (crash, OOM, killed
+            // externally) with nothing here noticing — `try_wait()` is non-blocking and
+            // returns `Ok(None)` while the child is still running. Without this check, a
+            // stale handle would sit in `self.io` forever and every subsequent request for
+            // every connection profile would fail identically with a broken-pipe write
+            // error until the app is restarted.
+            let alive = existing
+                .child
                 .lock()
-                .map_err(|_| "Failed to lock jdbc-agent process slot".to_string())?;
-            if let Some(existing) = guard.as_ref() {
-                // The shared jdbc-agent JVM can die between requests (crash, OOM, killed
-                // externally) with nothing here noticing — `try_wait()` is non-blocking and
-                // returns `Ok(None)` while the child is still running. Without this check, a
-                // stale handle would sit in `self.io` forever and every subsequent request for
-                // every connection profile would fail identically with a broken-pipe write
-                // error until the app is restarted.
-                let alive = existing
-                    .child
-                    .lock()
-                    .map(|mut child| matches!(child.try_wait(), Ok(None)))
-                    .unwrap_or(false);
-                if alive {
-                    return Ok(Arc::clone(existing));
-                }
-                *guard = None;
+                .map(|mut child| matches!(child.try_wait(), Ok(None)))
+                .unwrap_or(false);
+            if alive {
+                return Ok(Arc::clone(existing));
             }
+            *guard = None;
         }
 
         if !self.agent_jar.exists() {
@@ -822,6 +835,30 @@ Release builds must include a bundled JRE under resources/jre (see docs/bundled-
 For local development, install JDK/JRE 17+ and ensure `java` is on PATH.",
                 self.java_bin.display()
             ));
+        }
+
+        // Cooldown: still under `guard`, so this is checked/updated by exactly one caller at a
+        // time. If the JVM dies on every single launch (not just when raced concurrently), don't
+        // keep re-launching it every time a new request happens to come in right after — that's
+        // still a rapid sequential relaunch pattern of the same binary, which is plausibly what
+        // triggers the OS-level kill in the first place (see the comment at the top of this
+        // function). Surface a clear, distinct error instead of trying again immediately.
+        {
+            let mut last_attempt = self
+                .last_spawn_attempt
+                .lock()
+                .map_err(|_| "Failed to lock jdbc-agent spawn cooldown".to_string())?;
+            if let Some(previous) = *last_attempt {
+                if previous.elapsed() < Duration::from_secs(3) {
+                    return Err(
+                        "jdbc-agent keeps exiting right after launch — waiting a moment before \
+                         trying again. If this keeps happening, check the jdbc-agent.log in the \
+                         app's log folder for the reason."
+                            .to_string(),
+                    );
+                }
+            }
+            *last_attempt = Some(std::time::Instant::now());
         }
 
         let stderr_stdio = self
@@ -926,18 +963,8 @@ For local development, install JDK/JRE 17+ and ensure `java` is on PATH.",
             reader: Mutex::new(Some(reader)),
         });
 
-        let mut guard = self
-            .io
-            .lock()
-            .map_err(|_| "Failed to lock jdbc-agent process slot".to_string())?;
-        if let Some(existing) = guard.as_ref() {
-            // Lost the startup race — discard this process and use the winner.
-            let _ = created.child.lock().map(|mut child| {
-                let _ = child.kill();
-                let _ = child.wait();
-            });
-            return Ok(Arc::clone(existing));
-        }
+        // No re-check/race here: `guard` has been held continuously since the top of this
+        // function, so nothing else could have populated `self.io` in the meantime.
         *guard = Some(Arc::clone(&created));
         Ok(created)
     }
