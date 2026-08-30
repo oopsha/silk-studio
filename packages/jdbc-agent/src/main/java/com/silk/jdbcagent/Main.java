@@ -786,6 +786,16 @@ public final class Main {
      * "find an object without knowing its schema" tool; substring mode backs the Explorer's
      * opt-in "search all connections" quick-pick action, the SQL-completion fallback item, and
      * the Search sidebar — and additionally matches table/view comments and column comments.
+     * {@code params.kinds} (optional array of lowercase kind strings) restricts which kinds are
+     * searched — omitted/empty means every kind, unchanged from before this parameter existed.
+     * {@code params.includeSystemObjects} (default {@code true}) — when {@code false}, excludes
+     * that dialect's built-in/system schemas (and, for SQL Server, system catalogs) from the
+     * search, mirroring the caller's per-profile "show system objects" Explorer toggle.
+     *
+     * <p>On a catalog-explorer dialect (SQL Server), each catalog is searched in its own call —
+     * one timing out doesn't abort the others, it's just skipped, and the result carries {@code
+     * partial: true} so the caller knows to treat {@code objects} as possibly incomplete rather
+     * than silently missing rows.
      */
     ObjectNode findObjectsByName(JsonNode params) throws SQLException {
       Session session = requireSession(params);
@@ -796,12 +806,39 @@ public final class Main {
         throw new RuntimeException("Missing params.name");
       }
       boolean contains = params.path("contains").asBoolean(false);
+      boolean includeSystemObjects = params.path("includeSystemObjects").asBoolean(true);
+      java.util.Set<String> kinds = null;
+      JsonNode kindsNode = params.path("kinds");
+      if (kindsNode.isArray() && kindsNode.size() > 0) {
+        kinds = new java.util.HashSet<>();
+        for (JsonNode kindNode : kindsNode) {
+          String kind = kindNode.asText("").trim().toLowerCase(java.util.Locale.ROOT);
+          if (!kind.isEmpty()) {
+            kinds.add(kind);
+          }
+        }
+      }
 
       ArrayNode objects = MAPPER.createArrayNode();
+      boolean partial = false;
       if (dialect.usesCatalogExplorer()) {
         for (String catalogName : dialect.listCatalogNames(connection)) {
+          if (!includeSystemObjects && dialect.isSystemCatalog(catalogName)) {
+            continue;
+          }
           ArrayNode found = MAPPER.createArrayNode();
-          dialect.findObjectsByName(connection, catalogName, name, contains, found);
+          try {
+            dialect.findObjectsByName(
+                connection, catalogName, name, contains, kinds, includeSystemObjects, found);
+          } catch (SQLException e) {
+            // One catalog timing out or otherwise failing (a multi-database instance can easily
+            // have a dozen+ catalogs, searched sequentially — one bad one shouldn't cost every
+            // other catalog's already-gathered results) is reported back as `partial: true`
+            // rather than letting the exception abort the whole call, so the caller still gets
+            // everything that *did* finish instead of nothing.
+            partial = true;
+            continue;
+          }
           for (JsonNode object : found) {
             ObjectNode tagged = objects.addObject();
             tagged.put("catalogName", catalogName);
@@ -815,11 +852,15 @@ public final class Main {
           }
         }
       } else {
-        dialect.findObjectsByName(connection, null, name, contains, objects);
+        dialect.findObjectsByName(
+            connection, null, name, contains, kinds, includeSystemObjects, objects);
       }
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("objects", objects);
+      if (partial) {
+        result.put("partial", true);
+      }
       return result;
     }
 

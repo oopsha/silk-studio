@@ -812,6 +812,10 @@ export const enMessages = {
       searchButton: "Search",
       connecting: "Connecting {name}…",
       searching: "Searching all connections…",
+      searchingCount: "Searching {n} connection(s)…",
+      cancel: "Cancel",
+      partialResultsWarning:
+        "Results may be missing from these connections — they timed out or failed: {names}",
       noMatches: "No matches in any connection for that search.",
       resultCount: "{n} result(s)",
       connectionsButtonAll: "All connections",
@@ -819,6 +823,10 @@ export const enMessages = {
       connectionsMenuAria: "Choose which connections to search",
       connectionsMenuAllLabel: "All connections",
       connectionsMenuEmpty: "No connections yet.",
+      kindsButtonAll: "All kinds",
+      kindsButtonCount: "{n} kind(s)",
+      kindsMenuAria: "Choose which object kinds to search",
+      kindsMenuAllLabel: "Select all",
     },
     query: {
       runStatement: "Run Statement",

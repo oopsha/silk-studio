@@ -34,6 +34,16 @@ interface DbDialect {
    */
   int FIND_OBJECTS_MAX_ROWS = 200;
 
+  /**
+   * Query timeout every {@link #findObjectsByName} statement applies via {@link
+   * Statement#setQueryTimeout(int)}. Without this, a substring scan across every object kind
+   * plus comment matching (see {@link #findObjectsByName}'s own doc comment) has no upper bound
+   * on a large/slow schema — the JDBC call blocks until the DB responds, which can be minutes,
+   * with the Search sidebar showing nothing but "searching..." the whole time and no way to
+   * cancel.
+   */
+  int FIND_OBJECTS_TIMEOUT_SECONDS = 20;
+
   /** Stable id surfaced in error messages; matches the frontend's {@code ConnectionDriverId}. */
   String id();
 
@@ -58,6 +68,19 @@ interface DbDialect {
    * {@code false}.
    */
   default boolean usesCatalogExplorer() {
+    return false;
+  }
+
+  /**
+   * True when {@code catalogName} is a built-in system catalog (SQL Server's {@code master},
+   * {@code model}, {@code msdb}, {@code tempdb}) that {@link #findObjectsByName} should skip
+   * when the caller asked to exclude system objects — mirrors the frontend's own {@code
+   * isSystemNamespace} (Explorer's "show system objects" toggle), kept independently here since
+   * Java can't share that TS module. Dialects without catalogs (Oracle) or that don't use this
+   * catalog-explorer mechanism (Postgres, MySQL/MariaDB) never call this, so the default is
+   * unreachable for them.
+   */
+  default boolean isSystemCatalog(String catalogName) {
     return false;
   }
 
@@ -115,12 +138,30 @@ interface DbDialect {
    * <p>Callers that need every catalog searched (SQL Server) loop {@link #listCatalogNames} and
    * call this once per catalog themselves — this method only ever looks at the one {@code
    * catalog} given.
+   *
+   * <p>{@code kinds} restricts the search to that set of lowercase kind strings (the same values
+   * {@code oracleFindObjectsKind}/equivalents emit — {@code "table"}, {@code "view"}, etc.);
+   * {@code null} or empty means no restriction (search every kind, matching the pre-filter
+   * behavior). Implementations should skip whole sub-queries/JOINs for kinds not requested —
+   * both to honor the filter and because that's the main performance win requesting a narrower
+   * set buys the caller.
+   *
+   * <p>{@code includeSystemObjects}, when {@code false}, excludes that dialect's own built-in/
+   * system schemas (Oracle's {@code SYS}/{@code APEX_*}/etc., SQL Server's {@code sys}/
+   * {@code db_*}/etc. — see each dialect's own constant) from the {@code WHERE} clause directly,
+   * rather than filtering the result afterward — on a database with large built-in schemas
+   * (Oracle Autonomous Database's APEX workspace metadata alone can be tens of thousands of
+   * rows), this is frequently the difference between finishing well inside {@link
+   * DbDialect#FIND_OBJECTS_TIMEOUT_SECONDS} and timing out. Mirrors the frontend's per-profile
+   * "show system objects" toggle (`systemNamespaces.ts`), which this is threaded from.
    */
   void findObjectsByName(
       Connection connection,
       String catalog,
       String name,
       boolean contains,
+      java.util.Set<String> kinds,
+      boolean includeSystemObjects,
       ArrayNode objects)
       throws SQLException;
 

@@ -1348,34 +1348,107 @@ final class OracleDialect implements DbDialect {
    * {@code ALL_OBJECTS.OBJECT_TYPE} values this dialect surfaces via {@link #findObjectsByName}
    * — deliberately excludes {@code PACKAGE BODY}/{@code TYPE BODY} (the header row already
    * represents the package/type) and every other Oracle object type this app has no use for.
+   * Keys match the lowercase {@code kinds} filter values callers pass in.
    */
-  private static final String FIND_OBJECTS_TYPE_LIST =
-      "'TABLE', 'VIEW', 'PROCEDURE', 'FUNCTION', 'PACKAGE', 'TRIGGER', 'INDEX', 'SEQUENCE', "
-          + "'SYNONYM', 'TYPE'";
+  private static final java.util.Map<String, String> FIND_OBJECTS_KIND_TO_TYPE =
+      java.util.Map.ofEntries(
+          java.util.Map.entry("table", "TABLE"),
+          java.util.Map.entry("view", "VIEW"),
+          java.util.Map.entry("procedure", "PROCEDURE"),
+          java.util.Map.entry("function", "FUNCTION"),
+          java.util.Map.entry("package", "PACKAGE"),
+          java.util.Map.entry("trigger", "TRIGGER"),
+          java.util.Map.entry("index", "INDEX"),
+          java.util.Map.entry("sequence", "SEQUENCE"),
+          java.util.Map.entry("synonym", "SYNONYM"),
+          java.util.Map.entry("type", "TYPE"));
+
+  /**
+   * Mirrors the frontend's {@code ORACLE_SYSTEM_SCHEMAS} ({@code systemNamespaces.ts}) — kept
+   * independently since Java can't share that TS module. {@code APEX_<version>} (the Autonomous
+   * Database APEX workspace/component schemas) is handled separately via a prefix check below,
+   * since the version suffix varies per provisioning.
+   */
+  private static final java.util.Set<String> ORACLE_SYSTEM_SCHEMAS =
+      java.util.Set.of(
+          "ANONYMOUS", "APPQOSSYS", "AUDSYS", "CTXSYS", "DBSNMP", "DIP", "DVSYS", "GGSYS",
+          "GSMADMIN_INTERNAL", "GSMCATUSER", "GSMUSER", "LBACSYS", "MDSYS", "OJVMSYS", "OLAPSYS",
+          "ORACLE_OCM", "ORDDATA", "ORDSYS", "OUTLN", "REMOTE_SCHEDULER_AGENT", "SYS", "SYSBACKUP",
+          "SYSDG", "SYSKM", "SYSRAC", "SYSTEM", "WMSYS", "XDB", "XS$NULL", "ADBSNMP",
+          "ADB_APP_STORE", "APEX_PUBLIC_USER", "APEX_REST_PUBLIC_USER",
+          "APEX_INSTANCE_ADMIN_USER", "ORDS_METADATA", "ORDS_PUBLIC_USER", "DBSFWUSER",
+          "GSMROOTUSER", "PDBADMIN");
 
   @Override
   public void findObjectsByName(
-      Connection connection, String catalog, String name, boolean contains, ArrayNode objects)
+      Connection connection,
+      String catalog,
+      String name,
+      boolean contains,
+      java.util.Set<String> kinds,
+      boolean includeSystemObjects,
+      ArrayNode objects)
       throws SQLException {
+    List<String> objectTypes = new ArrayList<>();
+    for (java.util.Map.Entry<String, String> entry : FIND_OBJECTS_KIND_TO_TYPE.entrySet()) {
+      if (kinds == null || kinds.isEmpty() || kinds.contains(entry.getKey())) {
+        objectTypes.add(entry.getValue());
+      }
+    }
+    if (objectTypes.isEmpty()) {
+      return;
+    }
+    // Comment matching only applies to TABLE/VIEW rows, so it's skipped entirely (no JOIN, no
+    // extra predicate/binds) when neither kind was requested — the main performance win a
+    // narrower kinds filter buys the caller.
+    boolean includeTableOrView = objectTypes.contains("TABLE") || objectTypes.contains("VIEW");
+    String typeInList =
+        objectTypes.stream().map(t -> "'" + t + "'").collect(java.util.stream.Collectors.joining(", "));
+
     // ALL_OBJECTS already spans every kind we search (unlike the other three dialects, which
     // need a second query for non-table/view kinds) — one query, comment matching folded in via
     // a LEFT JOIN restricted to TABLE/VIEW rows.
     String namePredicate =
         contains ? "UPPER(o.OBJECT_NAME) LIKE UPPER(?) ESCAPE '\\'" : "o.OBJECT_NAME = ?";
-    StringBuilder sql =
-        new StringBuilder(
-            "SELECT o.OWNER, o.OBJECT_NAME, o.OBJECT_TYPE, tc.COMMENTS AS TABLE_COMMENT "
-                + "FROM ALL_OBJECTS o "
-                + "LEFT JOIN ALL_TAB_COMMENTS tc "
-                + "  ON tc.OWNER = o.OWNER AND tc.TABLE_NAME = o.OBJECT_NAME "
-                + "  AND o.OBJECT_TYPE IN ('TABLE', 'VIEW') "
-                + "WHERE o.OBJECT_TYPE IN ("
-                + FIND_OBJECTS_TYPE_LIST
-                + ") AND ("
-                + namePredicate);
+    StringBuilder sql = new StringBuilder("SELECT o.OWNER, o.OBJECT_NAME, o.OBJECT_TYPE");
+    if (includeTableOrView) {
+      sql.append(", tc.COMMENTS AS TABLE_COMMENT");
+    }
+    sql.append(" FROM ALL_OBJECTS o ");
+    if (includeTableOrView) {
+      sql.append(
+          "LEFT JOIN ALL_TAB_COMMENTS tc "
+              + "  ON tc.OWNER = o.OWNER AND tc.TABLE_NAME = o.OBJECT_NAME "
+              + "  AND o.OBJECT_TYPE IN ('TABLE', 'VIEW') ");
+    }
+    sql.append("WHERE o.OBJECT_TYPE IN (" + typeInList + ") ");
+    if (!includeSystemObjects) {
+      // Filtered first, cheaply, *before* the expensive UPPER()/comment EXISTS predicates below
+      // ever run against these rows — on Oracle Autonomous Database the APEX workspace schema
+      // alone can hold tens of thousands of objects, so skipping it early is frequently the
+      // difference between finishing inside FIND_OBJECTS_TIMEOUT_SECONDS and timing out with no
+      // results at all.
+      String systemSchemaList =
+          ORACLE_SYSTEM_SCHEMAS.stream()
+              .map(schema -> "'" + schema + "'")
+              .collect(java.util.stream.Collectors.joining(", "));
+      sql.append("AND o.OWNER NOT IN (" + systemSchemaList + ") AND o.OWNER NOT LIKE 'APEX\\_%' ESCAPE '\\' ");
+      // The static list above is inherently incomplete — Oracle installs (especially cloud/ADB
+      // ones) carry many more built-in component schemas than any hand-maintained list can keep
+      // up with. ALL_USERS.ORACLE_MAINTAINED (added in 12.1.0.2, so virtually every Oracle this
+      // app connects to today has it) is Oracle's own authoritative answer to "is this schema
+      // one of mine or the vendor's" — far more exhaustive, and self-updating across versions/
+      // cloud provisioning changes. getDatabaseMajorVersion() is answered from the connection
+      // handshake the driver already cached, not a fresh round trip, so this check is free.
+      if (connection.getMetaData().getDatabaseMajorVersion() >= 12) {
+        sql.append(
+            "AND o.OWNER NOT IN (SELECT USERNAME FROM ALL_USERS WHERE ORACLE_MAINTAINED = 'Y') ");
+      }
+    }
+    sql.append("AND (" + namePredicate);
     // Comment matching is substring-only (an exact-equality match against free-text comments is
     // never useful) and table/view-only (procedures/etc. don't carry a comparable comment here).
-    if (contains) {
+    if (contains && includeTableOrView) {
       sql.append(
           " OR (o.OBJECT_TYPE IN ('TABLE', 'VIEW') AND ("
               + "UPPER(tc.COMMENTS) LIKE UPPER(?) ESCAPE '\\' "
@@ -1387,10 +1460,11 @@ final class OracleDialect implements DbDialect {
 
     try (PreparedStatement statement = connection.prepareStatement(sql.toString())) {
       statement.setMaxRows(FIND_OBJECTS_MAX_ROWS);
+      statement.setQueryTimeout(FIND_OBJECTS_TIMEOUT_SECONDS);
       String pattern = contains ? LikeEscape.containsPattern(name) : name;
       int index = 1;
       statement.setString(index++, pattern);
-      if (contains) {
+      if (contains && includeTableOrView) {
         statement.setString(index++, pattern);
         statement.setString(index++, pattern);
       }
@@ -1400,9 +1474,11 @@ final class OracleDialect implements DbDialect {
           object.put("schemaName", rs.getString("OWNER"));
           object.put("name", rs.getString("OBJECT_NAME"));
           object.put("kind", oracleFindObjectsKind(rs.getString("OBJECT_TYPE")));
-          String tableComment = rs.getString("TABLE_COMMENT");
-          if (tableComment != null && !tableComment.isBlank()) {
-            object.put("commentSnippet", tableComment);
+          if (includeTableOrView) {
+            String tableComment = rs.getString("TABLE_COMMENT");
+            if (tableComment != null && !tableComment.isBlank()) {
+              object.put("commentSnippet", tableComment);
+            }
           }
         }
       }

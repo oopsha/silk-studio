@@ -7,39 +7,47 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import type { MetadataGroupId, MetadataObjectKind } from "@silk-studio/db-protocol";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
-import type { ConnectionProfile } from "../../services/connection/connectionTypes";
-import "./SearchConnectionPicker.css";
+import { getMetadataGroupDefinition } from "../../services/connection/metadataGroups";
+import { ALL_SEARCH_KINDS } from "../../services/search/searchKindSelectionService";
+import "./SearchKindPicker.css";
+
+/** Reuses the Explorer group's own label/icon (`app.groups.*`) — same word, singular kind vs
+ *  plural group id, e.g. "table" -> "tables" ("Tables"/"테이블"). */
+const KIND_TO_GROUP_ID: Record<MetadataObjectKind, MetadataGroupId> = {
+  table: "tables",
+  view: "views",
+  procedure: "procedures",
+  function: "functions",
+  package: "packages",
+  trigger: "triggers",
+  index: "indexes",
+  sequence: "sequences",
+  synonym: "synonyms",
+  type: "types",
+};
 
 type MenuPosition = {
   top: number;
   left: number;
 };
 
-type SearchConnectionPickerProps = {
-  profiles: ConnectionProfile[];
-  /** `null` = every profile selected (see `SearchConnectionSelectionService`). */
-  selection: Set<string> | null;
+type SearchKindPickerProps = {
+  selection: Set<MetadataObjectKind>;
   anchorRef: RefObject<HTMLElement | null>;
-  onChange: (selection: Set<string> | null) => void;
+  onChange: (selection: Set<MetadataObjectKind>) => void;
   onClose: () => void;
 };
 
 /**
- * Anchored popover for narrowing the Search sidebar to specific connections — modeled on
- * `ViewsVisibilityMenu` (same portal/positioning/outside-click/Escape/blur-close mechanics), but
- * multi-select: unlike that menu, clicking a row does NOT close the popover, since picking
- * several connections is the whole point.
+ * Anchored popover for restricting the Search sidebar to specific object kinds — same portal/
+ * positioning/outside-click/Escape/blur-close mechanics as `SearchConnectionPicker`, and likewise
+ * multi-select: clicking a row doesn't close the popover.
  */
-function SearchConnectionPicker({
-  profiles,
-  selection,
-  anchorRef,
-  onChange,
-  onClose,
-}: SearchConnectionPickerProps) {
+function SearchKindPicker({ selection, anchorRef, onChange, onClose }: SearchKindPickerProps) {
   const { t } = useI18n();
   const rootRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<MenuPosition | null>(null);
@@ -105,77 +113,65 @@ function SearchConnectionPicker({
     return null;
   }
 
-  const allSelected = selection === null;
+  const allSelected = selection.size === ALL_SEARCH_KINDS.length;
 
-  function toggleProfile(id: string) {
-    // Starting from "all" (selection === null), unchecking one profile means every *other*
-    // profile stays selected — materialize the implicit full set, then remove just this one.
-    const effective = selection ?? new Set(profiles.map((profile) => profile.id));
-    const next = new Set(effective);
-    if (next.has(id)) {
-      next.delete(id);
+  function toggleKind(kind: MetadataObjectKind) {
+    const next = new Set(selection);
+    if (next.has(kind)) {
+      next.delete(kind);
     } else {
-      next.add(id);
+      next.add(kind);
     }
-    // Back to every profile selected — collapse to the `null` sentinel so newly added
-    // connections are included automatically, rather than freezing the current profile list.
-    onChange(next.size === profiles.length ? null : next);
+    onChange(next);
   }
 
-  function toggleAllProfiles() {
-    onChange(allSelected ? new Set() : null);
+  function toggleAll() {
+    onChange(allSelected ? new Set() : new Set(ALL_SEARCH_KINDS));
   }
 
   return createPortal(
     <div
       ref={rootRef}
-      className="search-connection-picker"
+      className="search-kind-picker"
       style={{ top: `${position.top}px`, left: `${position.left}px` }}
       role="menu"
-      aria-label={t("app.search.connectionsMenuAria")}
+      aria-label={t("app.search.kindsMenuAria")}
     >
       <button
         type="button"
-        className={`search-connection-picker__item${allSelected ? " search-connection-picker__item--checked" : ""}`}
+        className={`search-kind-picker__item${allSelected ? " search-kind-picker__item--checked" : ""}`}
         role="menuitemcheckbox"
         aria-checked={allSelected}
-        onClick={toggleAllProfiles}
+        onClick={toggleAll}
       >
-        <span className="search-connection-picker__check" aria-hidden>
+        <span className="search-kind-picker__check" aria-hidden>
           {allSelected ? <Codicon name="check" /> : null}
         </span>
-        <span className="search-connection-picker__label">
-          {t("app.search.connectionsMenuAllLabel")}
-        </span>
+        <span className="search-kind-picker__label">{t("app.search.kindsMenuAllLabel")}</span>
       </button>
-      <div className="search-connection-picker__separator" role="separator" />
-      {profiles.map((profile) => {
-        const checked = allSelected || (selection?.has(profile.id) ?? false);
+      <div className="search-kind-picker__separator" role="separator" />
+      {ALL_SEARCH_KINDS.map((kind) => {
+        const checked = selection.has(kind);
+        const definition = getMetadataGroupDefinition(KIND_TO_GROUP_ID[kind]);
         return (
           <button
-            key={profile.id}
+            key={kind}
             type="button"
-            className={`search-connection-picker__item${checked ? " search-connection-picker__item--checked" : ""}`}
+            className={`search-kind-picker__item${checked ? " search-kind-picker__item--checked" : ""}`}
             role="menuitemcheckbox"
             aria-checked={checked}
-            onClick={() => toggleProfile(profile.id)}
+            onClick={() => toggleKind(kind)}
           >
-            <span className="search-connection-picker__check" aria-hidden>
+            <span className="search-kind-picker__check" aria-hidden>
               {checked ? <Codicon name="check" /> : null}
             </span>
-            <span className="search-connection-picker__label">{profile.name}</span>
-            <span className="search-connection-picker__driver">{profile.driverId}</span>
+            <span className="search-kind-picker__label">{definition.title}</span>
           </button>
         );
       })}
-      {profiles.length === 0 ? (
-        <div className="search-connection-picker__empty">
-          {t("app.search.connectionsMenuEmpty")}
-        </div>
-      ) : null}
     </div>,
     document.body,
   );
 }
 
-export default SearchConnectionPicker;
+export default SearchKindPicker;

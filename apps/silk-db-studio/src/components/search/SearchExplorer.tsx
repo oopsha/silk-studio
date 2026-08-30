@@ -13,24 +13,33 @@ import { useConnectionState } from "../../services/connection/useConnectionState
 import { SearchConnectionSelectionService } from "../../services/search/searchConnectionSelectionService";
 import { useSearchConnectionSelection } from "../../services/search/useSearchConnectionSelection";
 import {
+  ALL_SEARCH_KINDS,
+  SearchKindSelectionService,
+} from "../../services/search/searchKindSelectionService";
+import { useSearchKindSelection } from "../../services/search/useSearchKindSelection";
+import {
   MIN_SEARCH_TERM_LENGTH,
   SearchSessionStateService,
 } from "../../services/search/searchSessionStateService";
 import { useSearchSessionState } from "../../services/search/useSearchSessionState";
 import SearchConnectionPicker from "./SearchConnectionPicker";
+import SearchKindPicker from "./SearchKindPicker";
 import "./SearchExplorer.css";
 
 function SearchExplorer() {
   const { t } = useI18n();
   const connection = useConnectionState(); // Re-renders while connect() flips connecting/connected state, and for the picker's live profile list.
   const selection = useSearchConnectionSelection();
+  const kindSelection = useSearchKindSelection();
   // Term/results/status/the in-flight search itself all live in SearchSessionStateService, not
   // component state — Sidebar.tsx only mounts this component while the Search tab is active, so
   // local state (or a search kicked off from a component-scoped callback) would reset/get
   // silently abandoned the moment the user switched to another sidebar tab and back mid-search.
-  const { term, results, statusMessage } = useSearchSessionState();
+  const { term, results, statusMessage, failedProfileNames } = useSearchSessionState();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [kindPickerOpen, setKindPickerOpen] = useState(false);
   const connectionsButtonRef = useRef<HTMLButtonElement>(null);
+  const kindsButtonRef = useRef<HTMLButtonElement>(null);
 
   const openResult = useCallback(async (pick: ExplorerObjectSearchPick) => {
     const ref: ExplorerObjectRef = {
@@ -126,12 +135,59 @@ function SearchExplorer() {
             onClose={() => setPickerOpen(false)}
           />
         ) : null}
+
+        <button
+          ref={kindsButtonRef}
+          type="button"
+          className="search-explorer__connections-button"
+          aria-haspopup="menu"
+          aria-expanded={kindPickerOpen}
+          onClick={() => setKindPickerOpen((open) => !open)}
+        >
+          <Codicon name="filter" />
+          <span>
+            {kindSelection.size === ALL_SEARCH_KINDS.length
+              ? t("app.search.kindsButtonAll")
+              : t("app.search.kindsButtonCount").replace(
+                  "{n}",
+                  String(kindSelection.size),
+                )}
+          </span>
+          <Codicon name="chevron-down" />
+        </button>
+        {kindPickerOpen ? (
+          <SearchKindPicker
+            selection={kindSelection}
+            anchorRef={kindsButtonRef}
+            onChange={(next) => SearchKindSelectionService.setSelection(next)}
+            onClose={() => setKindPickerOpen(false)}
+          />
+        ) : null}
       </div>
 
       {statusMessage ? (
         <div className="search-explorer__status" role="status">
           <Codicon name="loading" />
-          <span>{statusMessage}</span>
+          <span className="search-explorer__status-text">{statusMessage}</span>
+          <button
+            type="button"
+            className="search-explorer__cancel-button"
+            onClick={() => SearchSessionStateService.cancelSearch()}
+          >
+            {t("app.search.cancel")}
+          </button>
+        </div>
+      ) : null}
+
+      {!statusMessage && failedProfileNames && failedProfileNames.length > 0 ? (
+        <div className="search-explorer__warning" role="alert">
+          <Codicon name="warning" />
+          <span>
+            {t("app.search.partialResultsWarning").replace(
+              "{names}",
+              failedProfileNames.join(", "),
+            )}
+          </span>
         </div>
       ) : null}
 

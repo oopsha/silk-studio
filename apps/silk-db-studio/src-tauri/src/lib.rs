@@ -287,14 +287,20 @@ async fn connection_find_objects_by_name(
     connection_id: String,
     name: String,
     contains: Option<bool>,
+    kinds: Option<Vec<String>>,
+    include_system_objects: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<Value, String> {
     require_connection_id(&connection_id)?;
     run_blocking(move || {
         let state = app.state::<AppState>();
-        state
-            .jdbc_agent
-            .find_objects_by_name(&connection_id, &name, contains)
+        state.jdbc_agent.find_objects_by_name(
+            &connection_id,
+            &name,
+            contains,
+            kinds,
+            include_system_objects,
+        )
     })
     .await
 }
