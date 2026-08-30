@@ -200,6 +200,7 @@ abstract class MySqlCompatibleDialect implements DbDialect {
 
     try (PreparedStatement statement = connection.prepareStatement(sql.toString())) {
       statement.setMaxRows(FIND_OBJECTS_MAX_ROWS);
+      statement.setQueryTimeout(FIND_OBJECTS_TIMEOUT_SECONDS);
       String pattern = contains ? LikeEscape.containsPattern(name) : name;
       int index = 1;
       statement.setString(index++, pattern);
@@ -268,6 +269,7 @@ abstract class MySqlCompatibleDialect implements DbDialect {
       throws SQLException {
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
       statement.setMaxRows(FIND_OBJECTS_MAX_ROWS);
+      statement.setQueryTimeout(FIND_OBJECTS_TIMEOUT_SECONDS);
       statement.setString(1, pattern.toUpperCase(Locale.ROOT));
       try (ResultSet rs = statement.executeQuery()) {
         while (rs.next()) {

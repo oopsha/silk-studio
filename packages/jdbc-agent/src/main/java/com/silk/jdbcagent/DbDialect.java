@@ -34,6 +34,19 @@ interface DbDialect {
    */
   int FIND_OBJECTS_MAX_ROWS = 200;
 
+  /**
+   * Per-statement timeout every {@link #findObjectsByName} query applies via {@link
+   * Statement#setQueryTimeout(int)}. The comment-matching {@code OR}/{@code EXISTS} predicates
+   * added for substring mode routinely can't use an index (a leading-wildcard {@code LIKE} never
+   * can, and an {@code OR} across name/comment columns defeats most planners' ability to use one
+   * even for the name half), so on an instance with a large dictionary this can turn into a full
+   * scan. {@link #FIND_OBJECTS_MAX_ROWS} bounds the rows *returned*, not the work needed to find
+   * them — this bounds the work itself, so a pathological query fails fast (surfaced to the
+   * caller as a per-profile error, caught and skipped — see the frontend's live-search callers)
+   * instead of leaving the "searching…" state stuck indefinitely.
+   */
+  int FIND_OBJECTS_TIMEOUT_SECONDS = 20;
+
   /** Stable id surfaced in error messages; matches the frontend's {@code ConnectionDriverId}. */
   String id();
 
