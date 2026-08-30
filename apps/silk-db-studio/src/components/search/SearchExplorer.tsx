@@ -2,114 +2,35 @@ import { useCallback, useRef, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
-import { bridgeFindObjectsByName } from "../../services/connection/connectionBridge";
 import { ConnectionService } from "../../services/connection/connectionService";
 import {
   defaultObjectAction,
   EXPLORER_COMMANDS,
   type ExplorerObjectRef,
 } from "../../services/connection/explorerObjectActions";
-import {
-  buildLiveSearchResultPick,
-  type ExplorerObjectSearchPick,
-} from "../../services/connection/explorerSearchItems";
-import { runWithConcurrency } from "../../services/connection/explorerSearchPrefetchService";
+import type { ExplorerObjectSearchPick } from "../../services/connection/explorerSearchItems";
 import { useConnectionState } from "../../services/connection/useConnectionState";
 import { SearchConnectionSelectionService } from "../../services/search/searchConnectionSelectionService";
 import { useSearchConnectionSelection } from "../../services/search/useSearchConnectionSelection";
+import {
+  MIN_SEARCH_TERM_LENGTH,
+  SearchSessionStateService,
+} from "../../services/search/searchSessionStateService";
+import { useSearchSessionState } from "../../services/search/useSearchSessionState";
 import SearchConnectionPicker from "./SearchConnectionPicker";
 import "./SearchExplorer.css";
-
-/** Below this, a substring scan across every connection is more noise than signal. */
-const MIN_SEARCH_TERM_LENGTH = 2;
-/** Concurrency cap for per-profile live searches, once every profile is connected. */
-const SEARCH_CONCURRENCY = 3;
 
 function SearchExplorer() {
   const { t } = useI18n();
   const connection = useConnectionState(); // Re-renders while connect() flips connecting/connected state, and for the picker's live profile list.
   const selection = useSearchConnectionSelection();
-  const [term, setTerm] = useState("");
-  const [results, setResults] = useState<ExplorerObjectSearchPick[] | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  // Term/results/status/the in-flight search itself all live in SearchSessionStateService, not
+  // component state — Sidebar.tsx only mounts this component while the Search tab is active, so
+  // local state (or a search kicked off from a component-scoped callback) would reset/get
+  // silently abandoned the moment the user switched to another sidebar tab and back mid-search.
+  const { term, results, statusMessage } = useSearchSessionState();
   const [pickerOpen, setPickerOpen] = useState(false);
   const connectionsButtonRef = useRef<HTMLButtonElement>(null);
-  // Monotonic "search generation" — bumped on every new search (re-click/re-Enter) so a slow,
-  // superseded run (still connecting profiles, or still awaiting search responses) is silently
-  // abandoned instead of clobbering a newer search's results. Mirrors the same pattern in
-  // ExplorerSearchQuickPick.tsx's runLiveSearch.
-  const generationRef = useRef(0);
-
-  const runSearch = useCallback(async () => {
-    const trimmed = term.trim();
-    if (trimmed.length < MIN_SEARCH_TERM_LENGTH) return;
-
-    generationRef.current += 1;
-    const generation = generationRef.current;
-    setResults(null);
-
-    // Narrow to the picker's selection before doing anything else — `null` means every profile,
-    // matching `SearchConnectionSelectionService`'s "all" sentinel.
-    const candidateProfiles = connection.profiles.filter(
-      (profile) => selection === null || selection.has(profile.id),
-    );
-    const disconnectedProfiles = candidateProfiles.filter(
-      (profile) => !ConnectionService.isConnected(profile.id),
-    );
-
-    // Connect disconnected profiles one at a time, exactly as if the user had clicked Connect
-    // on each themselves (password prompts included) — ConnectionPasswordPromptService only
-    // holds a single pending request, so connecting several profiles concurrently would cancel
-    // all but the last prompt.
-    for (const profile of disconnectedProfiles) {
-      if (generationRef.current !== generation) return;
-      setStatusMessage(t("app.search.connecting").replace("{name}", profile.name));
-      try {
-        await ConnectionService.connect(profile.id);
-      } catch {
-        // Best-effort — a profile that fails to connect (or whose password prompt was
-        // cancelled) just doesn't contribute results, the search continues for the rest.
-      }
-    }
-
-    if (generationRef.current !== generation) return;
-
-    setStatusMessage(t("app.search.searching"));
-    const connectedProfiles = candidateProfiles.filter((profile) =>
-      ConnectionService.isConnected(profile.id),
-    );
-    const showLabels = connectedProfiles.length > 1;
-    const found: ExplorerObjectSearchPick[] = [];
-    await runWithConcurrency(connectedProfiles, SEARCH_CONCURRENCY, async (profile) => {
-      try {
-        const response = await bridgeFindObjectsByName(profile.id, trimmed, {
-          contains: true,
-        });
-        for (const object of response.objects) {
-          found.push(
-            buildLiveSearchResultPick(
-              profile.id,
-              showLabels ? profile.name : undefined,
-              object,
-            ),
-          );
-        }
-      } catch {
-        // Best-effort across connections — one profile failing/timing out shouldn't blank the
-        // search results from every other connection.
-      }
-    });
-
-    if (generationRef.current !== generation) return;
-
-    found.sort((a, b) => {
-      const byLabel = a.label.localeCompare(b.label);
-      if (byLabel !== 0) return byLabel;
-      return a.description.localeCompare(b.description);
-    });
-    setResults(found);
-    setStatusMessage(null);
-  }, [term, t, connection.profiles, selection]);
 
   const openResult = useCallback(async (pick: ExplorerObjectSearchPick) => {
     const ref: ExplorerObjectRef = {
@@ -156,11 +77,11 @@ function SearchExplorer() {
           autoComplete="off"
           placeholder={t("app.search.placeholder")}
           aria-label={t("app.search.inputAria")}
-          onChange={(event) => setTerm(event.target.value)}
+          onChange={(event) => SearchSessionStateService.setTerm(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();
-              void runSearch();
+              void SearchSessionStateService.runSearch(term);
             }
           }}
         />
@@ -170,7 +91,7 @@ function SearchExplorer() {
           title={t("app.search.searchButton")}
           aria-label={t("app.search.searchButton")}
           disabled={!canSearch}
-          onClick={() => void runSearch()}
+          onClick={() => void SearchSessionStateService.runSearch(term)}
         >
           <Codicon name="search" />
         </button>
