@@ -47,14 +47,23 @@ struct AgentIo {
 pub struct JdbcAgentClient {
     agent_jar: PathBuf,
     java_bin: PathBuf,
+    /// Where the jdbc-agent JVM's stderr (uncaught exceptions, native crash traces) is appended.
+    /// `None` falls back to inheriting this process's own stderr (visible only when run from a
+    /// terminal, e.g. `pnpm tauri dev`) — see `ensure_process`.
+    stderr_log: Option<PathBuf>,
     io: Mutex<Option<Arc<AgentIo>>>,
 }
 
 impl JdbcAgentClient {
-    pub fn new(agent_jar: impl Into<PathBuf>, java_bin: impl Into<PathBuf>) -> Self {
+    pub fn new(
+        agent_jar: impl Into<PathBuf>,
+        java_bin: impl Into<PathBuf>,
+        stderr_log: Option<PathBuf>,
+    ) -> Self {
         Self {
             agent_jar: agent_jar.into(),
             java_bin: java_bin.into(),
+            stderr_log,
             io: Mutex::new(None),
         }
     }
@@ -815,6 +824,24 @@ For local development, install JDK/JRE 17+ and ensure `java` is on PATH.",
             ));
         }
 
+        let stderr_stdio = self
+            .stderr_log
+            .as_ref()
+            .and_then(|path| {
+                use std::fs::OpenOptions;
+                use std::io::Write;
+                let mut file = OpenOptions::new().create(true).append(true).open(path).ok()?;
+                let _ = writeln!(
+                    file,
+                    "\n===== jdbc-agent spawned at {} =====",
+                    unix_timestamp_secs()
+                );
+                Some(Stdio::from(file))
+            })
+            // No log path resolved (or the file couldn't be opened) — fall back to inheriting
+            // this process's own stderr, same as before this was added.
+            .unwrap_or_else(Stdio::inherit);
+
         let mut command = Command::new(&self.java_bin);
         command
             .arg("-Dfile.encoding=UTF-8")
@@ -824,7 +851,7 @@ For local development, install JDK/JRE 17+ and ensure `java` is on PATH.",
             .arg("--serve")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit());
+            .stderr(stderr_stdio);
         #[cfg(target_os = "windows")]
         command.creation_flags(CREATE_NO_WINDOW);
         let mut child = command
@@ -993,6 +1020,13 @@ fn parse_agent_result(response: Value) -> Result<Value, String> {
     }
 
     Ok(response.get("result").cloned().unwrap_or_else(|| json!({})))
+}
+
+fn unix_timestamp_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
 }
 
 fn java_bin_usable(java_bin: &PathBuf) -> bool {

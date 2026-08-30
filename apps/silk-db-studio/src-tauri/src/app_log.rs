@@ -46,7 +46,7 @@ pub struct AppRuntimeInfo {
 /// Managed runtime paths for diagnostics / About.
 pub struct ManagedRuntimePaths(pub RuntimePaths);
 
-fn app_data_logs_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn app_data_logs_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
