@@ -118,6 +118,31 @@ export function isEditableSourceTab(uri: string | undefined): boolean {
   return resolvePlsqlSourceRef(uri) !== null;
 }
 
+/**
+ * Package DDL shell tabs (`silk://ddl/...`, kind=package) hold two independent snapshot
+ * histories — Spec and Body — that {@link resolvePlsqlSourceRef} can't represent as a single ref
+ * (see its doc comment: `PackageDdlEditorView` tracks spec/body as separate in-memory buffers,
+ * outside the single-ref/single-content model the rest of the PL/SQL save/compile/snapshot
+ * machinery assumes). The Timeline sidebar needs both refs to list a package's full snapshot
+ * history; nothing else should use this — save/compile/rollback for packages goes through
+ * `PackageDdlEditorView`'s own dedicated services instead of `resolvePlsqlSourceRef`.
+ */
+export function resolvePackageSnapshotRefs(uri: string | undefined): PlsqlEditorRef[] {
+  const ddlRef = parseDdlEditorUri(uri);
+  if (!ddlRef || ddlRef.kind !== "package") return [];
+  const base = {
+    profileId: ddlRef.profileId,
+    schemaName: ddlRef.schemaName,
+    kind: "package" as const,
+    objectName: ddlRef.objectName,
+    catalogName: ddlRef.catalogName,
+  };
+  return [
+    { ...base, packageBody: false },
+    { ...base, packageBody: true },
+  ];
+}
+
 function kindShortLabel(ref: Pick<PlsqlEditorRef, "kind" | "packageBody">): string {
   switch (ref.kind) {
     case "procedure":

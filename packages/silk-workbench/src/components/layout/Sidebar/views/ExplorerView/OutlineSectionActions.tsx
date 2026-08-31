@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import OutlineMoreMenu, {
-  type OutlineSortOrder,
-} from "../../OutlineMoreMenu/OutlineMoreMenu";
+import { OutlineViewState } from "../../../../../services/outline/outlineViewState";
+import { useOutlineViewState } from "../../../../../services/outline/useOutlineViewState";
+import OutlineMoreMenu from "../../OutlineMoreMenu/OutlineMoreMenu";
 
 type OutlineSectionActionsProps = {
   onMenuOpenChange?: (open: boolean) => void;
@@ -13,15 +13,13 @@ function OutlineSectionActions({
 }: OutlineSectionActionsProps) {
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [allCollapsed, setAllCollapsed] = useState(true);
-  const [followCursor, setFollowCursor] = useState(false);
-  const [filterOnType, setFilterOnType] = useState(true);
-  const [sortBy, setSortBy] = useState<OutlineSortOrder>("position");
+  const { followCursor, filterOnType, sortBy } = useOutlineViewState();
 
   useEffect(() => {
     onMenuOpenChange?.(menuOpen);
   }, [menuOpen, onMenuOpenChange]);
 
+  const allCollapsed = OutlineViewState.areAllCollapsed();
   const collapseExpandIcon = allCollapsed ? "expand-all" : "collapse-all";
   const collapseExpandLabel = allCollapsed ? "Expand All" : "Collapse All";
 
@@ -32,7 +30,7 @@ function OutlineSectionActions({
         className="accordion-panel__action"
         title={collapseExpandLabel}
         aria-label={collapseExpandLabel}
-        onClick={() => setAllCollapsed((value) => !value)}
+        onClick={() => OutlineViewState.toggleCollapseAll()}
       >
         <Codicon name={collapseExpandIcon} />
       </button>
@@ -55,9 +53,9 @@ function OutlineSectionActions({
           followCursor={followCursor}
           filterOnType={filterOnType}
           sortBy={sortBy}
-          onToggleFollowCursor={() => setFollowCursor((value) => !value)}
-          onToggleFilterOnType={() => setFilterOnType((value) => !value)}
-          onSelectSortBy={setSortBy}
+          onToggleFollowCursor={() => OutlineViewState.toggleFollowCursor()}
+          onToggleFilterOnType={() => OutlineViewState.toggleFilterOnType()}
+          onSelectSortBy={(sort) => OutlineViewState.setSortBy(sort)}
           onClose={() => setMenuOpen(false)}
         />
       ) : null}

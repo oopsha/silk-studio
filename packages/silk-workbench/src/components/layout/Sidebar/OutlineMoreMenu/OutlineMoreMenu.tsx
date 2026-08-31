@@ -10,8 +10,9 @@ import { createPortal } from "react-dom";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
 import "../ViewsVisibilityMenu/ViewsVisibilityMenu.css";
+import type { OutlineSortOrder } from "../../../../services/outline/outlineViewState";
 
-export type OutlineSortOrder = "position" | "name" | "category";
+export type { OutlineSortOrder };
 
 type MenuPosition = {
   top: number;
