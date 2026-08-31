@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useI18n } from "../../../platform/i18n/useI18n";
 import { useActiveView } from "../../../services/view/useActiveView";
 import ExplorerView from "./views/ExplorerView/ExplorerView";
@@ -8,6 +8,7 @@ type SidebarProps = {
   renderConnections?: () => ReactNode;
   connectionsTitle?: string;
   connectionsActions?: ReactNode;
+  connectionsHeaderContextMenu?: (event: MouseEvent) => void;
   renderHistory?: () => ReactNode;
   renderSearch?: () => ReactNode;
   renderOutline?: () => ReactNode;
@@ -18,6 +19,7 @@ function Sidebar({
   renderConnections,
   connectionsTitle,
   connectionsActions,
+  connectionsHeaderContextMenu,
   renderHistory,
   renderSearch,
   renderOutline,
@@ -34,6 +36,7 @@ function Sidebar({
             renderConnections={renderConnections}
             connectionsTitle={connectionsTitle}
             connectionsActions={connectionsActions}
+            connectionsHeaderContextMenu={connectionsHeaderContextMenu}
             renderOutline={renderOutline}
             renderTimeline={renderTimeline}
           />

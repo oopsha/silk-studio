@@ -21,6 +21,7 @@ import {
   buildCatalogMenuItems,
   buildGroupMenuItems,
   buildObjectMenuItems,
+  buildProfileMenuItems,
   buildSchemaMenuItems,
   defaultObjectAction,
   EXPLORER_COMMANDS,
@@ -39,7 +40,7 @@ import { useConnectionState } from "../../services/connection/useConnectionState
 import { useConnectionTree } from "../../services/connection/useConnectionTree";
 import type { ConnectionProfile } from "../../services/connection/connectionTypes";
 import { driverIconName, effectiveDefaultSchema } from "../../services/connection/connectionTypes";
-import ExplorerContextMenu from "./ExplorerContextMenu";
+import ContextMenu from "../common/ContextMenu";
 import {
   beginExplorerObjectPointerDrag,
   shouldSuppressExplorerObjectClick,
@@ -124,6 +125,9 @@ function ProfileTree({
   const [expanded, setExpanded] = useState<ExpandedMap>({});
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [profileMenu, setProfileMenu] = useState<{ x: number; y: number } | null>(
+    null,
+  );
   const filterActive = filter.trim().length > 0;
   /** Object keys with an open flow currently in flight — see `handleObjectAction`. */
   const pendingActionKeysRef = useRef<Set<SelectedObjectKey>>(new Set());
@@ -221,6 +225,56 @@ function ProfileTree({
       );
       onFlash(`Refreshed ${catalogName}`);
     });
+  }
+
+  /** Handles the profile row's own context menu (see `buildProfileMenuItems`) — each branch
+   *  mirrors the matching hover icon button's onClick exactly, always targeting `profile.id`
+   *  captured in this closure rather than whatever profile happens to be globally "active". */
+  async function handleProfileMenuSelect(itemId: string) {
+    switch (itemId) {
+      case "connect":
+        await run(() => ConnectionService.connect(profile.id));
+        return;
+      case "disconnect":
+        await run(() => ConnectionService.disconnect(profile.id));
+        return;
+      case "refresh":
+        await run(async () => {
+          await ConnectionTreeService.loadSchemas(profile.id, true);
+          onFlash(
+            tree.catalogs.length > 0
+              ? t("app.explorer.databasesRefreshed")
+              : t("app.explorer.schemasRefreshed"),
+          );
+        });
+        return;
+      case "edit":
+        ConnectionEditorService.openConnection(profile.id);
+        return;
+      case "duplicate":
+        await run(async () => {
+          const duplicate = await ConnectionService.duplicateProfile(profile.id);
+          ConnectionEditorService.openConnection(duplicate.id);
+        });
+        return;
+      case "delete":
+        await run(async () => {
+          const confirmed = await ConfirmDialogService.confirm({
+            title: t("common.delete"),
+            message: t("app.explorer.deleteConnectionConfirm").replace(
+              "{name}",
+              profile.name,
+            ),
+            confirmLabel: t("common.delete"),
+            danger: true,
+          });
+          if (!confirmed) return;
+          await ConnectionService.deleteProfile(profile.id);
+        });
+        return;
+      default:
+        return;
+    }
   }
 
   async function handleObjectAction(ref: ExplorerObjectRef) {
@@ -439,7 +493,14 @@ function ProfileTree({
         isActive ? " connections-explorer__profile--active" : ""
       }${isConnected ? " connections-explorer__profile--connected" : ""}`}
     >
-      <div className="connections-explorer__row" {...{ [SILK_PROFILE_ROW_ATTR]: profile.id }}>
+      <div
+        className="connections-explorer__row"
+        {...{ [SILK_PROFILE_ROW_ATTR]: profile.id }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setProfileMenu({ x: event.clientX, y: event.clientY });
+        }}
+      >
         <button
           type="button"
           className="connections-explorer__twistie"
@@ -616,6 +677,18 @@ function ProfileTree({
           </button>
         </div>
       </div>
+
+      {profileMenu ? (
+        <ContextMenu
+          anchor={{ top: profileMenu.y, left: profileMenu.x }}
+          items={buildProfileMenuItems({ isConnected })}
+          onClose={() => setProfileMenu(null)}
+          onSelect={(item) => {
+            setProfileMenu(null);
+            void handleProfileMenuSelect(item.id);
+          }}
+        />
+      ) : null}
 
       {localError || tree.errorMessage ? (
         <div className="connections-explorer__error">
@@ -1161,7 +1234,41 @@ function ConnectionsExplorer() {
         ) : null}
       </div>
 
-      <div className="connections-explorer__body">
+      <div
+        className="connections-explorer__body"
+        onContextMenu={(event) => {
+          // Only the empty background, not a row inside it — rows call preventDefault()
+          // themselves but don't stop propagation, so this still sees their bubbled event.
+          if (event.target !== event.currentTarget) return;
+          event.preventDefault();
+          setContextMenu({
+            x: event.clientX,
+            y: event.clientY,
+            items: [
+              {
+                id: "newConnection",
+                label: t("workbench.explorer.newConnection"),
+                commandId: "silk.connection.new",
+                enabled: true,
+              },
+              {
+                id: "refreshAll",
+                label: t("common.refresh"),
+                commandId: EXPLORER_COMMANDS.refresh,
+                enabled: connection.connectedProfileIds.length > 0,
+                separator: true,
+              },
+              {
+                id: "collapseAll",
+                label: t("common.collapseAll"),
+                commandId: EXPLORER_COMMANDS.collapseAll,
+                enabled: connection.connectedProfileIds.length > 0,
+              },
+            ],
+            payload: undefined,
+          });
+        }}
+      >
         {connection.profiles.length === 0 ? (
           <div className="connections-explorer__empty connections-explorer__empty--root">
             No connections yet. Use + to create one.
@@ -1198,7 +1305,7 @@ function ConnectionsExplorer() {
       </div>
 
       {contextMenu ? (
-        <ExplorerContextMenu
+        <ContextMenu
           anchor={{ top: contextMenu.y, left: contextMenu.x }}
           items={contextMenu.items}
           onClose={() => setContextMenu(null)}

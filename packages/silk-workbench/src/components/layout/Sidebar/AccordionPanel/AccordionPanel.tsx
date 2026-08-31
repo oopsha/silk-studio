@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import "./AccordionPanel.css";
 
@@ -11,6 +11,8 @@ type AccordionPanelProps = {
   variant?: "default" | "fill" | "fixed";
   className?: string;
   style?: CSSProperties;
+  /** Right-click on the header row (title/twisty) — e.g. Connections' "New Connection". */
+  onHeaderContextMenu?: (event: MouseEvent) => void;
 };
 
 function AccordionPanel({
@@ -22,6 +24,7 @@ function AccordionPanel({
   variant = "default",
   className,
   style,
+  onHeaderContextMenu,
 }: AccordionPanelProps) {
   const classes = [
     "accordion-panel",
@@ -36,7 +39,10 @@ function AccordionPanel({
 
   return (
     <section className={classes} style={style}>
-      <div className="accordion-panel__header">
+      <div
+        className="accordion-panel__header"
+        onContextMenu={onHeaderContextMenu}
+      >
         <button
           type="button"
           className="accordion-panel__toggle"
