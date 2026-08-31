@@ -205,8 +205,12 @@ export const koMessages = {
       noOpenEditors: "열린 편집기 없음",
       noConnections: "연결 없음",
       outlineEmpty: "활성 편집기에서 개요 정보를 제공할 수 없습니다.",
+      outlineFilterPlaceholder: "필터...",
+      outlineNoMatches: "일치하는 항목이 없습니다.",
       timelineEmpty:
         "로컬 기록이 편집기에서 연 파일의 변경을 추적합니다.",
+      timelineNoSnapshots: "저장된 스냅샷이 없습니다.",
+      timelinePinnedTabClosed: "고정된 객체의 탭이 닫혀 있어 열 수 없습니다.",
       newUntitled: "새 제목 없는 텍스트 파일",
       saveAll: "모두 저장",
       closeAll: "모두 닫기",

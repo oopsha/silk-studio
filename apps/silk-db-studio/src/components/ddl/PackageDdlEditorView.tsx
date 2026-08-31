@@ -8,6 +8,7 @@ import { useConfiguration } from "@silk-studio/workbench/platform/configuration/
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import type { MessageKey } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import {
   defineWorkbenchMonacoThemes,
   monacoThemeForColorTheme,
@@ -140,6 +141,18 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
       unregisterMonacoRef.current();
     };
   }, []);
+
+  // This tab's `EditorTab.content` is otherwise stuck on the "-- Loading DDL..." placeholder
+  // `openObjectDdl` seeds it with (see this component's own doc comment: spec/body are tracked
+  // as independent local buffers, never through `EditorService`'s tab-content system). Mirroring
+  // the active section's text via `setTabContentSnapshot` — which doesn't toggle dirty state —
+  // lets external consumers that read `activeTab.content` (the Outline sidebar) see real source.
+  useEffect(() => {
+    if (activeSectionId !== "spec" && activeSectionId !== "body") return;
+    const buffer = activeSectionId === "spec" ? specBuffer : bodyBuffer;
+    if (buffer.loading || !buffer.current) return;
+    EditorService.setTabContentSnapshot(tabId, buffer.current);
+  }, [tabId, activeSectionId, specBuffer, bodyBuffer]);
 
   const specDirty = specBuffer.loaded !== null && specBuffer.current !== specBuffer.loaded;
   const bodyDirty = bodyBuffer.loaded !== null && bodyBuffer.current !== bodyBuffer.loaded;

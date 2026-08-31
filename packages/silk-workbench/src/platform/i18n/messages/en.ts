@@ -207,8 +207,12 @@ export const enMessages = {
       noOpenEditors: "No open editors",
       noConnections: "No connections",
       outlineEmpty: "The active editor cannot provide outline information.",
+      outlineFilterPlaceholder: "Filter...",
+      outlineNoMatches: "No matches found.",
       timelineEmpty:
         "Local History will track changes to files opened in the editor.",
+      timelineNoSnapshots: "No snapshots yet.",
+      timelinePinnedTabClosed: "The pinned object's tab is closed and can't be opened.",
       newUntitled: "New Untitled Text File",
       saveAll: "Save All",
       closeAll: "Close All",

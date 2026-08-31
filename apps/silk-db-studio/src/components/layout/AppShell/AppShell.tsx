@@ -42,6 +42,10 @@ import PlsqlEditorView from "../../plsql/PlsqlEditorView.tsx";
 import ObjectEditorView from "../../object-editor/ObjectEditorView.tsx";
 import QueryHistoryView from "../../query-history/QueryHistoryView.tsx";
 import SearchExplorer from "../../search/SearchExplorer.tsx";
+// Outline/Timeline sidebar sections are disabled for now — see the matching comment where
+// these were wired into <Sidebar> below.
+// import OutlineView from "../../outline/OutlineView.tsx";
+// import TimelineView from "../../timeline/TimelineView.tsx";
 import { ConnectionEditorService } from "../../../services/connection/connectionEditorService.ts";
 import { isDdlEditorTab } from "../../../services/connection/ddlEditorConstants.ts";
 import { isPlsqlEditorTab } from "../../../services/connection/plsqlEditorConstants.ts";
@@ -317,6 +321,10 @@ function AppShell() {
                       renderConnections={() => <ConnectionsExplorer />}
                       renderHistory={() => <QueryHistoryView />}
                       renderSearch={() => <SearchExplorer />}
+                      // Outline/Timeline sidebar sections are disabled for now — see the
+                      // matching comment in ExplorerView.tsx's SECTION_ORDER/VIEW_MENU_DEFS.
+                      // renderOutline={() => <OutlineView />}
+                      // renderTimeline={() => <TimelineView />}
                     />
                   </div>
                   <WorkbenchSash

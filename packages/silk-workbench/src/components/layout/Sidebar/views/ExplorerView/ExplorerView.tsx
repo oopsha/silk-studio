@@ -28,6 +28,8 @@ type ExplorerViewProps = {
   renderConnections?: () => ReactNode;
   connectionsTitle?: string;
   connectionsActions?: ReactNode;
+  renderOutline?: () => ReactNode;
+  renderTimeline?: () => ReactNode;
 };
 
 type ExplorerSegment =
@@ -38,8 +40,9 @@ type ExplorerSegment =
 const SECTION_ORDER: ExplorerSectionId[] = [
   "openEditors",
   "workspace",
-  "outline",
-  "timeline",
+  // Outline/Timeline temporarily disabled — see the matching comment on VIEW_MENU_DEFS below.
+  // "outline",
+  // "timeline",
 ];
 
 const OPEN_EDITORS_ACTION_DEFS = [
@@ -75,8 +78,12 @@ const VIEW_MENU_DEFS: {
     labelKey: "workbench.sidebar.connections",
     canToggle: false,
   },
-  { id: "outline", labelKey: "workbench.sidebar.outline", canToggle: true },
-  { id: "timeline", labelKey: "workbench.sidebar.timeline", canToggle: true },
+  // Outline/Timeline sections are disabled for now — removed from SECTION_ORDER above (so they
+  // never render) and from this list (so they don't show up in the Views-and-More-Actions
+  // toggle menu either). The section-render branches in renderResizableSection() below are left
+  // in place, unreachable, to make re-enabling this a two-line uncomment.
+  // { id: "outline", labelKey: "workbench.sidebar.outline", canToggle: true },
+  // { id: "timeline", labelKey: "workbench.sidebar.timeline", canToggle: true },
 ];
 
 function buildSegments(
@@ -225,6 +232,8 @@ function ExplorerView({
   renderConnections,
   connectionsTitle,
   connectionsActions,
+  renderOutline,
+  renderTimeline,
 }: ExplorerViewProps) {
   const { t, locale } = useI18n();
   const resolvedConnectionsTitle =
@@ -354,9 +363,13 @@ function ExplorerView({
               <OutlineSectionActions onMenuOpenChange={setOutlineMenuOpen} />
             }
           >
-            <div className="accordion-panel__empty">
-              {t("workbench.sidebar.outlineEmpty")}
-            </div>
+            {renderOutline ? (
+              renderOutline()
+            ) : (
+              <div className="accordion-panel__empty">
+                {t("workbench.sidebar.outlineEmpty")}
+              </div>
+            )}
           </AccordionPanel>
         );
       case "timeline":
@@ -370,9 +383,13 @@ function ExplorerView({
               <TimelineSectionActions onMenuOpenChange={setTimelineMenuOpen} />
             }
           >
-            <div className="accordion-panel__empty">
-              {t("workbench.sidebar.timelineEmpty")}
-            </div>
+            {renderTimeline ? (
+              renderTimeline()
+            ) : (
+              <div className="accordion-panel__empty">
+                {t("workbench.sidebar.timelineEmpty")}
+              </div>
+            )}
           </AccordionPanel>
         );
       default:

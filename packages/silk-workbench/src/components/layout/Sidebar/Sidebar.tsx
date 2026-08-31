@@ -10,6 +10,8 @@ type SidebarProps = {
   connectionsActions?: ReactNode;
   renderHistory?: () => ReactNode;
   renderSearch?: () => ReactNode;
+  renderOutline?: () => ReactNode;
+  renderTimeline?: () => ReactNode;
 };
 
 function Sidebar({
@@ -18,6 +20,8 @@ function Sidebar({
   connectionsActions,
   renderHistory,
   renderSearch,
+  renderOutline,
+  renderTimeline,
 }: SidebarProps) {
   const activeViewId = useActiveView();
   const { t } = useI18n();
@@ -30,6 +34,8 @@ function Sidebar({
             renderConnections={renderConnections}
             connectionsTitle={connectionsTitle}
             connectionsActions={connectionsActions}
+            renderOutline={renderOutline}
+            renderTimeline={renderTimeline}
           />
         ) : null}
         {activeViewId === "search" ? (
