@@ -1,12 +1,11 @@
 import type { Monaco } from "@monaco-editor/react";
 
-export type WorkbenchColorThemeId = "dark-2026" | "dark-plus";
+export type WorkbenchColorThemeId = "dark" | "light";
 
-export const DARK_2026_MONACO_THEME = "dark-2026";
-export const DARK_PLUS_MONACO_THEME = "dark-plus";
+export const DARK_MONACO_THEME = "dark";
 
-export function defineDark2026MonacoTheme(monaco: Monaco) {
-  monaco.editor.defineTheme(DARK_2026_MONACO_THEME, {
+export function defineDarkMonacoTheme(monaco: Monaco) {
+  monaco.editor.defineTheme(DARK_MONACO_THEME, {
     base: "vs-dark",
     inherit: true,
     rules: [],
@@ -30,33 +29,15 @@ export function defineDark2026MonacoTheme(monaco: Monaco) {
   });
 }
 
-export function defineDarkPlusMonacoTheme(monaco: Monaco) {
-  monaco.editor.defineTheme(DARK_PLUS_MONACO_THEME, {
-    base: "vs-dark",
-    inherit: true,
-    rules: [],
-    colors: {
-      "editor.background": "#1e1e1e",
-      "editor.foreground": "#d4d4d4",
-      "editorLineNumber.foreground": "#858585",
-      "editorLineNumber.activeForeground": "#c6c6c6",
-      "editorCursor.foreground": "#aeafad",
-      "editor.selectionBackground": "#264f78",
-      "editor.lineHighlightBackground": "#2a2d2e",
-      "editorGutter.background": "#1e1e1e",
-    },
-  });
-}
-
 export function defineWorkbenchMonacoThemes(monaco: Monaco) {
-  defineDark2026MonacoTheme(monaco);
-  defineDarkPlusMonacoTheme(monaco);
+  defineDarkMonacoTheme(monaco);
 }
 
 export function monacoThemeForColorTheme(
   colorTheme: WorkbenchColorThemeId,
 ): string {
-  return colorTheme === "dark-plus"
-    ? DARK_PLUS_MONACO_THEME
-    : DARK_2026_MONACO_THEME;
+  // No light-mode Monaco theme defined yet (see colorThemes.ts) — falls back to
+  // dark until that work lands.
+  void colorTheme;
+  return DARK_MONACO_THEME;
 }

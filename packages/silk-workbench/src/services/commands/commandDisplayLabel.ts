@@ -22,21 +22,10 @@ export const COMMAND_ENGLISH_TITLES: Readonly<Record<string, string>> = {
   "workbench.action.configureEditors": "Configure Editors",
   "workbench.action.quickOpen": "Search",
   "workbench.action.selectTheme": "Color Theme",
-  "workbench.action.selectIconTheme": "File Icon Theme",
-  "workbench.action.selectProductIconTheme": "Product Icon Theme",
-  "workbench.action.openSnippets": "Snippets",
-  "workbench.action.tasks.manage": "Tasks",
   "workbench.userData.actions.manageSettings": "Backup and Sync Settings...",
-  "workbench.profiles.actions.createTemporaryProfile":
-    "Create Temporary Profile...",
-  "workbench.profiles.actions.switchProfile": "Switch Profile...",
-  "workbench.userDataSync.actions.turnOn": "Turn on Cloud Changes...",
-  "workbench.remoteTunnel.actions.turnOn": "Turn on Remote Tunnel Access...",
-  "workbench.extensions.actions.manageAccountPreferences":
-    "Manage Extension Account Preferences...",
-  "workbench.accounts.actions.manageLanguageModelAccess":
-    "Manage Language Model Access...",
-  "workbench.accounts.actions.signIn": "Sign in to Sync Settings",
+  "silk.account.signIn": "Sign In...",
+  "silk.account.editProfile": "Edit Profile...",
+  "silk.account.signOut": "Sign Out",
   "workbench.view.extensions": "Extensions",
   "update.check": "Check for Updates...",
   "silk.file.closeAll": "Close All",
@@ -59,6 +48,12 @@ export const COMMAND_ENGLISH_TITLES: Readonly<Record<string, string>> = {
   "silk.explorer.refresh": "Refresh Connections Explorer",
   "silk.explorer.collapseAll": "Collapse Connections Explorer",
   "silk.explorer.searchObjects": "Search Database Objects...",
+  "silk.settings.export": "Export Settings...",
+  "silk.settings.import": "Import Settings...",
+  "workbench.action.reloadWindow": "Reload Window",
+  "editor.action.toggleMinimap": "Toggle Minimap",
+  "editor.action.toggleStickyScroll": "Toggle Sticky Scroll",
+  "editor.action.toggleWordWrap": "Toggle Word Wrap",
 };
 
 export function fallbackLabelFromCommandId(commandId: string): string {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useRef, useState } from "react";
 import { Editor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
@@ -11,7 +11,7 @@ import { AppNotificationService } from "@silk-studio/workbench/services/notifica
 import {
   defineWorkbenchMonacoThemes,
   monacoThemeForColorTheme,
-} from "@silk-studio/editor/themes/dark2026-monaco.ts";
+} from "@silk-studio/editor/themes/dark-monaco.ts";
 import type { DdlEditorRef } from "../../services/connection/ddlEditorConstants";
 import { bridgeFetchObjectDdl } from "../../services/connection/connectionDdlBridge";
 import { bridgeCompileObject } from "../../services/connection/connectionCompileBridge";

@@ -79,6 +79,12 @@
   cursor: pointer;
 }
 
+.quick-input-list-row--action {
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--color-menu-separator);
+}
+
 .quick-input-list-row--focused {
   background-color: var(--color-quick-input-list-focus-background);
   color: var(--color-quick-input-list-focus-foreground);
@@ -95,6 +101,11 @@
   min-height: 22px;
   padding: 0 6px;
   overflow: hidden;
+}
+
+.quick-input-list-entry .command-palette__keybinding {
+  margin-left: auto;
+  padding-left: 12px;
 }
 
 .quick-input-list-icon {

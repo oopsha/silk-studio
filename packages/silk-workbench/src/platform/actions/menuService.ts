@@ -158,6 +158,18 @@ class MenuServiceImpl {
         return "canDisconnect";
       case "silk.connection.disconnectAll":
         return "hasConnectedProfiles";
+      case "silk.connection.edit":
+      case "silk.connection.duplicate":
+      case "silk.connection.delete":
+        return "hasActiveConnectionProfile";
+      // Same condition as Disconnect: an active profile that's currently connected.
+      case "silk.connection.refreshSchema":
+        return "canDisconnect";
+      case "silk.connection.exportAll":
+        return "hasConnectionProfiles";
+      case "silk.ai.exportCallLog":
+      case "silk.ai.clearCallLog":
+        return "hasAiCallLogEntries";
       // Run menu — Silk-specific, no VS Code equivalent. Judgment calls, kept consistent
       // with the positive-existence style used for Save/Find above (default disabled
       // absent evidence of a target to act on).
@@ -193,6 +205,7 @@ class MenuServiceImpl {
       // editor focus or an open editor.
       case "silk.edit.find":
       case "silk.edit.replace":
+      case "workbench.action.gotoLine":
         return "activeEditorAvailable";
       // VS Code (comment.ts, formatActions.ts, linesOperations.ts) gates comment toggles,
       // Format Document/Selection, and the line-mutating Selection commands (copy/move

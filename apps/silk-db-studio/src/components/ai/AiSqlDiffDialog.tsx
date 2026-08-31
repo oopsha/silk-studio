@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { DiffEditor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
@@ -9,7 +9,7 @@ import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import {
   defineWorkbenchMonacoThemes,
   monacoThemeForColorTheme,
-} from "@silk-studio/editor/themes/dark2026-monaco.ts";
+} from "@silk-studio/editor/themes/dark-monaco.ts";
 import { AiSqlDiffDialogService } from "../../services/ai/aiSqlDiffDialogService";
 import { registerSqlLanguages } from "../../services/sql/registerSqlLanguages";
 import "../connections/ExplorerObjectMutationDialog.css";

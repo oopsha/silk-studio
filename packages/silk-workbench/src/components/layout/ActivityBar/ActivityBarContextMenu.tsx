@@ -181,7 +181,7 @@ function ActivityBarContextMenu({
     [onClose],
   );
 
-  function renderCommandItem(action: ResolvedMenuAction) {
+  function renderCommandItem(action: ResolvedMenuAction, insideSubmenu = false) {
     const isFocused = focusedItemId === action.id;
 
     return (
@@ -192,7 +192,12 @@ function ActivityBarContextMenu({
         role="menuitem"
         disabled={!action.enabled}
         onMouseEnter={() => {
-          setActiveSubmenuId(null);
+          // Only a *top-level* item hover should close whatever submenu is open — this
+          // same renderer also draws the items *inside* an open submenu (via renderGroups
+          // below), and closing on hover there would close the submenu those items live in.
+          if (!insideSubmenu) {
+            setActiveSubmenuId(null);
+          }
           setFocusedItemId(action.id);
         }}
         onClick={() => {
@@ -242,14 +247,14 @@ function ActivityBarContextMenu({
             ref={submenuRef}
             className={`activity-bar-context-menu__submenu${submenuFlipUp ? " activity-bar-context-menu__submenu--flip-up" : ""}`}
           >
-            {renderGroups(submenuGroups)}
+            {renderGroups(submenuGroups, true)}
           </div>
         ) : null}
       </div>
     );
   }
 
-  function renderGroups(menuGroups: ResolvedMenuGroup[]) {
+  function renderGroups(menuGroups: ResolvedMenuGroup[], insideSubmenu = false) {
     return menuGroups.map((group, groupIndex) => {
       const items = sortGroupItems(group.items);
 
@@ -261,7 +266,7 @@ function ActivityBarContextMenu({
           {items.map((item) =>
             item.type === "submenu"
               ? renderSubmenuItem(item)
-              : renderCommandItem(item),
+              : renderCommandItem(item, insideSubmenu),
           )}
         </div>
       );
@@ -284,10 +289,6 @@ function ActivityBarContextMenu({
       }
       role="menu"
       aria-hidden={!isPositioned}
-      onMouseLeave={() => {
-        setActiveSubmenuId(null);
-        setFocusedItemId(null);
-      }}
     >
       {renderGroups(groups)}
     </div>,

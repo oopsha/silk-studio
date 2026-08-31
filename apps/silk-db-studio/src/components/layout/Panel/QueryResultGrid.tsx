@@ -79,7 +79,7 @@ const GRID_THEME_PALETTES: Record<
     inputBackgroundColor: string;
   }
 > = {
-  "dark-2026": {
+  dark: {
     backgroundColor: "#191a1b",
     headerBackgroundColor: "#202122",
     oddRowBackgroundColor: "#1e1f20",
@@ -87,13 +87,15 @@ const GRID_THEME_PALETTES: Record<
     borderColor: "#2a2b2c",
     inputBackgroundColor: "#121314",
   },
-  "dark-plus": {
-    backgroundColor: "#1e1e1e",
-    headerBackgroundColor: "#252526",
-    oddRowBackgroundColor: "#2a2d2e",
-    rowHoverColor: "#2a2d2e",
-    borderColor: "#3c3c3c",
-    inputBackgroundColor: "#3c3c3c",
+  // No light-mode grid palette defined yet (see colorThemes.ts) — reuses dark until
+  // that work lands.
+  light: {
+    backgroundColor: "#191a1b",
+    headerBackgroundColor: "#202122",
+    oddRowBackgroundColor: "#1e1f20",
+    rowHoverColor: "#242526",
+    borderColor: "#2a2b2c",
+    inputBackgroundColor: "#121314",
   },
 };
 

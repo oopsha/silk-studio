@@ -10,6 +10,8 @@ import { createPortal } from "react-dom";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
 import { EditorService } from "../../../services/editor/editorServiceFacade";
+import { EditorGroupsService } from "../../../services/editor/editorGroupsService";
+import type { EditorGroupId } from "../../../services/editor/editorGroupTypes";
 import { useEnablePreviewEditors } from "../../../services/editor/useEnablePreviewEditors";
 import type { TabBarCommandAdapter, TabBarLabels } from "./TabBar";
 import "./TabBarMenu.css";
@@ -21,6 +23,7 @@ type MenuPosition = {
 
 type TabBarMoreMenuProps = {
   anchorRef: RefObject<HTMLElement | null>;
+  groupId: EditorGroupId;
   commands: TabBarCommandAdapter;
   labels: TabBarLabels;
   onClose: () => void;
@@ -29,6 +32,7 @@ type TabBarMoreMenuProps = {
 
 function TabBarMoreMenu({
   anchorRef,
+  groupId,
   commands,
   labels,
   onClose,
@@ -37,6 +41,16 @@ function TabBarMoreMenu({
   const rootRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<MenuPosition | null>(null);
   const enablePreviewEditors = useEnablePreviewEditors();
+  const [locked, setLocked] = useState(() =>
+    EditorGroupsService.isGroupLocked(groupId),
+  );
+
+  useEffect(() => {
+    setLocked(EditorGroupsService.isGroupLocked(groupId));
+    return EditorGroupsService.onDidChangeAnyGroup(() => {
+      setLocked(EditorGroupsService.isGroupLocked(groupId));
+    });
+  }, [groupId]);
 
   const updatePosition = useCallback(() => {
     const anchor = anchorRef.current;
@@ -184,7 +198,25 @@ function TabBarMoreMenu({
 
       <div className="tab-bar-menu__separator" role="separator" />
 
-      {renderCommandItem("lock-group", labels.lockGroup, "workbench.action.lockEditorGroup")}
+      <button
+        type="button"
+        className={`tab-bar-menu__item${locked ? " tab-bar-menu__item--checked" : ""}`}
+        role="menuitemcheckbox"
+        aria-checked={locked}
+        onClick={() => {
+          onClose();
+          EditorGroupsService.setFocusedGroup(groupId);
+          EditorGroupsService.toggleGroupLock(groupId);
+        }}
+      >
+        {renderCheckGutter(locked)}
+        <span className="tab-bar-menu__label">{labels.lockGroup}</span>
+        {commands.lookupKeybinding("workbench.action.lockEditorGroup") ? (
+          <span className="tab-bar-menu__keybinding">
+            {commands.lookupKeybinding("workbench.action.lockEditorGroup")}
+          </span>
+        ) : null}
+      </button>
 
       <div className="tab-bar-menu__separator" role="separator" />
 

@@ -15,8 +15,6 @@ import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEd
 import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import type { EditorTab } from "@silk-studio/editor/services/editor/editorTypes.ts";
 
-export const FILTER_PREFIX = "edt active ";
-
 export type OpenEditorsQuickPickTab = EditorTab & { groupId: EditorGroupId };
 
 type OpenEditorsQuickPickContextValue = {
@@ -51,14 +49,7 @@ function filterTabs(
   tabs: readonly OpenEditorsQuickPickTab[],
   query: string,
 ): OpenEditorsQuickPickTab[] {
-  const normalized = query.toLowerCase();
-  const prefix = FILTER_PREFIX.toLowerCase();
-
-  let search = normalized;
-  if (normalized.startsWith(prefix)) {
-    search = normalized.slice(prefix.length).trim();
-  }
-
+  const search = query.trim().toLowerCase();
   if (!search) {
     return [...tabs];
   }
@@ -68,7 +59,7 @@ function filterTabs(
 
 export function OpenEditorsQuickPickProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  const [filter, setFilter] = useState(FILTER_PREFIX);
+  const [filter, setFilter] = useState("");
   const [focusedIndex, setFocusedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -87,7 +78,7 @@ export function OpenEditorsQuickPickProvider({ children }: { children: ReactNode
 
   const close = useCallback(() => {
     setOpen(false);
-    setFilter(FILTER_PREFIX);
+    setFilter("");
   }, []);
 
   const selectTab = useCallback(
@@ -101,7 +92,7 @@ export function OpenEditorsQuickPickProvider({ children }: { children: ReactNode
 
   useEffect(() => {
     return TabBarActionService.onRequestShowOpenEditors(() => {
-      setFilter(FILTER_PREFIX);
+      setFilter("");
       setOpen(true);
     });
   }, []);
@@ -111,7 +102,6 @@ export function OpenEditorsQuickPickProvider({ children }: { children: ReactNode
 
     const frameId = requestAnimationFrame(() => {
       inputRef.current?.focus();
-      inputRef.current?.setSelectionRange(FILTER_PREFIX.length, FILTER_PREFIX.length);
     });
 
     return () => cancelAnimationFrame(frameId);

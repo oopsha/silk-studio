@@ -17,6 +17,7 @@ import "./workbench/contributions/queryResultActions.contribution";
 import "./workbench/contributions/connectionTarget.contribution";
 import "./workbench/contributions/connectionTransaction.contribution";
 import "./workbench/contributions/connectionActions.contribution";
+import "./workbench/contributions/settingsImportExport.contribution";
 import "./workbench/contributions/explorerObjectActions.contribution";
 import "./workbench/contributions/explorerSearchPrefetch.contribution";
 import "./workbench/contributions/goToDefinition.contribution";

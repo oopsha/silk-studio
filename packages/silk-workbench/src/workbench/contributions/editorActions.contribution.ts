@@ -121,7 +121,7 @@ CommandsRegistry.registerCommand("workbench.action.togglePreviewEditors", () => 
 });
 
 CommandsRegistry.registerCommand("workbench.action.lockEditorGroup", () => {
-  console.log("[command] workbench.action.lockEditorGroup");
+  EditorGroupsService.toggleGroupLock(EditorGroupsService.getFocusedGroupId());
 });
 
 CommandsRegistry.registerCommand("workbench.action.splitEditorRight", () => {

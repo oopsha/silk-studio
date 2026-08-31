@@ -2,6 +2,8 @@ import { MenuId } from "../../platform/actions/menuId";
 import { MenuRegistry } from "../../platform/actions/menuRegistry";
 import { CommandsRegistry } from "../../platform/commands/commandRegistry";
 import { KeybindingsRegistry } from "../../platform/keybinding/keybindingRegistry";
+import { ConfigurationService } from "../../platform/configuration/configurationService";
+import { COLOR_THEMES } from "../../platform/configuration/colorThemes";
 
 function registerStubCommand(id: string): void {
   CommandsRegistry.registerCommand(id, () => {
@@ -11,22 +13,14 @@ function registerStubCommand(id: string): void {
 
 const MANAGE_COMMANDS = [
   "workbench.view.extensions",
-  "workbench.action.openSnippets",
-  "workbench.action.tasks.manage",
   "workbench.userData.actions.manageSettings",
-  "workbench.profiles.actions.createTemporaryProfile",
-  "workbench.profiles.actions.switchProfile",
-  "workbench.action.selectIconTheme",
-  "workbench.action.selectProductIconTheme",
 ] as const;
 
 const ACCOUNT_COMMANDS = [
   "workbench.userData.actions.manageSettings",
-  "workbench.userDataSync.actions.turnOn",
-  "workbench.remoteTunnel.actions.turnOn",
-  "workbench.extensions.actions.manageAccountPreferences",
-  "workbench.accounts.actions.manageLanguageModelAccess",
-  "workbench.accounts.actions.signIn",
+  "silk.account.signIn",
+  "silk.account.editProfile",
+  "silk.account.signOut",
 ] as const;
 
 for (const id of [...MANAGE_COMMANDS, ...ACCOUNT_COMMANDS]) {
@@ -56,10 +50,12 @@ MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
 });
 
 MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
-  submenu: MenuId.GlobalActivityProfilesSubmenu,
-  title: "Profiles",
-  group: "2_configuration",
-  order: 1,
+  command: {
+    id: "silk.explorer.searchObjects",
+    title: "Search Database Objects...",
+  },
+  group: "1_command",
+  order: 2,
 });
 
 MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
@@ -68,7 +64,7 @@ MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
     title: "Settings",
   },
   group: "2_configuration",
-  order: 2,
+  order: 1,
 });
 
 MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
@@ -77,7 +73,7 @@ MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
     title: "Extensions",
   },
   group: "2_configuration",
-  order: 3,
+  order: 2,
 });
 
 MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
@@ -86,32 +82,31 @@ MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
     title: "Keyboard Shortcuts",
   },
   group: "2_configuration",
-  order: 4,
-});
-
-MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
-  command: {
-    id: "workbench.action.openSnippets",
-    title: "Snippets",
-  },
-  group: "2_configuration",
-  order: 5,
-});
-
-MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
-  command: {
-    id: "workbench.action.tasks.manage",
-    title: "Tasks",
-  },
-  group: "2_configuration",
-  order: 6,
+  order: 3,
 });
 
 MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
   submenu: MenuId.GlobalActivityThemesSubmenu,
   title: "Themes",
   group: "2_configuration",
-  order: 7,
+  order: 4,
+});
+
+COLOR_THEMES.forEach((theme, index) => {
+  const commandId = `silk.appearance.selectTheme.${theme.id}`;
+
+  CommandsRegistry.registerCommand(commandId, () => {
+    ConfigurationService.updateValue("workbench.colorTheme", theme.id);
+  });
+
+  MenuRegistry.appendMenuItem(MenuId.GlobalActivityThemesSubmenu, {
+    command: {
+      id: commandId,
+      title: theme.label,
+    },
+    group: "1_themes",
+    order: index + 1,
+  });
 });
 
 MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
@@ -132,56 +127,31 @@ MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
   order: 1,
 });
 
-MenuRegistry.appendMenuItem(MenuId.GlobalActivityProfilesSubmenu, {
+MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
   command: {
-    id: "workbench.profiles.actions.createTemporaryProfile",
-    title: "Create Temporary Profile...",
+    id: "silk.account.signIn",
+    title: "Sign In...",
   },
-  group: "1_profiles",
+  group: "1_account",
   order: 1,
-});
-
-MenuRegistry.appendMenuItem(MenuId.GlobalActivityProfilesSubmenu, {
-  command: {
-    id: "workbench.profiles.actions.switchProfile",
-    title: "Switch Profile...",
-  },
-  group: "1_profiles",
-  order: 2,
-});
-
-MenuRegistry.appendMenuItem(MenuId.GlobalActivityThemesSubmenu, {
-  command: {
-    id: "workbench.action.selectTheme",
-    title: "Color Theme",
-  },
-  group: "1_themes",
-  order: 1,
-});
-
-MenuRegistry.appendMenuItem(MenuId.GlobalActivityThemesSubmenu, {
-  command: {
-    id: "workbench.action.selectIconTheme",
-    title: "File Icon Theme",
-  },
-  group: "1_themes",
-  order: 2,
-});
-
-MenuRegistry.appendMenuItem(MenuId.GlobalActivityThemesSubmenu, {
-  command: {
-    id: "workbench.action.selectProductIconTheme",
-    title: "Product Icon Theme",
-  },
-  group: "1_themes",
-  order: 3,
 });
 
 MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
-  submenu: MenuId.AccountsProviderSubmenu,
-  title: "oopsha (GitHub)",
-  group: "1_accounts",
-  order: 1,
+  command: {
+    id: "silk.account.editProfile",
+    title: "Edit Profile...",
+  },
+  group: "1_account",
+  order: 2,
+});
+
+MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
+  command: {
+    id: "silk.account.signOut",
+    title: "Sign Out",
+  },
+  group: "1_account",
+  order: 3,
 });
 
 MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
@@ -190,50 +160,5 @@ MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
     title: "Backup and Sync Settings...",
   },
   group: "2_settings",
-  order: 1,
-});
-
-MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
-  command: {
-    id: "workbench.userDataSync.actions.turnOn",
-    title: "Turn on Cloud Changes...",
-  },
-  group: "2_settings",
-  order: 2,
-});
-
-MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
-  command: {
-    id: "workbench.remoteTunnel.actions.turnOn",
-    title: "Turn on Remote Tunnel Access...",
-  },
-  group: "2_settings",
-  order: 3,
-});
-
-MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
-  command: {
-    id: "workbench.extensions.actions.manageAccountPreferences",
-    title: "Manage Extension Account Preferences...",
-  },
-  group: "2_settings",
-  order: 4,
-});
-
-MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
-  command: {
-    id: "workbench.accounts.actions.manageLanguageModelAccess",
-    title: "Manage Language Model Access...",
-  },
-  group: "2_settings",
-  order: 5,
-});
-
-MenuRegistry.appendMenuItem(MenuId.AccountsProviderSubmenu, {
-  command: {
-    id: "workbench.accounts.actions.signIn",
-    title: "Sign in to Sync Settings",
-  },
-  group: "1_account",
   order: 1,
 });

@@ -7,6 +7,7 @@ import type {
   LineNumbersMode,
   WordWrapMode,
 } from "../../platform/configuration/configurationDefaults";
+import { COLOR_THEMES } from "../../platform/configuration/colorThemes";
 import { useConfiguration } from "../../platform/configuration/useConfiguration";
 import { useI18n } from "../../platform/i18n/useI18n";
 import type { LocaleId } from "../../platform/i18n/locale";
@@ -106,8 +107,11 @@ function AppearanceSettings() {
             )
           }
         >
-          <option value="dark-2026">Dark 2026</option>
-          <option value="dark-plus">Dark+</option>
+          {COLOR_THEMES.map((theme) => (
+            <option key={theme.id} value={theme.id}>
+              {theme.label}
+            </option>
+          ))}
         </select>
       </SettingRow>
       <SettingRow

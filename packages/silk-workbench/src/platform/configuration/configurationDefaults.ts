@@ -1,4 +1,4 @@
-export type ColorThemeId = "dark-2026" | "dark-plus";
+export type ColorThemeId = "dark" | "light";
 export type LineNumbersMode = "on" | "off" | "relative";
 export type WordWrapMode = "off" | "on";
 export type AiProviderId = "gemini" | "openai" | "anthropic" | "custom";
@@ -77,7 +77,7 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "window.commandCenter": true,
   "workbench.navigationControl.enabled": true,
   "workbench.layoutControl.enabled": true,
-  "workbench.colorTheme": "dark-2026",
+  "workbench.colorTheme": "dark",
   "workbench.fontSize": 13,
   "workbench.locale": "en",
   "editor.fontSize": 14,
