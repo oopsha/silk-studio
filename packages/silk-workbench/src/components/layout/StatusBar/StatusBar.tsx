@@ -17,7 +17,6 @@ function StatusBar({ leftExtra, rightExtra }: StatusBarProps) {
   const activeTab = useActiveEditor();
   const cursorPosition = useEditorCursorPosition();
 
-  const branch = `main${activeTab?.isDirty ? "*" : ""}`;
   const progressMessage: string | null = null;
 
   return (
@@ -27,18 +26,6 @@ function StatusBar({ leftExtra, rightExtra }: StatusBarProps) {
       aria-label={t("workbench.statusBar.ariaLabel")}
     >
       <div className="status-bar__left">
-        <button type="button" className="status-bar__item">
-          <Codicon name="source-control" />
-          <span>{branch}</span>
-        </button>
-
-        <button type="button" className="status-bar__item">
-          <Codicon name="error" />
-          <span>0</span>
-          <Codicon name="warning" />
-          <span>0</span>
-        </button>
-
         {progressMessage ? (
           <button type="button" className="status-bar__item">
             <Codicon name="loading" />
@@ -77,9 +64,6 @@ function StatusBar({ leftExtra, rightExtra }: StatusBarProps) {
         </button>
 
         <div className="status-bar__icons">
-          <button type="button" className="status-bar__icon-button">
-            <Codicon name="account" />
-          </button>
           <button type="button" className="status-bar__icon-button">
             <Codicon name="bell" />
           </button>
