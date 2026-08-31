@@ -243,9 +243,22 @@ function OpenEditorsGroupSection({
               <Codicon name={codiconForLanguage(tab.languageId)} />
             </span>
             <span className="open-editors-list__label">{tab.label}</span>
-            {tab.isDirty ? (
-              <span className="open-editors-list__dirty" aria-hidden />
-            ) : null}
+            <span className="open-editors-list__actions">
+              {tab.isDirty ? (
+                <span className="open-editors-list__dirty" aria-hidden />
+              ) : null}
+              <button
+                type="button"
+                className="open-editors-list__close"
+                aria-label={tabBarLabels.closeTabAriaLabel(tab.label)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  EditorGroupsService.closeTab(groupId, tab.id);
+                }}
+              >
+                <Codicon name="close" />
+              </button>
+            </span>
           </li>
         );
       })}

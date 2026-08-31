@@ -450,7 +450,28 @@ export class EditorServiceImpl {
     this.fireDidChange();
   }
 
+  /**
+   * Hot Exit only protects a dirty tab across an app *restart* while it stays open — closing
+   * the tab itself removes it from the next session snapshot too, so the edit is gone the
+   * moment the tab closes, for every tab type. Confirm before that happens.
+   */
   closeTab(id: string): void {
+    const tab = this.tabs.find((item) => item.id === id);
+    if (tab?.isDirty) {
+      void this.confirmAndCloseTab(tab);
+      return;
+    }
+    this.closeTabImmediate(id);
+  }
+
+  private async confirmAndCloseTab(tab: EditorTab): Promise<void> {
+    const confirmed = await EditorHost.confirmCloseDirtyTab(tab);
+    if (confirmed) {
+      this.closeTabImmediate(tab.id);
+    }
+  }
+
+  private closeTabImmediate(id: string): void {
     const index = this.tabs.findIndex((tab) => tab.id === id);
     if (index === -1) return;
 

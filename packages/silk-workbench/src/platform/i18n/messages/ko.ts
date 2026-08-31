@@ -239,6 +239,10 @@ export const koMessages = {
         "\"{name}\"이(가) 디스크에서 바뀌었고 저장되지 않은 편집이 있습니다. 다시 불러와 로컬 수정을 버릴까요?",
       reloadFromDisk: "다시 불러오기",
       keepLocalEdits: "내 수정 유지",
+      closeDirtyTitle: "저장하지 않은 변경 사항",
+      closeDirtyMessage:
+        "\"{name}\"에 저장하지 않은 변경 사항이 있습니다. 닫으면 되돌릴 수 없습니다. 닫을까요?",
+      closeDirtyConfirm: "닫기",
     },
     commands: {
       newTextFile: "새 텍스트 파일",
