@@ -9,6 +9,7 @@ import {
   getConnectionDriver,
 } from "../connection/connectionTypes";
 import type { ConnectionDriverId } from "../connection/connectionTypes";
+import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import { formatErrorMessage } from "../formatErrorMessage";
 import { resolveActiveDriverId } from "../sql/sqlDialect";
 import { QueryExecutionService } from "./queryExecutionService";
@@ -70,6 +71,16 @@ function resolveExplicitSchemaName(
     : ConnectionService.getConnectedProfile();
   if (!profile) {
     return "";
+  }
+
+  /** A runtime schema switch (useSchema) only updates the active tab's binding, not the
+   * profile's static default — so an unqualified table must resolve against the binding
+   * first, or PK lookup / save-eligibility silently targets the pre-switch schema. */
+  const binding = EditorConnectionBindingService.getActiveBinding();
+  const fromBinding =
+    binding.profileId === profile.id ? binding.schema?.trim() || "" : "";
+  if (fromBinding) {
+    return fromBinding;
   }
 
   const driver = getConnectionDriver(driverId);
