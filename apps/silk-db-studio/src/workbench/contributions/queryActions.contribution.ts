@@ -74,40 +74,40 @@ CommandsRegistry.registerCommand("silk.query.cancel", async (...args: unknown[])
   await QueryExecutionService.cancel(groupId);
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.query.execute",
     title: "Run Statement",
   },
-  group: "2_run",
-  order: 15,
+  group: "1_run",
+  order: 10,
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.query.executeScript",
     title: "Execute Script",
   },
-  group: "2_run",
-  order: 16,
+  group: "1_run",
+  order: 20,
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.query.explain",
     title: "Explain Plan",
   },
-  group: "2_run",
-  order: 17,
+  group: "1_run",
+  order: 30,
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.query.cancel",
     title: "Cancel Query",
   },
-  group: "2_run",
-  order: 18,
+  group: "1_run",
+  order: 40,
 });
 
 KeybindingsRegistry.registerKeybinding("silk.query.execute", "Ctrl+Enter");
@@ -115,7 +115,10 @@ KeybindingsRegistry.registerKeybinding(
   "silk.query.executeScript",
   "Ctrl+Shift+Enter",
 );
+// Was Ctrl+Shift+E, which silently collided with silk.view.explorer (View > Explorer) —
+// the registry has no per-context scoping, so two commands sharing one chord means neither
+// fires. Ctrl+Alt+E is free.
 KeybindingsRegistry.registerKeybinding(
   "silk.query.explain",
-  "Ctrl+Shift+E",
+  "Ctrl+Alt+E",
 );

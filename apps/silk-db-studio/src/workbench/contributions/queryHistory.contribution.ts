@@ -61,29 +61,29 @@ CommandsRegistry.registerCommand("silk.query.insertLastHistory", () => {
   insertSqlIntoActiveEditor(latest.sql);
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.query.openHistory",
     title: "Query History",
   },
-  group: "3_history",
-  order: 10,
+  group: "5_history",
+  order: 70,
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.query.addFavoriteFromEditor",
     title: "Add Editor SQL to Favorites",
   },
-  group: "3_history",
-  order: 20,
+  group: "5_history",
+  order: 71,
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.query.clearHistory",
     title: "Clear Query History",
   },
-  group: "3_history",
-  order: 30,
+  group: "5_history",
+  order: 72,
 });

@@ -7,7 +7,8 @@ export class MenuId {
   static readonly MenubarSelectionMenu = MenuId.create("MenubarSelectionMenu");
   static readonly MenubarViewMenu = MenuId.create("MenubarViewMenu");
   static readonly MenubarGoMenu = MenuId.create("MenubarGoMenu");
-  static readonly MenubarTerminalMenu = MenuId.create("MenubarTerminalMenu");
+  static readonly MenubarRunMenu = MenuId.create("MenubarRunMenu");
+  static readonly MenubarConnectionMenu = MenuId.create("MenubarConnectionMenu");
   static readonly MenubarHelpMenu = MenuId.create("MenubarHelpMenu");
   static readonly CommandCenter = MenuId.create("CommandCenter");
   static readonly CommandCenterCenter = MenuId.create("CommandCenterCenter");

@@ -47,10 +47,19 @@ MenuRegistry.appendMenuItem(MenuId.MenubarMainMenu, {
 });
 
 MenuRegistry.appendMenuItem(MenuId.MenubarMainMenu, {
-  submenu: MenuId.MenubarTerminalMenu,
+  submenu: MenuId.MenubarRunMenu,
   title: {
-    value: "Terminal",
-    mnemonicTitle: "&&Terminal",
+    value: "Run",
+    mnemonicTitle: "&&Run",
+  },
+  order: 6,
+});
+
+MenuRegistry.appendMenuItem(MenuId.MenubarMainMenu, {
+  submenu: MenuId.MenubarConnectionMenu,
+  title: {
+    value: "Connection",
+    mnemonicTitle: "&&Connection",
   },
   order: 7,
 });
