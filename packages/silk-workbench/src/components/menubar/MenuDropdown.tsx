@@ -31,10 +31,17 @@ function MenuDropdown({ groups, onSelect }: MenuDropdownProps) {
               <button
                 key={action.id}
                 type="button"
-                className={`menu-dropdown__item${isFocused ? " menu-dropdown__item--focused" : ""}`}
+                className={`menu-dropdown__item${isFocused ? " menu-dropdown__item--focused" : ""}${action.enabled ? "" : " menu-dropdown__item--disabled"}`}
                 role="menuitem"
-                onMouseEnter={() => setFocusedItemId(action.id)}
-                onClick={() => onSelect(action.id)}
+                aria-disabled={!action.enabled}
+                disabled={!action.enabled}
+                onMouseEnter={() =>
+                  action.enabled ? setFocusedItemId(action.id) : undefined
+                }
+                onClick={() => {
+                  if (!action.enabled) return;
+                  onSelect(action.id);
+                }}
               >
                 <span className="menu-dropdown__label">{action.label}</span>
                 {action.keybinding ? (

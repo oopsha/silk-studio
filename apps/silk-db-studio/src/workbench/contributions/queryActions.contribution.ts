@@ -2,6 +2,7 @@ import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
+import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
@@ -13,6 +14,15 @@ import {
 } from "../../services/query/sqlExecutable";
 import { extractExecutableScript } from "../../services/query/sqlScriptBatches";
 import { resolveActiveDriverId } from "../../services/sql/sqlDialect";
+
+function updateCancelQueryContextKey(): void {
+  const groupId = EditorGroupsService.getFocusedGroupId();
+  ContextKeyService.set("canCancelQuery", QueryExecutionService.isRunning(groupId));
+}
+
+QueryExecutionService.onDidChange(updateCancelQueryContextKey);
+EditorGroupsService.onDidChangeAnyGroup(updateCancelQueryContextKey);
+updateCancelQueryContextKey();
 
 CommandsRegistry.registerCommand("silk.query.execute", async () => {
   const snapshot = EditorService.getActiveEditorSnapshot();
