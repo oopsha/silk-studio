@@ -19,7 +19,7 @@ type GlobalMenuId = "accounts" | "manage";
 const ACTIVITY_VIEWS: ActivityView[] = [
   { id: "explorer", icon: "files", labelKey: "workbench.activityBar.explorer" },
   { id: "search", icon: "search", labelKey: "workbench.activityBar.search" },
-  { id: "scm", icon: "source-control", labelKey: "workbench.activityBar.scm" },
+  // "scm" (소스 제어)는 실험실 기능으로 나중에 발전시킬 예정이라 당분간 숨김
   { id: "history", icon: "history", labelKey: "workbench.activityBar.history" },
 ];
 
