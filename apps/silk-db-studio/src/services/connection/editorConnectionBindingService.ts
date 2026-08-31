@@ -298,7 +298,15 @@ class EditorConnectionBindingServiceImpl {
 
   private fireDidChange(): void {
     for (const listener of this.listeners) {
-      listener();
+      try {
+        listener();
+      } catch (error) {
+        // One subscriber's stale-state exception (e.g. a component still holding a
+        // just-replaced editor group id right after session restore) must not abort
+        // whatever caller triggered this notification — see startEditorSessionSync's
+        // restored-binding loop, which depends on every iteration running.
+        console.error("[EditorConnectionBindingService] onDidChange listener failed", error);
+      }
     }
   }
 }

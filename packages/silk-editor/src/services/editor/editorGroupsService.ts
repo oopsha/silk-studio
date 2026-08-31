@@ -71,7 +71,11 @@ class EditorGroupsServiceImpl {
       unsubscribeAnyGroup();
     });
     for (const listener of this.addListeners) {
-      listener(id, sourceId);
+      try {
+        listener(id, sourceId);
+      } catch (error) {
+        console.error("[EditorGroupsService] onDidAddGroup listener failed", error);
+      }
     }
   }
 
@@ -89,7 +93,11 @@ class EditorGroupsServiceImpl {
     this.groupUnsubs.delete(id);
     this.groups.delete(id);
     for (const listener of this.removeListeners) {
-      listener(id);
+      try {
+        listener(id);
+      } catch (error) {
+        console.error("[EditorGroupsService] onDidRemoveGroup listener failed", error);
+      }
     }
   }
 
@@ -458,14 +466,22 @@ class EditorGroupsServiceImpl {
     // mid-rebuild, so external listeners must not observe intermediate state.
     if (this.isRebuildingGroups) return;
     for (const listener of this.listeners) {
-      listener();
+      try {
+        listener();
+      } catch (error) {
+        console.error("[EditorGroupsService] onDidChange listener failed", error);
+      }
     }
   }
 
   private fireAnyGroupDidChange(): void {
     if (this.isRebuildingGroups) return;
     for (const listener of this.anyGroupListeners) {
-      listener();
+      try {
+        listener();
+      } catch (error) {
+        console.error("[EditorGroupsService] onDidChangeAnyGroup listener failed", error);
+      }
     }
   }
 }
