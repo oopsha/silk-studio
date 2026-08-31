@@ -4,7 +4,7 @@ import {
   buildLiveSearchResultPick,
   type ExplorerObjectSearchPick,
 } from "../connection/explorerSearchItems";
-import { runWithConcurrency } from "../connection/explorerSearchPrefetchService";
+import { runWithConcurrency } from "../runWithConcurrency";
 import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import { SearchConnectionSelectionService } from "./searchConnectionSelectionService";
 import { SearchKindSelectionService } from "./searchKindSelectionService";

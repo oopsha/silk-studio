@@ -20,7 +20,7 @@ import {
   type ExplorerLiveSearchActionPick,
   type ExplorerSearchPick,
 } from "../../services/connection/explorerSearchItems";
-import { runWithConcurrency } from "../../services/connection/explorerSearchPrefetchService";
+import { runWithConcurrency } from "../../services/runWithConcurrency";
 import { ExplorerSearchQuickPickService } from "../../services/connection/explorerSearchQuickPickService";
 import {
   defaultObjectAction,
@@ -213,22 +213,6 @@ function ExplorerSearchQuickPick() {
     const cachePicks = buildExplorerSearchPicksAcrossProfiles(profiles, filter);
     return liveSearchActionPick ? [...cachePicks, liveSearchActionPick] : cachePicks;
   }, [profiles, filter, open, liveResults, liveSearchActionPick]);
-
-  // Prefetch progress (only meaningful for catalog-style dialects, e.g. SQL Server) — summed
-  // across every connected profile being searched.
-  const prefetchProgress = useMemo(() => {
-    let total = 0;
-    let done = 0;
-    for (const { cache } of profiles) {
-      if (cache.catalogs.length === 0) continue;
-      total += cache.catalogs.length;
-      done += cache.catalogs.filter(
-        (catalog) => catalog.status === "loaded" || catalog.status === "error",
-      ).length;
-    }
-    if (total === 0 || done >= total) return null;
-    return { done, total };
-  }, [profiles]);
 
   useEffect(() => {
     setFocusedIndex((current) =>
@@ -534,10 +518,6 @@ function ExplorerSearchQuickPick() {
       {statusMessage ? (
         <div className="explorer-search-quick-pick__status" role="status">
           {statusMessage}
-        </div>
-      ) : prefetchProgress ? (
-        <div className="explorer-search-quick-pick__status" role="status">
-          {`Loading databases in background: ${prefetchProgress.done}/${prefetchProgress.total}…`}
         </div>
       ) : null}
     </div>,

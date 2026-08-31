@@ -298,10 +298,11 @@ function ProfileTree({
             onClick={() => {
               const next = !schemaExpanded;
               setExpandedValue(schemaKey, next);
-              // A "lite" schema (background prefetch — tables/views/procedures/functions
-              // only) is already `status: "loaded"`, but doesn't have the full picture the
-              // user expects from manually expanding a node — loadSchemaObjects's own guard
-              // reloads it for real when detail is "lite" (see connectionTreeService.ts).
+              // A "lite" schema (loaded with only tables/views/procedures/functions, e.g. by
+              // Ctrl+Shift+O's live search) is already `status: "loaded"`, but doesn't have
+              // the full picture the user expects from manually expanding a node —
+              // loadSchemaObjects's own guard reloads it for real when detail is "lite"
+              // (see connectionTreeService.ts).
               const needsFullLoad =
                 schema.status === "idle" ||
                 (schema.status === "loaded" && schema.detail === "lite");

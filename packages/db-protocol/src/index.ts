@@ -127,27 +127,6 @@ export type ConnectionMetadataResult = {
 };
 
 /**
- * Background-prefetch support (`connection.prefetchCatalog`): every schema's lightweight
- * object list for one catalog (or, for dialects with no catalog concept, the whole profile)
- * in a single response — see that RPC's doc comment in jdbc-agent's Main.java for why this
- * exists as its own call instead of one `connection.metadata` round trip per schema.
- */
-export type ConnectionPrefetchCatalogParams = {
-  connectionId: string;
-  /** Omitted for dialects where `usesCatalogExplorer()` is false (MySQL/Oracle/PostgreSQL). */
-  catalog?: string;
-  /** Safety cap mirrored from the frontend's own limit — see MAX_PREFETCH_OBJECTS. */
-  maxObjects?: number;
-};
-
-export type ConnectionPrefetchCatalogResult = {
-  schemas: MetadataSchema[];
-  /** True when the cap or the per-call time budget was hit before every schema was covered. */
-  truncated: boolean;
-  message?: string;
-};
-
-/**
  * An object found by `connection.findObjectsByName` — a name-only, no-schema-required lookup
  * across every schema (and catalog, for SQL Server) the connection can see, covering every kind
  * the dialect supports (table/view/procedure/function/package/trigger/index/sequence/synonym/
@@ -634,19 +613,6 @@ export function isConnectionMetadataResult(
     if (!catalog || typeof catalog !== "object") return false;
     return typeof (catalog as Record<string, unknown>).name === "string";
   });
-}
-
-export function isConnectionPrefetchCatalogResult(
-  value: unknown,
-): value is ConnectionPrefetchCatalogResult {
-  if (!value || typeof value !== "object") return false;
-  const record = value as Record<string, unknown>;
-  return (
-    Array.isArray(record.schemas) &&
-    record.schemas.every(isMetadataSchema) &&
-    typeof record.truncated === "boolean" &&
-    (record.message === undefined || typeof record.message === "string")
-  );
 }
 
 const METADATA_OBJECT_KINDS: readonly string[] = [
