@@ -25,4 +25,5 @@ commands.allow = [
   "connection_dependencies",
   "connection_dependents",
   "connection_set_catalog",
+  "connection_set_schema",
 ]
