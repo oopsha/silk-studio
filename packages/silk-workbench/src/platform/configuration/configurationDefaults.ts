@@ -1,4 +1,5 @@
-export type ColorThemeId = "dark" | "light";
+import type { ColorThemeId } from "@silk-studio/ui/platform/colorTheme.ts";
+export type { ColorThemeId };
 export type LineNumbersMode = "on" | "off" | "relative";
 export type WordWrapMode = "off" | "on";
 export type AiProviderId = "gemini" | "openai" | "anthropic" | "custom";

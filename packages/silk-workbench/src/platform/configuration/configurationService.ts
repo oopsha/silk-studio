@@ -1,3 +1,4 @@
+import { onSystemColorSchemeChange } from "@silk-studio/ui/platform/colorTheme.ts";
 import {
   CONFIGURATION_DEFAULTS,
   type ConfigurationKey,
@@ -18,6 +19,14 @@ class ConfigurationServiceImpl {
   constructor() {
     this.restoreFromStorage();
     applyWorkbenchConfiguration(this.values);
+    // "system" resolves at apply-time (see applyWorkbenchConfiguration), so an OS-level flip
+    // while the app is running needs its own trigger — the stored `workbench.colorTheme` value
+    // itself never changes, only what it resolves to.
+    onSystemColorSchemeChange(() => {
+      if (this.values["workbench.colorTheme"] !== "system") return;
+      applyWorkbenchConfiguration(this.values);
+      this.fireDidChange();
+    });
   }
 
   getValue<K extends ConfigurationKey>(

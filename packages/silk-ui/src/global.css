@@ -133,10 +133,77 @@ body {
   -webkit-user-select: none;
 }
 
-/*
- * html[data-color-theme="light"] overrides go here once the light theme is designed
- * (see workbench.colorTheme in configurationDefaults.ts / colorThemes.ts).
- */
+/* Light 2026 — VS Code default light theme (2026-light.json) */
+:root[data-color-theme="light"] {
+  --color-foreground: #202020;
+  --color-description: #606060;
+  --color-border: #f0f1f2;
+  --color-workbench-separator: var(--color-border);
+  --color-sash-hover-border: #0069cc;
+  --color-surface: #fafafd;
+  --color-editor: #ffffff;
+  --color-editor-foreground: #202020;
+  --color-titlebar-foreground: #606060;
+  --color-menubar-selection-foreground: #202020;
+  --color-menubar-selection-background: #eaeaea;
+  --color-menubar-selection-border: #f0f1f2;
+  --color-list-hover: rgba(0, 0, 0, 0.08);
+  --color-toolbar-hover-background: rgba(0, 0, 0, 0.12);
+  --color-toolbar-active-background: #d6d6d8;
+  --color-menu-background: #fafafd;
+  --color-menu-foreground: #202020;
+  /* VS Code 2026-light menu.selectionBackground (#0069CC1A) */
+  --color-menu-selection-background: rgba(0, 105, 204, 0.1);
+  --color-menu-selection-foreground: #202020;
+  --color-menu-selection-border: #0069cc;
+  --color-menu-separator: #eeeef1;
+  --color-menu-border: #e4e5e6;
+  --color-command-center-foreground: var(--color-titlebar-foreground);
+  /* theme.ts: commandCenter.background */
+  --color-command-center-background: #ffffff;
+  /* theme.ts: commandCenter.border (#D8D8D8AA) */
+  --color-command-center-border: rgba(216, 216, 216, 0.667);
+  --color-input-background: #ffffff;
+  --color-input-foreground: #202020;
+  --color-input-border: rgba(216, 216, 216, 0.4);
+  --color-focus-border: #0069cc;
+  --color-quick-input-background: #fafafd;
+  --color-quick-input-foreground: #202020;
+  --color-quick-input-border: rgba(216, 216, 216, 0.4);
+  --color-quick-input-list-focus-background: #0069cc;
+  --color-quick-input-list-focus-foreground: #ffffff;
+  --color-quick-input-list-focus-icon-foreground: #ffffff;
+  --color-quick-input-list-hover-background: rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 0 12px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 0 16px rgba(0, 0, 0, 0.16);
+  --color-tab-active-background: #ffffff;
+  --color-tab-inactive-background: #fafafd;
+  --color-tab-hover-background: #ffffff;
+  --color-tab-active-foreground: #202020;
+  --color-tab-inactive-foreground: #606060;
+  --color-tab-active-border-top: #000000;
+  --color-tab-border: #f0f1f2;
+  --color-activitybar-foreground: #202020;
+  --color-activitybar-inactive-foreground: #606060;
+  --color-activitybar-active-border: #000000;
+  --color-status-bar-background: #fafafd;
+  --color-status-bar-foreground: #606060;
+  --color-status-bar-border: #f0f1f2;
+  --color-status-bar-focus-border: #0069cc;
+  --color-status-bar-item-hover-background: #e3e3e5;
+  --color-status-bar-item-active-background: #eeeeee;
+  --color-status-bar-item-prominent-background: rgba(0, 105, 204, 0.867);
+  --color-status-bar-item-prominent-foreground: #ffffff;
+  --color-sidebar-section-header-foreground: var(--color-foreground);
+  --color-sidebar-action-foreground: #606060;
+  --color-sidebar-title-foreground: #202020;
+  --color-sidebar-title-background: #fafafd;
+  /* 2026-light.json scrollbar* */
+  --color-scrollbar-shadow: rgba(0, 0, 0, 0);
+  --color-scrollbar-slider: rgba(100, 100, 100, 0.75);
+  --color-scrollbar-slider-hover: rgba(100, 100, 100, 0.82);
+  --color-scrollbar-slider-active: rgba(100, 100, 100, 0.88);
+}
 
 button,
 input,
