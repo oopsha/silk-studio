@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+﻿import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { Editor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import type { IDisposable, editor } from "monaco-editor";
@@ -16,7 +16,7 @@ import {
   defineWorkbenchMonacoThemes,
   monacoThemeForColorTheme,
   type WorkbenchColorThemeId,
-} from "../../../themes/dark2026-monaco";
+} from "../../../themes/dark-monaco";
 import "./EditorArea.css";
 
 export type EditorConfigurationOptions = {

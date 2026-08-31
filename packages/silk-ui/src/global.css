@@ -133,26 +133,10 @@ body {
   -webkit-user-select: none;
 }
 
-html[data-color-theme="dark-plus"] {
-  --color-foreground: #cccccc;
-  --color-description: #9d9d9d;
-  --color-border: #3c3c3c;
-  --color-surface: #252526;
-  --color-editor: #1e1e1e;
-  --color-editor-foreground: #d4d4d4;
-  --color-titlebar-foreground: #cccccc;
-  --color-list-hover: #2a2d2e;
-  --color-toolbar-hover-background: #2a2d2e;
-  --color-toolbar-active-background: #37373d;
-  --color-menu-background: #252526;
-  --color-input-background: #3c3c3c;
-  --color-tab-active-background: #1e1e1e;
-  --color-tab-inactive-background: #2d2d2d;
-  --color-tab-hover-background: #2a2d2e;
-  --color-status-bar-background: #007acc;
-  --color-status-bar-foreground: #ffffff;
-  --color-sidebar-title-background: #252526;
-}
+/*
+ * html[data-color-theme="light"] overrides go here once the light theme is designed
+ * (see workbench.colorTheme in configurationDefaults.ts / colorThemes.ts).
+ */
 
 button,
 input,

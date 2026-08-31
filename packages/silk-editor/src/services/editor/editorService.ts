@@ -91,6 +91,8 @@ export class EditorServiceImpl {
     fromExtension;
   /** When true, ensureInitialTab will not invent an Untitled tab (Hot Exit restore in flight). */
   private sessionRestorePending = false;
+  /** When true, this group is skipped as an auto-pick destination for files opened elsewhere. */
+  private locked = false;
 
   /**
    * Call before first React paint so getTabs() does not open a blank Untitled
@@ -411,6 +413,20 @@ export class EditorServiceImpl {
 
   toggleEnablePreviewEditors(): void {
     this.setEnablePreviewEditors(!this.enablePreviewEditors);
+  }
+
+  isLocked(): boolean {
+    return this.locked;
+  }
+
+  setLocked(locked: boolean): void {
+    if (this.locked === locked) return;
+    this.locked = locked;
+    this.fireDidChange();
+  }
+
+  toggleLocked(): void {
+    this.setLocked(!this.locked);
   }
 
   closeSavedTabs(): void {

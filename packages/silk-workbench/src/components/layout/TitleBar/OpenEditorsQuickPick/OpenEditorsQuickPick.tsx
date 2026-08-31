@@ -4,6 +4,8 @@ import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
 import { codiconForLanguage } from "@silk-studio/editor/services/editor/languageFromPath.ts";
 import { useI18n } from "../../../../platform/i18n/useI18n";
+import { CommandService } from "../../../../platform/commands/commandService";
+import { KeybindingsRegistry } from "../../../../platform/keybinding/keybindingRegistry";
 import {
   placeOverSilkEditor,
   TITLEBAR_QUICK_PICK_CLASS,
@@ -29,6 +31,30 @@ function OpenEditorsQuickPick() {
     handleInputKeyDown,
   } = useOpenEditorsQuickPick();
   const showGroupHeaders = groupOrder.length > 1;
+
+  // Mirrors the entry-point rows VS Code's own Quick Open (Ctrl+P) landing screen shows
+  // (Show and Run Commands / Open Quick Chat / Go to Symbol) — Silk has no debugger, task
+  // runner, or multi-file text search, so those VS Code rows are intentionally left out.
+  const quickActions = [
+    {
+      id: "show-commands",
+      commandId: "workbench.action.showCommands",
+      icon: "symbol-event",
+      label: t("workbench.sidebar.openEditorsShowCommands"),
+    },
+    {
+      id: "quick-chat",
+      commandId: "silk.ai.focusChat",
+      icon: "comment-discussion",
+      label: t("workbench.sidebar.openEditorsOpenQuickChat"),
+    },
+    {
+      id: "search-objects",
+      commandId: "silk.explorer.searchObjects",
+      icon: "database",
+      label: t("workbench.explorer.searchObjects"),
+    },
+  ];
 
   useLayoutEffect(() => {
     if (!open) {
@@ -104,6 +130,7 @@ function OpenEditorsQuickPick() {
             type="text"
             className="quick-input-box"
             value={filter}
+            placeholder={t("workbench.sidebar.openEditorsFilterPlaceholder")}
             spellCheck={false}
             autoComplete="off"
             aria-label={t("workbench.sidebar.openEditorsFilterAria")}
@@ -114,6 +141,36 @@ function OpenEditorsQuickPick() {
       </div>
 
       <div className="quick-input-list">
+        {filter === ""
+          ? quickActions.map((action, index) => (
+              <div
+                key={action.id}
+                className={`quick-input-list-row${
+                  index === quickActions.length - 1
+                    ? " quick-input-list-row--action"
+                    : ""
+                }`}
+                role="option"
+                aria-selected={false}
+                onClick={() => {
+                  close();
+                  void CommandService.executeCommand(action.commandId);
+                }}
+              >
+                <div className="quick-input-list-entry">
+                  <span className="quick-input-list-icon" aria-hidden>
+                    <Codicon name={action.icon} />
+                  </span>
+                  <span className="quick-input-list-label">{action.label}</span>
+                  {KeybindingsRegistry.lookupKeybinding(action.commandId) ? (
+                    <span className="command-palette__keybinding">
+                      {KeybindingsRegistry.lookupKeybinding(action.commandId)}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ))
+          : null}
         {filteredTabs.length === 0 ? (
           <div className="quick-input-list__empty">
             {t("workbench.sidebar.noMatchingEditors")}

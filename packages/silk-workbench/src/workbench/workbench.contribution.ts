@@ -14,3 +14,4 @@ import "./contributions/helpActions.contribution";
 import "./contributions/updateActions.contribution";
 import "./contributions/activityBar.contribution";
 import "./contributions/aiChat.contribution";
+import "./contributions/windowActions.contribution";

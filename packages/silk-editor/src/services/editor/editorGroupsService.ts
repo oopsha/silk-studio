@@ -143,6 +143,36 @@ class EditorGroupsServiceImpl {
     this.fireAnyGroupDidChange();
   }
 
+  isGroupLocked(id: EditorGroupId): boolean {
+    return this.getGroup(id).isLocked();
+  }
+
+  toggleGroupLock(id: EditorGroupId): void {
+    this.getGroup(id).toggleLocked();
+    this.fireAnyGroupDidChange();
+  }
+
+  /**
+   * Where a file opened from elsewhere (Explorer, search, "go to definition", ...) should
+   * land. Normally that's the focused group — but a locked group is meant to keep showing
+   * what the user pinned it to, so redirect to another unlocked group, or split a fresh one
+   * off it if every existing group is locked (mirrors VS Code's editor-group-lock behavior).
+   */
+  private resolveOpenTargetGroup(): EditorServiceImpl {
+    const focused = this.getGroup(this.focusedGroupId);
+    if (!focused.isLocked()) return focused;
+
+    for (const [id, group] of this.groups) {
+      if (id !== this.focusedGroupId && !group.isLocked()) {
+        this.setFocusedGroup(id);
+        return group;
+      }
+    }
+
+    const newGroupId = this.splitGroup(this.focusedGroupId, "right");
+    return this.getGroup(newGroupId);
+  }
+
   /** Splits `sourceId` into two groups, focuses the new one, and returns its id. */
   splitGroup(sourceId: EditorGroupId, direction: "right"): EditorGroupId {
     const splitDirection: SplitDirection = direction === "right" ? "row" : "row";
@@ -291,7 +321,7 @@ class EditorGroupsServiceImpl {
   openFile(path: string, content: string, preview?: boolean): string {
     const existing = this.revealByUri(path, preview);
     if (existing) return existing;
-    return this.getFocusedGroup().openFile(path, content, preview);
+    return this.resolveOpenTargetGroup().openFile(path, content, preview);
   }
 
   openEditor(input: OpenEditorInput): string {
@@ -299,7 +329,7 @@ class EditorGroupsServiceImpl {
       const existing = this.revealByUri(input.uri, input.preview);
       if (existing) return existing;
     }
-    return this.getFocusedGroup().openEditor(input);
+    return this.resolveOpenTargetGroup().openEditor(input);
   }
 
   private revealByUri(uri: string, preview?: boolean): string | null {

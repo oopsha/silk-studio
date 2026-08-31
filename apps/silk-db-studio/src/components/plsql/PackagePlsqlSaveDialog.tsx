@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import { DiffEditor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
@@ -10,7 +10,7 @@ import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import {
   defineWorkbenchMonacoThemes,
   monacoThemeForColorTheme,
-} from "@silk-studio/editor/themes/dark2026-monaco.ts";
+} from "@silk-studio/editor/themes/dark-monaco.ts";
 import { PackagePlsqlSaveDialogService } from "../../services/connection/packagePlsqlSaveDialogService";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { registerSqlLanguages } from "../../services/sql/registerSqlLanguages";

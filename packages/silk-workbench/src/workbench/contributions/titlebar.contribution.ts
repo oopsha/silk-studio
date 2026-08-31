@@ -1,14 +1,21 @@
 import { MenuId } from "../../platform/actions/menuId";
 import { MenuRegistry } from "../../platform/actions/menuRegistry";
 import { CommandsRegistry } from "../../platform/commands/commandRegistry";
+import { KeybindingsRegistry } from "../../platform/keybinding/keybindingRegistry";
 import { HistoryService } from "@silk-studio/editor/services/history/historyService.ts";
+import { TabBarActionService } from "@silk-studio/editor/services/editor/tabBarActionService.ts";
 import { WindowTitleService } from "../../services/windowTitle/windowTitleService";
 
 HistoryService.seed({ label: WindowTitleService.getWorkspaceName() });
 
+// Silk has no workspace file tree to search — "Go to File" doesn't apply. The closest
+// equivalent to VS Code's Quick Open (Ctrl+P) is switching between already-open tabs, so this
+// reuses the same picker workbench.action.showAllEditors opens (see editorActions.contribution.ts).
 CommandsRegistry.registerCommand("workbench.action.quickOpen", () => {
-  console.log("[command] workbench.action.quickOpen");
+  TabBarActionService.requestShowOpenEditors();
 });
+
+KeybindingsRegistry.registerKeybinding("workbench.action.quickOpen", "Ctrl+P");
 
 MenuRegistry.appendMenuItem(MenuId.CommandCenter, {
   command: {

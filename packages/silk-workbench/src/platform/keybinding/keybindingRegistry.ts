@@ -47,6 +47,7 @@ const NATIVE_EDITOR_ACTION_COMMANDS = new Set([
   "silk.selection.addCursorsToLineEnds",
   "silk.selection.addNextOccurrence",
   "silk.selection.selectAllOccurrences",
+  "workbench.action.gotoLine",
 ]);
 
 class KeybindingRegistryImpl {
@@ -97,24 +98,23 @@ class KeybindingRegistryImpl {
 
     const chord = keyboardEventToChord(event);
     const nextSequence = [...this.pendingSequence, chord];
-    const matchedCommand = this.findMatchingCommand(nextSequence);
+    const { exact, pendingExists } = this.matchSequence(nextSequence);
 
-    if (!matchedCommand) {
+    if (!exact && !pendingExists) {
       this.resetPendingSequence();
       return false;
     }
 
-    const sequences = this.commandSequences.get(matchedCommand) ?? [];
-    const isComplete = sequences.some((sequence) =>
-      chordSequenceMatches(sequence, nextSequence),
-    );
-
-    if (!isComplete) {
+    if (!exact) {
+      // A longer registered chord (e.g. "Ctrl+K Ctrl+S") still starts with what's been
+      // pressed so far — hold the prefix and wait for the next key instead of firing yet.
       this.pendingSequence = nextSequence;
       this.resetPendingTimeout();
       event.preventDefault();
       return true;
     }
+
+    const matchedCommand = exact;
 
     if (
       (NATIVE_CLIPBOARD_COMMANDS.has(matchedCommand) ||
@@ -154,21 +154,33 @@ class KeybindingRegistryImpl {
     );
   }
 
-  private findMatchingCommand(sequence: KeyChord[]): string | null {
-    let matched: string | null = null;
+  /**
+   * `exact`: a command whose full registered sequence is satisfied by what's been pressed.
+   * `pendingExists`: true when some *longer* registered sequence still starts with what's
+   * been pressed — e.g. pressing just "Ctrl+K" while both "Ctrl+K W" and "Ctrl+K Ctrl+S" are
+   * registered. Multiple commands sharing a chord prefix is normal (that's the whole point of
+   * chords) and must not be treated as a conflict — only an exact-match collision (two
+   * commands registered on the *same* full sequence) is ambiguous, and last-registered wins.
+   */
+  private matchSequence(sequence: KeyChord[]): {
+    exact: string | null;
+    pendingExists: boolean;
+  } {
+    let exact: string | null = null;
+    let pendingExists = false;
 
     for (const [commandId, sequences] of this.commandSequences.entries()) {
-      const matches = sequences.some((item) =>
-        sequenceMatchesPrefix(item, sequence),
-      );
-      if (!matches) continue;
-      if (matched) {
-        return null;
+      for (const registered of sequences) {
+        if (!sequenceMatchesPrefix(registered, sequence)) continue;
+        if (registered.length === sequence.length) {
+          exact = commandId;
+        } else {
+          pendingExists = true;
+        }
       }
-      matched = commandId;
     }
 
-    return matched;
+    return { exact, pendingExists };
   }
 
   private resetPendingSequence(): void {

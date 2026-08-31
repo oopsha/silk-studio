@@ -4,6 +4,7 @@ import {
   type WorkbenchConfiguration,
 } from "./configurationDefaults";
 import { applyWorkbenchConfiguration } from "./applyConfiguration";
+import { COLOR_THEMES } from "./colorThemes";
 import { loadConfiguration, saveConfiguration } from "./configurationStorage";
 import { resolveAiModelForProvider } from "../../services/settings/aiSettingsConstants";
 import { detectDefaultLocale, isLocaleId } from "../i18n/locale";
@@ -103,8 +104,7 @@ class ConfigurationServiceImpl {
     }
 
     if (
-      values["workbench.colorTheme"] !== "dark-2026" &&
-      values["workbench.colorTheme"] !== "dark-plus"
+      !COLOR_THEMES.some((theme) => theme.id === values["workbench.colorTheme"])
     ) {
       values["workbench.colorTheme"] = CONFIGURATION_DEFAULTS["workbench.colorTheme"];
     }

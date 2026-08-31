@@ -109,6 +109,9 @@ function TabBar({ groupId, commands, labels, crossGroupDnd }: TabBarProps) {
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [locked, setLocked] = useState(() =>
+    EditorGroupsService.isGroupLocked(groupId),
+  );
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dropIndicator, setDropIndicator] = useState<DropIndicator | null>(
     null,
@@ -134,6 +137,13 @@ function TabBar({ groupId, commands, labels, crossGroupDnd }: TabBarProps) {
     );
     activeElement?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeTab?.id]);
+
+  useEffect(() => {
+    setLocked(EditorGroupsService.isGroupLocked(groupId));
+    return EditorGroupsService.onDidChangeAnyGroup(() => {
+      setLocked(EditorGroupsService.isGroupLocked(groupId));
+    });
+  }, [groupId]);
 
   const clearDragVisuals = useCallback(() => {
     setDraggingTabId(null);
@@ -412,6 +422,20 @@ function TabBar({ groupId, commands, labels, crossGroupDnd }: TabBarProps) {
       </div>
 
       <div className="tab-bar__actions">
+        {locked ? (
+          <button
+            type="button"
+            className="tab-bar__action"
+            title={labels.lockGroup}
+            aria-label={labels.lockGroup}
+            onClick={() => {
+              EditorGroupsService.setFocusedGroup(groupId);
+              EditorGroupsService.toggleGroupLock(groupId);
+            }}
+          >
+            <Codicon name="lock" />
+          </button>
+        ) : null}
         {!hasMultipleGroups ? (
           <button
             type="button"
@@ -469,6 +493,7 @@ function TabBar({ groupId, commands, labels, crossGroupDnd }: TabBarProps) {
       {moreMenuOpen ? (
         <TabBarMoreMenu
           anchorRef={moreActionsRef}
+          groupId={groupId}
           commands={commands}
           labels={labels}
           onClose={() => setMoreMenuOpen(false)}
