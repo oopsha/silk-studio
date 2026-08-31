@@ -50,29 +50,29 @@ CommandsRegistry.registerCommand("silk.plsql.reloadFromDb", () => {
   }
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.plsql.snapshot.history",
     title: "PL/SQL Snapshot History",
   },
-  group: "3_plsql",
-  order: 10,
+  group: "4_plsql",
+  order: 61,
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.plsql.snapshot.take",
     title: "Take PL/SQL Snapshot",
   },
-  group: "3_plsql",
-  order: 11,
+  group: "4_plsql",
+  order: 62,
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.plsql.reloadFromDb",
     title: "Reload PL/SQL from Database",
   },
-  group: "3_plsql",
-  order: 12,
+  group: "4_plsql",
+  order: 63,
 });

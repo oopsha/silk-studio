@@ -23,6 +23,32 @@ const NATIVE_CLIPBOARD_COMMANDS = new Set([
   "silk.edit.paste",
 ]);
 
+/**
+ * Edit/Selection menu commands that just call `editor.getAction(id).run()` on the focused
+ * Monaco instance (see editActions.contribution.ts / selectionActions.contribution.ts).
+ * Monaco registers the exact same default keybinding on itself, so while focus is inside
+ * `.monaco-editor` we must back off here too — otherwise both this registry's global keydown
+ * handler and Monaco's own internal one would fire, double-executing line-mutating actions
+ * like Copy/Move Line or Add Cursor Above/Below.
+ */
+const NATIVE_EDITOR_ACTION_COMMANDS = new Set([
+  "silk.edit.find",
+  "silk.edit.replace",
+  "silk.edit.toggleLineComment",
+  "silk.edit.toggleBlockComment",
+  "silk.selection.shrinkSelection",
+  "silk.selection.expandSelection",
+  "silk.selection.copyLineUp",
+  "silk.selection.copyLineDown",
+  "silk.selection.moveLineUp",
+  "silk.selection.moveLineDown",
+  "silk.selection.addCursorAbove",
+  "silk.selection.addCursorBelow",
+  "silk.selection.addCursorsToLineEnds",
+  "silk.selection.addNextOccurrence",
+  "silk.selection.selectAllOccurrences",
+]);
+
 class KeybindingRegistryImpl {
   private readonly bindings = new Map<string, string[]>();
   private readonly commandSequences = new Map<string, KeyChord[][]>();
@@ -91,7 +117,8 @@ class KeybindingRegistryImpl {
     }
 
     if (
-      NATIVE_CLIPBOARD_COMMANDS.has(matchedCommand) &&
+      (NATIVE_CLIPBOARD_COMMANDS.has(matchedCommand) ||
+        NATIVE_EDITOR_ACTION_COMMANDS.has(matchedCommand)) &&
       hasNativeClipboardHandling(event.target)
     ) {
       // Let the browser/Monaco/AG Grid handle this keydown natively instead of stealing it.

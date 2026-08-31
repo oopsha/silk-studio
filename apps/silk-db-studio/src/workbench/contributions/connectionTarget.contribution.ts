@@ -15,13 +15,13 @@ CommandsRegistry.registerCommand(
   },
 );
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: CONNECTION_TARGET_COMMANDS.selectTarget,
     title: "Select Query Target…",
   },
-  group: "2_run",
-  order: 14,
+  group: "3_target",
+  order: 50,
 });
 
 KeybindingsRegistry.registerKeybinding(

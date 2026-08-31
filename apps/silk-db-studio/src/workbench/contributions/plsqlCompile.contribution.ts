@@ -20,13 +20,13 @@ CommandsRegistry.registerCommand("silk.plsql.compile", async () => {
   }
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.plsql.compile",
     title: "Compile PL/SQL",
   },
-  group: "2_run",
-  order: 20,
+  group: "4_plsql",
+  order: 60,
 });
 
 KeybindingsRegistry.registerKeybinding("silk.plsql.compile", "Ctrl+Shift+F9");

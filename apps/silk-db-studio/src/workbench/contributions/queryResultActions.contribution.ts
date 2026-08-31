@@ -55,67 +55,67 @@ CommandsRegistry.registerCommand("silk.queryResult.resetColumnLayout", () => {
   QueryResultGridService.resetColumnLayout();
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.queryResult.copySelection",
     title: "Copy Selection",
   },
-  group: "3_result",
-  order: 10,
+  group: "6_result",
+  order: 80,
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.queryResult.copyRows",
     title: "Copy Selected Rows",
   },
-  group: "3_result",
-  order: 20,
+  group: "6_result",
+  order: 81,
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.queryResult.copyAll",
     title: "Copy All Filtered Rows",
   },
-  group: "3_result",
-  order: 30,
+  group: "6_result",
+  order: 82,
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.queryResult.exportCsv",
     title: "Export CSV (Filtered)",
   },
-  group: "3_result",
-  order: 40,
+  group: "6_result",
+  order: 83,
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.queryResult.clearFilters",
     title: "Clear Result Filters",
   },
-  group: "3_result",
-  order: 50,
+  group: "6_result",
+  order: 84,
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.queryResult.saveColumnLayout",
     title: "Save Column Layout",
   },
-  group: "3_result",
-  order: 55,
+  group: "6_result",
+  order: 85,
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarTerminalMenu, {
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.queryResult.resetColumnLayout",
     title: "Reset Column Layout",
   },
-  group: "3_result",
-  order: 60,
+  group: "6_result",
+  order: 86,
 });
 
 KeybindingsRegistry.registerKeybinding(
