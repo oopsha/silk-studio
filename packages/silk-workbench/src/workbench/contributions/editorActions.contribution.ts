@@ -2,6 +2,7 @@ import { MenuId } from "../../platform/actions/menuId";
 import { MenuRegistry } from "../../platform/actions/menuRegistry";
 import { CommandsRegistry } from "../../platform/commands/commandRegistry";
 import { KeybindingsRegistry } from "../../platform/keybinding/keybindingRegistry";
+import { ContextKeyService } from "../../platform/context/contextKeyService";
 import {
   pickAndReadTextFile,
   pickSavePath,
@@ -13,6 +14,16 @@ import { TabBarActionService } from "@silk-studio/editor/services/editor/tabBarA
 import { basenameFromPath } from "@silk-studio/editor/services/editor/languageFromPath.ts";
 import { tKey } from "../../platform/i18n/activeLocale";
 import { AppNotificationService } from "../../services/notifications/appNotificationService";
+
+function updateHasDirtyFilesContextKey(): void {
+  ContextKeyService.set(
+    "hasDirtyFiles",
+    EditorService.getTabs().some((tab) => tab.isDirty),
+  );
+}
+
+EditorService.onDidChange(updateHasDirtyFilesContextKey);
+updateHasDirtyFilesContextKey();
 
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) {

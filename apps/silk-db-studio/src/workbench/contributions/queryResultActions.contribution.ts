@@ -2,7 +2,15 @@ import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
+import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import { QueryResultGridService } from "../../services/query/queryResultGridService";
+
+function updateHasQueryResultGridContextKey(): void {
+  ContextKeyService.set("hasQueryResultGrid", QueryResultGridService.isAttached());
+}
+
+QueryResultGridService.onDidChangeSnapshot(updateHasQueryResultGridContextKey);
+updateHasQueryResultGridContextKey();
 
 CommandsRegistry.registerCommand("silk.queryResult.copySelection", async () => {
   if (!QueryResultGridService.isAttached()) return;

@@ -1,8 +1,23 @@
 import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
+import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import { ConnectionEditorService } from "../../services/connection/connectionEditorService";
 import { ConnectionService } from "../../services/connection/connectionService";
+
+function updateConnectionContextKeys(): void {
+  const profile = ConnectionService.getActiveProfile();
+  const connected = Boolean(profile && ConnectionService.isConnected(profile.id));
+  ContextKeyService.set("canConnect", Boolean(profile) && !connected);
+  ContextKeyService.set("canDisconnect", connected);
+  ContextKeyService.set(
+    "hasConnectedProfiles",
+    ConnectionService.getConnectedProfiles().length > 0,
+  );
+}
+
+ConnectionService.onDidChange(updateConnectionContextKeys);
+updateConnectionContextKeys();
 
 CommandsRegistry.registerCommand("silk.connection.new", () => {
   ConnectionEditorService.openNewConnection();

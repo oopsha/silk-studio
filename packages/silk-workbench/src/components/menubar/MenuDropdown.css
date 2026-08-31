@@ -45,6 +45,17 @@
   outline-offset: -1px;
 }
 
+.menu-dropdown__item--disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.menu-dropdown__item--disabled:hover,
+.menu-dropdown__item--disabled:focus-visible {
+  background-color: transparent;
+  outline: none;
+}
+
 .menu-dropdown__item--focused .menu-dropdown__keybinding,
 .menu-dropdown__item:hover .menu-dropdown__keybinding,
 .menu-dropdown__item:focus-visible .menu-dropdown__keybinding {

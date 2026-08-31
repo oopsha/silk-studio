@@ -1,6 +1,7 @@
 import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
+import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import { ViewService } from "@silk-studio/workbench/services/view/viewService.ts";
 import { ConfirmDialogService } from "../../services/ui/confirmDialogService";
 import { QueryFavoritesService } from "../../services/query/queryFavoritesService";
@@ -11,6 +12,13 @@ import {
   openSqlInEditor,
   reexecuteSql,
 } from "../../services/query/querySqlActions";
+
+function updateHasQueryHistoryContextKey(): void {
+  ContextKeyService.set("hasQueryHistory", QueryHistoryService.getEntries().length > 0);
+}
+
+QueryHistoryService.onDidChange(updateHasQueryHistoryContextKey);
+updateHasQueryHistoryContextKey();
 
 CommandsRegistry.registerCommand("silk.query.openHistory", () => {
   ViewService.openView("history");
