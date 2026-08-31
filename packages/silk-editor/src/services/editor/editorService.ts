@@ -728,7 +728,11 @@ export class EditorServiceImpl {
 
   private fireDidChange(): void {
     for (const listener of this.listeners) {
-      listener();
+      try {
+        listener();
+      } catch (error) {
+        console.error("[EditorServiceImpl] onDidChange listener failed", error);
+      }
     }
   }
 }
