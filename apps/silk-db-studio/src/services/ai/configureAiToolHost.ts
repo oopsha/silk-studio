@@ -1,6 +1,10 @@
 import type { MetadataObjectKind } from "@silk-studio/db-protocol";
 import { configureAiToolHost } from "@silk-studio/workbench/services/ai/aiToolHost.ts";
 import { AI_DB_TOOL_DEFINITIONS } from "@silk-studio/workbench/services/ai/aiToolDefinitions.ts";
+import {
+  SILK_USAGE_GUIDE_TOOL,
+  getSilkUsageGuideText,
+} from "@silk-studio/workbench/services/ai/silkUsageGuide.ts";
 import { bridgeListColumns } from "../connection/connectionBridge";
 import { bridgeListObjectDependencies } from "../connection/connectionDependenciesBridge";
 import { bridgeFetchObjectDdl } from "../connection/connectionDdlBridge";
@@ -281,6 +285,11 @@ async function executeTool(
           note: "Properties tab opened. No query was run — the Data tab (if any) is still empty until the user opens it or you propose a SELECT.",
         });
       }
+      case "get_silk_usage_guide": {
+        const topic =
+          typeof args.topic === "string" ? args.topic.trim() : undefined;
+        return getSilkUsageGuideText(topic);
+      }
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` });
     }
@@ -296,8 +305,10 @@ export function configureDbStudioAiToolHost(): void {
   configureAiToolHost({
     getTools: () => {
       const profileId = resolveToolProfileId();
-      if (!profileId) return [];
-      return [...AI_DB_TOOL_DEFINITIONS];
+      const dbTools = profileId ? AI_DB_TOOL_DEFINITIONS : [];
+      // Usage-guide lookup has no connection dependency — offer it even with nothing connected,
+      // since "how do I create a connection" is exactly the question a brand-new user would ask.
+      return [...dbTools, SILK_USAGE_GUIDE_TOOL];
     },
     executeTool,
   });
