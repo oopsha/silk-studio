@@ -46,6 +46,13 @@ configureDbStudioDiagnosticsHost();
 AppLogService.installGlobalHandlers();
 void AppLogService.info("Frontend bootstrap complete.", "bootstrap");
 applyWorkbenchFonts();
+
+// Suppress WebView2's native browser context menu (Back/Refresh/Save As/Print/Inspect…) — it
+// has no place in a desktop app shell. Areas with their own context menu (Explorer, tab bar,
+// activity bar, …) already call `event.preventDefault()` in their own handler, so this only
+// affects the areas that had no menu at all.
+document.addEventListener("contextmenu", (event) => event.preventDefault());
+
 // Hold blank Untitled until Hot Exit restore finishes (see startEditorSessionSync).
 EditorGroupsService.prepareSessionRestore();
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

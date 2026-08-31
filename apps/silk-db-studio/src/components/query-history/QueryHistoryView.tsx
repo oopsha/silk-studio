@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
+import ContextMenu, { type ContextMenuItem } from "../common/ContextMenu";
 import { ConfirmDialogService } from "../../services/ui/confirmDialogService";
 import { QueryFavoritesService } from "../../services/query/queryFavoritesService";
 import { QueryHistoryService } from "../../services/query/queryHistoryService";
@@ -72,8 +73,74 @@ function promptFavoriteName(sql: string, initial?: string): string | null {
 
 function HistoryItem({ entry }: { entry: QueryHistoryEntry }) {
   const { t } = useI18n();
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+
+  const menuItems: ContextMenuItem[] = [
+    { id: "run", label: t("common.run"), enabled: true },
+    { id: "openInEditor", label: t("app.query.openInEditor"), enabled: true },
+    {
+      id: "insertIntoEditor",
+      label: t("app.query.insertIntoEditor"),
+      enabled: true,
+    },
+    {
+      id: "addToFavorites",
+      label: t("app.query.addToFavorites"),
+      enabled: true,
+      separator: true,
+    },
+    {
+      id: "delete",
+      label: t("common.delete"),
+      enabled: true,
+      separator: true,
+      dangerous: true,
+    },
+  ];
+
+  function handleMenuSelect(item: ContextMenuItem) {
+    switch (item.id) {
+      case "run":
+        void reexecuteSql(entry.sql);
+        return;
+      case "openInEditor":
+        openSqlInEditor(entry.sql);
+        return;
+      case "insertIntoEditor":
+        insertSqlIntoActiveEditor(entry.sql);
+        return;
+      case "addToFavorites": {
+        const name = promptFavoriteName(entry.sql);
+        if (name === null) return;
+        QueryFavoritesService.add(name, entry.sql);
+        return;
+      }
+      case "delete":
+        QueryHistoryService.remove(entry.id);
+        return;
+      default:
+        return;
+    }
+  }
+
   return (
-    <div className={`query-history__item query-history__item--${entry.status}`}>
+    <div
+      className={`query-history__item query-history__item--${entry.status}`}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        setContextMenu({ x: event.clientX, y: event.clientY });
+      }}
+    >
+      {contextMenu ? (
+        <ContextMenu
+          anchor={{ top: contextMenu.y, left: contextMenu.x }}
+          items={menuItems}
+          onClose={() => setContextMenu(null)}
+          onSelect={handleMenuSelect}
+        />
+      ) : null}
       <div className="query-history__item-main">
         <div className="query-history__item-meta">
           <Codicon name={statusIcon(entry.status)} />
@@ -142,8 +209,74 @@ function HistoryItem({ entry }: { entry: QueryHistoryEntry }) {
 
 function FavoriteItem({ favorite }: { favorite: QueryFavorite }) {
   const { t } = useI18n();
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+
+  const menuItems: ContextMenuItem[] = [
+    { id: "run", label: t("common.run"), enabled: true },
+    { id: "openInEditor", label: t("app.query.openInEditor"), enabled: true },
+    {
+      id: "insertIntoEditor",
+      label: t("app.query.insertIntoEditor"),
+      enabled: true,
+    },
+    {
+      id: "rename",
+      label: t("common.rename"),
+      enabled: true,
+      separator: true,
+    },
+    {
+      id: "delete",
+      label: t("common.delete"),
+      enabled: true,
+      separator: true,
+      dangerous: true,
+    },
+  ];
+
+  function handleMenuSelect(item: ContextMenuItem) {
+    switch (item.id) {
+      case "run":
+        void reexecuteSql(favorite.sql);
+        return;
+      case "openInEditor":
+        openSqlInEditor(favorite.sql, favorite.name);
+        return;
+      case "insertIntoEditor":
+        insertSqlIntoActiveEditor(favorite.sql);
+        return;
+      case "rename": {
+        const name = promptFavoriteName(favorite.sql, favorite.name);
+        if (name === null) return;
+        QueryFavoritesService.rename(favorite.id, name);
+        return;
+      }
+      case "delete":
+        QueryFavoritesService.remove(favorite.id);
+        return;
+      default:
+        return;
+    }
+  }
+
   return (
-    <div className="query-history__item">
+    <div
+      className="query-history__item"
+      onContextMenu={(event) => {
+        event.preventDefault();
+        setContextMenu({ x: event.clientX, y: event.clientY });
+      }}
+    >
+      {contextMenu ? (
+        <ContextMenu
+          anchor={{ top: contextMenu.y, left: contextMenu.x }}
+          items={menuItems}
+          onClose={() => setContextMenu(null)}
+          onSelect={handleMenuSelect}
+        />
+      ) : null}
       <div className="query-history__item-main">
         <div className="query-history__item-meta">
           <Codicon name="star" />

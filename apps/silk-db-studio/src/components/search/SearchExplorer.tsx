@@ -1,11 +1,15 @@
 import { useCallback, useRef, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
+import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
+import ContextMenu from "../common/ContextMenu";
 import { ConnectionService } from "../../services/connection/connectionService";
 import {
+  buildObjectMenuItems,
   defaultObjectAction,
   EXPLORER_COMMANDS,
+  type ExplorerMenuItem,
   type ExplorerObjectRef,
 } from "../../services/connection/explorerObjectActions";
 import type { ExplorerObjectSearchPick } from "../../services/connection/explorerSearchItems";
@@ -40,6 +44,23 @@ function SearchExplorer() {
   const [kindPickerOpen, setKindPickerOpen] = useState(false);
   const connectionsButtonRef = useRef<HTMLButtonElement>(null);
   const kindsButtonRef = useRef<HTMLButtonElement>(null);
+  const configuration = useConfiguration();
+  const readOnly = configuration["database.readOnly"];
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    items: ExplorerMenuItem[];
+    ref: ExplorerObjectRef;
+  } | null>(null);
+
+  async function handleContextMenuSelect(item: ExplorerMenuItem, ref: ExplorerObjectRef) {
+    if (!item.commandId) return;
+    try {
+      await CommandService.executeCommand(item.commandId, ref);
+    } catch (error) {
+      console.error("[silk.search]", error);
+    }
+  }
 
   const openResult = useCallback(async (pick: ExplorerObjectSearchPick) => {
     const ref: ExplorerObjectRef = {
@@ -212,6 +233,27 @@ function SearchExplorer() {
                     void openResult(pick);
                   }
                 }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  const ref: ExplorerObjectRef = {
+                    profileId: pick.profileId,
+                    schemaName: pick.schemaName,
+                    object: pick.object,
+                    catalogName: pick.catalogName,
+                  };
+                  const profile = ConnectionService.getProfile(pick.profileId);
+                  setContextMenu({
+                    x: event.clientX,
+                    y: event.clientY,
+                    ref,
+                    items: buildObjectMenuItems(pick.object.kind, {
+                      driverId: profile?.driverId,
+                      readOnly,
+                      canMutate:
+                        ConnectionService.isConnected(pick.profileId) && !readOnly,
+                    }),
+                  });
+                }}
               >
                 <span className="search-explorer__result-icon" aria-hidden>
                   <Codicon name={pick.icon} />
@@ -225,6 +267,15 @@ function SearchExplorer() {
           </>
         ) : null}
       </div>
+
+      {contextMenu ? (
+        <ContextMenu
+          anchor={{ top: contextMenu.y, left: contextMenu.x }}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+          onSelect={(item) => void handleContextMenuSelect(item, contextMenu.ref)}
+        />
+      ) : null}
     </div>
   );
 }

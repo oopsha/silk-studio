@@ -201,6 +201,52 @@ export function buildSchemaMenuItems(): ExplorerMenuItem[] {
   ];
 }
 
+/**
+ * Connection profile row's own context menu — mirrors the row's hover icon buttons
+ * (connect/disconnect, refresh, edit, duplicate, delete) exactly, rather than routing through
+ * `silk.connection.*` commands: those commands act on `ConnectionService.getActiveProfile()`
+ * (the globally "active" profile, set by clicking a row), which would silently target the wrong
+ * connection if the user right-clicks a row that isn't currently active. No `commandId` here —
+ * the caller (ConnectionsExplorer.tsx) dispatches on `item.id` directly against the specific
+ * `profile.id` this menu was opened for.
+ */
+export function buildProfileMenuItems(options: {
+  isConnected: boolean;
+}): ExplorerMenuItem[] {
+  return [
+    {
+      id: options.isConnected ? "disconnect" : "connect",
+      label: I18nService.t(
+        options.isConnected ? "common.disconnect" : "common.connect",
+      ),
+      enabled: true,
+    },
+    {
+      id: "refresh",
+      label: I18nService.t("common.refresh"),
+      enabled: options.isConnected,
+    },
+    {
+      id: "edit",
+      label: I18nService.t("common.edit"),
+      enabled: true,
+      separator: true,
+    },
+    {
+      id: "duplicate",
+      label: I18nService.t("common.duplicate"),
+      enabled: true,
+    },
+    {
+      id: "delete",
+      label: I18nService.t("common.delete"),
+      enabled: true,
+      separator: true,
+      dangerous: true,
+    },
+  ];
+}
+
 export function buildCatalogMenuItems(options?: {
   isCurrent?: boolean;
   isDefault?: boolean;

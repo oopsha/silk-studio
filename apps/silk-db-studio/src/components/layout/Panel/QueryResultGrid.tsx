@@ -28,6 +28,7 @@ import {
   type QueryResultRow,
 } from "../../../services/query/queryResult";
 import { QueryResultGridService } from "../../../services/query/queryResultGridService";
+import ContextMenu, { type ContextMenuItem } from "../../common/ContextMenu";
 import { fetchQueryResultPage } from "../../../services/query/queryResultPaging";
 import {
   translateFilterModel,
@@ -142,6 +143,9 @@ function QueryResultGrid({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [executingUpdates, setExecutingUpdates] = useState(false);
   const [openingPreview, setOpeningPreview] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
+    null,
+  );
 
   const dirtyCount = useSyncExternalStore(
     (onStoreChange) => QueryResultDirtyService.onDidChange(onStoreChange),
@@ -689,6 +693,46 @@ function QueryResultGrid({
     flashMessage(t("app.query.filtersCleared"));
   };
 
+  const gridContextMenuItems: ContextMenuItem[] = [
+    { id: "copySelection", label: t("app.query.copySelection"), enabled: true },
+    { id: "copyRows", label: t("app.query.copySelectedRows"), enabled: true },
+    { id: "copyAll", label: t("app.query.copyAllFiltered"), enabled: true },
+    {
+      id: "exportCsv",
+      label: t("app.query.exportCsv"),
+      enabled: true,
+      separator: true,
+    },
+    {
+      id: "clearFilters",
+      label: t("app.query.clearFilters"),
+      enabled: snapshot.filterActive || snapshot.sortActive,
+      separator: true,
+    },
+  ];
+
+  function handleGridContextMenuSelect(item: ContextMenuItem) {
+    switch (item.id) {
+      case "copySelection":
+        void handleCopySelection();
+        return;
+      case "copyRows":
+        void handleCopyRows();
+        return;
+      case "copyAll":
+        void handleCopyAll();
+        return;
+      case "exportCsv":
+        void handleExportCsv();
+        return;
+      case "clearFilters":
+        handleClearFilters();
+        return;
+      default:
+        return;
+    }
+  }
+
   const handleResetColumnLayout = () => {
     const ok = QueryResultGridService.resetColumnLayout();
     flashMessage(ok ? t("app.query.layoutReset") : t("app.query.nothingToReset"));
@@ -991,7 +1035,13 @@ function QueryResultGrid({
           </button>
         </div>
       </div>
-      <div className="query-result-grid__body">
+      <div
+        className="query-result-grid__body"
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setContextMenu({ x: event.clientX, y: event.clientY });
+        }}
+      >
         <AgGridReact<QueryResultRow>
           // Row model is effectively fixed for a grid instance's lifetime — remount (rather than
           // toggle rowModelType live) if a refresh flips this same tab between modes.
@@ -1067,6 +1117,15 @@ function QueryResultGrid({
           onColumnPinned={markLayoutDirty}
         />
       </div>
+
+      {contextMenu ? (
+        <ContextMenu
+          anchor={{ top: contextMenu.y, left: contextMenu.x }}
+          items={gridContextMenuItems}
+          onClose={() => setContextMenu(null)}
+          onSelect={handleGridContextMenuSelect}
+        />
+      ) : null}
 
       {preview ? (
         <QueryResultUpdateDialog

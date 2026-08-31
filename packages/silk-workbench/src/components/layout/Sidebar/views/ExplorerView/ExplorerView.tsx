@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { CommandService } from "../../../../../platform/commands/commandService";
+import { KeybindingsRegistry } from "../../../../../platform/keybinding/keybindingRegistry";
 import { useI18n } from "../../../../../platform/i18n/useI18n";
 import type { MessageKey } from "../../../../../platform/i18n/translate";
 import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
@@ -12,6 +13,11 @@ import {
 import { codiconForLanguage } from "@silk-studio/editor/services/editor/languageFromPath.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import { useEditorTabs } from "@silk-studio/editor/services/editor/useEditorTabs.ts";
+import TabBarContextMenu from "@silk-studio/editor/components/layout/TabBar/TabBarContextMenu.tsx";
+import type {
+  TabBarCommandAdapter,
+  TabBarLabels,
+} from "@silk-studio/editor/components/layout/TabBar/TabBar.tsx";
 import AccordionPanel from "../../AccordionPanel/AccordionPanel";
 import { PaneSash, useResizablePanes } from "../../PaneView";
 import ViewPaneTitle from "../../ViewPaneTitle/ViewPaneTitle";
@@ -28,6 +34,7 @@ type ExplorerViewProps = {
   renderConnections?: () => ReactNode;
   connectionsTitle?: string;
   connectionsActions?: ReactNode;
+  connectionsHeaderContextMenu?: (event: MouseEvent) => void;
   renderOutline?: () => ReactNode;
   renderTimeline?: () => ReactNode;
 };
@@ -161,6 +168,32 @@ function OpenEditorsGroupSection({
   const { t } = useI18n();
   const tabs = useEditorTabs(groupId);
   const activeTab = useActiveEditor(groupId);
+  const [contextMenu, setContextMenu] = useState<
+    { tabId: string; top: number; left: number } | null
+  >(null);
+
+  const tabBarLabels: TabBarLabels = {
+    showOpenedEditors: t("workbench.commands.showAllEditors"),
+    closeAll: t("workbench.commands.closeAllEditors"),
+    closeSaved: t("workbench.commands.closeAllSavedEditors"),
+    enablePreviewEditors: t("workbench.commands.togglePreviewEditors"),
+    lockGroup: t("workbench.commands.lockEditorGroup"),
+    configureEditors: t("workbench.commands.configureEditors"),
+    close: t("workbench.commands.closeActiveEditor"),
+    closeOthers: t("workbench.commands.closeOtherEditors"),
+    closeToTheRight: t("workbench.commands.closeEditorsToTheRight"),
+    keepOpen: t("workbench.commands.pinEditor"),
+    splitEditorRight: t("workbench.commands.splitEditorRight"),
+    closeEditorGroup: t("workbench.commands.closeEditorGroup"),
+    moreActions: t("workbench.tabBar.moreActions"),
+    closeTabAriaLabel: (tabLabel) =>
+      t("workbench.tabBar.closeTabAriaLabel").replace("{name}", tabLabel),
+  };
+  const tabBarCommands: TabBarCommandAdapter = {
+    executeCommand: (commandId) => CommandService.executeCommand(commandId),
+    lookupKeybinding: (commandId) =>
+      KeybindingsRegistry.lookupKeybinding(commandId),
+  };
 
   return (
     <>
@@ -193,6 +226,18 @@ function OpenEditorsGroupSection({
               EditorGroupsService.setFocusedGroup(groupId);
               EditorGroupsService.getGroup(groupId).setActiveTab(tab.id);
             }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              // The close/close-others/etc commands this menu runs always target the active
+              // tab, not an explicit id — so make this row active first, same as TabBar itself.
+              EditorGroupsService.setFocusedGroup(groupId);
+              EditorGroupsService.getGroup(groupId).setActiveTab(tab.id);
+              setContextMenu({
+                tabId: tab.id,
+                top: event.clientY,
+                left: event.clientX,
+              });
+            }}
           >
             <span className="open-editors-list__icon" aria-hidden>
               <Codicon name={codiconForLanguage(tab.languageId)} />
@@ -204,6 +249,15 @@ function OpenEditorsGroupSection({
           </li>
         );
       })}
+      {contextMenu ? (
+        <TabBarContextMenu
+          tabId={contextMenu.tabId}
+          anchor={{ top: contextMenu.top, left: contextMenu.left }}
+          commands={tabBarCommands}
+          labels={tabBarLabels}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
     </>
   );
 }
@@ -232,6 +286,7 @@ function ExplorerView({
   renderConnections,
   connectionsTitle,
   connectionsActions,
+  connectionsHeaderContextMenu,
   renderOutline,
   renderTimeline,
 }: ExplorerViewProps) {
@@ -342,6 +397,7 @@ function ExplorerView({
             variant="fill"
             onToggle={() => toggleSection("workspace")}
             actions={WORKSPACE_ACTIONS_NODE}
+            onHeaderContextMenu={connectionsHeaderContextMenu}
           >
             {renderConnections ? (
               renderConnections()

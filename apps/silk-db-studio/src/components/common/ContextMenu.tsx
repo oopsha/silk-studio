@@ -7,27 +7,42 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
-import type { ExplorerMenuItem } from "../../services/connection/explorerObjectActions";
-import "./ExplorerContextMenu.css";
+import "./ContextMenu.css";
+
+export type ContextMenuItem = {
+  id: string;
+  label: string;
+  enabled: boolean;
+  /** Shown when the action is stubbed for a later milestone. */
+  stubMessage?: string;
+  /** Visual separator before this item. */
+  separator?: boolean;
+  /** Destructive action styling. */
+  dangerous?: boolean;
+};
 
 type MenuPosition = {
   top: number;
   left: number;
 };
 
-type ExplorerContextMenuProps = {
+type ContextMenuProps<T extends ContextMenuItem> = {
   anchor: MenuPosition;
-  items: ExplorerMenuItem[];
-  onSelect: (item: ExplorerMenuItem) => void;
+  items: T[];
+  onSelect: (item: T) => void;
   onClose: () => void;
 };
 
-function ExplorerContextMenu({
+/** Generic right-click menu shell — anchored at a point, clamped to stay on-screen, closes on
+ *  outside click/Escape/app blur. Used across Explorer, query result grid, and other lists that
+ *  need a right-click menu; each caller supplies its own item shape (extending
+ *  {@link ContextMenuItem}) and owns how a selection is dispatched. */
+function ContextMenu<T extends ContextMenuItem>({
   anchor,
   items,
   onSelect,
   onClose,
-}: ExplorerContextMenuProps) {
+}: ContextMenuProps<T>) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<MenuPosition | null>(null);
 
@@ -86,7 +101,7 @@ function ExplorerContextMenu({
   return createPortal(
     <div
       ref={rootRef}
-      className="explorer-context-menu"
+      className="context-menu"
       role="menu"
       style={
         position
@@ -97,18 +112,14 @@ function ExplorerContextMenu({
       {items.map((item) => (
         <div key={item.id}>
           {item.separator ? (
-            <div
-              className="explorer-context-menu__separator"
-              role="separator"
-              aria-hidden
-            />
+            <div className="context-menu__separator" role="separator" aria-hidden />
           ) : null}
           <button
             type="button"
             role="menuitem"
-            className={`explorer-context-menu__item${
-              item.enabled ? "" : " explorer-context-menu__item--disabled"
-            }${item.dangerous ? " explorer-context-menu__item--dangerous" : ""}`}
+            className={`context-menu__item${
+              item.enabled ? "" : " context-menu__item--disabled"
+            }${item.dangerous ? " context-menu__item--dangerous" : ""}`}
             disabled={!item.enabled}
             title={!item.enabled ? item.stubMessage : undefined}
             onClick={() => {
@@ -117,7 +128,7 @@ function ExplorerContextMenu({
               onClose();
             }}
           >
-            <span className="explorer-context-menu__label">{item.label}</span>
+            <span className="context-menu__label">{item.label}</span>
           </button>
         </div>
       ))}
@@ -126,4 +137,4 @@ function ExplorerContextMenu({
   );
 }
 
-export default ExplorerContextMenu;
+export default ContextMenu;

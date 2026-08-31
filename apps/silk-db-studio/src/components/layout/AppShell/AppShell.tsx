@@ -1,5 +1,5 @@
 import "./AppShell.css";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import ActivityBar from "@silk-studio/workbench/components/layout/ActivityBar/index.ts";
 import Sidebar from "@silk-studio/workbench/components/layout/Sidebar/index.ts";
 import EditorGroupsView from "./EditorGroupsView.tsx";
@@ -19,6 +19,7 @@ import DocumentationViewer from "@silk-studio/workbench/components/help/index.ts
 import CommandPalette from "@silk-studio/workbench/components/commands/index.ts";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import ConnectionsExplorer from "../../connections/ConnectionsExplorer.tsx";
+import ContextMenu, { type ContextMenuItem } from "../../common/ContextMenu.tsx";
 import ConnectionEditor from "../../connections/ConnectionEditor.tsx";
 import ExplorerSearchQuickPick from "../../connections/ExplorerSearchQuickPick.tsx";
 import ExplorerObjectMutationDialog from "../../connections/ExplorerObjectMutationDialog.tsx";
@@ -172,6 +173,73 @@ function AppShell() {
     }
   }
 
+  const [connectionsHeaderMenu, setConnectionsHeaderMenu] = useState<
+    { x: number; y: number } | null
+  >(null);
+
+  // Mirrors connectionsActions' toolbar buttons below exactly — same items, same order, same
+  // enabled/disabled conditions — so the header context menu is never missing something the
+  // hover toolbar already offers.
+  const connectionsHeaderMenuItems: ContextMenuItem[] = [
+    {
+      id: "newConnection",
+      label: t("workbench.explorer.newConnection"),
+      enabled: true,
+    },
+    {
+      id: "searchObjects",
+      label: t("workbench.explorer.searchObjects"),
+      enabled: connection.connectedProfileIds.length > 0,
+    },
+    {
+      id: "collapseAll",
+      label: t("common.collapseAll"),
+      enabled: connection.connectedProfileIds.length > 0,
+      separator: true,
+    },
+    {
+      id: "refreshAll",
+      label: t("common.refresh"),
+      enabled: connection.connectedProfileIds.length > 0,
+    },
+    {
+      id: "exportConnections",
+      label: t("app.connection.exportTitle"),
+      enabled: connection.profiles.length > 0,
+      separator: true,
+    },
+    {
+      id: "importConnections",
+      label: t("app.connection.importTitle"),
+      enabled: true,
+    },
+  ];
+
+  function handleConnectionsHeaderMenuSelect(item: ContextMenuItem) {
+    switch (item.id) {
+      case "newConnection":
+        ConnectionEditorService.openNewConnection();
+        return;
+      case "searchObjects":
+        void CommandService.executeCommand(EXPLORER_COMMANDS.searchObjects);
+        return;
+      case "collapseAll":
+        void CommandService.executeCommand(EXPLORER_COMMANDS.collapseAll);
+        return;
+      case "refreshAll":
+        void CommandService.executeCommand(EXPLORER_COMMANDS.refresh);
+        return;
+      case "exportConnections":
+        void handleExportConnections();
+        return;
+      case "importConnections":
+        void handleImportConnections();
+        return;
+      default:
+        return;
+    }
+  }
+
   const connectionsActions = (
     <>
       <button
@@ -318,6 +386,13 @@ function AppShell() {
                     <Sidebar
                       connectionsTitle={t("workbench.sidebar.connections")}
                       connectionsActions={connectionsActions}
+                      connectionsHeaderContextMenu={(event) => {
+                        event.preventDefault();
+                        setConnectionsHeaderMenu({
+                          x: event.clientX,
+                          y: event.clientY,
+                        });
+                      }}
                       renderConnections={() => <ConnectionsExplorer />}
                       renderHistory={() => <QueryHistoryView />}
                       renderSearch={() => <SearchExplorer />}
@@ -327,6 +402,17 @@ function AppShell() {
                       // renderTimeline={() => <TimelineView />}
                     />
                   </div>
+                  {connectionsHeaderMenu ? (
+                    <ContextMenu
+                      anchor={{
+                        top: connectionsHeaderMenu.y,
+                        left: connectionsHeaderMenu.x,
+                      }}
+                      items={connectionsHeaderMenuItems}
+                      onClose={() => setConnectionsHeaderMenu(null)}
+                      onSelect={handleConnectionsHeaderMenuSelect}
+                    />
+                  ) : null}
                   <WorkbenchSash
                     orientation="vertical"
                     onPointerDown={(event) => {
