@@ -4,6 +4,7 @@ import { applyWorkbenchFonts } from "@silk-studio/ui/platform/fonts.ts";
 import { configureEditorHost } from "@silk-studio/editor/services/editor/editorHost.ts";
 import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
+import { UserKeybindingsService } from "@silk-studio/workbench/platform/keybinding/userKeybindingsService.ts";
 import { WindowTitleService } from "@silk-studio/workbench/services/windowTitle/windowTitleService.ts";
 import { AppLogService } from "@silk-studio/workbench/services/diagnostics/appLogService.ts";
 import { configureDbStudioAiContextHost } from "./services/ai/configureAiContextHost";
@@ -28,6 +29,10 @@ import "./workbench/contributions/plsqlSave.contribution";
 import "./workbench/contributions/plsqlCompile.contribution";
 import "./workbench/contributions/plsqlSnapshot.contribution";
 import App from "./App";
+
+// Every *.contribution.ts above has registered its default keybinding by this point (they run
+// synchronously at import time) — apply saved user overrides on top of those defaults now.
+UserKeybindingsService.initialize();
 
 configureEditorHost({
   setContextKey: (key, value) => ContextKeyService.set(key, value),

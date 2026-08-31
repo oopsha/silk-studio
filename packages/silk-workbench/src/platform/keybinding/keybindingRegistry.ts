@@ -52,7 +52,12 @@ const NATIVE_EDITOR_ACTION_COMMANDS = new Set([
 
 class KeybindingRegistryImpl {
   private readonly bindings = new Map<string, string[]>();
+  /** Factory-default labels as registered by `*.contribution.ts` at startup — snapshotted the
+   *  first time each command is seen, and never touched by `setBindings`. Lets the Keybindings
+   *  editor offer "reset to default" after a user override changes `bindings`. */
+  private readonly defaultBindings = new Map<string, string[]>();
   private readonly commandSequences = new Map<string, KeyChord[][]>();
+  private readonly listeners = new Set<() => void>();
   private pendingSequence: KeyChord[] = [];
   private pendingTimeout: number | null = null;
 
@@ -60,7 +65,12 @@ class KeybindingRegistryImpl {
     const current = this.bindings.get(commandId) ?? [];
     if (!current.includes(label)) {
       this.bindings.set(commandId, [...current, label]);
+      const defaults = this.defaultBindings.get(commandId) ?? [];
+      if (!defaults.includes(label)) {
+        this.defaultBindings.set(commandId, [...defaults, label]);
+      }
       this.addCommandSequence(commandId, parseKeybindingLabel(label));
+      this.fireDidChange();
     }
 
     return () => {
@@ -73,6 +83,7 @@ class KeybindingRegistryImpl {
         this.bindings.delete(commandId);
       }
       this.rebuildCommandSequences(commandId);
+      this.fireDidChange();
     };
   }
 
@@ -85,6 +96,33 @@ class KeybindingRegistryImpl {
       commandId,
       labels: [...labels],
     }));
+  }
+
+  getDefaultKeybindings(commandId: string): string[] {
+    return [...(this.defaultBindings.get(commandId) ?? [])];
+  }
+
+  /** Replaces `commandId`'s *active* key labels wholesale — used to apply/reset a user
+   *  keybinding override. Leaves `defaultBindings` (the factory snapshot) untouched. */
+  setBindings(commandId: string, labels: string[]): void {
+    if (labels.length > 0) {
+      this.bindings.set(commandId, [...labels]);
+    } else {
+      this.bindings.delete(commandId);
+    }
+    this.rebuildCommandSequences(commandId);
+    this.fireDidChange();
+  }
+
+  onDidChange(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private fireDidChange(): void {
+    for (const listener of this.listeners) {
+      listener();
+    }
   }
 
   handleKeyboardEvent(event: KeyboardEvent): boolean {
@@ -225,6 +263,13 @@ function shouldIgnoreTarget(target: EventTarget | null): boolean {
 
   if (target.closest(".monaco-editor")) {
     return false;
+  }
+
+  // The Keybindings editor's own key-capture box: it needs the raw keydown (including
+  // shortcuts already bound elsewhere, e.g. Ctrl+S) to record a new binding, not to trigger
+  // whatever command that combination currently runs.
+  if (target.closest("[data-keybinding-capture]")) {
+    return true;
   }
 
   const tag = target.tagName;
