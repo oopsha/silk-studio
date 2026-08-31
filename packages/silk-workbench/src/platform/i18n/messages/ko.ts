@@ -93,10 +93,6 @@ export const koMessages = {
       preloadDefaultSchemaDescription:
         "연결 성공 후 기본 스키마 객체를 캐시에 미리 로드합니다. 탐색기 트리는 펼치지 않으며, SQL 자동완성·Quick Pick에 바로 쓰입니다.",
       preloadDefaultSchemaHint: "기본 스키마를 미리 로드합니다.",
-      prefetchAllDatabases: "검색을 위해 모든 데이터베이스 미리 로드",
-      prefetchAllDatabasesDescription:
-        "켜면 연결 직후 백그라운드로 모든 데이터베이스/스키마/오브젝트 이름을 미리 불러와서, Ctrl+Shift+O 검색이 탐색기에서 한 번도 펼치지 않은 데이터베이스의 오브젝트도 찾습니다. 기본값은 꺼짐 — 데이터베이스가 많고 테이블이 수천 개인 인스턴스에서는 메모리를 상당히 쓸 수 있습니다.",
-      prefetchAllDatabasesHint: "모든 데이터베이스를 백그라운드로 미리 로드합니다.",
       sqlParameters: "SQL 파라미터",
       anonymousParameters: "익명 SQL 파라미터",
       anonymousParametersDescription:

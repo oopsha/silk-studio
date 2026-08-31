@@ -3,10 +3,7 @@ import type {
   MetadataGroup,
   MetadataSchema,
 } from "@silk-studio/db-protocol";
-import {
-  bridgeConnectionPrefetchCatalog,
-  bridgeListMetadata,
-} from "./connectionBridge";
+import { bridgeListMetadata } from "./connectionBridge";
 import { formatErrorMessage } from "../formatErrorMessage";
 import {
   filterSystemNamespaces,
@@ -21,11 +18,12 @@ export type SchemaTreeNode = {
   /** Only groups the connected database supports are present — see `MetadataGroupId`. */
   groups: MetadataGroup[];
   /**
-   * `"lite"` when `groups` only holds tables/views/procedures/functions (background prefetch —
-   * see `prefetchCatalog`); `"full"` (or absent, for backward compat) when it holds every
-   * category the dialect supports (a deliberate Explorer "expand this schema" click). A `"lite"`
-   * schema is treated as NOT satisfying a subsequent full-detail request — see `loadSchemaObjects`
-   * — so background prefetch never permanently blocks Explorer from showing indexes/triggers/etc.
+   * `"lite"` when `groups` only holds tables/views/procedures/functions (a load with
+   * `includeSecondaryKinds: false`); `"full"` (or absent, for backward compat) when it holds
+   * every category the dialect supports (a deliberate Explorer "expand this schema" click). A
+   * `"lite"` schema is treated as NOT satisfying a subsequent full-detail request — see
+   * `loadSchemaObjects` — so a lite load never permanently blocks Explorer from showing
+   * indexes/triggers/etc.
    */
   detail?: "lite" | "full";
 };
@@ -49,8 +47,8 @@ export type ProfileTreeCache = {
 type TreeListener = () => void;
 
 /**
- * Coalesces bursts of `fireDidChange()` (e.g. the search prefetch service loading hundreds of
- * schemas back-to-back) into at most one listener notification per window, instead of a full
+ * Coalesces bursts of `fireDidChange()` (e.g. a connect loading hundreds of schemas
+ * back-to-back) into at most one listener notification per window, instead of a full
  * React re-render per completion. The underlying cache state is always updated synchronously
  * before `fireDidChange()` is called, so delaying/merging the *notification* only delays how
  * soon the UI reflects it — it never changes what state a subsequent `getCache()` read sees.
@@ -403,7 +401,7 @@ class ConnectionTreeServiceImpl {
   /**
    * @param includeSecondaryKinds When `false`, skips indexes/sequences/synonyms/triggers/
    * types (5 extra round trips) and only fetches tables/views/procedures/functions. Bulk
-   * callers (prefetch, Ctrl+Shift+O "load database/schema") pass `false` for speed; a single
+   * callers (e.g. Ctrl+Shift+O "load database/schema") pass `false` for speed; a single
    * deliberate Explorer "expand this schema" click passes `true` (default) for the full picture.
    */
   async loadSchemaObjects(
@@ -439,8 +437,8 @@ class ConnectionTreeServiceImpl {
     if (!schema) {
       throw new Error(`Schema not found: ${schemaName}`);
     }
-    // A "lite" schema (background prefetch) doesn't satisfy a full-detail request — see
-    // SchemaTreeNode.detail's doc comment — so it gets reloaded even without `force`.
+    // A "lite" schema doesn't satisfy a full-detail request — see SchemaTreeNode.detail's doc
+    // comment — so it gets reloaded even without `force`.
     const alreadySatisfied =
       schema.status === "loaded" &&
       !(includeSecondaryKinds && schema.detail === "lite");
@@ -635,73 +633,6 @@ class ConnectionTreeServiceImpl {
     }
   }
 
-  /**
-   * Background-prefetch support (Ctrl+Shift+O search index): fetches every schema's lightweight
-   * object list for one catalog — or, when `catalogName` is omitted, the whole profile for
-   * dialects with no catalog concept — in a single round trip, instead of one `loadSchemaObjects`
-   * call per schema. See `ExplorerSearchPrefetchService` for the caller: collapsing per-schema
-   * IPC calls down to one per catalog is what fixes the input lag those calls were causing when
-   * fired in a burst (confirmed by elimination testing to be about call *count*, not rate).
-   *
-   * Schemas already `status: "loaded"` (whether from a richer manual Explorer expand or an
-   * earlier prefetch pass) are left untouched — this only fills in schemas not covered yet.
-   */
-  async prefetchCatalog(
-    profileId: string,
-    catalogName?: string,
-    maxObjects?: number,
-  ): Promise<void> {
-    if (!this.connectedProfileIds.has(profileId)) {
-      throw new Error("Connect this profile before loading database objects.");
-    }
-
-    const result = await bridgeConnectionPrefetchCatalog(
-      profileId,
-      catalogName,
-      maxObjects,
-    );
-    const filter = this.explorerFilters.get(profileId);
-    const schemaNames = filterSystemNamespaces(
-      result.schemas.map((item) => item.name),
-      filter,
-      "schema",
-    );
-    const allowed = new Set(schemaNames.map((name) => name.toLowerCase()));
-    const filteredSchemas = result.schemas.filter((item) =>
-      allowed.has(item.name.toLowerCase()),
-    );
-
-    const cache = this.getCache(profileId);
-    if (catalogName) {
-      const catalog = cache.catalogs.find(
-        (item) => item.name.toLowerCase() === catalogName.toLowerCase(),
-      );
-      if (!catalog) return;
-      const schemas = toLiteSchemaNodes(filteredSchemas, catalog.schemas);
-      this.caches.set(profileId, {
-        ...cache,
-        catalogs: cache.catalogs.map((item) =>
-          item.name.toLowerCase() === catalogName.toLowerCase()
-            ? {
-                ...item,
-                // Mark the catalog itself "loaded" too — otherwise a manual Explorer expand
-                // of this same catalog would see status "idle" and redundantly re-fetch
-                // schema names via loadCatalogSchemas (harmless, since toSchemaNodes keeps
-                // these lite-but-loaded entries, but a wasted round trip).
-                status: "loaded" as const,
-                errorMessage: null,
-                schemas,
-              }
-            : item,
-        ),
-      });
-    } else {
-      const schemas = toLiteSchemaNodes(filteredSchemas, cache.schemas);
-      this.caches.set(profileId, { ...cache, schemas });
-    }
-    this.fireDidChange();
-  }
-
   onDidChange(listener: TreeListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -767,34 +698,6 @@ function toSchemaNodes(
       status: "idle" as const,
       errorMessage: null,
       groups: [],
-    };
-  });
-}
-
-/**
- * Like {@link toSchemaNodes}, but the source (`connection.prefetchCatalog`'s result) already
- * carries populated `groups` — new nodes go straight to `status: "loaded", detail: "lite"`
- * instead of `"idle"`. Existing `"loaded"` nodes (any detail) are kept as-is, same "don't
- * downgrade/refetch what's already there" rule {@link toSchemaNodes} uses.
- */
-function toLiteSchemaNodes(
-  schemas: MetadataSchema[],
-  previous: SchemaTreeNode[],
-): SchemaTreeNode[] {
-  const previousByName = new Map(
-    previous.map((schema) => [schema.name.toLowerCase(), schema]),
-  );
-  return schemas.map((schema) => {
-    const existing = previousByName.get(schema.name.toLowerCase());
-    if (existing?.status === "loaded") {
-      return existing;
-    }
-    return {
-      name: schema.name,
-      status: "loaded" as const,
-      errorMessage: null,
-      groups: schema.groups,
-      detail: "lite" as const,
     };
   });
 }
