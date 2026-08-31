@@ -241,6 +241,10 @@ export const enMessages = {
         "\"{name}\" was changed on disk and you have unsaved edits. Reload and discard your local changes?",
       reloadFromDisk: "Reload",
       keepLocalEdits: "Keep my edits",
+      closeDirtyTitle: "Unsaved changes",
+      closeDirtyMessage:
+        "\"{name}\" has unsaved changes that will be lost if you close it. Close anyway?",
+      closeDirtyConfirm: "Close",
     },
     commands: {
       newTextFile: "New Text File",

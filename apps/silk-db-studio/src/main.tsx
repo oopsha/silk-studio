@@ -7,6 +7,8 @@ import { ContextKeyService } from "@silk-studio/workbench/platform/context/conte
 import { UserKeybindingsService } from "@silk-studio/workbench/platform/keybinding/userKeybindingsService.ts";
 import { WindowTitleService } from "@silk-studio/workbench/services/windowTitle/windowTitleService.ts";
 import { AppLogService } from "@silk-studio/workbench/services/diagnostics/appLogService.ts";
+import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
+import { ConfirmDialogService } from "./services/ui/confirmDialogService";
 import { configureDbStudioAiContextHost } from "./services/ai/configureAiContextHost";
 import { configureDbStudioAiSqlProposalHost } from "./services/ai/configureAiSqlProposalHost";
 import { configureDbStudioAiToolHost } from "./services/ai/configureAiToolHost";
@@ -37,6 +39,16 @@ configureEditorHost({
   setContextKey: (key, value) => ContextKeyService.set(key, value),
   updateWindowTitle: (activeEditor) =>
     WindowTitleService.updateFromEditor(activeEditor),
+  confirmCloseDirtyTab: (tab) =>
+    ConfirmDialogService.confirm({
+      title: tKey("workbench.file.closeDirtyTitle"),
+      message: tKey("workbench.file.closeDirtyMessage").replace(
+        "{name}",
+        tab.label,
+      ),
+      confirmLabel: tKey("workbench.file.closeDirtyConfirm"),
+      danger: true,
+    }),
 });
 WindowTitleService.setWorkspaceName("silk-db-studio");
 configureDbStudioAiContextHost();
