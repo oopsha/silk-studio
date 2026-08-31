@@ -17,7 +17,10 @@ import { AgGridReact } from "ag-grid-react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
-import type { ColorThemeId } from "@silk-studio/workbench/platform/configuration/configurationDefaults.ts";
+import {
+  resolveEffectiveColorTheme,
+  type EffectiveColorThemeId,
+} from "@silk-studio/ui/platform/colorTheme.ts";
 import {
   toQueryResultRows,
   isResultTruncated,
@@ -70,7 +73,7 @@ const gridUiStateByTabId = new Map<string, GridUiState>();
 const INFINITE_SCROLL_BLOCK_SIZE = 100;
 
 const GRID_THEME_PALETTES: Record<
-  ColorThemeId,
+  EffectiveColorThemeId,
   {
     backgroundColor: string;
     headerBackgroundColor: string;
@@ -78,6 +81,9 @@ const GRID_THEME_PALETTES: Record<
     rowHoverColor: string;
     borderColor: string;
     inputBackgroundColor: string;
+    foregroundColor: string;
+    inputBorderColor: string;
+    selectedRowBackgroundColor: string;
   }
 > = {
   dark: {
@@ -87,16 +93,21 @@ const GRID_THEME_PALETTES: Record<
     rowHoverColor: "#242526",
     borderColor: "#2a2b2c",
     inputBackgroundColor: "#121314",
+    foregroundColor: "#bfbfbf",
+    inputBorderColor: "#333536",
+    selectedRowBackgroundColor: "rgba(57, 148, 188, 0.22)",
   },
-  // No light-mode grid palette defined yet (see colorThemes.ts) — reuses dark until
-  // that work lands.
+  // VS Code 2026-light.json — list/editor colors.
   light: {
-    backgroundColor: "#191a1b",
-    headerBackgroundColor: "#202122",
-    oddRowBackgroundColor: "#1e1f20",
-    rowHoverColor: "#242526",
-    borderColor: "#2a2b2c",
-    inputBackgroundColor: "#121314",
+    backgroundColor: "#fafafd",
+    headerBackgroundColor: "#eaeaea",
+    oddRowBackgroundColor: "#f5f5f7",
+    rowHoverColor: "rgba(0, 0, 0, 0.06)",
+    borderColor: "#f0f1f2",
+    inputBackgroundColor: "#ffffff",
+    foregroundColor: "#202020",
+    inputBorderColor: "#d8d8d8",
+    selectedRowBackgroundColor: "rgba(0, 105, 204, 0.15)",
   },
 };
 
@@ -215,24 +226,24 @@ function QueryResultGrid({
   }, [sql, result.columns, relationKind, connectionId]);
 
   const gridTheme = useMemo(() => {
-    const palette = GRID_THEME_PALETTES[colorTheme];
+    const palette = GRID_THEME_PALETTES[resolveEffectiveColorTheme(colorTheme)];
     return themeQuartz.withParams({
       backgroundColor: palette.backgroundColor,
       dataBackgroundColor: palette.backgroundColor,
-      foregroundColor: "#bfbfbf",
+      foregroundColor: palette.foregroundColor,
       borderColor: palette.borderColor,
       headerBackgroundColor: palette.headerBackgroundColor,
-      headerTextColor: "#bfbfbf",
+      headerTextColor: palette.foregroundColor,
       headerFontWeight: 600,
       headerRowBorder: false,
       headerColumnBorder: false,
       oddRowBackgroundColor: palette.oddRowBackgroundColor,
       rowBorder: false,
       rowHoverColor: palette.rowHoverColor,
-      selectedRowBackgroundColor: "rgba(57, 148, 188, 0.22)",
+      selectedRowBackgroundColor: palette.selectedRowBackgroundColor,
       inputBackgroundColor: palette.inputBackgroundColor,
-      inputTextColor: "#bfbfbf",
-      inputBorder: { color: "#333536" },
+      inputTextColor: palette.foregroundColor,
+      inputBorder: { color: palette.inputBorderColor },
       fontFamily: "inherit",
       fontSize,
       headerFontSize: fontSize,

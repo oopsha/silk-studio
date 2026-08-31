@@ -11,8 +11,7 @@ export type ColorThemeOption = {
 };
 
 export const COLOR_THEMES: readonly ColorThemeOption[] = [
+  { id: "system", label: "System" },
   { id: "dark", label: "Dark" },
-  // No light-mode CSS variables exist yet (see global.css) — this only wires up the
-  // selection plumbing (setting, menu item, command) ahead of that work.
   { id: "light", label: "Light" },
 ];
