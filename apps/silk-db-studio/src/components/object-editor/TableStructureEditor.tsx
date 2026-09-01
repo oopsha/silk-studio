@@ -136,6 +136,7 @@ function TableStructureEditor({ state }: TableStructureEditorProps) {
                   </td>
                   <td>
                     <input
+                      className="table-structure-editor__checkbox"
                       type="checkbox"
                       checked={draft.nullable}
                       disabled={isReadOnly || isPendingDrop}

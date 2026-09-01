@@ -56,6 +56,10 @@
   color: #f48771;
 }
 
+:root[data-color-theme="light"] .context-menu__item--dangerous:not(:disabled) {
+  color: #b3261e;
+}
+
 .context-menu__item--dangerous:hover:not(:disabled),
 .context-menu__item--dangerous:focus-visible:not(:disabled) {
   color: #ffffff;

@@ -123,6 +123,10 @@
   color: #f48771;
 }
 
+:root[data-color-theme="light"] .explorer-mutation-dialog__error {
+  color: #b3261e;
+}
+
 .explorer-mutation-dialog__footer {
   display: flex;
   justify-content: flex-end;

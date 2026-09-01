@@ -15,6 +15,10 @@
   color: var(--color-error, #f48771);
 }
 
+:root[data-color-theme="light"] .columns-preview__status--error {
+  color: #b3261e;
+}
+
 .columns-preview__table {
   width: 100%;
   border-collapse: collapse;

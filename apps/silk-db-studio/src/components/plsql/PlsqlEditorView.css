@@ -89,6 +89,10 @@
   cursor: pointer;
 }
 
+:root[data-color-theme="light"] .plsql-editor-view__error {
+  color: #b3261e;
+}
+
 .plsql-editor-view__error:hover {
   background-color: rgba(255, 255, 255, 0.06);
 }

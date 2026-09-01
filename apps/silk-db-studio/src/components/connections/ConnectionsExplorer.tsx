@@ -571,10 +571,14 @@ function ProfileTree({
                 name="loading"
                 className="connections-explorer__status-spinner"
               />
-            ) : isConnected ? (
-              "●"
             ) : (
-              "○"
+              <span
+                className={
+                  isConnected
+                    ? "connections-explorer__status-dot connections-explorer__status-dot--connected"
+                    : "connections-explorer__status-dot"
+                }
+              />
             )}
           </span>
           <span>{profile.name}</span>

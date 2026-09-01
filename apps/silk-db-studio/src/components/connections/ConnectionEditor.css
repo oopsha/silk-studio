@@ -39,12 +39,21 @@
   color: #73c991;
 }
 
+:root[data-color-theme="light"] .connection-editor__feedback--success {
+  color: #2e7d32;
+}
+
 .connection-editor__feedback--error,
 .connection-editor__error {
   color: #f14c4c;
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
+}
+
+:root[data-color-theme="light"] .connection-editor__feedback--error,
+:root[data-color-theme="light"] .connection-editor__error {
+  color: #b3261e;
 }
 
 .connection-editor__form {

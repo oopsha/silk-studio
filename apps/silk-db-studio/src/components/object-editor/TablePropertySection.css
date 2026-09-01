@@ -15,6 +15,10 @@
   color: var(--color-error, #f48771);
 }
 
+:root[data-color-theme="light"] .table-property-section__status--error {
+  color: #b3261e;
+}
+
 .table-property-section__table {
   width: 100%;
   border-collapse: collapse;

@@ -61,6 +61,10 @@
   white-space: nowrap;
 }
 
+:root[data-color-theme="light"] .connections-explorer__action-msg {
+  color: #2e7d32;
+}
+
 .connections-explorer__body {
   flex: 1;
   min-height: 0;
@@ -78,6 +82,10 @@
 
 .connections-explorer__profile--connected > .connections-explorer__row .connections-explorer__status {
   color: #73c991;
+}
+
+:root[data-color-theme="light"] .connections-explorer__profile--connected > .connections-explorer__row .connections-explorer__status {
+  color: #2e7d32;
 }
 
 .connections-explorer__row {
@@ -202,9 +210,33 @@ html.silk-explorer-dragging * {
 }
 
 .connections-explorer__status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 10px;
   color: var(--color-description);
   font-size: 10px;
+}
+
+/* A plain "●" glyph renders visually smaller than "○" in most fonts (the filled dot has
+   built-in padding an outline circle doesn't), so the connected/disconnected state is drawn
+   as a fixed-size CSS circle instead — same diameter either way, just filled vs. outlined. */
+.connections-explorer__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-description);
+  box-sizing: border-box;
+}
+
+.connections-explorer__status-dot--connected {
+  border-color: #73c991;
+  background-color: #73c991;
+}
+
+:root[data-color-theme="light"] .connections-explorer__status-dot--connected {
+  border-color: #2e7d32;
+  background-color: #2e7d32;
 }
 
 .connections-explorer__status-spinner {
@@ -256,6 +288,10 @@ html.silk-explorer-dragging * {
   cursor: text;
 }
 
+:root[data-color-theme="light"] .connections-explorer__error {
+  color: #b3261e;
+}
+
 .connections-explorer__error--root {
   padding: 8px 12px;
 }
@@ -269,6 +305,10 @@ html.silk-explorer-dragging * {
   font-size: 12px;
   text-decoration: underline;
   cursor: pointer;
+}
+
+:root[data-color-theme="light"] .connections-explorer__link-button {
+  color: #0969da;
 }
 
 .connections-explorer__link-button:hover:not(:disabled) {
