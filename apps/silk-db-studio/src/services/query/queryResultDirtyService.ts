@@ -20,11 +20,20 @@ class QueryResultDirtyServiceImpl {
   private readonly stores = new Map<string, TabDirtyStore>();
   private readonly listeners = new Set<DirtyListener>();
 
+  /**
+   * No-ops if `tabId` already has a store. `QueryResultGrid` calls this on every mount — including
+   * a remount of the *same* result tab (e.g. switching to another editor tab and back) — so this
+   * must not clobber pending edits from before the remount. A genuinely new result set always
+   * reaches here with a fresh `tabId`: `queryExecutionService`'s `beginRun` explicitly calls
+   * `removeTabs` on the previous result tabs before creating new ones, so no stale store can be
+   * sitting under a "new" id.
+   */
   initTab(
     tabId: string,
     columns: string[],
     rows: Array<Array<string | null>>,
   ): void {
+    if (this.stores.has(tabId)) return;
     const originalRows = rows.map((cells) => {
       const row: Record<string, string | null> = {};
       columns.forEach((column, index) => {
