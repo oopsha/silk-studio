@@ -2,6 +2,7 @@
   "name": "silk-studio",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.25.0",
   "engines": {
     "node": ">=22"
   },
