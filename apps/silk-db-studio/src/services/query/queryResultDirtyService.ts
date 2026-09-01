@@ -9,8 +9,12 @@ type TabDirtyStore = {
   dirtyByRow: Map<number, Map<string, DirtyCell>>;
   deletedRows: Set<number>;
   /** Not-yet-saved rows added via "Add row"/"Duplicate row" — keyed by their synthetic negative
-   *  `rowIndex` (see `nextNewRowIndex`), which never collides with a real 0+ query-result index. */
-  newRows: Set<number>;
+   *  `rowIndex` (see `nextNewRowIndex`), which never collides with a real 0+ query-result index.
+   *  Value is the rowIndex (existing or another new row's) this row was inserted directly after,
+   *  or `null` for "inserted at the top" — used to restore each row's grid position after a
+   *  remount (see `QueryResultGrid`'s `rehydratePendingEdits`), since insertion order alone
+   *  doesn't capture *where* a row was added. */
+  newRows: Map<number, number | null>;
   nextNewRowIndex: number;
 };
 
@@ -47,7 +51,7 @@ class QueryResultDirtyServiceImpl {
       originalRows,
       dirtyByRow: new Map(),
       deletedRows: new Set(),
-      newRows: new Set(),
+      newRows: new Map(),
       nextNewRowIndex: 0,
     });
     this.emit();
@@ -107,8 +111,12 @@ class QueryResultDirtyServiceImpl {
     return effective;
   }
 
-  /** Adds a blank new row (all columns `null`) and returns its synthetic (negative) rowIndex. */
-  addNewRow(tabId: string, columns: string[]): number | null {
+  /**
+   * Adds a blank new row (all columns `null`) and returns its synthetic (negative) rowIndex.
+   * `insertAfter` is the rowIndex (existing or another new row's) it was inserted directly after,
+   * or `null` for "inserted at the top" — see `newRows`' doc.
+   */
+  addNewRow(tabId: string, columns: string[], insertAfter: number | null): number | null {
     const store = this.stores.get(tabId);
     if (!store) return null;
     const rowIndex = (store.nextNewRowIndex -= 1);
@@ -117,7 +125,7 @@ class QueryResultDirtyServiceImpl {
       blank[column] = null;
     });
     store.originalRows[rowIndex] = blank;
-    store.newRows.add(rowIndex);
+    store.newRows.set(rowIndex, insertAfter);
     this.emit();
     return rowIndex;
   }
@@ -136,7 +144,7 @@ class QueryResultDirtyServiceImpl {
     if (!sourceValues) return null;
     const rowIndex = (store.nextNewRowIndex -= 1);
     store.originalRows[rowIndex] = { ...sourceValues };
-    store.newRows.add(rowIndex);
+    store.newRows.set(rowIndex, sourceRowIndex);
     this.emit();
     return rowIndex;
   }
@@ -145,15 +153,35 @@ class QueryResultDirtyServiceImpl {
     return this.stores.get(tabId)?.newRows.has(rowIndex) ?? false;
   }
 
+  /** The rowIndex `rowIndex` (a new/duplicated row) was inserted directly after, or `null` for
+   *  "inserted at the top" — see `newRows`' doc. Returns `undefined` if `rowIndex` isn't a
+   *  tracked new row. */
+  getNewRowAnchor(tabId: string, rowIndex: number): number | null | undefined {
+    return this.stores.get(tabId)?.newRows.get(rowIndex);
+  }
+
+  /** True when `rowIndex` has at least one unsaved cell edit (excludes added/duplicated rows —
+   *  those are flagged via `isNewRow` instead, which takes visual precedence in the grid). */
+  isRowDirty(tabId: string, rowIndex: number): boolean {
+    const store = this.stores.get(tabId);
+    if (!store || store.newRows.has(rowIndex)) return false;
+    return store.dirtyByRow.has(rowIndex);
+  }
+
   getNewRowCount(tabId: string): number {
     return this.stores.get(tabId)?.newRows.size ?? 0;
   }
 
+  /**
+   * Creation order (oldest first) — `newRows` is a `Map`, which iterates in insertion order.
+   * `QueryResultGrid`'s rehydrate-on-remount relies on this order: a row's `insertAfter` anchor
+   * may itself be another new row, so replaying oldest-first guarantees that anchor already has a
+   * grid row by the time its dependent is re-added.
+   */
   getNewRowIndexes(tabId: string): number[] {
     const store = this.stores.get(tabId);
     if (!store) return [];
-    // Descending — rows are added most-recent-first (each new index is lower than the last).
-    return [...store.newRows].sort((a, b) => b - a);
+    return [...store.newRows.keys()];
   }
 
   /** Discards a not-yet-saved added/duplicated row entirely (as opposed to marking it deleted —
@@ -197,7 +225,7 @@ class QueryResultDirtyServiceImpl {
     }
     store.dirtyByRow.clear();
     store.deletedRows.clear();
-    for (const rowIndex of store.newRows) {
+    for (const rowIndex of store.newRows.keys()) {
       delete store.originalRows[rowIndex];
     }
     store.newRows.clear();

@@ -909,6 +909,7 @@ export const koMessages = {
         "선택한 행을 삭제 표시합니다(저장 전까지 실제로 삭제되지 않음) — 표시된 행에서 다시 누르면 취소됩니다. 아직 저장 안 한 추가·복제 행은 표시 대신 바로 제거됩니다.",
       cancelChanges: "변경 취소",
       cancelChangesTitle: "저장하지 않은 셀 편집·삭제 표시·추가/복제된 행을 모두 되돌립니다",
+      cancelChangesConfirm: "저장하지 않은 셀 편집·삭제 표시·추가/복제된 행을 모두 되돌릴까요? 이 작업은 되돌릴 수 없습니다.",
       changesCancelled: "저장하지 않은 변경 내용을 취소했습니다",
       addRow: "행 추가",
       addRowTitle: "빈 행을 추가하고 바로 편집을 시작합니다",

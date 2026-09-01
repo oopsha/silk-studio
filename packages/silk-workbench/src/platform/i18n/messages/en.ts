@@ -915,6 +915,8 @@ export const enMessages = {
       cancelChanges: "Cancel Changes",
       cancelChangesTitle:
         "Discard all unsaved cell edits, delete marks, and added/duplicated rows",
+      cancelChangesConfirm:
+        "Discard all unsaved cell edits, delete marks, and added/duplicated rows? This cannot be undone.",
       changesCancelled: "Unsaved changes discarded",
       addRow: "Add Row",
       addRowTitle: "Add a blank row and start editing it",
