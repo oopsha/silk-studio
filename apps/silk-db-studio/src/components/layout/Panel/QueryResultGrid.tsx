@@ -197,10 +197,12 @@ function QueryResultGrid({
   );
 
   useEffect(() => {
+    // No cleanup here: tab lifecycle (removeTab/removeTabs) is owned by
+    // queryExecutionService, which clears a result tab's dirty store when it's actually
+    // closed or replaced by a new query run — not by this component's mount/unmount, since
+    // switching to another editor tab and back remounts the *same* result tab and must not
+    // lose pending edits. See QueryResultDirtyService.initTab's own no-op-if-exists guard.
     QueryResultDirtyService.initTab(tabId, result.columns, result.rows);
-    return () => {
-      QueryResultDirtyService.removeTab(tabId);
-    };
   }, [tabId, result.columns, result.rows]);
 
   useEffect(() => {
