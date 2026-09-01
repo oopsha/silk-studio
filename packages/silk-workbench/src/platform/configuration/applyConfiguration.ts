@@ -4,6 +4,7 @@ import type { WorkbenchConfiguration } from "./configurationDefaults";
 export function applyWorkbenchConfiguration(
   configuration: WorkbenchConfiguration,
 ): void {
+  if (typeof document === "undefined") return;
   const root = document.documentElement;
   root.dataset.colorTheme = resolveEffectiveColorTheme(
     configuration["workbench.colorTheme"],
