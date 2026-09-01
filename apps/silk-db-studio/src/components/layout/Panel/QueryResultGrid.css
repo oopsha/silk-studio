@@ -46,8 +46,8 @@
 }
 
 .query-result-grid__badge--dirty {
-  background-color: color-mix(in srgb, #3794bc 30%, transparent);
-  color: #9cdcfe;
+  background-color: color-mix(in srgb, #cca700 28%, transparent);
+  color: #e2c08d;
 }
 
 .query-result-grid__badge--blocked {
@@ -180,13 +180,30 @@
   background-color: color-mix(in srgb, #89d185 38%, transparent) !important;
 }
 
+/* Row with unsaved cell edits (not added/duplicated, not marked for deletion) — amber, not blue:
+   `selectedRowBackgroundColor` (see the palette above) is already a near-identical blue, so a blue
+   dirty background would be indistinguishable from "this row is just selected". Same amber as the
+   warn badge (`--badge--warn`). */
+.query-result-grid .ag-row.query-result-grid__row--dirty {
+  box-shadow: inset 3px 0 0 #cca700;
+}
+
+.query-result-grid .ag-row.query-result-grid__row--dirty .ag-cell {
+  background-color: color-mix(in srgb, #cca700 22%, transparent) !important;
+}
+
+.query-result-grid .ag-row.query-result-grid__row--dirty:hover .ag-cell,
+.query-result-grid .ag-row.query-result-grid__row--dirty.ag-row-selected .ag-cell {
+  background-color: color-mix(in srgb, #cca700 28%, transparent) !important;
+}
+
 /* Badge/action colors above are dark-theme VS Code accents; light theme needs darker
    variants of the same hues to stay readable against the lighter badge backgrounds. */
-:root[data-color-theme="light"] .query-result-grid__badge--warn {
+:root[data-color-theme="light"] .query-result-grid__badge--warn,
+:root[data-color-theme="light"] .query-result-grid__badge--dirty {
   color: #7a5900;
 }
 
-:root[data-color-theme="light"] .query-result-grid__badge--dirty,
 :root[data-color-theme="light"] .query-result-grid__action--save:not(:disabled) {
   color: #0969da;
 }

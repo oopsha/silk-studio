@@ -39,6 +39,7 @@ import {
 } from "../../../services/query/filterModelTranslator";
 import { QueryResultDirtyService } from "../../../services/query/queryResultDirtyService";
 import { formatErrorMessage } from "../../../services/formatErrorMessage";
+import { ConfirmDialogService } from "../../../services/ui/confirmDialogService";
 import {
   buildUpdatePreview,
   executeConfirmedUpdates,
@@ -486,9 +487,52 @@ function QueryResultGrid({
     });
   };
 
+  /**
+   * Replays pending edits back onto a freshly (re)mounted grid instance. `QueryResultDirtyService`
+   * survives a remount (e.g. switching to another editor tab and back), but AG Grid itself doesn't:
+   * `rowData` is recomputed from the original `result.rows` and a brand-new grid instance is
+   * created, so added/duplicated rows and edited cell values — both applied to the *previous*
+   * instance imperatively (`applyTransaction`/`setDataValue`) — need to be reapplied here.
+   * Deleted-row and new-row *styling* doesn't need this: `rowClassRules` re-evaluates
+   * `QueryResultDirtyService` against each row on every render, so it self-heals once the row
+   * exists — but a new row's row node doesn't exist at all until re-added below.
+   */
+  const rehydratePendingEdits = () => {
+    const api = apiRef.current;
+    if (!api || !QueryResultDirtyService.hasPendingChanges(tabId)) return;
+
+    for (const row of QueryResultDirtyService.getDirtyRows(tabId)) {
+      if (QueryResultDirtyService.isNewRow(tabId, row.rowIndex)) continue;
+      const node = api.getRowNode(String(row.rowIndex));
+      if (!node) continue;
+      for (const change of row.changes) {
+        node.setDataValue(change.column, change.currentValue);
+      }
+    }
+
+    // New/duplicated rows only exist in CSRM mode (see the disabled Add/Duplicate buttons in
+    // infinite mode) — nothing to replay there.
+    if (!useInfiniteMode) {
+      // Oldest-first (see getNewRowIndexes' doc) — each row is re-added individually, right after
+      // its recorded anchor, so a row anchored to an *earlier* new row lands in the right spot
+      // once that earlier row already has a grid node.
+      for (const rowIndex of QueryResultDirtyService.getNewRowIndexes(tabId)) {
+        const row = buildGridRow(
+          rowIndex,
+          QueryResultDirtyService.getEffectiveRow(tabId, rowIndex) ?? {},
+        );
+        const anchor = QueryResultDirtyService.getNewRowAnchor(tabId, rowIndex);
+        const anchorNode = anchor != null ? api.getRowNode(String(anchor)) : undefined;
+        const addIndex = anchorNode?.rowIndex != null ? anchorNode.rowIndex + 1 : 0;
+        api.applyTransaction({ add: [row], addIndex });
+      }
+    }
+  };
+
   const handleFirstDataRendered = (
     _event: FirstDataRenderedEvent<QueryResultRow>,
   ) => {
+    rehydratePendingEdits();
     QueryResultGridService.autoSizeToContent();
   };
 
@@ -601,8 +645,9 @@ function QueryResultGrid({
         ? api.getRowNode(String(getQueryResultRowIndex(selectedRows[0])))
         : undefined;
     const addIndex = selectedNode?.rowIndex != null ? selectedNode.rowIndex + 1 : 0;
+    const insertAfter = selectedNode?.data ? getQueryResultRowIndex(selectedNode.data) : null;
 
-    const rowIndex = QueryResultDirtyService.addNewRow(tabId, result.columns);
+    const rowIndex = QueryResultDirtyService.addNewRow(tabId, result.columns, insertAfter);
     if (rowIndex == null) return;
     const row = buildGridRow(rowIndex, {});
     api.applyTransaction({ add: [row], addIndex });
@@ -647,13 +692,25 @@ function QueryResultGrid({
     }
   };
 
-  /**
-   * Discards every pending change for this tab without saving: restores edited cells to their
-   * original values (via `setDataValue`, which re-fires `onCellValueChanged` and lets the normal
-   * dirty-clearing logic run), removes added/duplicated rows from the grid, and un-marks rows
-   * pending deletion.
-   */
+  /** Discards every pending change for this tab without saving — irreversible, so confirm first. */
   const handleCancelChanges = () => {
+    if (!QueryResultDirtyService.hasPendingChanges(tabId)) return;
+    void ConfirmDialogService.confirm({
+      title: t("app.query.cancelChanges"),
+      message: t("app.query.cancelChangesConfirm"),
+      confirmLabel: t("app.query.cancelChanges"),
+      danger: true,
+    }).then((confirmed) => {
+      if (confirmed) applyCancelChanges();
+    });
+  };
+
+  /**
+   * Restores edited cells to their original values (via `setDataValue`, which re-fires
+   * `onCellValueChanged` and lets the normal dirty-clearing logic run), removes added/duplicated
+   * rows from the grid, and un-marks rows pending deletion.
+   */
+  const applyCancelChanges = () => {
     const api = apiRef.current;
     if (api) {
       for (const row of QueryResultDirtyService.getDirtyRows(tabId)) {
@@ -1093,6 +1150,13 @@ function QueryResultGrid({
             "query-result-grid__row--new": (params) => {
               if (!params.data) return false;
               return QueryResultDirtyService.isNewRow(
+                tabId,
+                getQueryResultRowIndex(params.data),
+              );
+            },
+            "query-result-grid__row--dirty": (params) => {
+              if (!params.data) return false;
+              return QueryResultDirtyService.isRowDirty(
                 tabId,
                 getQueryResultRowIndex(params.data),
               );

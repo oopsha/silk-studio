@@ -279,14 +279,20 @@ export async function buildUpdatePreview(
   const newRows = newRowIndexes
     .map((rowIndex) => QueryResultDirtyService.getEffectiveRow(tabId, rowIndex))
     .filter((row): row is Record<string, string | null> => row != null);
+  // DELETE first, then UPDATE, then INSERT — a delete or a PK-changing update may free up a
+  // primary-key value a same-batch insert/update reuses (e.g. deleting PK=2 and inserting a new
+  // row with PK=2); running them in this order avoids a spurious unique-constraint error even
+  // though the net result is valid. (Two existing rows swapping PKs with each other still can't
+  // be resolved by reordering alone — out of scope here.)
   const statements = [
-    ...buildInsertStatements({
+    ...buildDeleteStatements({
       catalog: eligibility.catalog,
       schema: eligibility.schema,
       table: eligibility.table,
       driverId: eligibility.driverId,
-      columns: resultColumns,
-      rows: newRows,
+      primaryKeys: eligibility.primaryKeys,
+      originalRows,
+      deletedRowIndexes,
     }),
     ...buildUpdateStatements({
       catalog: eligibility.catalog,
@@ -297,14 +303,13 @@ export async function buildUpdatePreview(
       originalRows,
       dirtyRows,
     }),
-    ...buildDeleteStatements({
+    ...buildInsertStatements({
       catalog: eligibility.catalog,
       schema: eligibility.schema,
       table: eligibility.table,
       driverId: eligibility.driverId,
-      primaryKeys: eligibility.primaryKeys,
-      originalRows,
-      deletedRowIndexes,
+      columns: resultColumns,
+      rows: newRows,
     }),
   ];
 
