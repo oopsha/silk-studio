@@ -44,3 +44,7 @@
 .table-structure-save-dialog__blockers {
   color: #f48771;
 }
+
+:root[data-color-theme="light"] .table-structure-save-dialog__blockers {
+  color: #b3261e;
+}

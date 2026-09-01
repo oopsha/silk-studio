@@ -170,6 +170,18 @@
   color: #cca700;
 }
 
+:root[data-color-theme="light"] .query-history__item--success .query-history__item-meta .codicon {
+  color: #2e7d32;
+}
+
+:root[data-color-theme="light"] .query-history__item--error .query-history__item-meta .codicon {
+  color: #b3261e;
+}
+
+:root[data-color-theme="light"] .query-history__item--cancelled .query-history__item-meta .codicon {
+  color: #6b5c00;
+}
+
 .query-history__item-name {
   font-weight: 600;
   opacity: 1;

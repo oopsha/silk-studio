@@ -64,6 +64,24 @@
   color: #cca700;
 }
 
+/* These four are dark-theme VS Code accents; light theme needs darker variants to
+   stay readable against the light panel background. */
+:root[data-color-theme="light"] .panel__status--running {
+  color: #7a5900;
+}
+
+:root[data-color-theme="light"] .panel__status--success {
+  color: #2e7d32;
+}
+
+:root[data-color-theme="light"] .panel__status--error {
+  color: #b3261e;
+}
+
+:root[data-color-theme="light"] .panel__status--cancelled {
+  color: #6b5c00;
+}
+
 .panel__tabs {
   display: flex;
   align-items: stretch;
@@ -161,6 +179,10 @@
   font-size: 12px;
 }
 
+:root[data-color-theme="light"] .panel__running-banner {
+  color: #7a5900;
+}
+
 .panel__content {
   flex: 1;
   margin: 0;
@@ -183,6 +205,10 @@
 
 .panel__content--error {
   color: #f48771;
+}
+
+:root[data-color-theme="light"] .panel__content--error {
+  color: #b3261e;
 }
 
 .panel__content::selection {

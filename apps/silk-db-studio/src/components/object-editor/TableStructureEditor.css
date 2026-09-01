@@ -16,6 +16,16 @@
   color: var(--color-error, #f48771);
 }
 
+:root[data-color-theme="light"] .table-structure-editor__status--error {
+  color: #b3261e;
+}
+
+/* Native checkbox accent — Chromium's default checked color is near-black, which reads as
+   jarring against the app's accent palette in either theme. */
+.table-structure-editor__checkbox {
+  accent-color: var(--color-sash-hover-border);
+}
+
 .table-structure-editor__toolbar {
   display: flex;
   align-items: center;

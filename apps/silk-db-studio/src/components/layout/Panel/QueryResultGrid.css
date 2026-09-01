@@ -121,7 +121,7 @@
 }
 
 .query-result-grid .ag-header-row-column {
-  background-color: #202122;
+  background-color: var(--color-menu-background);
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -131,12 +131,12 @@
 
 .query-result-grid .ag-header-row-column .ag-header-cell,
 .query-result-grid .ag-header-row-column .ag-header-group-cell {
-  background-color: #202122;
+  background-color: var(--color-menu-background);
   font-weight: 600;
 }
 
 .query-result-grid .ag-header-row-column-filter {
-  background-color: #1a1b1c;
+  background-color: var(--color-input-background);
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -154,6 +154,10 @@
   text-decoration: line-through;
   text-decoration-color: #f48771;
   opacity: 0.75;
+}
+
+:root[data-color-theme="light"] .query-result-grid .ag-row.query-result-grid__row--deleted .ag-cell {
+  text-decoration-color: #b3261e;
 }
 
 /* Selected and hovered share one (slightly brighter than base) color on purpose. */
@@ -174,6 +178,27 @@
 .query-result-grid .ag-row.query-result-grid__row--new:hover .ag-cell,
 .query-result-grid .ag-row.query-result-grid__row--new.ag-row-selected .ag-cell {
   background-color: color-mix(in srgb, #89d185 38%, transparent) !important;
+}
+
+/* Badge/action colors above are dark-theme VS Code accents; light theme needs darker
+   variants of the same hues to stay readable against the lighter badge backgrounds. */
+:root[data-color-theme="light"] .query-result-grid__badge--warn {
+  color: #7a5900;
+}
+
+:root[data-color-theme="light"] .query-result-grid__badge--dirty,
+:root[data-color-theme="light"] .query-result-grid__action--save:not(:disabled) {
+  color: #0969da;
+}
+
+:root[data-color-theme="light"] .query-result-grid__badge--blocked,
+:root[data-color-theme="light"] .query-result-grid__badge--deleted {
+  color: #b3261e;
+}
+
+:root[data-color-theme="light"] .query-result-grid__badge--new,
+:root[data-color-theme="light"] .query-result-grid__action-msg {
+  color: #2e7d32;
 }
 
 /* AG Grid scroll containers — match VS Code slider tones */

@@ -36,6 +36,22 @@
   color: #cca700;
 }
 
+:root[data-color-theme="light"] .object-editor-data__status--running {
+  color: #7a5900;
+}
+
+:root[data-color-theme="light"] .object-editor-data__status--success {
+  color: #2e7d32;
+}
+
+:root[data-color-theme="light"] .object-editor-data__status--error {
+  color: #b3261e;
+}
+
+:root[data-color-theme="light"] .object-editor-data__status--cancelled {
+  color: #6b5c00;
+}
+
 .object-editor-data__refresh {
   display: inline-flex;
   align-items: center;

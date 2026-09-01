@@ -122,6 +122,10 @@
   color: #f48771;
 }
 
+:root[data-color-theme="light"] .query-result-update-dialog__error {
+  color: #b3261e;
+}
+
 .query-result-update-dialog__footer {
   display: flex;
   justify-content: flex-end;
