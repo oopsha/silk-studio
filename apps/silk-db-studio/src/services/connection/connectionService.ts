@@ -45,8 +45,14 @@ import {
   isSshTunnelConfigComplete,
   type SshTunnelProgressPhase,
 } from "./sshTunnelTypes";
-import { closeSshTunnel, openSshTunnelForConnect } from "./sshTunnelService";
+import {
+  closeSshTunnel,
+  openSshTunnelForConnect,
+  resolveMissingSshSecretFields,
+} from "./sshTunnelService";
+import { sshSecretSet, type SshSecretKind } from "./sshTunnelSecretBridge";
 import { ConnectionPasswordPromptService } from "./connectionPasswordPromptService";
+import { SshSecretPromptService } from "./sshSecretPromptService";
 
 /** Accepts progress phases from either tunnel type — a connection uses at most one. */
 export type ConnectProgress = (
@@ -347,6 +353,35 @@ class ConnectionServiceImpl {
       }
     }
 
+    // Same rationale as the DB password prompt above: an imported profile's SSH tunnel config
+    // (host/port/auth method) survives, but its secrets never do (see connectionExportService.ts)
+    // — ask up front rather than letting the tunnel fail with a raw "key is encrypted"-style error.
+    const sshSecretOverrides: Partial<Record<SshSecretKind, string>> = {};
+    if (
+      profile.sshTunnel &&
+      isSshTunnelConfigComplete(profile.sshTunnel) &&
+      !options.silent &&
+      options.promptForPassword !== false
+    ) {
+      const missingFields = await resolveMissingSshSecretFields(profileId, profile.sshTunnel);
+      if (missingFields.length > 0) {
+        const promptResult = await SshSecretPromptService.open(profile.name, missingFields);
+        if (!promptResult.confirmed) return;
+        for (const field of missingFields) {
+          const value = promptResult.values[field] ?? "";
+          if (value) {
+            sshSecretOverrides[field] = value;
+          }
+          // Persist even a blank answer when the user opts to save — otherwise a confirmed
+          // "this key has no passphrase" is indistinguishable from "never asked" and the prompt
+          // would resurface on every future connect (sshSecretSet stores a sentinel for this).
+          if (promptResult.save) {
+            await sshSecretSet(profileId, field, value);
+          }
+        }
+      }
+    }
+
     this.setActiveProfile(profileId);
     this.setState({
       ...this.state,
@@ -389,6 +424,7 @@ class ConnectionServiceImpl {
           profile.url,
           sshTunnel,
           options.onProgress,
+          sshSecretOverrides,
         );
       }
 

@@ -530,6 +530,14 @@ export const enMessages = {
       passwordPromptSummary:
         "No password is saved for “{name}”. Enter it to connect.",
       passwordPromptSave: "Save this password",
+      sshSecretPromptTitle: "SSH Credentials Required",
+      sshSecretPromptSummary:
+        "This connection's SSH tunnel is missing credentials for “{name}”. Enter them to connect.",
+      sshSecretPromptSave: "Save these credentials",
+      sshSecretLabelPassword: "SSH password",
+      sshSecretLabelPassphrase: "Private key passphrase",
+      sshSecretLabelTargetPassword: "Second hop SSH password",
+      sshSecretLabelTargetPassphrase: "Second hop private key passphrase",
     },
     connectionTarget: {
       noConnection: "No connection",

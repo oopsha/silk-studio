@@ -528,6 +528,14 @@ export const koMessages = {
       passwordPromptSummary:
         "“{name}”에 저장된 비밀번호가 없습니다. 연결하려면 비밀번호를 입력하세요.",
       passwordPromptSave: "이 비밀번호 저장",
+      sshSecretPromptTitle: "SSH 비밀정보 필요",
+      sshSecretPromptSummary:
+        "“{name}” 연결의 SSH 터널에 필요한 비밀정보가 저장되어 있지 않습니다. 연결하려면 입력하세요.",
+      sshSecretPromptSave: "이 비밀정보 저장",
+      sshSecretLabelPassword: "SSH 비밀번호",
+      sshSecretLabelPassphrase: "개인키 패스프레이즈",
+      sshSecretLabelTargetPassword: "2단계 SSH 비밀번호",
+      sshSecretLabelTargetPassphrase: "2단계 개인키 패스프레이즈",
     },
     connectionTarget: {
       noConnection: "연결 없음",
