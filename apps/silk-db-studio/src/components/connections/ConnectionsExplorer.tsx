@@ -3,6 +3,7 @@ import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import type {
   MetadataGroupId,
   MetadataObject,
@@ -12,6 +13,8 @@ import { ConfirmDialogService } from "../../services/ui/confirmDialogService";
 import { ConnectionEditorService } from "../../services/connection/connectionEditorService";
 import { ConnectionService } from "../../services/connection/connectionService";
 import { ConnectionTreeService } from "../../services/connection/connectionTreeService";
+import { EditorConnectionBindingService } from "../../services/connection/editorConnectionBindingService";
+import { monacoLanguageIdForProfile } from "../../services/sql/sqlDialect";
 import {
   filterCatalogTree,
   filterSchemaTree,
@@ -227,11 +230,28 @@ function ProfileTree({
     });
   }
 
+  /** Opens a new SQL tab bound to this row's specific `profile.id` — not the globally "active"
+   *  profile `silk.file.newTextFile` uses, so this stays correct when opened from a row that
+   *  isn't currently active. If not yet connected, kicks off the connection in the background
+   *  rather than making the user connect first: the tab opens immediately (so typing can start
+   *  right away) and a failed connect surfaces through the row's existing error UI (`run`)
+   *  without discarding the tab. */
+  function openNewQueryForProfile() {
+    const tabId = EditorService.openUntitled(monacoLanguageIdForProfile(profile.id));
+    EditorConnectionBindingService.setBinding(tabId, { profileId: profile.id });
+    if (!isConnected && !isConnecting) {
+      void run(() => ConnectionService.connect(profile.id));
+    }
+  }
+
   /** Handles the profile row's own context menu (see `buildProfileMenuItems`) — each branch
    *  mirrors the matching hover icon button's onClick exactly, always targeting `profile.id`
    *  captured in this closure rather than whatever profile happens to be globally "active". */
   async function handleProfileMenuSelect(itemId: string) {
     switch (itemId) {
+      case "newQuery":
+        openNewQueryForProfile();
+        return;
       case "connect":
         await run(() => ConnectionService.connect(profile.id));
         return;
@@ -584,6 +604,15 @@ function ProfileTree({
           <span>{profile.name}</span>
         </button>
         <div className="connections-explorer__row-actions">
+          <button
+            type="button"
+            className="connections-explorer__icon-button"
+            title={t("app.explorer.newQueryWithConnection")}
+            disabled={busy}
+            onClick={openNewQueryForProfile}
+          >
+            <Codicon name="new-file" />
+          </button>
           {isConnected ? (
             <button
               type="button"
