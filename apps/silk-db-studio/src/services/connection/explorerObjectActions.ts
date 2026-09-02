@@ -203,7 +203,7 @@ export function buildSchemaMenuItems(): ExplorerMenuItem[] {
 
 /**
  * Connection profile row's own context menu — mirrors the row's hover icon buttons
- * (connect/disconnect, refresh, edit, duplicate, delete) exactly, rather than routing through
+ * (new query, connect/disconnect, refresh, edit, duplicate, delete) exactly, rather than routing through
  * `silk.connection.*` commands: those commands act on `ConnectionService.getActiveProfile()`
  * (the globally "active" profile, set by clicking a row), which would silently target the wrong
  * connection if the user right-clicks a row that isn't currently active. No `commandId` here —
@@ -215,11 +215,17 @@ export function buildProfileMenuItems(options: {
 }): ExplorerMenuItem[] {
   return [
     {
+      id: "newQuery",
+      label: I18nService.t("app.explorer.newQueryWithConnection"),
+      enabled: true,
+    },
+    {
       id: options.isConnected ? "disconnect" : "connect",
       label: I18nService.t(
         options.isConnected ? "common.disconnect" : "common.connect",
       ),
       enabled: true,
+      separator: true,
     },
     {
       id: "refresh",
