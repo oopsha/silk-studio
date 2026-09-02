@@ -10,6 +10,11 @@ import { readTextFileAtPath } from "@silk-studio/editor/services/editor/editorFi
 import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import type { EditorConnectionBinding } from "../connection/editorConnectionBindingService";
 import { ConnectionService } from "../connection/connectionService";
+import {
+  getPackageDdlBuffer,
+  seedPackageDdlBuffers,
+  type PackageDdlBufferState,
+} from "./packageDdlBufferStore";
 
 const PERSIST_DEBOUNCE_MS = 400;
 /** Cap Hot Exit flush so a stuck write cannot block window close. */
@@ -17,6 +22,7 @@ const CLOSE_PERSIST_TIMEOUT_MS = 2_000;
 
 type SessionFileExtras = {
   bindings?: Record<string, EditorConnectionBinding>;
+  packageDdlBuffers?: Record<string, PackageDdlBufferState>;
 };
 
 type StoredSession = EditorSessionSnapshotV2 & SessionFileExtras;
@@ -64,12 +70,17 @@ async function resolveFilesystemTabs(
 function captureStoredSession(): StoredSession {
   const snapshot = EditorGroupsService.captureSessionSnapshot();
   const bindings: Record<string, EditorConnectionBinding> = {};
+  const packageDdlBuffers: Record<string, PackageDdlBufferState> = {};
   for (const group of snapshot.groups) {
     for (const tab of group.tabs) {
       bindings[tab.id] = EditorConnectionBindingService.getBinding(tab.id);
+      const buffer = getPackageDdlBuffer(tab.id);
+      if (buffer) {
+        packageDdlBuffers[tab.id] = buffer;
+      }
     }
   }
-  return { ...snapshot, bindings };
+  return { ...snapshot, bindings, packageDdlBuffers };
 }
 
 async function persistSession(): Promise<void> {
@@ -120,6 +131,10 @@ export function startEditorSessionSync(): () => void {
       snapshot = await resolveFilesystemTabs(snapshot);
     }
     if (disposed) return;
+
+    // Must run before applySessionSnapshot's re-render mounts any restored package DDL tab —
+    // PackageDdlEditorView reads this store from a lazy useState initializer at mount time.
+    seedPackageDdlBuffers(raw?.packageDdlBuffers);
 
     EditorGroupsService.applySessionSnapshot(snapshot);
 

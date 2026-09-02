@@ -342,6 +342,19 @@ export class EditorServiceImpl {
     this.fireDidChange();
   }
 
+  /**
+   * Explicitly set a tab's dirty flag without touching its content — for editors (e.g. a
+   * package's Spec/Body pair) whose real edit buffer lives outside `tab.content` entirely, so
+   * `updateTabContent`'s content-vs-savedContent comparison can't drive dirty tracking for them.
+   */
+  setTabDirtyOverride(id: string, dirty: boolean): void {
+    const tab = this.tabs.find((item) => item.id === id);
+    if (!tab || tab.isDirty === dirty) return;
+    tab.isDirty = dirty;
+    this.updateContextKeys();
+    this.fireDidChange();
+  }
+
   openEditor(input: OpenEditorInput): string {
     if (input.uri) {
       const existing = this.tabs.find((tab) => tab.uri === input.uri);

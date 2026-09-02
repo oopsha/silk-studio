@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DiffEditor } from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
@@ -12,21 +12,24 @@ import {
 } from "@silk-studio/editor/themes/dark-monaco.ts";
 import { PackagePlsqlHistoryDialogService } from "../../services/connection/packagePlsqlHistoryDialogService";
 import {
-  clearAllPlsqlSnapshots,
-  deletePlsqlSnapshotEntry,
+  clearAllPackagePlsqlSnapshots,
+  deletePackagePlsqlSnapshotEntry,
   formatPlsqlSnapshotError,
   formatSnapshotTimestamp,
-  listPlsqlSnapshots,
+  listPackagePlsqlSnapshots,
 } from "../../services/connection/plsqlSnapshotService";
-import type { PlsqlSnapshotEntry } from "../../services/connection/plsqlSnapshotStorage";
+import type { PackagePlsqlSnapshotEntry } from "../../services/connection/plsqlSnapshotStorage";
 import { registerSqlLanguages } from "../../services/sql/registerSqlLanguages";
 import "../connections/ExplorerObjectMutationDialog.css";
 import "./PlsqlSnapshotDialog.css";
+import "./PlsqlSaveDialog.css";
+
+type Section = "spec" | "body";
 
 type View =
   | { mode: "history" }
-  | { mode: "diff"; entry: PlsqlSnapshotEntry }
-  | { mode: "confirm"; kind: "restore" | "delete" | "clearAll"; entry?: PlsqlSnapshotEntry };
+  | { mode: "diff"; entry: PackagePlsqlSnapshotEntry; section: Section }
+  | { mode: "confirm"; kind: "restore" | "delete" | "clearAll"; entry?: PackagePlsqlSnapshotEntry };
 
 function renderTemplateWithStrong(
   template: string,
@@ -47,10 +50,11 @@ function renderTemplateWithStrong(
 }
 
 /**
- * Package Spec/Body snapshot history — same storage layer as `PlsqlSnapshotDialog`
- * (`plsqlSnapshotStorage.ts` is already ref-based, no `tabId`), but its own dialog since the
- * shared one hardcodes a `tabId`-based restore/reload flow the package local-buffer editor
- * doesn't have (see PackagePlsqlHistoryDialogService's doc comment).
+ * Package Spec/Body snapshot history. A snapshot entry always covers both halves together
+ * (mirrors Save/Compare&Save's "always both" behavior) — separate storage
+ * (`PackagePlsqlSnapshotEntry`) and its own dialog since the single-buffer `PlsqlSnapshotDialog`
+ * hardcodes a `tabId`-based restore/reload flow the package local-buffer editor doesn't have
+ * (see PackagePlsqlHistoryDialogService's doc comment).
  */
 function PackagePlsqlHistoryDialog() {
   const { t } = useI18n();
@@ -58,7 +62,7 @@ function PackagePlsqlHistoryDialog() {
     PackagePlsqlHistoryDialogService.getRequest(),
   );
   const [view, setView] = useState<View>({ mode: "history" });
-  const [entries, setEntries] = useState<PlsqlSnapshotEntry[]>([]);
+  const [entries, setEntries] = useState<PackagePlsqlSnapshotEntry[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const configuration = useConfiguration();
@@ -77,7 +81,7 @@ function PackagePlsqlHistoryDialog() {
       setView({ mode: "history" });
       setErrorMessage(null);
       setBusy(false);
-      setEntries(next ? listPlsqlSnapshots(next.ref) : []);
+      setEntries(next ? listPackagePlsqlSnapshots(next.ref) : []);
     });
   }, []);
 
@@ -99,7 +103,7 @@ function PackagePlsqlHistoryDialog() {
 
   function refreshEntries() {
     if (!request) return;
-    setEntries(listPlsqlSnapshots(request.ref));
+    setEntries(listPackagePlsqlSnapshots(request.ref));
   }
 
   async function handleConfirm() {
@@ -108,19 +112,19 @@ function PackagePlsqlHistoryDialog() {
     setErrorMessage(null);
     try {
       if (view.kind === "restore" && view.entry) {
-        request.onRestore(view.entry.content);
+        request.onRestore(view.entry.spec, view.entry.body);
         PackagePlsqlHistoryDialogService.close();
         return;
       }
       if (view.kind === "delete" && view.entry) {
-        deletePlsqlSnapshotEntry(request.ref, view.entry.id);
+        deletePackagePlsqlSnapshotEntry(request.ref, view.entry.id);
         refreshEntries();
         setView({ mode: "history" });
         setBusy(false);
         return;
       }
       if (view.kind === "clearAll") {
-        clearAllPlsqlSnapshots(request.ref);
+        clearAllPackagePlsqlSnapshots(request.ref);
         refreshEntries();
         setView({ mode: "history" });
         setBusy(false);
@@ -244,7 +248,7 @@ function PackagePlsqlHistoryDialog() {
                             type="button"
                             className="explorer-mutation-dialog__button"
                             disabled={busy}
-                            onClick={() => setView({ mode: "diff", entry })}
+                            onClick={() => setView({ mode: "diff", entry, section: "spec" })}
                           >
                             {t("app.plsql.diff")}
                           </button>
@@ -285,12 +289,38 @@ function PackagePlsqlHistoryDialog() {
                   formatSnapshotTimestamp(view.entry.createdAt),
                 )}
               </p>
+              <div className="plsql-save-dialog__tabs" role="tablist">
+                {(["spec", "body"] as const).map((section) => (
+                  <button
+                    key={section}
+                    type="button"
+                    role="tab"
+                    aria-selected={section === view.section}
+                    className={`plsql-save-dialog__tab${
+                      section === view.section ? " plsql-save-dialog__tab--active" : ""
+                    }`}
+                    onClick={() =>
+                      setView((prev) =>
+                        prev.mode === "diff" ? { ...prev, section } : prev,
+                      )
+                    }
+                  >
+                    {section === "spec"
+                      ? t("app.objectEditor.specSection")
+                      : t("app.objectEditor.bodySection")}
+                  </button>
+                ))}
+              </div>
               <div className="plsql-snapshot-dialog__diff">
                 <DiffEditor
                   height="100%"
                   language="plsql"
-                  original={view.entry.content}
-                  modified={request.currentContent}
+                  original={view.entry[view.section]}
+                  modified={
+                    view.section === "spec"
+                      ? request.currentSpecContent
+                      : request.currentBodyContent
+                  }
                   theme={theme}
                   beforeMount={handleBeforeMount}
                   options={{

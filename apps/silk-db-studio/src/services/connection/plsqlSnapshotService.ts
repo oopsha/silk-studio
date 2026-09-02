@@ -10,10 +10,15 @@ import {
 } from "./plsqlEditorConstants";
 import { PlsqlSnapshotDialogService } from "./plsqlSnapshotDialogService";
 import {
+  appendPackagePlsqlSnapshot,
   appendPlsqlSnapshot,
+  clearPackagePlsqlSnapshots,
   clearPlsqlSnapshots,
+  loadPackagePlsqlSnapshots,
   loadPlsqlSnapshots,
+  removePackagePlsqlSnapshot,
   removePlsqlSnapshot,
+  type PackagePlsqlSnapshotEntry,
   type PlsqlSnapshotEntry,
   type PlsqlSnapshotReason,
 } from "./plsqlSnapshotStorage";
@@ -36,6 +41,41 @@ export function recordPlsqlSnapshot(
     return null;
   }
   return appendPlsqlSnapshot(ref, trimmed.endsWith("\n") ? trimmed : `${trimmed}\n`, reason);
+}
+
+/** Records Spec + Body together as one snapshot entry — see PackagePlsqlSnapshotEntry's doc comment. */
+export function recordPackagePlsqlSnapshot(
+  ref: PlsqlEditorRef,
+  spec: string,
+  body: string,
+  reason: PlsqlSnapshotReason,
+): PackagePlsqlSnapshotEntry | null {
+  const cleanSpec = spec.replace(/^\uFEFF/, "");
+  const cleanBody = body.replace(/^\uFEFF/, "");
+  if (!cleanSpec.trim() && !cleanBody.trim()) return null;
+  const isPlaceholder = (value: string) =>
+    value.startsWith("-- Loading source") || value.startsWith("-- Failed to load source");
+  if (isPlaceholder(cleanSpec) || isPlaceholder(cleanBody)) return null;
+  return appendPackagePlsqlSnapshot(
+    ref,
+    cleanSpec.endsWith("\n") ? cleanSpec : `${cleanSpec}\n`,
+    cleanBody.endsWith("\n") ? cleanBody : `${cleanBody}\n`,
+    reason,
+  );
+}
+
+export function listPackagePlsqlSnapshots(ref: PlsqlEditorRef): PackagePlsqlSnapshotEntry[] {
+  return loadPackagePlsqlSnapshots(ref);
+}
+
+export function deletePackagePlsqlSnapshotEntry(ref: PlsqlEditorRef, snapshotId: string): void {
+  if (!removePackagePlsqlSnapshot(ref, snapshotId)) {
+    throw new Error("Snapshot not found.");
+  }
+}
+
+export function clearAllPackagePlsqlSnapshots(ref: PlsqlEditorRef): void {
+  clearPackagePlsqlSnapshots(ref);
 }
 
 export function getPlsqlSnapshotBlockedReason(tabId?: string): string | null {
