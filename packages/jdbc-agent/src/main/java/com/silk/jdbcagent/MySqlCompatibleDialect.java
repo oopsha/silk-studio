@@ -602,8 +602,10 @@ abstract class MySqlCompatibleDialect implements DbDialect {
     if (!"view".equals(kind)) {
       return;
     }
+    // `SCHEMA` is a reserved word in MySQL (synonym for DATABASE) and can't be used unquoted
+    // as a column alias — must be backtick-quoted, unlike the other dialects' equivalent query.
     String sql =
-        "SELECT TABLE_SCHEMA AS SCHEMA, TABLE_NAME AS NAME, 'TABLE' AS TYPE "
+        "SELECT TABLE_SCHEMA AS `SCHEMA`, TABLE_NAME AS NAME, 'TABLE' AS TYPE "
             + "FROM information_schema.VIEW_TABLE_USAGE "
             + "WHERE VIEW_SCHEMA = ? AND VIEW_NAME = ?";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -628,8 +630,9 @@ abstract class MySqlCompatibleDialect implements DbDialect {
     if (!"table".equals(kind) && !"view".equals(kind)) {
       return;
     }
+    // Same reserved-word issue as collectObjectDependencies above.
     String sql =
-        "SELECT VIEW_SCHEMA AS SCHEMA, VIEW_NAME AS NAME, 'VIEW' AS TYPE "
+        "SELECT VIEW_SCHEMA AS `SCHEMA`, VIEW_NAME AS NAME, 'VIEW' AS TYPE "
             + "FROM information_schema.VIEW_TABLE_USAGE "
             + "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
