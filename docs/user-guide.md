@@ -43,6 +43,7 @@ A connection can use **at most one** tunnel type. Enabling one automatically dis
 
 ### Managing connections
 
+- **New Query with this Connection**: hover a connection row (or right-click it) for a dedicated new-query action — it opens a SQL tab in that connection's dialect and binds it to that specific profile, regardless of which connection is currently active. If the profile isn't connected yet, the tab opens immediately and the connection is started in the background.
 - **Edit**: click a saved connection to reopen the form pre-filled.
 - **Duplicate** / **Delete**: available from the connection row's hover actions or right-click menu. Delete asks for confirmation.
 - **Export**: choose all connections or a selection, saved as a JSON file. Passwords are **never** included.
@@ -98,6 +99,7 @@ The Explorer tree shows, per connection: (SQL Server only) databases, then schem
 | `Ctrl+K` then `Ctrl+O` | Change this tab's connection/database/schema target |
 | `Ctrl+Shift+P` | Command Palette |
 | `Ctrl+K` then `Ctrl+S` | Keyboard Shortcuts (searchable, see [Customizing keyboard shortcuts](#customizing-keyboard-shortcuts)) |
+| `Ctrl+Shift+O` | Search database objects across every connected profile (see [Exploring your database](#exploring-your-database)) |
 | `Ctrl+,` | Settings |
 
 The **Command Palette** (`Ctrl+Shift+P`) lists every command with its current shortcut next to it; type to filter by name, id, or key — there's no special search syntax, just plain matching.
@@ -154,7 +156,7 @@ A `SELECT` from a single table becomes editable in its result grid once you run 
 - Deleting a row marks it for deletion rather than removing it immediately — a badge tracks how many rows are pending changes.
 - **Save** becomes active once there are pending edits. It opens a preview of the exact `UPDATE`/`INSERT`/`DELETE` statements it will run, with row/cell counts, for you to confirm before anything is written.
 - The toolbar's context menu offers **Copy Selection**, **Copy Selected Rows**, **Copy All (Filtered)**, and **Export CSV (Filtered)**.
-- Column headers support sorting and, when enabled in Database settings, per-column filters with an Apply/Reset floating filter row.
+- Column headers support sorting and, when enabled in Query Result settings, per-column filters with an Apply/Reset floating filter row.
 - **Save column layout** remembers the current column widths, order, sort, and filter state for that tab.
 
 ## AI Chat
@@ -188,7 +190,7 @@ Open Settings with **Ctrl+,**:
 - **Appearance** — language, color theme, UI font size.
 - **Editor** — font size, tab size, line numbers, minimap, sticky scroll, word wrap.
 - **Database** — query timeout, autocommit, **read-only mode**, Explorer preload behavior, and bind-parameter placeholder style. Read-only mode is a single switch covering every connection at once: it blocks any write statement (`INSERT`/`UPDATE`/`DELETE`/DDL/etc., checked at the moment you try to run it, not just when saving), Explorer's Rename/Drop actions, saving query-result grid edits, PL/SQL save/compile, and AI-proposed SQL execution — `SELECT`/read-only statements and Explain still work normally.
-- **Query Result** — max rows, row height, and related grid behavior.
+- **Query Result** — max rows, row height, column filters, and related grid behavior.
 - **AI** — provider, model, API key, and the context/execution toggles above.
 
 App **settings** (as a whole) can be exported/imported as a JSON file from here as well — this is separate from, and doesn't include, connection profiles.

@@ -4,8 +4,6 @@
 
 **AI를 품은 데이터베이스 스튜디오** — Oracle, PostgreSQL, MySQL, MariaDB, SQL Server를 위한 데스크톱 DB 클라이언트 **Silk DB Studio**와, 그 주변 도구들을 담은 모노레포입니다.
 
-**[silkstudio.co.kr →](https://silkstudio.co.kr)**
-
 <br clear="left"/>
 
 [![CI](https://github.com/oopsha/silk-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/oopsha/silk-studio/actions/workflows/ci.yml)
@@ -16,15 +14,14 @@
 
 ## 다운로드
 
-**[GitHub Releases →](https://github.com/oopsha/silk-studio/releases)** (Windows `.exe`/`.msi`, macOS `.dmg`, arm64/x64 각각 제공)
+- **[silkstudio.co.kr →](https://silkstudio.co.kr)** — OS별 설치 가이드 포함
+- **[GitHub Releases →](https://github.com/oopsha/silk-studio/releases)** (Windows `.exe`/`.msi`, macOS `.dmg`, arm64/x64 각각 제공)
 
 설치 파일에 **jdbc-agent**와 **Eclipse Temurin JRE 17**이 번들되어 있어 시스템에 Java를 따로 설치할 필요가 없습니다.
 
 ## 문서
 
 - **사용자 가이드**: [한국어](docs/user-guide.ko.md) · [English](docs/user-guide.md)
-- [릴리즈 · 코드사이닝 · 업데이터 서명](docs/release.md)
-- [로드맵](docs/roadmap.md)
 
 ## 주요 기능
 
@@ -70,4 +67,4 @@ cd ../..
 pnpm --filter @silk-studio/db-studio tauri dev
 ```
 
-첫 실행 후 `Ctrl+,` → **Database**에서 연결 프로필을 만들고 **Connect**하세요.
+첫 실행 후 좌측 Activity Bar의 **연결(Connections)** 아이콘 → **새 연결**(또는 상단 메뉴 **연결 → New Connection**)로 프로필을 만들고 연결하세요.
