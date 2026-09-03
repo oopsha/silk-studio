@@ -499,46 +499,51 @@ export class EditorServiceImpl {
   }
 
   closeAllTabs(): void {
-    for (const tab of this.tabs) {
-      this.disposeClosedTab(tab);
-    }
-    this.tabs = [];
-    this.activeTabId = null;
-    this.savedContent.clear();
-    this.viewStates.clear();
-    this.updateContextKeys();
-    this.fireDidChange();
+    void this.closeManyWithConfirmation(this.tabs.map((tab) => tab.id));
   }
 
   closeOtherTabs(keepId: string): void {
-    const removed = this.tabs.filter((tab) => tab.id !== keepId);
-    this.tabs = this.tabs.filter((tab) => tab.id === keepId);
-    for (const tab of removed) {
-      this.disposeClosedTab(tab);
-    }
-    this.activeTabId = keepId;
-    this.updateContextKeys();
-    this.fireDidChange();
+    const ids = this.tabs
+      .filter((tab) => tab.id !== keepId)
+      .map((tab) => tab.id);
+    void this.closeManyWithConfirmation(ids, keepId);
   }
 
   closeTabsToRight(fromId: string): void {
     const index = this.tabs.findIndex((tab) => tab.id === fromId);
     if (index === -1) return;
 
-    const removed = this.tabs.splice(index + 1);
-    for (const tab of removed) {
-      this.disposeClosedTab(tab);
+    const ids = this.tabs.slice(index + 1).map((tab) => tab.id);
+    void this.closeManyWithConfirmation(ids);
+  }
+
+  /**
+   * Closes each tab in order, confirming dirty ones the same way {@link closeTab}
+   * does. Stops at the first declined confirmation, leaving the rest open.
+   */
+  private async closeManyWithConfirmation(
+    ids: string[],
+    forceActiveId?: string,
+  ): Promise<void> {
+    for (const id of ids) {
+      const tab = this.tabs.find((item) => item.id === id);
+      if (!tab) continue;
+      if (tab.isDirty) {
+        const confirmed = await EditorHost.confirmCloseDirtyTab(tab);
+        if (!confirmed) break;
+      }
+      this.closeTabImmediate(id);
     }
 
     if (
-      this.activeTabId &&
-      !this.tabs.some((tab) => tab.id === this.activeTabId)
+      forceActiveId &&
+      this.activeTabId !== forceActiveId &&
+      this.tabs.some((tab) => tab.id === forceActiveId)
     ) {
-      this.activeTabId = fromId;
+      this.activeTabId = forceActiveId;
+      this.updateContextKeys();
+      this.fireDidChange();
     }
-
-    this.updateContextKeys();
-    this.fireDidChange();
   }
 
   /**
