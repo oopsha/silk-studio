@@ -1,10 +1,35 @@
 import { bridgeSshTunnelClose, bridgeSshTunnelOpen } from "./sshTunnelBridge";
-import { sshSecretGet } from "./sshTunnelSecretBridge";
+import { hasSshSecretAnswer, sshSecretGet, type SshSecretKind } from "./sshTunnelSecretBridge";
 import { buildJdbcUrl, parseJdbcUrl } from "./connectionUrlBuilder";
 import type { ConnectionDriverId } from "./connectionTypes";
 import type { SshTunnelConfig, SshTunnelProgress } from "./sshTunnelTypes";
 
 export type { SshTunnelProgress } from "./sshTunnelTypes";
+
+/**
+ * Which SSH secrets this tunnel config needs but doesn't have stored — most commonly right
+ * after importing a connection profile, which never carries secrets (see
+ * `connectionExportService.ts`). Drives the pre-flight `SshSecretPromptService` prompt in
+ * `connectionService.ts`, mirroring the DB password's own missing-secret prompt.
+ */
+export async function resolveMissingSshSecretFields(
+  connectionId: string,
+  tunnel: SshTunnelConfig,
+): Promise<SshSecretKind[]> {
+  const missing: SshSecretKind[] = [];
+  const mainKind: SshSecretKind = tunnel.authMethod === "password" ? "password" : "passphrase";
+  if (!(await hasSshSecretAnswer(connectionId, mainKind))) {
+    missing.push(mainKind);
+  }
+  if (tunnel.secondHop.enabled) {
+    const hopKind: SshSecretKind =
+      tunnel.secondHop.authMethod === "password" ? "targetPassword" : "targetPassphrase";
+    if (!(await hasSshSecretAnswer(connectionId, hopKind))) {
+      missing.push(hopKind);
+    }
+  }
+  return missing;
+}
 
 /**
  * Opens the SSH tunnel for `connectionId`, targeting the host/port already encoded in the
@@ -18,6 +43,12 @@ export async function openSshTunnelForConnect(
   url: string,
   tunnel: SshTunnelConfig,
   onProgress?: SshTunnelProgress,
+  /**
+   * Secrets the user just typed into `SshSecretPromptService`'s dialog for this connect attempt,
+   * keyed by the same `SshSecretKind` used in the keyring. Takes priority over the stored
+   * secret so an unsaved ("don't save this credential") entry still works for this one attempt.
+   */
+  secretOverrides?: Partial<Record<SshSecretKind, string>>,
 ): Promise<string> {
   const parsed = parseJdbcUrl(driverId, url);
   if (!parsed || !parsed.host) {
@@ -31,9 +62,13 @@ export async function openSshTunnelForConnect(
   }
 
   const password =
-    tunnel.authMethod === "password" ? await sshSecretGet(connectionId, "password") : undefined;
+    tunnel.authMethod === "password"
+      ? (secretOverrides?.password ?? (await sshSecretGet(connectionId, "password")))
+      : undefined;
   const passphrase =
-    tunnel.authMethod === "privateKey" ? await sshSecretGet(connectionId, "passphrase") : undefined;
+    tunnel.authMethod === "privateKey"
+      ? (secretOverrides?.passphrase ?? (await sshSecretGet(connectionId, "passphrase")))
+      : undefined;
 
   const secondHopConfig = tunnel.secondHop.enabled ? tunnel.secondHop : undefined;
   const secondHop = secondHopConfig
@@ -44,12 +79,14 @@ export async function openSshTunnelForConnect(
         targetAuthMethod: secondHopConfig.authMethod,
         targetPassword:
           secondHopConfig.authMethod === "password"
-            ? (await sshSecretGet(connectionId, "targetPassword")) || undefined
+            ? (secretOverrides?.targetPassword ??
+                (await sshSecretGet(connectionId, "targetPassword"))) || undefined
             : undefined,
         targetPrivateKeyPath: secondHopConfig.privateKeyPath,
         targetPassphrase:
           secondHopConfig.authMethod === "privateKey"
-            ? (await sshSecretGet(connectionId, "targetPassphrase")) || undefined
+            ? (secretOverrides?.targetPassphrase ??
+                (await sshSecretGet(connectionId, "targetPassphrase"))) || undefined
             : undefined,
       }
     : undefined;
