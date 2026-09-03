@@ -12,24 +12,35 @@ function formatError(error: unknown): string {
 
 /**
  * Check GitHub Releases (latest.json) for a newer signed build and optionally install.
+ *
+ * `silentWhenUpToDate` doubles as "this is a background check, not a user-initiated one" —
+ * it also skips the "Checking…" toast and downgrades failures to a log entry instead of an
+ * error toast, so a periodic auto-check stays invisible except for the one thing worth
+ * interrupting for: an update actually being available.
  */
 export async function checkForUpdates(options?: {
   silentWhenUpToDate?: boolean;
 }): Promise<void> {
+  const silent = options?.silentWhenUpToDate ?? false;
+
   if (!isTauri()) {
-    AppNotificationService.show(
-      "Updates are only available in the desktop app.",
-      "info",
-    );
+    if (!silent) {
+      AppNotificationService.show(
+        "Updates are only available in the desktop app.",
+        "info",
+      );
+    }
     return;
   }
 
-  AppNotificationService.show("Checking for updates…", "info");
+  if (!silent) {
+    AppNotificationService.show("Checking for updates…", "info");
+  }
 
   try {
     const update = await check();
     if (!update) {
-      if (!options?.silentWhenUpToDate) {
+      if (!silent) {
         AppNotificationService.show("You're on the latest version.", "success");
       }
       return;
@@ -62,6 +73,7 @@ export async function checkForUpdates(options?: {
   } catch (error) {
     const message = formatError(error);
     void AppLogService.error(message, "update.check");
+    if (silent) return;
 
     if (
       message.includes("REPLACE_AFTER_tauri_signer_generate") ||
