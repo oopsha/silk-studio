@@ -17,7 +17,7 @@ import type { DdlEditorRef } from "../../services/connection/ddlEditorConstants"
 import { bridgeFetchObjectDdl } from "../../services/connection/connectionDdlBridge";
 import { bridgeCompileObject } from "../../services/connection/connectionCompileBridge";
 import { buildPlsqlSaveSql } from "../../services/connection/plsqlSaveSql";
-import { buildPlsqlTabLabel, type PlsqlEditorRef } from "../../services/connection/plsqlEditorConstants";
+import type { PlsqlEditorRef } from "../../services/connection/plsqlEditorConstants";
 import { ConnectionService } from "../../services/connection/connectionService";
 import { ConnectionTreeService } from "../../services/connection/connectionTreeService";
 import { QueryExecutionService } from "../../services/query/queryExecutionService";
@@ -29,7 +29,11 @@ import { registerSqlLanguages } from "../../services/sql/registerSqlLanguages";
 import { ConfirmDialogService } from "../../services/ui/confirmDialogService";
 import { PackagePlsqlSaveDialogService } from "../../services/connection/packagePlsqlSaveDialogService";
 import { PackagePlsqlHistoryDialogService } from "../../services/connection/packagePlsqlHistoryDialogService";
-import { recordPlsqlSnapshot } from "../../services/connection/plsqlSnapshotService";
+import { recordPackagePlsqlSnapshot } from "../../services/connection/plsqlSnapshotService";
+import {
+  getPackageDdlBuffer,
+  setPackageDdlBuffer,
+} from "../../services/editor/packageDdlBufferStore";
 import DependenciesPreview from "../object-editor/DependenciesPreview";
 import PackageMembersPreview from "../object-editor/PackageMembersPreview";
 import "../object-editor/PropertiesView.css";
@@ -67,6 +71,11 @@ type PackageDdlEditorViewProps = {
 /** Per-tab section memory, same rationale as DdlEditorView's own map. */
 const activeSectionIdByTabId = new Map<string, SectionId>();
 
+function toSourceBuffer(stored: { loaded: string | null; current: string } | undefined): SourceBuffer {
+  if (!stored) return EMPTY_BUFFER;
+  return { loaded: stored.loaded, current: stored.current, loading: false, error: null };
+}
+
 /**
  * Package object editor — Dependencies/Spec/Body/Procedure/Function side-tab shell. Unlike
  * `ViewDdlEditor` (used for standalone procedures/functions/views), Spec and Body are edited as
@@ -87,8 +96,12 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
   const [activeSectionId, setActiveSectionIdState] = useState<SectionId>(
     () => activeSectionIdByTabId.get(tabId) ?? "spec",
   );
-  const [specBuffer, setSpecBuffer] = useState<SourceBuffer>(EMPTY_BUFFER);
-  const [bodyBuffer, setBodyBuffer] = useState<SourceBuffer>(EMPTY_BUFFER);
+  const [specBuffer, setSpecBuffer] = useState<SourceBuffer>(
+    () => toSourceBuffer(getPackageDdlBuffer(tabId)?.spec),
+  );
+  const [bodyBuffer, setBodyBuffer] = useState<SourceBuffer>(
+    () => toSourceBuffer(getPackageDdlBuffer(tabId)?.body),
+  );
   const [saving, setSaving] = useState(false);
   const [compileErrors, setCompileErrors] = useState<CompileErrorItem[]>([]);
   const [compileMessage, setCompileMessage] = useState<string | null>(null);
@@ -131,10 +144,25 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
   );
 
   useEffect(() => {
-    loadBuffer(false, setSpecBuffer);
-    loadBuffer(true, setBodyBuffer);
+    const cached = getPackageDdlBuffer(tabId);
+    if (!cached || cached.spec.loaded === null) {
+      loadBuffer(false, setSpecBuffer);
+    }
+    if (!cached || cached.body.loaded === null) {
+      loadBuffer(true, setBodyBuffer);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objectRef.profileId, objectRef.schemaName, objectRef.objectName, objectRef.catalogName]);
+
+  // Keep the cross-remount/cross-restart store in sync — switching away and back (which
+  // unmounts this component, see packageDdlBufferStore's doc comment) or a full app restart
+  // (Hot Exit) both restore from here instead of re-fetching from the DB and discarding edits.
+  useEffect(() => {
+    setPackageDdlBuffer(tabId, {
+      spec: { loaded: specBuffer.loaded, current: specBuffer.current },
+      body: { loaded: bodyBuffer.loaded, current: bodyBuffer.current },
+    });
+  }, [tabId, specBuffer, bodyBuffer]);
 
   useEffect(() => {
     return () => {
@@ -156,6 +184,13 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
 
   const specDirty = specBuffer.loaded !== null && specBuffer.current !== specBuffer.loaded;
   const bodyDirty = bodyBuffer.loaded !== null && bodyBuffer.current !== bodyBuffer.loaded;
+
+  // Reflect Spec/Body dirtiness on the tab itself (tab bar / Open Editors dot) — `tab.content`
+  // can't double as the dirty signal here (it mirrors the active section for the Outline
+  // sidebar only, see the effect above), so this is set explicitly instead.
+  useEffect(() => {
+    EditorService.setTabDirtyOverride(tabId, specDirty || bodyDirty);
+  }, [tabId, specDirty, bodyDirty]);
   // Matches ViewDdlEditor (procedure/function editor): Save doubles as "recompile", so it's
   // enabled whenever a source is loaded, not only when there are local edits — e.g. recompiling
   // after some other object invalidated this package, with nothing changed here locally.
@@ -312,9 +347,8 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
           : t("app.plsql.compileSucceeded"),
       );
 
-      recordPlsqlSnapshot(sectionRef(false), specBuffer.current, "save");
+      recordPackagePlsqlSnapshot(sectionRef(false), specBuffer.current, bodyBuffer.current, "save");
       setSpecBuffer((prev) => ({ ...prev, loaded: prev.current }));
-      recordPlsqlSnapshot(sectionRef(true), bodyBuffer.current, "save");
       setBodyBuffer((prev) => ({ ...prev, loaded: prev.current }));
 
       invalidateObjectPreviewCache(objectRef.profileId, objectRef.schemaName, objectRef.objectName);
@@ -395,46 +429,50 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
     }
   };
 
-  const handleHistory = (section: "spec" | "body") => {
-    const buffer = section === "spec" ? specBuffer : bodyBuffer;
-    const ref = sectionRef(section === "body");
+  // History/Snapshot always cover Spec + Body together (matches Save/Compare&Save) — which
+  // section happens to be active only decides the diff dialog's initial tab, not the scope.
+  const handleHistory = () => {
     PackagePlsqlHistoryDialogService.open({
-      ref,
-      objectLabel: buildPlsqlTabLabel(
-        objectRef.schemaName,
-        objectRef.objectName,
-        "package",
-        section === "body",
-      ),
-      currentContent: buffer.current,
-      onRestore: (content) => {
-        const setBuffer = section === "spec" ? setSpecBuffer : setBodyBuffer;
-        setBuffer((prev) => ({ ...prev, current: content }));
+      ref: sectionRef(false),
+      objectLabel: `${objectRef.schemaName}.${objectRef.objectName}`,
+      currentSpecContent: specBuffer.current,
+      currentBodyContent: bodyBuffer.current,
+      onRestore: (spec, body) => {
+        setSpecBuffer((prev) => ({ ...prev, current: spec }));
+        setBodyBuffer((prev) => ({ ...prev, current: body }));
       },
     });
   };
 
-  const handleSnapshot = (section: "spec" | "body") => {
-    const buffer = section === "spec" ? specBuffer : bodyBuffer;
-    const entry = recordPlsqlSnapshot(sectionRef(section === "body"), buffer.current, "manual");
+  const handleSnapshot = () => {
+    const entry = recordPackagePlsqlSnapshot(
+      sectionRef(false),
+      specBuffer.current,
+      bodyBuffer.current,
+      "manual",
+    );
     AppNotificationService.show(
       entry ? t("app.plsql.snapshotSaved") : t("app.plsql.snapshotEmpty"),
       entry ? "info" : "error",
     );
   };
 
-  const handleReload = async (section: "spec" | "body") => {
+  // Reloads Spec + Body together, same "always both" rule as Save/Snapshot/History — a mismatched
+  // half (edited body reloaded away, spec left dirty from before) would be a confusing state to
+  // leave the user in.
+  const handleReload = async () => {
     const confirmed = await ConfirmDialogService.confirm({
       title: t("app.plsql.reloadFromDatabase"),
       message: t("app.plsql.reloadConfirm").replace(
         "{label}",
-        buildPlsqlTabLabel(objectRef.schemaName, objectRef.objectName, "package", section === "body"),
+        `${objectRef.schemaName}.${objectRef.objectName}`,
       ),
       confirmLabel: t("app.plsql.reload"),
       danger: true,
     });
     if (!confirmed) return;
-    loadBuffer(section === "body", section === "spec" ? setSpecBuffer : setBodyBuffer);
+    loadBuffer(false, setSpecBuffer);
+    loadBuffer(true, setBodyBuffer);
   };
 
   const renderSourceSection = (
@@ -521,7 +559,7 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
               type="button"
               className="view-ddl-editor__action"
               title={t("app.plsql.snapshotHistory")}
-              onClick={() => handleHistory(activeSectionId as "spec" | "body")}
+              onClick={handleHistory}
             >
               <Codicon name="history" />
               {t("app.plsql.actionHistory")}
@@ -530,7 +568,7 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
               type="button"
               className="view-ddl-editor__action"
               title={t("app.plsql.takeSnapshot")}
-              onClick={() => handleSnapshot(activeSectionId as "spec" | "body")}
+              onClick={handleSnapshot}
             >
               <Codicon name="save-all" />
               {t("app.plsql.actionSnapshot")}
@@ -539,7 +577,7 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
               type="button"
               className="view-ddl-editor__action"
               title={t("app.plsql.reloadFromDb")}
-              onClick={() => void handleReload(activeSectionId as "spec" | "body")}
+              onClick={() => void handleReload()}
             >
               <Codicon name="refresh" />
               {t("app.plsql.actionReload")}
@@ -610,11 +648,13 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
                   }`}
                   onClick={() => setActiveSectionId(section.id)}
                 >
-                  {t(section.labelKey)}
+                  <span className="object-editor-properties__nav-item-label">
+                    {t(section.labelKey)}
+                  </span>
                   {(section.id === "spec" && specDirty) ||
-                  (section.id === "body" && bodyDirty)
-                    ? " *"
-                    : ""}
+                  (section.id === "body" && bodyDirty) ? (
+                    <span className="object-editor-properties__nav-item-dirty" aria-hidden />
+                  ) : null}
                 </button>
               ))}
             </nav>

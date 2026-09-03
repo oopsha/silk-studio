@@ -37,6 +37,7 @@
 .object-editor-properties__nav-item {
   display: flex;
   align-items: center;
+  gap: 6px;
   width: 100%;
   padding: 6px 10px;
   color: var(--color-foreground);
@@ -46,6 +47,22 @@
   font-size: 12px;
   text-align: left;
   cursor: pointer;
+}
+
+.object-editor-properties__nav-item-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.object-editor-properties__nav-item-dirty {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-radius: 50%;
+  background-color: currentColor;
+  opacity: 0.85;
 }
 
 .object-editor-properties__nav-item:hover {

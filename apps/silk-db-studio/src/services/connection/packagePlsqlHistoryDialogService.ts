@@ -1,10 +1,12 @@
 import type { PlsqlEditorRef } from "./plsqlEditorConstants";
 
 export type PackagePlsqlHistoryDialogRequest = {
+  /** `packageBody` is irrelevant here — history/restore always covers Spec + Body together. */
   ref: PlsqlEditorRef;
   objectLabel: string;
-  currentContent: string;
-  onRestore: (content: string) => void;
+  currentSpecContent: string;
+  currentBodyContent: string;
+  onRestore: (spec: string, body: string) => void;
 };
 
 type Listener = () => void;
@@ -12,7 +14,8 @@ type Listener = () => void;
 /**
  * Package Spec/Body snapshot history — unlike `PlsqlSnapshotDialogService`, this has no `tabId`
  * (see PackagePlsqlSaveDialogService's doc comment for why): restoring a snapshot just invokes
- * `onRestore` so the caller can write into its own local buffer state.
+ * `onRestore` so the caller can write into its own local buffer state. A snapshot entry always
+ * covers both halves together (mirrors Save/Compare&Save), not one section at a time.
  */
 class PackagePlsqlHistoryDialogServiceImpl {
   private request: PackagePlsqlHistoryDialogRequest | null = null;

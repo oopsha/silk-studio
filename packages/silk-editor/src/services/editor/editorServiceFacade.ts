@@ -46,6 +46,8 @@ export const EditorService = {
     id: string,
     decoration: { description?: string | null; tooltip?: string | null },
   ): void => focused().setTabDecoration(id, decoration),
+  setTabDirtyOverride: (id: string, dirty: boolean): void =>
+    focused().setTabDirtyOverride(id, dirty),
 
   getActiveEditorSnapshot: (): ActiveEditorSnapshot | null =>
     focused().getActiveEditorSnapshot(),
