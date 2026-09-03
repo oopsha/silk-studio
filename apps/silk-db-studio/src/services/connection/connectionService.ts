@@ -247,6 +247,31 @@ class ConnectionServiceImpl {
     return updated;
   }
 
+  /**
+   * Persist the profile's default schema without reconnecting.
+   * Session schema is unchanged — call ActiveDatabaseService.useSchema if needed.
+   */
+  setDefaultSchema(profileId: string, schemaName: string): ConnectionProfile {
+    const schema = schemaName.trim();
+    const profiles = this.state.profiles.map((profile) => {
+      if (profile.id !== profileId) return profile;
+      if (profile.defaultSchema.trim() === schema) return profile;
+      return {
+        ...profile,
+        defaultSchema: schema,
+        updatedAt: Date.now(),
+      };
+    });
+
+    const updated = profiles.find((profile) => profile.id === profileId);
+    if (!updated) {
+      throw new Error("Connection profile not found.");
+    }
+
+    this.persistProfiles(profiles);
+    return updated;
+  }
+
   async duplicateProfile(profileId: string): Promise<ConnectionProfile> {
     const source = this.getProfile(profileId);
     if (!source) {

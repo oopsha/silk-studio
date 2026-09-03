@@ -105,7 +105,7 @@ export const DEFAULT_ORACLE_URL =
   "jdbc:oracle:thin:@localhost:1521/FREEPDB1";
 
 export const DEFAULT_SQLSERVER_URL =
-  "jdbc:sqlserver://localhost:1433;encrypt=true;trustServerCertificate=true";
+  "jdbc:sqlserver://localhost:1433;encrypt=true;trustServerCertificate=true;statementPoolingCacheSize=0";
 
 export const DEFAULT_MYSQL_URL = "jdbc:mysql://localhost:3306";
 

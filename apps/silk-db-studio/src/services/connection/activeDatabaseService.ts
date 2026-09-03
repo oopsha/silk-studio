@@ -104,6 +104,29 @@ class ActiveDatabaseServiceImpl {
   }
 
   /**
+   * Persist schema as the connection profile default, then switch the session
+   * to that schema (same as "Use this schema").
+   */
+  async setDefaultSchema(profileId: string, schemaName: string): Promise<string> {
+    const id = profileId.trim();
+    const schema = schemaName.trim();
+    if (!id || !schema) {
+      throw new Error(tKey("app.explorer.setDefaultSchemaFailed"));
+    }
+
+    const profile = ConnectionService.getProfile(id);
+    if (!profile) {
+      throw new Error(tKey("app.query.noConnectionTarget"));
+    }
+    if (!getConnectionDriver(profile.driverId).supportsRuntimeSchemaSwitch) {
+      throw new Error(tKey("app.explorer.useSchemaUnsupported"));
+    }
+
+    ConnectionService.setDefaultSchema(id, schema);
+    return this.useSchema(id, schema);
+  }
+
+  /**
    * Re-apply the active tab's bound schema before execute, for the same reason
    * {@link applyBindingCatalogForExecute} does for catalog: the JDBC session is shared across
    * every tab bound to this profile, so another tab's {@link useSchema} call can leave the

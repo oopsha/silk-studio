@@ -115,6 +115,40 @@ CommandsRegistry.registerCommand(
 );
 
 CommandsRegistry.registerCommand(
+  EXPLORER_COMMANDS.useSchema,
+  async (...args: unknown[]) => {
+    const payload = args[0] as
+      | { profileId: string; schemaName: string }
+      | undefined;
+    if (!payload?.profileId || !payload.schemaName) return;
+    const { ActiveDatabaseService } = await import(
+      "../../services/connection/activeDatabaseService"
+    );
+    await ActiveDatabaseService.useSchema(
+      payload.profileId,
+      payload.schemaName,
+    );
+  },
+);
+
+CommandsRegistry.registerCommand(
+  EXPLORER_COMMANDS.setDefaultSchema,
+  async (...args: unknown[]) => {
+    const payload = args[0] as
+      | { profileId: string; schemaName: string }
+      | undefined;
+    if (!payload?.profileId || !payload.schemaName) return;
+    const { ActiveDatabaseService } = await import(
+      "../../services/connection/activeDatabaseService"
+    );
+    await ActiveDatabaseService.setDefaultSchema(
+      payload.profileId,
+      payload.schemaName,
+    );
+  },
+);
+
+CommandsRegistry.registerCommand(
   EXPLORER_COMMANDS.refreshCatalog,
   async (...args: unknown[]) => {
     const payload = args[0] as

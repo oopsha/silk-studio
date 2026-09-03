@@ -42,7 +42,11 @@ import {
 import { useConnectionState } from "../../services/connection/useConnectionState";
 import { useConnectionTree } from "../../services/connection/useConnectionTree";
 import type { ConnectionProfile } from "../../services/connection/connectionTypes";
-import { driverIconName, effectiveDefaultSchema } from "../../services/connection/connectionTypes";
+import {
+  driverIconName,
+  effectiveDefaultSchema,
+  getConnectionDriver,
+} from "../../services/connection/connectionTypes";
 import ContextMenu from "../common/ContextMenu";
 import {
   beginExplorerObjectPointerDrag,
@@ -343,6 +347,12 @@ function ProfileTree({
     const isDefaultSchema =
       effective.length > 0 &&
       schema.name.toLowerCase() === effective.toLowerCase();
+    // MySQL/MariaDB have no schema concept distinct from the database itself — the agent
+    // reports each database as a "schema" node (see effectiveDefaultSchema's doc comment),
+    // but switching one is a *catalog* operation (useDatabase, not useSchema, which these
+    // drivers don't support mid-session). Show and dispatch it as a database here too, or
+    // "Use this schema" throws immediately and the row-actions label lies about what it does.
+    const isDatabaseNode = !getConnectionDriver(profile.driverId).showSchemaField;
 
     return (
       <div
@@ -356,12 +366,16 @@ function ProfileTree({
             onOpenContextMenu({
               x: event.clientX,
               y: event.clientY,
-              items: buildSchemaMenuItems(),
-              payload: {
-                profileId: profile.id,
-                schemaName: schema.name,
-                catalogName,
-              },
+              items: isDatabaseNode
+                ? buildCatalogMenuItems({ isDefault: isDefaultSchema })
+                : buildSchemaMenuItems({ isDefault: isDefaultSchema }),
+              payload: isDatabaseNode
+                ? { profileId: profile.id, catalogName: schema.name }
+                : {
+                    profileId: profile.id,
+                    schemaName: schema.name,
+                    catalogName,
+                  },
             });
           }}
         >
@@ -1185,6 +1199,50 @@ function ConnectionsExplorer() {
       return;
     }
 
+    if (item.commandId === EXPLORER_COMMANDS.useSchema) {
+      try {
+        await CommandService.executeCommand(item.commandId, payload);
+        const schemaName =
+          payload &&
+          typeof payload === "object" &&
+          "schemaName" in payload &&
+          typeof (payload as { schemaName: unknown }).schemaName === "string"
+            ? (payload as { schemaName: string }).schemaName
+            : "";
+        flash(
+          schemaName
+            ? t("app.explorer.usingSchema").replace("{name}", schemaName)
+            : t("app.explorer.useSchema"),
+        );
+      } catch (error) {
+        flash(formatErrorMessage(error, t("app.explorer.useSchemaFailed")));
+      }
+      return;
+    }
+
+    if (item.commandId === EXPLORER_COMMANDS.setDefaultSchema) {
+      try {
+        await CommandService.executeCommand(item.commandId, payload);
+        const schemaName =
+          payload &&
+          typeof payload === "object" &&
+          "schemaName" in payload &&
+          typeof (payload as { schemaName: unknown }).schemaName === "string"
+            ? (payload as { schemaName: string }).schemaName
+            : "";
+        flash(
+          schemaName
+            ? t("app.explorer.defaultSchemaSet").replace("{name}", schemaName)
+            : t("app.explorer.setDefaultSchema"),
+        );
+      } catch (error) {
+        flash(
+          formatErrorMessage(error, t("app.explorer.setDefaultSchemaFailed")),
+        );
+      }
+      return;
+    }
+
     if (item.commandId === EXPLORER_COMMANDS.refreshCatalog) {
       try {
         await CommandService.executeCommand(item.commandId, payload);
@@ -1296,6 +1354,13 @@ function ConnectionsExplorer() {
                 label: t("common.collapseAll"),
                 commandId: EXPLORER_COMMANDS.collapseAll,
                 enabled: connection.connectedProfileIds.length > 0,
+              },
+              {
+                id: "disconnectAll",
+                label: t("common.disconnectAll"),
+                commandId: "silk.connection.disconnectAll",
+                enabled: connection.connectedProfileIds.length > 0,
+                separator: true,
               },
             ],
             payload: undefined,

@@ -12,9 +12,7 @@ A complete guide to installing, connecting, and working with Silk DB Studio.
 
 ## Updates
 
-1. Open **Manage** (gear in the Activity Bar) → **Check for Updates…**.
-2. If a newer release exists, confirm to download, install, and relaunch.
-3. Updates are verified with Tauri updater signatures; the feed is GitHub Releases' `latest.json`.
+Silk checks for updates **automatically** — shortly after launch, then every few hours while the app stays open — so you don't need to remember to check yourself. It stays silent when you're already up to date; if a newer release exists, it asks before downloading, installing, and relaunching. You can also trigger a check anytime via **Manage** (gear in the Activity Bar) → **Check for Updates…**. Updates are verified with Tauri updater signatures; the feed is GitHub Releases' `latest.json`.
 
 The color theme can also be switched from the same gear menu's **Themes** submenu — see [Appearance and themes](#appearance-and-themes).
 
@@ -61,7 +59,7 @@ You can keep **any number of connections open at once**. Each SQL editor tab has
 - The Explorer marks connected profiles; opening a table's data or an object's editor uses that object's own connection.
 - A disconnected tab binding stays as-is until you reconnect or change it — Silk never silently reroutes a tab to a different connection.
 
-**Switching the current database/schema** (via the status-bar picker or the Explorer's "Use This Database" / right-click on a catalog) changes it for every open SQL tab bound to that same connection, not just the one you clicked from — this is because tabs on the same connection share one live database session. Use **"Set as Default Database"** to also persist the choice as that connection profile's saved default, so it's used again next time you connect.
+**Switching the current database/schema** (via the status-bar picker, or right-clicking a catalog/schema in the Explorer for "Use This Database"/"Use This Schema") changes it for every open SQL tab bound to that same connection, not just the one you clicked from — this is because tabs on the same connection share one live database session. Use **"Set as Default Database"** (catalog-based drivers) or **"Set as Default Schema"** (Oracle, PostgreSQL) to also persist the choice as that connection profile's saved default, so it's used again next time you connect.
 
 ## Transactions
 

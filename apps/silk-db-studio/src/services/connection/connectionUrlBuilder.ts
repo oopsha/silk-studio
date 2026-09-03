@@ -27,7 +27,16 @@ export const DEFAULT_PORT_BY_DRIVER: Record<ConnectionDriverId, number> = {
   postgresql: 5432,
 };
 
-const SQLSERVER_FIXED_PARAMS = "encrypt=true;trustServerCertificate=true";
+// statementPoolingCacheSize=0 disables mssql-jdbc's server-side prepared-statement cache.
+// This connection is long-lived and shared across every tab bound to the profile (see
+// ActiveDatabaseService.useDatabase), and DatabaseMetaData calls (e.g. the Columns tab's
+// getColumns()) can reuse a cached statement handle from before a mid-session
+// connection.setCatalog() — the driver then throws "prepared statement handle N is not
+// valid in this context... verify current database ... not changed since the handle was
+// prepared" (SQLState S0002). Disabling the cache trades a little metadata-query overhead
+// for correctness under our live database-switching feature.
+const SQLSERVER_FIXED_PARAMS =
+  "encrypt=true;trustServerCertificate=true;statementPoolingCacheSize=0";
 
 /**
  * Builds a JDBC URL from structured fields. Always returns a value — an empty host

@@ -63,12 +63,23 @@ function DatabaseTargetStatusItem() {
   );
 
   const cache = profileId ? ConnectionTreeService.getCache(profileId) : null;
+  // Which array actually holds the loaded names — purely a data-location question, since the
+  // jdbc-agent's choice of `catalogs` vs `schemas` doesn't always match the dialect's own
+  // catalog/schema semantics (see `mode` below).
+  const listInCatalogs = Boolean(cache && cache.catalogs.length > 0);
   const mode: Mode = useMemo(() => {
-    if (cache && cache.catalogs.length > 0) return "catalog";
+    // MySQL/MariaDB have no schema concept distinct from the database itself (`showSchemaField:
+    // false`) — the agent reports their database list under `schemas` (it models "schema" as
+    // "one browsable database"), but switching one is still a *catalog* operation
+    // (`ActiveDatabaseService.useDatabase`, not `useSchema`, which these drivers don't support
+    // mid-session). Without this override, `mode` would follow the `schemas` array being
+    // non-empty and dispatch to `useSchema`, which throws for these two drivers.
+    if (driver && !driver.showSchemaField) return "catalog";
+    if (listInCatalogs) return "catalog";
     if (cache && cache.schemas.length > 0) return "schema";
     return driver?.supportsCatalog ? "catalog" : "schema";
     // eslint-disable-next-line react-hooks/exhaustive-deps -- treeRev drives cache refresh
-  }, [cache, driver, treeRev]);
+  }, [cache, driver, listInCatalogs, treeRev]);
 
   const label =
     mode === "catalog"
@@ -170,7 +181,9 @@ function DatabaseTargetStatusItem() {
     void treeRev;
     const query = filter.trim().toLowerCase();
     const c = ConnectionTreeService.getCache(profileId);
-    const names = (mode === "catalog" ? c.catalogs : c.schemas)
+    // Read from wherever the agent actually put the list — independent of `mode`, which for
+    // MySQL/MariaDB is forced to "catalog" even though their names live in `c.schemas`.
+    const names = (c.catalogs.length > 0 ? c.catalogs : c.schemas)
       .map((item) => item.name)
       .filter((name) => (query ? name.toLowerCase().includes(query) : true));
 

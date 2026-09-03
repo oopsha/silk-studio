@@ -55,14 +55,14 @@ describe("buildJdbcUrl", () => {
         oracleConnectType: "service",
       }),
     ).toBe(
-      "jdbc:sqlserver://db1:1433;databaseName=AdventureWorks;encrypt=true;trustServerCertificate=true",
+      "jdbc:sqlserver://db1:1433;databaseName=AdventureWorks;encrypt=true;trustServerCertificate=true;statementPoolingCacheSize=0",
     );
   });
 
   it("builds a SQL Server URL without database", () => {
     expect(
       buildJdbcUrl("sqlserver", { host: "db1", port: "1433", database: "", oracleConnectType: "service" }),
-    ).toBe("jdbc:sqlserver://db1:1433;encrypt=true;trustServerCertificate=true");
+    ).toBe("jdbc:sqlserver://db1:1433;encrypt=true;trustServerCertificate=true;statementPoolingCacheSize=0");
   });
 
   it("builds MySQL/MariaDB URLs with and without database", () => {
@@ -139,7 +139,7 @@ describe("parseJdbcUrl", () => {
   });
 
   it("parses a SQL Server URL with a database name", () => {
-    expect(parseJdbcUrl("sqlserver", "jdbc:sqlserver://host:1433;databaseName=db;encrypt=true;trustServerCertificate=true")).toEqual({
+    expect(parseJdbcUrl("sqlserver", "jdbc:sqlserver://host:1433;databaseName=db;encrypt=true;trustServerCertificate=true;statementPoolingCacheSize=0")).toEqual({
       host: "host",
       port: "1433",
       database: "db",
