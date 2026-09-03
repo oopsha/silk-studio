@@ -2,7 +2,7 @@
 
 # Silk Studio
 
-**AI를 품은 데이터베이스 스튜디오** — Oracle, PostgreSQL, MySQL, MariaDB, SQL Server를 위한 데스크톱 DB 클라이언트 **Silk DB Studio**와, 그 주변 도구들을 담은 모노레포입니다.
+**AI-native database studio** — a monorepo for **Silk DB Studio**, a desktop DB client for Oracle, PostgreSQL, MySQL, MariaDB, and SQL Server, plus its surrounding tooling.
 
 <br clear="left"/>
 
@@ -10,43 +10,44 @@
 [![Release](https://img.shields.io/github/v/release/oopsha/silk-studio?include_prereleases&label=release)](https://github.com/oopsha/silk-studio/releases)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-informational)
 
-> ⚠️ **베타** — 현재 SQL Server / Oracle 환경 위주로 실사용 검증되었습니다. PostgreSQL / MySQL / MariaDB는 기본 기능(연결·쿼리·오브젝트 탐색) 검증까지만 완료된 상태로, 계속 피드백을 받고 있습니다.
+> ⚠️ **Beta** — currently validated through real-world use on SQL Server / Oracle. PostgreSQL / MySQL / MariaDB have completed basic verification (connect, query, browse objects) and are still gathering feedback.
 
-## 다운로드
+## Download
 
-- **[silkstudio.co.kr →](https://silkstudio.co.kr)** — OS별 설치 가이드 포함
-- **[GitHub Releases →](https://github.com/oopsha/silk-studio/releases)** (Windows `.exe`/`.msi`, macOS `.dmg`, arm64/x64 각각 제공)
+- **[silkstudio.co.kr →](https://silkstudio.co.kr)** — includes per-OS install guidance
+- **[GitHub Releases →](https://github.com/oopsha/silk-studio/releases)** (Windows `.exe`/`.msi`, macOS `.dmg`, arm64/x64 each)
 
-설치 파일에 **jdbc-agent**와 **Eclipse Temurin JRE 17**이 번들되어 있어 시스템에 Java를 따로 설치할 필요가 없습니다.
+Installers bundle **jdbc-agent** and an **Eclipse Temurin JRE 17**, so no system Java install is needed.
 
-## 문서
+## Documentation
 
-- **사용자 가이드**: [한국어](docs/user-guide.ko.md) · [English](docs/user-guide.md)
+- **Readme**: [English](README.md) · [한국어](README.ko.md)
+- **User Guide**: [English](docs/user-guide.md) · [한국어](docs/user-guide.ko.md)
 
-## 주요 기능
+## Features
 
-| 기능 | 설명 |
+| Feature | Description |
 | --- | --- |
-| AI 어시스턴트 (BYOK) | 자연어로 SQL 생성, 실행 전 diff 검토, 호출 비용/토큰 감사 로그 |
-| PL/SQL 스냅샷 · Diff · 롤백 | 프로시저·함수·트리거 저장 시마다 로컬 스냅샷, 변경 diff 확인 후 즉시 롤백 |
-| 안전한 UPDATE | PK 없는 테이블은 UPDATE 차단, 실행 전 변경될 행 미리보기 |
-| 서버 사이드 페이징 | 대용량 결과도 서버 페이징·필터·정렬로 가볍게 탐색, 그리드에서 바로 수정 |
-| 멀티 세션 | 에디터 탭마다 독립된 연결·실행 결과, 종료 후에도 세션 복원(Hot Exit) |
-| 전 연결 대상 검색 | `Ctrl+Shift+O`로 연결된 모든 프로필의 테이블·뷰·프로시저 검색 |
-| SSM & SSH 터널 | AWS SSM 포트 포워딩·SSH 점프호스트를 내장해 사설망 DB에 바로 연결 |
-| Zero-dependency 런타임 | JDBC 에이전트 + JRE 번들, 별도 설치 없이 바로 연결 |
+| AI assistant (BYOK) | Generate SQL from natural language, review a diff before running, audit call cost/tokens |
+| PL/SQL snapshot · diff · rollback | A local snapshot on every save of a procedure/function/trigger; review the diff, roll back instantly |
+| Safe UPDATE | Blocks UPDATE on tables without a primary key; previews affected rows before running |
+| Server-side paging | Browse large results with server paging/filtering/sorting; edit values right in the grid |
+| Multi-session | Each editor tab keeps its own connection and results; sessions restore after restart (Hot Exit) |
+| Search across connections | `Ctrl+Shift+O` searches tables/views/procedures across every connected profile |
+| SSM & SSH tunnels | Built-in AWS SSM port forwarding and SSH jump hosts to reach databases on private networks |
+| Zero-dependency runtime | Bundled JDBC agent + JRE — connect right away, nothing to install separately |
 
-## 워크스페이스
+## Workspace
 
-- `apps/silk-db-studio` — Tauri 데스크톱 DB 스튜디오 및 DB 전용 UI
-- `packages/silk-editor` — Monaco 에디터, 에디터 상태, 탭 바
-- `packages/silk-workbench` — 커맨드, 메뉴, 레이아웃 서비스, 워크벤치 뷰
-- `packages/silk-ui` — 디자인 토큰, 폰트, 아이콘, 공용 UI 훅
-- `packages/db-protocol` — Java/Rust/TypeScript 에이전트 프로토콜 계약
-- `packages/jdbc-agent` — 공용 Java JDBC 사이드카
-- `crates/silk-db-agent-client` — 공용 Rust 프로세스 및 프로토콜 클라이언트
+- `apps/silk-db-studio` — the Tauri desktop DB studio and its DB-specific UI
+- `packages/silk-editor` — Monaco editor, editor state, tab bar
+- `packages/silk-workbench` — commands, menus, layout services, workbench views
+- `packages/silk-ui` — design tokens, fonts, icons, shared UI hooks
+- `packages/db-protocol` — Java/Rust/TypeScript agent protocol contracts
+- `packages/jdbc-agent` — the shared Java JDBC sidecar
+- `crates/silk-db-agent-client` — the shared Rust process and protocol client
 
-의존성 방향:
+Dependency direction:
 
 ```text
 silk-ui <- silk-editor <- silk-workbench <- silk-db-studio
@@ -54,9 +55,9 @@ silk-ui <- silk-editor <- silk-workbench <- silk-db-studio
 jdbc-agent <- silk-db-agent-client <- silk-db-studio (Tauri)
 ```
 
-## 개발
+## Development
 
-요구 사항: **Node.js 22+**, **pnpm 11** (`package.json#packageManager` — Corepack 권장).
+Requirements: **Node.js 22+**, **pnpm 11** (`package.json#packageManager` — Corepack recommended).
 
 ```powershell
 corepack enable
@@ -67,4 +68,4 @@ cd ../..
 pnpm --filter @silk-studio/db-studio tauri dev
 ```
 
-첫 실행 후 좌측 Activity Bar의 **연결(Connections)** 아이콘 → **새 연결**(또는 상단 메뉴 **연결 → New Connection**)로 프로필을 만들고 연결하세요.
+On first launch, use the **Connections** icon in the left Activity Bar → **New Connection** (or the **Connection → New Connection** menu) to create a profile and connect.
