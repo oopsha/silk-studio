@@ -1,6 +1,6 @@
 [package]
 name = "silk-db-studio"
-version = "0.1.3"
+version = "0.1.4"
 description = "Silk DB Studio"
 authors = ["oopsha"]
 edition = "2021"
