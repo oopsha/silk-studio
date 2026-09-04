@@ -4,10 +4,7 @@ import { ConfigurationService } from "@silk-studio/workbench/platform/configurat
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 import { bridgeListPrimaryKeys } from "../connection/connectionPrimaryKeysBridge";
 import { ConnectionService } from "../connection/connectionService";
-import {
-  effectiveDefaultSchema,
-  getConnectionDriver,
-} from "../connection/connectionTypes";
+import { effectiveDefaultSchema } from "../connection/connectionTypes";
 import type { ConnectionDriverId } from "../connection/connectionTypes";
 import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import { formatErrorMessage } from "../formatErrorMessage";
@@ -59,7 +56,6 @@ type UpdateEligibilityOptions = {
 
 function resolveExplicitSchemaName(
   tableRef: { schema: string | null; table: string },
-  driverId: ConnectionDriverId,
   connectionId?: string | null,
 ): string {
   if (tableRef.schema?.trim()) {
@@ -83,12 +79,7 @@ function resolveExplicitSchemaName(
     return fromBinding;
   }
 
-  const driver = getConnectionDriver(driverId);
-  if (!driver.showSchemaField) {
-    return effectiveDefaultSchema(profile);
-  }
-
-  return effectiveDefaultSchema(profile) || profile.catalog.trim();
+  return effectiveDefaultSchema(profile);
 }
 
 function resolveResultColumn(
@@ -167,11 +158,7 @@ export async function resolveUpdateEligibility(
   }
 
   const driverId = resolveActiveDriverId(connectionId);
-  const explicitSchema = resolveExplicitSchemaName(
-    tableRef,
-    driverId,
-    connectionId,
-  );
+  const explicitSchema = resolveExplicitSchemaName(tableRef, connectionId);
 
   let payload;
   try {

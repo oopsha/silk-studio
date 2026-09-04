@@ -227,6 +227,9 @@ export function getConnectionDriver(
  * Effective default schema for Explorer highlight, preload, AI context, and connect.
  * Keeps the stored `defaultSchema` as entered (empty means "use login default").
  * Oracle: empty → login user (CURRENT_SCHEMA default).
+ * SQL Server / PostgreSQL: empty → the vendor's own conventional default schema (`dbo` /
+ * `public`) — NOT the catalog name, which is a different namespace (the database, not the
+ * schema within it) and previously leaked through here for these two drivers.
  * Drivers without a schema field: catalog is the browsable namespace.
  */
 export function effectiveDefaultSchema(
@@ -241,10 +244,16 @@ export function effectiveDefaultSchema(
   }
   const explicit = profile.defaultSchema.trim();
   if (explicit) return explicit;
-  if (profile.driverId === "oracle") {
-    return profile.user.trim();
+  switch (profile.driverId) {
+    case "oracle":
+      return profile.user.trim();
+    case "sqlserver":
+      return "dbo";
+    case "postgresql":
+      return "public";
+    default:
+      return "";
   }
-  return "";
 }
 
 export function defaultUrlForDriver(driverId: ConnectionDriverId): string {

@@ -28,18 +28,25 @@ import "./DependenciesPreview.css";
 function resolveOpenableKind(dependencyType: string): MetadataObjectKind | null {
   switch (dependencyType.trim().toUpperCase()) {
     case "TABLE":
+    case "USER_TABLE":
+    case "SYSTEM_TABLE":
       return "table";
     case "VIEW":
     case "MATERIALIZED VIEW":
       return "view";
     case "PROCEDURE":
+    case "SQL_STORED_PROCEDURE":
       return "procedure";
     case "FUNCTION":
+    case "SQL_SCALAR_FUNCTION":
+    case "SQL_TABLE_VALUED_FUNCTION":
+    case "SQL_INLINE_TABLE_VALUED_FUNCTION":
       return "function";
     case "PACKAGE":
     case "PACKAGE BODY":
       return "package";
     case "TRIGGER":
+    case "SQL_TRIGGER":
       return "trigger";
     default:
       return null;

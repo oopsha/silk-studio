@@ -24,7 +24,7 @@ describe("effectiveDefaultSchema", () => {
     ).toBe("hr");
   });
 
-  it("does not fall back to user for SQL Server when schema is empty", () => {
+  it("falls back to dbo for SQL Server when schema is empty", () => {
     expect(
       effectiveDefaultSchema({
         driverId: "sqlserver",
@@ -32,7 +32,18 @@ describe("effectiveDefaultSchema", () => {
         user: "sa",
         catalog: "AdventureWorks",
       }),
-    ).toBe("");
+    ).toBe("dbo");
+  });
+
+  it("falls back to public for PostgreSQL when schema is empty", () => {
+    expect(
+      effectiveDefaultSchema({
+        driverId: "postgresql",
+        defaultSchema: "",
+        user: "postgres",
+        catalog: "app",
+      }),
+    ).toBe("public");
   });
 
   it("uses catalog for MySQL-style drivers", () => {
