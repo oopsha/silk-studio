@@ -246,6 +246,25 @@ export const enMessages = {
         "\"{name}\" has unsaved changes that will be lost if you close it. Close anyway?",
       closeDirtyConfirm: "Close",
     },
+    update: {
+      desktopOnly: "Updates are only available in the desktop app.",
+      checking: "Checking for updates…",
+      upToDate: "You're on the latest version.",
+      title: "Update available",
+      prompt:
+        "Version {version} is available.{detail}\n\nDownload and install now? The app will restart.",
+      confirmLabel: "Update",
+      cancelLabel: "Later",
+      laterNotice:
+        "Update {version} is available. Run Check for Updates when ready.",
+      downloading: "Downloading {version}…",
+      installed: "Update installed. Restarting…",
+      signingKeyMissing:
+        "Updater signing key is not configured yet. See docs/release.md.",
+      feedNotFound:
+        "No published update feed found yet (GitHub Releases latest.json).",
+      checkFailed: "Update check failed: {message}",
+    },
     commands: {
       newTextFile: "New Query",
       openFile: "Open File...",

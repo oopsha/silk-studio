@@ -244,6 +244,25 @@ export const koMessages = {
         "\"{name}\"에 저장하지 않은 변경 사항이 있습니다. 닫으면 되돌릴 수 없습니다. 닫을까요?",
       closeDirtyConfirm: "닫기",
     },
+    update: {
+      desktopOnly: "업데이트는 데스크톱 앱에서만 사용할 수 있습니다.",
+      checking: "업데이트 확인 중…",
+      upToDate: "최신 버전을 사용하고 있습니다.",
+      title: "업데이트 사용 가능",
+      prompt:
+        "버전 {version}을(를) 사용할 수 있습니다.{detail}\n\n지금 다운로드해서 설치할까요? 앱이 재시작됩니다.",
+      confirmLabel: "업데이트",
+      cancelLabel: "나중에",
+      laterNotice:
+        "업데이트 {version}을(를) 사용할 수 있습니다. 준비되면 업데이트 확인을 실행하세요.",
+      downloading: "{version} 다운로드 중…",
+      installed: "업데이트가 설치되었습니다. 재시작 중…",
+      signingKeyMissing:
+        "업데이트 서명 키가 아직 설정되지 않았습니다. docs/release.md를 참고하세요.",
+      feedNotFound:
+        "아직 게시된 업데이트 피드가 없습니다 (GitHub Releases의 latest.json).",
+      checkFailed: "업데이트 확인 실패: {message}",
+    },
     commands: {
       newTextFile: "새 쿼리",
       openFile: "파일 열기...",

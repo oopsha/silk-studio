@@ -4,6 +4,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { isTauri } from "@tauri-apps/api/core";
 import { AppNotificationService } from "../notifications/appNotificationService";
 import { AppLogService } from "../diagnostics/appLogService";
+import { tKey } from "../../platform/i18n/activeLocale";
 
 function formatError(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message;
@@ -25,23 +26,20 @@ export async function checkForUpdates(options?: {
 
   if (!isTauri()) {
     if (!silent) {
-      AppNotificationService.show(
-        "Updates are only available in the desktop app.",
-        "info",
-      );
+      AppNotificationService.show(tKey("workbench.update.desktopOnly"), "info");
     }
     return;
   }
 
   if (!silent) {
-    AppNotificationService.show("Checking for updates…", "info");
+    AppNotificationService.show(tKey("workbench.update.checking"), "info");
   }
 
   try {
     const update = await check();
     if (!update) {
       if (!silent) {
-        AppNotificationService.show("You're on the latest version.", "success");
+        AppNotificationService.show(tKey("workbench.update.upToDate"), "success");
       }
       return;
     }
@@ -49,26 +47,34 @@ export async function checkForUpdates(options?: {
     const notes = update.body?.trim();
     const detail = notes ? `\n\n${notes}` : "";
     const confirmed = await ask(
-      `Version ${update.version} is available.${detail}\n\nDownload and install now? The app will restart.`,
+      tKey("workbench.update.prompt")
+        .replace("{version}", update.version)
+        .replace("{detail}", detail),
       {
-        title: "Update available",
+        title: tKey("workbench.update.title"),
         kind: "info",
-        okLabel: "Update",
-        cancelLabel: "Later",
+        okLabel: tKey("workbench.update.confirmLabel"),
+        cancelLabel: tKey("workbench.update.cancelLabel"),
       },
     );
 
     if (!confirmed) {
       AppNotificationService.show(
-        `Update ${update.version} is available. Run Check for Updates when ready.`,
+        tKey("workbench.update.laterNotice").replace(
+          "{version}",
+          update.version,
+        ),
         "info",
       );
       return;
     }
 
-    AppNotificationService.show(`Downloading ${update.version}…`, "info");
+    AppNotificationService.show(
+      tKey("workbench.update.downloading").replace("{version}", update.version),
+      "info",
+    );
     await update.downloadAndInstall();
-    AppNotificationService.show("Update installed. Restarting…", "success");
+    AppNotificationService.show(tKey("workbench.update.installed"), "success");
     await relaunch();
   } catch (error) {
     const message = formatError(error);
@@ -81,7 +87,7 @@ export async function checkForUpdates(options?: {
       message.toLowerCase().includes("pubkey")
     ) {
       AppNotificationService.show(
-        "Updater signing key is not configured yet. See docs/release.md.",
+        tKey("workbench.update.signingKeyMissing"),
         "error",
       );
       return;
@@ -93,12 +99,15 @@ export async function checkForUpdates(options?: {
       message.toLowerCase().includes("no release")
     ) {
       AppNotificationService.show(
-        "No published update feed found yet (GitHub Releases latest.json).",
+        tKey("workbench.update.feedNotFound"),
         "info",
       );
       return;
     }
 
-    AppNotificationService.show(`Update check failed: ${message}`, "error");
+    AppNotificationService.show(
+      tKey("workbench.update.checkFailed").replace("{message}", message),
+      "error",
+    );
   }
 }
