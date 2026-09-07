@@ -59,6 +59,13 @@ type GridUiState = {
   sortState: ColumnState[];
 };
 
+type GridContextMenuState =
+  | { kind: "data"; x: number; y: number }
+  | { kind: "header"; x: number; y: number; columnId: string }
+  | { kind: "filter"; x: number; y: number; columnId: string };
+
+type FilterInput = HTMLInputElement | HTMLTextAreaElement;
+
 /**
  * Filter/sort survive a remount of the *same* result tab (e.g. the Object
  * Editor's Data tab unmounting when the user switches to another editor tab
@@ -155,9 +162,8 @@ function QueryResultGrid({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [executingUpdates, setExecutingUpdates] = useState(false);
   const [openingPreview, setOpeningPreview] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
-    null,
-  );
+  const [contextMenu, setContextMenu] = useState<GridContextMenuState | null>(null);
+  const filterContextInputRef = useRef<FilterInput | null>(null);
 
   const dirtyCount = useSyncExternalStore(
     (onStoreChange) => QueryResultDirtyService.onDidChange(onStoreChange),
@@ -781,6 +787,95 @@ function QueryResultGrid({
     },
   ];
 
+  const headerContextMenuItems: ContextMenuItem[] = useMemo(() => {
+    if (!contextMenu || contextMenu.kind !== "header") return [];
+    const state = apiRef.current
+      ?.getColumnState()
+      .find((column) => column.colId === contextMenu.columnId);
+    const isPinned = state?.pinned === "left";
+    return [
+      { id: "sortAsc", label: t("app.query.sortAscending"), enabled: true },
+      { id: "sortDesc", label: t("app.query.sortDescending"), enabled: true },
+      {
+        id: "clearSort",
+        label: t("app.query.clearSort"),
+        enabled: state?.sort != null,
+      },
+      {
+        id: "autoSizeColumn",
+        label: t("app.query.autoSizeColumn"),
+        enabled: true,
+        separator: true,
+      },
+      {
+        id: "autoSizeAllColumns",
+        label: t("app.query.autoSizeAllColumns"),
+        enabled: true,
+      },
+      {
+        id: isPinned ? "unpinColumn" : "pinColumnLeft",
+        label: t(
+          isPinned ? "app.query.unpinColumn" : "app.query.pinColumnLeft",
+        ),
+        enabled: true,
+      },
+      {
+        id: "hideColumn",
+        label: t("app.query.hideColumn"),
+        enabled: true,
+      },
+      {
+        id: "resetColumnLayout",
+        label: t("app.query.resetLayout"),
+        enabled: true,
+        separator: true,
+      },
+    ];
+  }, [contextMenu, t]);
+
+  const filterContextMenuItems: ContextMenuItem[] = useMemo(() => {
+    if (!contextMenu || contextMenu.kind !== "filter") return [];
+    const input = filterContextInputRef.current;
+    const selectionStart = input?.selectionStart ?? 0;
+    const selectionEnd = input?.selectionEnd ?? 0;
+    const hasSelection = selectionEnd > selectionStart;
+    const hasText = Boolean(input?.value.length);
+    const hasFilter = Boolean(apiRef.current?.getFilterModel()[contextMenu.columnId]);
+    return [
+      {
+        id: "cutFilterText",
+        label: t("workbench.commands.cut"),
+        enabled: hasSelection && !input?.readOnly,
+      },
+      {
+        id: "copyFilterText",
+        label: t("workbench.commands.copy"),
+        enabled: hasSelection,
+      },
+      {
+        id: "pasteFilterText",
+        label: t("workbench.commands.paste"),
+        enabled: Boolean(input) && !input?.readOnly,
+      },
+      {
+        id: "selectAllFilterText",
+        label: t("workbench.commands.selectAll"),
+        enabled: hasText,
+      },
+      {
+        id: "clearColumnFilter",
+        label: t("app.query.clearColumnFilter"),
+        enabled: hasFilter || hasText,
+        separator: true,
+      },
+      {
+        id: "clearFilters",
+        label: t("app.query.clearFilters"),
+        enabled: snapshot.filterActive || snapshot.sortActive,
+      },
+    ];
+  }, [contextMenu, snapshot.filterActive, snapshot.sortActive, t]);
+
   function handleGridContextMenuSelect(item: ContextMenuItem) {
     switch (item.id) {
       case "copySelection":
@@ -794,6 +889,105 @@ function QueryResultGrid({
         return;
       case "exportCsv":
         void handleExportCsv();
+        return;
+      case "clearFilters":
+        handleClearFilters();
+        return;
+      default:
+        return;
+    }
+  }
+
+  function handleHeaderContextMenuSelect(item: ContextMenuItem) {
+    if (!contextMenu || contextMenu.kind !== "header") return;
+    const api = apiRef.current;
+    if (!api) return;
+    const { columnId } = contextMenu;
+
+    switch (item.id) {
+      case "sortAsc":
+      case "sortDesc":
+        api.applyColumnState({
+          state: [{ colId: columnId, sort: item.id === "sortAsc" ? "asc" : "desc" }],
+          defaultState: { sort: null },
+        });
+        captureGridUiState();
+        return;
+      case "clearSort":
+        api.applyColumnState({ state: [{ colId: columnId, sort: null }] });
+        captureGridUiState();
+        return;
+      case "autoSizeColumn":
+        api.autoSizeColumns([columnId], false);
+        return;
+      case "autoSizeAllColumns":
+        QueryResultGridService.autoSizeAllColumns();
+        return;
+      case "pinColumnLeft":
+        api.applyColumnState({ state: [{ colId: columnId, pinned: "left" }] });
+        return;
+      case "unpinColumn":
+        api.applyColumnState({ state: [{ colId: columnId, pinned: null }] });
+        return;
+      case "hideColumn":
+        api.setColumnsVisible([columnId], false);
+        return;
+      case "resetColumnLayout":
+        handleResetColumnLayout();
+        return;
+      default:
+        return;
+    }
+  }
+
+  function replaceFilterSelection(input: FilterInput, text: string) {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    input.focus();
+    input.setRangeText(text, start, end, "end");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  async function handleFilterContextMenuSelect(item: ContextMenuItem) {
+    if (!contextMenu || contextMenu.kind !== "filter") return;
+    const input = filterContextInputRef.current;
+
+    switch (item.id) {
+      case "cutFilterText": {
+        if (!input) return;
+        const start = input.selectionStart ?? 0;
+        const end = input.selectionEnd ?? start;
+        if (end <= start) return;
+        await navigator.clipboard.writeText(input.value.slice(start, end));
+        replaceFilterSelection(input, "");
+        return;
+      }
+      case "copyFilterText": {
+        if (!input) return;
+        const start = input.selectionStart ?? 0;
+        const end = input.selectionEnd ?? start;
+        if (end > start) {
+          await navigator.clipboard.writeText(input.value.slice(start, end));
+        }
+        return;
+      }
+      case "pasteFilterText":
+        if (!input) return;
+        try {
+          replaceFilterSelection(input, await navigator.clipboard.readText());
+        } catch {
+          flashMessage(t("app.query.pasteFailed"));
+        }
+        return;
+      case "selectAllFilterText":
+        input?.focus();
+        input?.select();
+        return;
+      case "clearColumnFilter":
+        if (apiRef.current) {
+          await apiRef.current.setColumnFilterModel(contextMenu.columnId, null);
+          apiRef.current.onFilterChanged();
+        }
         return;
       case "clearFilters":
         handleClearFilters();
@@ -1108,8 +1302,40 @@ function QueryResultGrid({
       <div
         className="query-result-grid__body"
         onContextMenu={(event) => {
+          const target = event.target instanceof Element ? event.target : null;
+          const filter = target?.closest(".ag-floating-filter");
+          if (filter) {
+            const columnId = filter.closest(".ag-header-cell")?.getAttribute("col-id");
+            if (columnId && result.columns.includes(columnId)) {
+              event.preventDefault();
+              const input = target?.closest("input, textarea");
+              filterContextInputRef.current =
+                input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement
+                  ? input
+                  : null;
+              setContextMenu({
+                kind: "filter",
+                x: event.clientX,
+                y: event.clientY,
+                columnId,
+              });
+            }
+            return;
+          }
+
+          const header = target?.closest(".ag-header-cell");
+          const columnId = header?.getAttribute("col-id");
           event.preventDefault();
-          setContextMenu({ x: event.clientX, y: event.clientY });
+          if (columnId && result.columns.includes(columnId)) {
+            setContextMenu({
+              kind: "header",
+              x: event.clientX,
+              y: event.clientY,
+              columnId,
+            });
+            return;
+          }
+          setContextMenu({ kind: "data", x: event.clientX, y: event.clientY });
         }}
       >
         <AgGridReact<QueryResultRow>
@@ -1198,9 +1424,21 @@ function QueryResultGrid({
       {contextMenu ? (
         <ContextMenu
           anchor={{ top: contextMenu.y, left: contextMenu.x }}
-          items={gridContextMenuItems}
+          items={
+            contextMenu.kind === "header"
+              ? headerContextMenuItems
+              : contextMenu.kind === "filter"
+                ? filterContextMenuItems
+              : gridContextMenuItems
+          }
           onClose={() => setContextMenu(null)}
-          onSelect={handleGridContextMenuSelect}
+          onSelect={
+            contextMenu.kind === "header"
+              ? handleHeaderContextMenuSelect
+              : contextMenu.kind === "filter"
+                ? handleFilterContextMenuSelect
+              : handleGridContextMenuSelect
+          }
         />
       ) : null}
 

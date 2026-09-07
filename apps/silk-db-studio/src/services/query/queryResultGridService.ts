@@ -204,6 +204,14 @@ class QueryResultGridServiceImpl {
     if (!grid || grid.columns.length === 0) return;
     if (hasSavedColumnLayout(grid.profileId, grid.columns)) return;
 
+    this.autoSizeAllColumns();
+  }
+
+  /** Explicit user action: size every result column even when a layout is saved. */
+  autoSizeAllColumns(): void {
+    const grid = this.active;
+    if (!grid || grid.columns.length === 0) return;
+
     this.beginApplyingLayout();
     try {
       grid.api.autoSizeColumns(grid.columns, false);
