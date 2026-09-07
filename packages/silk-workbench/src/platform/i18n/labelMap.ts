@@ -67,7 +67,6 @@ export const ENGLISH_LABEL_KEYS: Record<string, MessageKey> = {
   "Toggle Panel Position": "workbench.commands.togglePanelPosition",
   Settings: "workbench.commands.settings",
   "Check for Updates...": "workbench.commands.checkForUpdates",
-  Extensions: "workbench.commands.extensions",
   Themes: "workbench.commands.themes",
   "Close Active Editor": "workbench.commands.closeActiveEditor",
   "Close All Editors": "workbench.commands.closeAllEditors",

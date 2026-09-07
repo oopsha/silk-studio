@@ -26,7 +26,6 @@ export const COMMAND_ENGLISH_TITLES: Readonly<Record<string, string>> = {
   "silk.account.signIn": "Sign In...",
   "silk.account.editProfile": "Edit Profile...",
   "silk.account.signOut": "Sign Out",
-  "workbench.view.extensions": "Extensions",
   "update.check": "Check for Updates...",
   "silk.file.closeAll": "Close All",
   "silk.query.executeAll": "Execute All",

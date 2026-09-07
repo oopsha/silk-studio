@@ -53,6 +53,7 @@ import { isDdlEditorTab } from "../../../services/connection/ddlEditorConstants.
 import { isPlsqlEditorTab } from "../../../services/connection/plsqlEditorConstants.ts";
 import { isObjectEditorTab } from "../../../services/connection/objectEditorConstants.ts";
 import {
+  buildConnectionsMenuItems,
   EXPLORER_COMMANDS,
   formatQualifiedName,
 } from "../../../services/connection/explorerObjectActions.ts";
@@ -178,43 +179,10 @@ function AppShell() {
     { x: number; y: number } | null
   >(null);
 
-  // Mirrors connectionsActions' toolbar buttons below exactly — same items, same order, same
-  // enabled/disabled conditions — so the header context menu is never missing something the
-  // hover toolbar already offers.
-  const connectionsHeaderMenuItems: ContextMenuItem[] = [
-    {
-      id: "newConnection",
-      label: t("workbench.explorer.newConnection"),
-      enabled: true,
-    },
-    {
-      id: "searchObjects",
-      label: t("workbench.explorer.searchObjects"),
-      enabled: connection.connectedProfileIds.length > 0,
-    },
-    {
-      id: "collapseAll",
-      label: t("common.collapseAll"),
-      enabled: connection.connectedProfileIds.length > 0,
-      separator: true,
-    },
-    {
-      id: "refreshAll",
-      label: t("common.refresh"),
-      enabled: connection.connectedProfileIds.length > 0,
-    },
-    {
-      id: "exportConnections",
-      label: t("app.connection.exportTitle"),
-      enabled: connection.profiles.length > 0,
-      separator: true,
-    },
-    {
-      id: "importConnections",
-      label: t("app.connection.importTitle"),
-      enabled: true,
-    },
-  ];
+  const connectionsHeaderMenuItems = buildConnectionsMenuItems({
+    hasConnectedProfiles: connection.connectedProfileIds.length > 0,
+    hasProfiles: connection.profiles.length > 0,
+  });
 
   function handleConnectionsHeaderMenuSelect(item: ContextMenuItem) {
     switch (item.id) {
@@ -226,6 +194,9 @@ function AppShell() {
         return;
       case "collapseAll":
         void CommandService.executeCommand(EXPLORER_COMMANDS.collapseAll);
+        return;
+      case "disconnectAll":
+        void CommandService.executeCommand("silk.connection.disconnectAll");
         return;
       case "refreshAll":
         void CommandService.executeCommand(EXPLORER_COMMANDS.refresh);

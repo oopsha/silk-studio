@@ -323,7 +323,6 @@ export const enMessages = {
       togglePanelPosition: "Toggle Panel Position",
       settings: "Settings",
       checkForUpdates: "Check for Updates...",
-      extensions: "Extensions",
       themes: "Themes",
       closeActiveEditor: "Close Active Editor",
       closeAllEditors: "Close All Editors",

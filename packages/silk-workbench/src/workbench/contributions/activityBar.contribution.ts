@@ -12,7 +12,6 @@ function registerStubCommand(id: string): void {
 }
 
 const MANAGE_COMMANDS = [
-  "workbench.view.extensions",
   "workbench.userData.actions.manageSettings",
 ] as const;
 
@@ -30,10 +29,6 @@ for (const id of [...MANAGE_COMMANDS, ...ACCOUNT_COMMANDS]) {
 KeybindingsRegistry.registerKeybinding(
   "workbench.action.showCommands",
   "Ctrl+Shift+P",
-);
-KeybindingsRegistry.registerKeybinding(
-  "workbench.view.extensions",
-  "Ctrl+Shift+X",
 );
 KeybindingsRegistry.registerKeybinding(
   "workbench.action.openGlobalKeybindings",
@@ -69,27 +64,18 @@ MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
 
 MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
   command: {
-    id: "workbench.view.extensions",
-    title: "Extensions",
+    id: "workbench.action.openGlobalKeybindings",
+    title: "Keyboard Shortcuts",
   },
   group: "2_configuration",
   order: 2,
 });
 
 MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
-  command: {
-    id: "workbench.action.openGlobalKeybindings",
-    title: "Keyboard Shortcuts",
-  },
-  group: "2_configuration",
-  order: 3,
-});
-
-MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
   submenu: MenuId.GlobalActivityThemesSubmenu,
   title: "Themes",
   group: "2_configuration",
-  order: 4,
+  order: 3,
 });
 
 COLOR_THEMES.forEach((theme, index) => {

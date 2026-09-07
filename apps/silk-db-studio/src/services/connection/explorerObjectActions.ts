@@ -60,6 +60,63 @@ export const EXPLORER_COMMANDS = {
 } as const;
 
 /**
+ * Context menu shared by the Connections accordion header and the Explorer's
+ * empty area. Keeping it here prevents the two entry points from drifting.
+ */
+export function buildConnectionsMenuItems(options: {
+  hasConnectedProfiles: boolean;
+  hasProfiles: boolean;
+}): ExplorerMenuItem[] {
+  return [
+    {
+      id: "newConnection",
+      label: I18nService.t("workbench.explorer.newConnection"),
+      commandId: "silk.connection.new",
+      enabled: true,
+    },
+    {
+      id: "disconnectAll",
+      label: I18nService.t("common.disconnectAll"),
+      commandId: "silk.connection.disconnectAll",
+      enabled: options.hasConnectedProfiles,
+      separator: false,
+    },
+    {
+      id: "searchObjects",
+      label: I18nService.t("workbench.explorer.searchObjects"),
+      commandId: EXPLORER_COMMANDS.searchObjects,
+      enabled: options.hasConnectedProfiles,
+      separator: true,
+    },
+    {
+      id: "refreshAll",
+      label: I18nService.t("common.refresh"),
+      commandId: EXPLORER_COMMANDS.refresh,
+      enabled: options.hasConnectedProfiles,
+    },
+    {
+      id: "collapseAll",
+      label: I18nService.t("common.collapseAll"),
+      commandId: EXPLORER_COMMANDS.collapseAll,
+      enabled: options.hasConnectedProfiles,
+    },
+    {
+      id: "exportConnections",
+      label: I18nService.t("app.connection.exportTitle"),
+      commandId: "silk.connection.exportAll",
+      enabled: options.hasProfiles,
+      separator: true,
+    },
+    {
+      id: "importConnections",
+      label: I18nService.t("app.connection.importTitle"),
+      commandId: "silk.connection.import",
+      enabled: true,
+    },
+  ];
+}
+
+/**
  * Indexes/sequences/synonyms/types are listed in the Explorer (v1) but have no DDL fetch wired
  * up in the jdbc-agent yet — every dialect's `fetchObjectDdl` only handles
  * table/view/procedure/function/package/trigger.
@@ -219,35 +276,19 @@ export function buildSchemaMenuItems(options?: {
 }
 
 /**
- * Connection profile row's own context menu — mirrors the row's hover icon buttons
- * (new query, connect/disconnect, refresh, edit, duplicate, delete) exactly, rather than routing through
- * `silk.connection.*` commands: those commands act on `ConnectionService.getActiveProfile()`
- * (the globally "active" profile, set by clicking a row), which would silently target the wrong
- * connection if the user right-clicks a row that isn't currently active. No `commandId` here —
- * the caller (ConnectionsExplorer.tsx) dispatches on `item.id` directly against the specific
- * `profile.id` this menu was opened for.
+ * Connection profile row's context menu. Connection-specific actions are dispatched locally
+ * against the clicked `profile.id`; global actions may safely use registered commands.
  */
 export function buildProfileMenuItems(options: {
   isConnected: boolean;
+  hasConnectedProfiles?: boolean;
 }): ExplorerMenuItem[] {
+  const hasConnectedProfiles = options.hasConnectedProfiles ?? options.isConnected;
   return [
     {
       id: "newQuery",
       label: I18nService.t("app.explorer.newQueryWithConnection"),
       enabled: true,
-    },
-    {
-      id: options.isConnected ? "disconnect" : "connect",
-      label: I18nService.t(
-        options.isConnected ? "common.disconnect" : "common.connect",
-      ),
-      enabled: true,
-      separator: true,
-    },
-    {
-      id: "refresh",
-      label: I18nService.t("common.refresh"),
-      enabled: options.isConnected,
     },
     {
       id: "edit",
@@ -264,8 +305,57 @@ export function buildProfileMenuItems(options: {
       id: "delete",
       label: I18nService.t("common.delete"),
       enabled: true,
-      separator: true,
       dangerous: true,
+    },
+    {
+      id: "newConnection",
+      label: I18nService.t("workbench.explorer.newConnection"),
+      commandId: "silk.connection.new",
+      enabled: true,
+      separator: true,
+    },
+    {
+      id: options.isConnected ? "disconnect" : "connect",
+      label: I18nService.t(
+        options.isConnected ? "common.disconnect" : "common.connect",
+      ),
+      enabled: true,
+    },
+    {
+      id: "disconnectAll",
+      label: I18nService.t("common.disconnectAll"),
+      commandId: "silk.connection.disconnectAll",
+      enabled: hasConnectedProfiles,
+    },
+    {
+      id: "searchObjects",
+      label: I18nService.t("workbench.explorer.searchObjects"),
+      commandId: EXPLORER_COMMANDS.searchObjects,
+      enabled: hasConnectedProfiles,
+      separator: true,
+    },
+    {
+      id: "refresh",
+      label: I18nService.t("common.refresh"),
+      enabled: options.isConnected,
+    },
+    {
+      id: "collapseProfile",
+      label: I18nService.t("common.collapseAll"),
+      enabled: options.isConnected,
+    },
+    {
+      id: "exportConnections",
+      label: I18nService.t("workbench.commands.exportConnections"),
+      commandId: "silk.connection.exportAll",
+      enabled: true,
+      separator: true,
+    },
+    {
+      id: "importConnections",
+      label: I18nService.t("workbench.commands.importConnections"),
+      enabled: true,
+      commandId: "silk.connection.import",
     },
   ];
 }

@@ -22,6 +22,7 @@ import {
 } from "../../services/connection/connectionTreeFilter";
 import {
   buildCatalogMenuItems,
+  buildConnectionsMenuItems,
   buildGroupMenuItems,
   buildObjectMenuItems,
   buildProfileMenuItems,
@@ -108,6 +109,7 @@ function ProfileTree({
   profile,
   isConnected,
   isConnecting,
+  hasConnectedProfiles,
   isActive,
   filter,
   selectedKey,
@@ -119,6 +121,7 @@ function ProfileTree({
   profile: ConnectionProfile;
   isConnected: boolean;
   isConnecting: boolean;
+  hasConnectedProfiles: boolean;
   isActive: boolean;
   filter: string;
   selectedKey: SelectedObjectKey | null;
@@ -271,6 +274,9 @@ function ProfileTree({
               : t("app.explorer.schemasRefreshed"),
           );
         });
+        return;
+      case "collapseProfile":
+        setExpanded({});
         return;
       case "edit":
         ConnectionEditorService.openConnection(profile.id);
@@ -728,10 +734,14 @@ function ProfileTree({
       {profileMenu ? (
         <ContextMenu
           anchor={{ top: profileMenu.y, left: profileMenu.x }}
-          items={buildProfileMenuItems({ isConnected })}
+          items={buildProfileMenuItems({ isConnected, hasConnectedProfiles })}
           onClose={() => setProfileMenu(null)}
           onSelect={(item) => {
             setProfileMenu(null);
+            if (item.commandId) {
+              void CommandService.executeCommand(item.commandId);
+              return;
+            }
             void handleProfileMenuSelect(item.id);
           }}
         />
@@ -1328,41 +1338,22 @@ function ConnectionsExplorer() {
       <div
         className="connections-explorer__body"
         onContextMenu={(event) => {
-          // Only the empty background, not a row inside it — rows call preventDefault()
-          // themselves but don't stop propagation, so this still sees their bubbled event.
-          if (event.target !== event.currentTarget) return;
+          // Child rows own their context menu. The empty-state message is part of the
+          // background, so it should open the same menu as unused space in the view.
+          if (
+            event.target instanceof Element &&
+            event.target.closest(".connections-explorer__profile")
+          ) {
+            return;
+          }
           event.preventDefault();
           setContextMenu({
             x: event.clientX,
             y: event.clientY,
-            items: [
-              {
-                id: "newConnection",
-                label: t("workbench.explorer.newConnection"),
-                commandId: "silk.connection.new",
-                enabled: true,
-              },
-              {
-                id: "refreshAll",
-                label: t("common.refresh"),
-                commandId: EXPLORER_COMMANDS.refresh,
-                enabled: connection.connectedProfileIds.length > 0,
-                separator: true,
-              },
-              {
-                id: "collapseAll",
-                label: t("common.collapseAll"),
-                commandId: EXPLORER_COMMANDS.collapseAll,
-                enabled: connection.connectedProfileIds.length > 0,
-              },
-              {
-                id: "disconnectAll",
-                label: t("common.disconnectAll"),
-                commandId: "silk.connection.disconnectAll",
-                enabled: connection.connectedProfileIds.length > 0,
-                separator: true,
-              },
-            ],
+            items: buildConnectionsMenuItems({
+              hasConnectedProfiles: connection.connectedProfileIds.length > 0,
+              hasProfiles: connection.profiles.length > 0,
+            }),
             payload: undefined,
           });
         }}
@@ -1379,6 +1370,7 @@ function ConnectionsExplorer() {
               isActive={connection.activeProfileId === profile.id}
               isConnected={connection.connectedProfileIds.includes(profile.id)}
               isConnecting={connection.connectingProfileIds.includes(profile.id)}
+              hasConnectedProfiles={connection.connectedProfileIds.length > 0}
               filter={filter}
               selectedKey={selectedKey}
               onSelectObject={setSelectedKey}

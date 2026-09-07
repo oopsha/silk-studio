@@ -321,7 +321,6 @@ export const koMessages = {
       togglePanelPosition: "패널 위치 전환",
       settings: "설정",
       checkForUpdates: "업데이트 확인...",
-      extensions: "확장",
       themes: "테마",
       closeActiveEditor: "활성 편집기 닫기",
       closeAllEditors: "편집기 모두 닫기",
