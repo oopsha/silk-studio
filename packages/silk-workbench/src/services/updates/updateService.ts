@@ -6,6 +6,10 @@ import { AppNotificationService } from "../notifications/appNotificationService"
 import { AppLogService } from "../diagnostics/appLogService";
 import { tKey } from "../../platform/i18n/activeLocale";
 
+// `ask` is asynchronous, so periodic checks can otherwise queue multiple native dialogs
+// while the first update prompt is still waiting for the user's response.
+let isUpdatePromptOpen = false;
+
 function formatError(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message;
   return String(error);
@@ -44,19 +48,27 @@ export async function checkForUpdates(options?: {
       return;
     }
 
+    if (isUpdatePromptOpen) return;
+
     const notes = update.body?.trim();
     const detail = notes ? `\n\n${notes}` : "";
-    const confirmed = await ask(
-      tKey("workbench.update.prompt")
-        .replace("{version}", update.version)
-        .replace("{detail}", detail),
-      {
-        title: tKey("workbench.update.title"),
-        kind: "info",
-        okLabel: tKey("workbench.update.confirmLabel"),
-        cancelLabel: tKey("workbench.update.cancelLabel"),
-      },
-    );
+    isUpdatePromptOpen = true;
+    let confirmed: boolean;
+    try {
+      confirmed = await ask(
+        tKey("workbench.update.prompt")
+          .replace("{version}", update.version)
+          .replace("{detail}", detail),
+        {
+          title: tKey("workbench.update.title"),
+          kind: "info",
+          okLabel: tKey("workbench.update.confirmLabel"),
+          cancelLabel: tKey("workbench.update.cancelLabel"),
+        },
+      );
+    } finally {
+      isUpdatePromptOpen = false;
+    }
 
     if (!confirmed) {
       AppNotificationService.show(
