@@ -43,7 +43,20 @@ jobs:
 
       - name: Build jdbc-agent
         working-directory: packages/jdbc-agent
-        run: chmod +x gradlew && ./gradlew build --quiet
+        run: |
+          chmod +x gradlew
+          for attempt in 1 2 3; do
+            if ./gradlew build --quiet; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+
+            echo "Gradle build failed; retrying in $((attempt * 10)) seconds..."
+            sleep $((attempt * 10))
+          done
 
       - name: Typecheck
         run: pnpm typecheck
