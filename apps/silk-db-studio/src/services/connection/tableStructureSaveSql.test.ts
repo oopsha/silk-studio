@@ -121,6 +121,43 @@ describe("buildTableStructureSaveSql — kitchen sink per dialect", () => {
       "EXEC sp_rename N'APP.T1', N'T2', 'OBJECT'",
     ]);
   });
+
+  it("SQLite: emits only its safe native ALTER TABLE subset", () => {
+    const original: OriginalColumnRow = { rowId: "a", column: col({ name: "A" }) };
+    const changes = diffTableStructure({
+      driverId: "sqlite",
+      originalColumns: [original],
+      editedColumns: [
+        draft({ rowId: "a", name: "A_RENAMED", origin: original.column }),
+        draft({ rowId: "b", name: "B", typeName: "INTEGER", length: undefined }),
+      ],
+      originalTableName: "T1",
+      editedTableName: "T2",
+      originalTableComment: null,
+      editedTableComment: null,
+    });
+    const result = buildTableStructureSaveSql(changes, ctxFor("sqlite", 1));
+    expect(result.blockers).toEqual([]);
+    expect(result.statements).toEqual([
+      'ALTER TABLE "APP"."T1" RENAME COLUMN "A" TO "A_RENAMED"',
+      'ALTER TABLE "APP"."T1" ADD COLUMN "B" INTEGER',
+      'ALTER TABLE "APP"."T1" RENAME TO "T2"',
+    ]);
+  });
+
+  it("SQLite blocks changes that require a table rebuild", () => {
+    const original: OriginalColumnRow = { rowId: "a", column: col({ name: "A" }) };
+    const changes = diffTableStructure({
+      driverId: "sqlite",
+      originalColumns: [original],
+      editedColumns: [draft({ rowId: "a", name: "A", typeName: "INTEGER", origin: original.column })],
+      originalTableName: "T1",
+      editedTableName: "T1",
+      originalTableComment: null,
+      editedTableComment: null,
+    });
+    expect(buildTableStructureSaveSql(changes, ctxFor("sqlite", 1)).blockers.join(" ")).toContain("table rebuild");
+  });
 });
 
 describe("buildTableStructureSaveSql — ordering invariants", () => {

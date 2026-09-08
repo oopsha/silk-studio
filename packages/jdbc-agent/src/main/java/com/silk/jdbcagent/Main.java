@@ -442,7 +442,8 @@ public final class Main {
         throw new RuntimeException(
             "Missing JDBC URL. Provide connection.open params.url or SILK_DB_URL.");
       }
-      if (user == null || user.isBlank()) {
+      DbDialect dialect = DbDialects.forUrl(url);
+      if (!(dialect instanceof SqliteDialect) && (user == null || user.isBlank())) {
         throw new RuntimeException(
             "Missing JDBC user. Provide connection.open params.user or SILK_DB_USER.");
       }
@@ -455,15 +456,17 @@ public final class Main {
         previous.closeQuietly();
       }
 
-      DbDialect dialect = DbDialects.forUrl(url);
       Properties connProps = new Properties();
-      connProps.setProperty("user", user);
-      connProps.setProperty("password", password);
+      if (user != null && !user.isBlank()) {
+        connProps.setProperty("user", user);
+        connProps.setProperty("password", password);
+      }
       if (dialect instanceof OracleDialect) {
         // Oracle's driver reports getColumns() REMARKS as NULL unless this is set.
         connProps.setProperty("remarksReporting", "true");
       }
-      Connection connection = DriverManager.getConnection(url, connProps);
+      Connection connection =
+          connProps.isEmpty() ? DriverManager.getConnection(url) : DriverManager.getConnection(url, connProps);
       dialect.afterConnect(connection, params);
 
       Session session = new Session(connectionId);
@@ -521,16 +524,18 @@ public final class Main {
         throw new RuntimeException(
             "Missing JDBC URL. Provide connection.test params.url or SILK_DB_URL.");
       }
-      if (user == null || user.isBlank()) {
+      DbDialect testDialect = DbDialects.forUrl(url);
+      if (!(testDialect instanceof SqliteDialect) && (user == null || user.isBlank())) {
         throw new RuntimeException(
             "Missing JDBC user. Provide connection.test params.user or SILK_DB_USER.");
       }
       if (password == null) {
         password = "";
       }
-      DbDialect testDialect = DbDialects.forUrl(url);
-
-      try (Connection testConnection = DriverManager.getConnection(url, user, password)) {
+      try (Connection testConnection =
+          user == null || user.isBlank()
+              ? DriverManager.getConnection(url)
+              : DriverManager.getConnection(url, user, password)) {
         // Also apply catalog/schema during test so an invalid namespace surfaces as a test
         // failure rather than only showing up later on the real connect.
         testDialect.afterConnect(testConnection, params);

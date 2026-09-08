@@ -1,6 +1,6 @@
-# PL/SQL · 객체 의존성 + AI 분석 — 작업 배분
+# PL/SQL · 개체 의존성 + AI 분석 — 작업 배분
 
-패키지/프로시저/함수 등 **DB에 존재하는** 객체를 AI가 소스·참조 메타와 함께 분석할 수 있게 한다.  
+패키지/프로시저/함수 등 **DB에 존재하는** 개체를 AI가 소스·참조 메타와 함께 분석할 수 있게 한다.
 형식은 [`ai-assistant-work-breakdown.md`](./ai-assistant-work-breakdown.md) · [`plsql-work-breakdown.md`](./plsql-work-breakdown.md)와 동일.
 
 ## 현재 상태 (기준)
@@ -8,7 +8,7 @@
 - Oracle PL/SQL 소스 열기·편집 — `connection.ddl` (`DBMS_METADATA.GET_DDL`), SPEC/BODY 분리 (7-A~7-E)
 - 테이블/뷰 컬럼 — `connection.columns` (JDBC `DatabaseMetaData` 등, dialect별)
 - AI Chat — 멀티턴·스트리밍·BYOK (8-A~8-B)
-- AI 컨텍스트 — 스키마 요약(Explorer 캐시)·에디터 선택·쿼리 히스토리 (`aiContextService`, 8-C). **객체 의존성 없음**
+- AI 컨텍스트 — 스키마 요약(Explorer 캐시)·에디터 선택·쿼리 히스토리 (`aiContextService`, 8-C). **개체 의존성 없음**
 - AI Provider — Gemini / OpenAI / Anthropic / Custom. **tool/function calling 없음**
 - **미구현**: `connection.dependencies`, PL/SQL deps 컨텍스트 주입, AI 툴 루프
 - 관련 out-of-scope (기존 문서): v1 “패키지 의존성 그래프” UI, 멀티에이전트 오케스트레이션
@@ -17,15 +17,15 @@
 
 | 단계 | 사용자 체감 |
 |------|-------------|
-| **A + B** | **열린** PL/SQL 탭(상한 있음)의 소스 + 참조 객체 목록(+ 컬럼 요약)을 AI 컨텍스트에 넣어, 활성 탭을 바꿔도 분석에 활용한다 |
+| **A + B** | **열린** PL/SQL 탭(상한 있음)의 소스 + 참조 개체 목록(+ 컬럼 요약)을 AI 컨텍스트에 넣어, 활성 탭을 바꿔도 분석에 활용한다 |
 | **+ D** | 채팅만으로 `PKG_XXX 분석해줘` → 이어서 `AAA 테이블은 언제 사용해?` 같은 다턴이 가능하다 |
 
 ### 명시적 한계
 
-- **미저장·미컴파일·신규 버퍼만 있는 객체**: Oracle 사전에 deps가 없음. 에디터 소스 문자열만으로의 “코드만 분석”은 A/B/D 범위 밖(필요 시 후속). Cursor가 저장 안 된 파일을 인덱싱 못 하는 것과 같음.
-- **dirty 버퍼 vs DB**: deps는 **DB에 저장된 객체** 기준. 로컬만 추가한 참조는 사전에 안 잡힐 수 있음.
+- **미저장·미컴파일·신규 버퍼만 있는 개체**: Oracle 사전에 deps가 없음. 에디터 소스 문자열만으로의 “코드만 분석”은 A/B/D 범위 밖(필요 시 후속). Cursor가 저장 안 된 파일을 인덱싱 못 하는 것과 같음.
+- **dirty 버퍼 vs DB**: deps는 **DB에 저장된 개체** 기준. 로컬만 추가한 참조는 사전에 안 잡힐 수 있음.
 - **동적 SQL** (`EXECUTE IMMEDIATE` 등): `ALL_DEPENDENCIES`에 안 나올 수 있음 → 응답에 한계 고지.
-- **역의존** (“DB 전체에서 AAA를 누가 쓰나”): D의 기본 `list_deps`(객체→참조)만으로는 부족. **D-R**은 선택/후속.
+- **역의존** (“DB 전체에서 AAA를 누가 쓰나”): D의 기본 `list_deps`(개체→참조)만으로는 부족. **D-R**은 선택/후속.
 
 ### v1 방언
 
@@ -39,7 +39,7 @@
 ```
 A  connection.dependencies (공통 + Oracle)
  → B  AI 컨텍스트 주입 (열린 PL/SQL 탭, 상한 있음)
- → D  AI 툴 루프 (채팅에서 객체 지정·다턴 추가 조회)
+ → D  AI 툴 루프 (채팅에서 개체 지정·다턴 추가 조회)
  → (선택) D-R 역의존 list_dependents
  → (선택) 기타 dialect 채우기
 ```
@@ -79,7 +79,7 @@ A  connection.dependencies (공통 + Oracle)
 
 ### 기대효과
 
-앱이 “이 객체가 컴파일 시점에 무엇을 참조하는지”를 DB에서 가져올 수 있다. (AI 없어도 성립하는 기반)
+앱이 “이 개체가 컴파일 시점에 무엇을 참조하는지”를 DB에서 가져올 수 있다. (AI 없어도 성립하는 기반)
 
 ---
 
@@ -91,7 +91,7 @@ A  connection.dependencies (공통 + Oracle)
 
 ### 범위
 
-- 채팅 요청 전, **열린** PL/SQL 객체 탭(`silk://plsql/...`)을 `EditorService.getTabs()`로 수집해 각 탭마다:
+- 채팅 요청 전, **열린** PL/SQL 개체 탭(`silk://plsql/...`)을 `EditorService.getTabs()`로 수집해 각 탭마다:
   1. 소스 (`tab.content`; 활성 탭은 Monaco 스냅샷과 정합 가능)
   2. **A**로 deps 조회 (`parsePlsqlEditorUri` → schema/name/kind/packageBody)
   3. 참조 TABLE/VIEW에 대해 `connection.columns` 요약 (상한)
@@ -111,7 +111,7 @@ A  connection.dependencies (공통 + Oracle)
 - Oracle 패키지 SPEC·BODY 등 **여러 PL/SQL 탭을 동시에 연 상태**에서 AI에게 물으면, 요청 페이로드에 각 탭의 deps·컬럼 요약이 포함된다 (활성 탭이 아니어도 됨)
 - 열린 PL/SQL 탭이 없으면 본 블록은 생략되고, 기존 8-C 동작과 동일
 - 플래그 off 시 본 블록 생략
-- 탭·객체 수 상한으로 메타데이터 폭주 시 요청이 상시 실패하지 않는다
+- 탭·개체 수 상한으로 메타데이터 폭주 시 요청이 상시 실패하지 않는다
 
 ### 요청 문구 예
 
@@ -171,7 +171,7 @@ A  connection.dependencies (공통 + Oracle)
 
 ### 범위
 
-- `connection.dependents` 또는 deps API의 방향 플래그: “AAA를 참조하는 객체들”
+- `connection.dependents` 또는 deps API의 방향 플래그: “AAA를 참조하는 개체들”
 - Oracle: `ALL_DEPENDENCIES`에서 `REFERENCED_*` 조건
 - 툴: `list_object_dependents`
 
@@ -213,8 +213,8 @@ A  connection.dependencies (공통 + Oracle)
 |------------|------|------|
 | `connection.ddl` | 소스 | ✅ 있음 |
 | `connection.columns` | 참조 테이블 메타 | ✅ 있음 |
-| `connection.dependencies` | 객체→참조 | **A** ✅ |
-| `connection.dependents` (선택) | 참조←객체 | **D-R** |
+| `connection.dependencies` | 개체→참조 | **A** ✅ |
+| `connection.dependents` (선택) | 참조←개체 | **D-R** |
 | AI system prompt PL/SQL 블록 | 열린 PL/SQL 탭 분석 (상한) | **B** ✅ |
 | Provider tool calling + Chat 루프 | 채팅 지정·다턴 | **D** ✅ |
 

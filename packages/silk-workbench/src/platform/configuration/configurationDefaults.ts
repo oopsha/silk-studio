@@ -35,6 +35,7 @@ export type WorkbenchConfiguration = {
   "database.autoCommit": boolean;
   "database.readOnly": boolean;
   "database.explorer.preloadDefaultSchema": boolean;
+  "experimental.sqliteComments.enabled": boolean;
   /** Prompt for `?` (or configured mark) placeholders before execute. */
   "sql.parameters.anonymousEnabled": boolean;
   /** Prompt for `:name` (or configured prefix) placeholders before execute. */
@@ -87,6 +88,7 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "database.autoCommit": false,
   "database.readOnly": false,
   "database.explorer.preloadDefaultSchema": true,
+  "experimental.sqliteComments.enabled": true,
   "sql.parameters.anonymousEnabled": true,
   "sql.parameters.namedEnabled": true,
   "sql.parameters.namedPrefix": ":",

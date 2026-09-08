@@ -66,13 +66,14 @@ export function supportsDropObject(
   return true;
 }
 
-/** All 5 drivers support the table structure editor (Columns tab of Properties) for tables. */
+/** SQLite supports the safe native ALTER subset; rebuild-only changes stay blocked at save time. */
 const TABLE_STRUCTURE_EDIT_DRIVERS = new Set<ConnectionDriverId>([
   "oracle",
   "postgresql",
   "mysql",
   "mariadb",
   "sqlserver",
+  "sqlite",
 ]);
 
 export function supportsTableStructureEdit(

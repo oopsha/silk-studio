@@ -6,7 +6,8 @@ export type ConnectionDriverId =
   | "sqlserver"
   | "mysql"
   | "mariadb"
-  | "postgresql";
+  | "postgresql"
+  | "sqlite";
 
 export type ConnectionProfile = {
   id: string;
@@ -113,6 +114,9 @@ export const DEFAULT_MARIADB_URL = "jdbc:mariadb://localhost:3306";
 
 export const DEFAULT_POSTGRESQL_URL = "jdbc:postgresql://localhost:5432/postgres";
 
+/** Empty in-memory SQLite database. Use a `jdbc:sqlite:/absolute/path.db` URL for a file. */
+export const DEFAULT_SQLITE_URL = "jdbc:sqlite::memory:";
+
 /**
  * Static per-driver definition used by the connection editor to render the right fields/labels
  * and pick sane defaults. Add an entry here (+ a matching `DbDialect` in the jdbc-agent) to
@@ -122,6 +126,8 @@ export type ConnectionDriverDefinition = {
   id: ConnectionDriverId;
   label: string;
   defaultUrl: string;
+  /** SQLite is file-backed, so it has no host, port, account, or tunnel settings. */
+  isFileBased: boolean;
   /** Whether this driver distinguishes a catalog/database from schema (e.g. SQL Server). */
   supportsCatalog: boolean;
   catalogLabel: string;
@@ -149,6 +155,7 @@ export const CONNECTION_DRIVERS: ConnectionDriverDefinition[] = [
     id: "oracle",
     label: "Oracle (ojdbc11)",
     defaultUrl: DEFAULT_ORACLE_URL,
+    isFileBased: false,
     supportsCatalog: false,
     catalogLabel: "Database",
     catalogHint: "",
@@ -162,6 +169,7 @@ export const CONNECTION_DRIVERS: ConnectionDriverDefinition[] = [
     id: "sqlserver",
     label: "SQL Server (mssql-jdbc)",
     defaultUrl: DEFAULT_SQLSERVER_URL,
+    isFileBased: false,
     supportsCatalog: true,
     catalogLabel: "Database",
     catalogHint: "Applied on connect via USE. Leave empty to use the login's default database.",
@@ -175,6 +183,7 @@ export const CONNECTION_DRIVERS: ConnectionDriverDefinition[] = [
     id: "mysql",
     label: "MySQL (Connector/J)",
     defaultUrl: DEFAULT_MYSQL_URL,
+    isFileBased: false,
     supportsCatalog: true,
     catalogLabel: "Database",
     catalogHint: "Applied on connect via USE. Leave empty to use the login's default database.",
@@ -189,6 +198,7 @@ export const CONNECTION_DRIVERS: ConnectionDriverDefinition[] = [
     id: "mariadb",
     label: "MariaDB (Connector/J)",
     defaultUrl: DEFAULT_MARIADB_URL,
+    isFileBased: false,
     supportsCatalog: true,
     catalogLabel: "Database",
     catalogHint: "Applied on connect via USE. Leave empty to use the login's default database.",
@@ -202,6 +212,7 @@ export const CONNECTION_DRIVERS: ConnectionDriverDefinition[] = [
     id: "postgresql",
     label: "PostgreSQL (pgJDBC)",
     defaultUrl: DEFAULT_POSTGRESQL_URL,
+    isFileBased: false,
     supportsCatalog: true,
     catalogLabel: "Database",
     catalogHint:
@@ -211,6 +222,19 @@ export const CONNECTION_DRIVERS: ConnectionDriverDefinition[] = [
     schemaHint:
       "Applied on connect via SET search_path TO <schema>, public. Leave empty to use the login's default search_path.",
     supportsRuntimeSchemaSwitch: true,
+  },
+  {
+    id: "sqlite",
+    label: "SQLite (sqlite-jdbc)",
+    defaultUrl: DEFAULT_SQLITE_URL,
+    isFileBased: true,
+    supportsCatalog: false,
+    catalogLabel: "Database",
+    catalogHint: "",
+    showSchemaField: false,
+    schemaLabel: "Schema",
+    schemaHint: "",
+    supportsRuntimeSchemaSwitch: false,
   },
 ];
 
@@ -273,5 +297,7 @@ export function driverIconName(driverId: ConnectionDriverId): string {
       return "db-mariadb";
     case "postgresql":
       return "db-postgresql";
+    case "sqlite":
+      return "database";
   }
 }

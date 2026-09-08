@@ -59,7 +59,7 @@
 
 ---
 
-## 4-C. 자동완성 (키워드 + 스키마 객체)
+## 4-C. 자동완성 (키워드 + 스키마 개체)
 
 **상태:** 구현 완료 (검증은 앱에서 확인)  
 **후속(완성도 높은 IntelliSense):** [`sql-intellisense-work-breakdown.md`](./sql-intellisense-work-breakdown.md) (I-A~F)
@@ -76,7 +76,7 @@
 ### 완료 기준
 
 - `SELECT * FROM ` 뒤에 테이블 후보
-- `schema.` / `table.` 뒤 객체/컬럼 후보
+- `schema.` / `table.` 뒤 개체/컬럼 후보
 - 연결 없을 때는 키워드만이라도 동작
 
 ### 요청 문구 예

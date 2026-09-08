@@ -58,6 +58,13 @@ export function buildExplainPlan(
           },
         ],
       };
+    case "sqlite":
+      return {
+        label: "EXPLAIN QUERY PLAN",
+        steps: [
+          { sql: `EXPLAIN QUERY PLAN ${statement}`, kind: "main", captureResult: true },
+        ],
+      };
     case "oracle":
       return {
         label: "EXPLAIN PLAN",

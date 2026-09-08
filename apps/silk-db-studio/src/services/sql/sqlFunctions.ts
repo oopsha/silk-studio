@@ -728,6 +728,8 @@ const DRIVER_FUNCTIONS: Record<ConnectionDriverId, SqlFunctionDef[]> = {
   mysql: MYSQL,
   mariadb: MYSQL,
   postgresql: POSTGRES,
+  // SQLite shares the portable SQL function set; its niche functions can be typed directly.
+  sqlite: [],
 };
 
 function mergeFunctions(defs: SqlFunctionDef[]): SqlFunctionDef[] {

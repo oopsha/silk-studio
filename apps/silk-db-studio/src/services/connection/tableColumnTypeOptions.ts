@@ -114,6 +114,13 @@ const COLUMN_TYPE_OPTIONS: Record<ConnectionDriverId, string[]> = {
     "uniqueidentifier",
     "varbinary",
   ],
+  sqlite: [
+    "INTEGER",
+    "REAL",
+    "TEXT",
+    "BLOB",
+    "NUMERIC",
+  ],
 };
 
 export function getColumnTypeOptions(driverId: ConnectionDriverId): string[] {

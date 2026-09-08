@@ -21,6 +21,7 @@ import {
   getTableStructureSaveBlockedReason,
   openTableStructureSaveDialog,
 } from "../../services/connection/tableStructureSaveService";
+import { TableStructureRefreshService } from "../../services/connection/tableStructureRefreshService";
 
 type LoadStatus = "loading" | "error" | "ready";
 
@@ -164,6 +165,19 @@ export function useTableStructureEditorState(
     if (!enabled || !driverId) return;
     void load();
   }, [enabled, driverId, load]);
+
+  useEffect(() => {
+    return TableStructureRefreshService.onDidRequest((ref) => {
+      if (
+        ref.profileId === objectRef.profileId &&
+        ref.schemaName === objectRef.schemaName &&
+        ref.objectName === objectRef.objectName &&
+        ref.catalogName === objectRef.catalogName
+      ) {
+        void load();
+      }
+    });
+  }, [objectRef, load]);
 
   const visibleEditedColumns = useMemo(
     () => editedColumns.filter((c) => !pendingDeleteRowIds.has(c.rowId)),

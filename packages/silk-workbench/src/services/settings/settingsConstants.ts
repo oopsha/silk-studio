@@ -5,7 +5,8 @@ export type SettingsCategory =
   | "editor"
   | "database"
   | "queryResult"
-  | "ai";
+  | "ai"
+  | "experimental";
 
 export const SETTINGS_CATEGORY_LABELS: Record<SettingsCategory, string> = {
   appearance: "Appearance",
@@ -13,6 +14,7 @@ export const SETTINGS_CATEGORY_LABELS: Record<SettingsCategory, string> = {
   database: "Database",
   queryResult: "Query Result",
   ai: "AI",
+  experimental: "Experimental",
 };
 
 export const SETTINGS_CATEGORY_ORDER: SettingsCategory[] = [
@@ -21,6 +23,7 @@ export const SETTINGS_CATEGORY_ORDER: SettingsCategory[] = [
   "database",
   "queryResult",
   "ai",
+  "experimental",
 ];
 
 export const SETTINGS_CATEGORY_AVAILABLE: Record<SettingsCategory, boolean> = {
@@ -29,4 +32,5 @@ export const SETTINGS_CATEGORY_AVAILABLE: Record<SettingsCategory, boolean> = {
   database: true,
   queryResult: true,
   ai: true,
+  experimental: true,
 };

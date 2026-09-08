@@ -49,6 +49,7 @@ export const koMessages = {
       database: "데이터베이스",
       queryResult: "쿼리 결과",
       ai: "AI",
+      experimental: "실험실",
     },
     appearance: {
       title: "모양",
@@ -121,6 +122,20 @@ export const koMessages = {
       nullDisplayDescription: "NULL 값을 결과 그리드에 표시할 문자열입니다.",
       columnFilters: "컬럼 필터",
       columnFiltersHint: "결과 그리드 컬럼 필터를 기본으로 사용합니다.",
+    },
+    experimental: {
+      title: "실험실",
+      intro:
+        "출시 전에 제공하는 기능을 먼저 사용해 볼 수 있습니다. 실험실 기능은 업데이트 과정에서 변경되거나 제거될 수 있으며, 언제든지 설정에서 끌 수 있습니다.",
+      sqliteComments: "SQLite 컬럼 코멘트 사용",
+      sqliteCommentsDescription:
+        "기존 SQLite CREATE TABLE 문에서 발견한 주석을 테이블 속성의 컬럼 그리드에 표시합니다. -- 및 /* */ 주석을 모두 인식합니다.",
+      sqliteCommentsHint:
+        "기존 SQLite 컬럼 코멘트를 표시합니다 (읽기 전용이며 테이블 변경 시 코멘트를 저장하지 않습니다).",
+      sqliteCommentsExampleDescription:
+        "CREATE TABLE의 컬럼 정의 오른쪽에 작성한 줄 주석 또는 블록 주석을 해당 컬럼의 코멘트로 표시합니다.",
+      sqliteCommentsExampleSql:
+        "CREATE TABLE MST_SAMPLE (\n  CODE TEXT NOT NULL, -- 코드\n  NAME TEXT /* 표시명 */\n);",
     },
     ai: {
       title: "AI",

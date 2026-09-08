@@ -1,4 +1,5 @@
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { classifyColumnSize } from "../../services/connection/tableColumnTypeFormat";
 import { columnTypeOptionsWithCurrentValue } from "../../services/connection/tableColumnTypeOptions";
@@ -17,6 +18,13 @@ type TableStructureEditorProps = {
  */
 function TableStructureEditor({ state }: TableStructureEditorProps) {
   const { t } = useI18n();
+  const configuration = useConfiguration();
+  const isSqlite = state.driverId === "sqlite";
+  // SQLite exposes comments embedded in its CREATE TABLE text; it has no safe native
+  // ALTER statement that can persist a changed column comment. Keep the discovered
+  // metadata visible, but never let the grid imply that it can be saved.
+  const commentsReadOnly = isSqlite;
+  const showCommentColumn = !isSqlite || configuration["experimental.sqliteComments.enabled"];
 
   if (state.status === "loading") {
     return <div className="table-structure-editor__status">{t("app.columns.loading")}</div>;
@@ -53,11 +61,11 @@ function TableStructureEditor({ state }: TableStructureEditorProps) {
               <th>{t("app.columns.name")}</th>
               <th className="table-structure-editor__pk-cell">{t("app.columns.primaryKey")}</th>
               <th>{t("app.columns.type")}</th>
-              <th>{t("app.tableStructure.length")}</th>
-              <th>{t("app.tableStructure.scale")}</th>
+              {!isSqlite ? <th>{t("app.tableStructure.length")}</th> : null}
+              {!isSqlite ? <th>{t("app.tableStructure.scale")}</th> : null}
               <th>{t("app.columns.nullable")}</th>
               <th>{t("app.columns.defaultValue")}</th>
-              <th>{t("app.columns.comment")}</th>
+              {showCommentColumn ? <th>{t("app.columns.comment")}</th> : null}
               <th />
             </tr>
           </thead>
@@ -66,6 +74,10 @@ function TableStructureEditor({ state }: TableStructureEditorProps) {
               const sizeClass = classifyColumnSize(draft.typeName);
               const isReadOnly = !!draft.readOnlyReason || !!state.blockedReason;
               const isPendingDrop = state.pendingDeleteRowIds.has(draft.rowId);
+              // SQLite can only change the structure of an existing column by renaming it.
+              // New column drafts keep their supported inputs; existing values remain selectable
+              // and copyable through readOnly inputs instead of looking unavailable.
+              const isExistingSqliteColumn = isSqlite && draft.origin !== null;
               return (
                 <tr
                   key={draft.rowId}
@@ -86,70 +98,94 @@ function TableStructureEditor({ state }: TableStructureEditorProps) {
                     {state.primaryKeyNames.has(draft.name.toLowerCase()) ? "✓" : ""}
                   </td>
                   <td>
-                    <select
-                      className="table-structure-editor__cell-input"
-                      value={draft.typeName}
-                      disabled={isReadOnly || isPendingDrop}
-                      onChange={(e) =>
-                        state.updateColumn(draft.rowId, { typeName: e.target.value })
-                      }
-                    >
-                      {!draft.typeName ? (
-                        <option value="" disabled>
-                          {t("app.tableStructure.selectType")}
-                        </option>
-                      ) : null}
-                      {columnTypeOptionsWithCurrentValue(state.driverId, draft.typeName).map(
-                        (option) => (
-                          <option key={option} value={option}>
-                            {option}
+                    {isExistingSqliteColumn ? (
+                      <input
+                        className="table-structure-editor__cell-input"
+                        value={draft.typeName}
+                        readOnly
+                        aria-readonly="true"
+                      />
+                    ) : (
+                      <select
+                        className="table-structure-editor__cell-input"
+                        value={draft.typeName}
+                        disabled={isReadOnly || isPendingDrop}
+                        onChange={(e) =>
+                          state.updateColumn(draft.rowId, { typeName: e.target.value })
+                        }
+                      >
+                        {!draft.typeName ? (
+                          <option value="" disabled>
+                            {t("app.tableStructure.selectType")}
                           </option>
-                        ),
-                      )}
-                    </select>
+                        ) : null}
+                        {columnTypeOptionsWithCurrentValue(state.driverId, draft.typeName).map(
+                          (option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    )}
                   </td>
+                  {!isSqlite ? (
+                    <td>
+                      <input
+                        className="table-structure-editor__cell-input table-structure-editor__cell-input--narrow"
+                        type="number"
+                        value={draft.length ?? ""}
+                        disabled={isReadOnly || isPendingDrop || sizeClass === "unsized"}
+                        onChange={(e) =>
+                          state.updateColumn(draft.rowId, {
+                            length: e.target.value === "" ? undefined : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </td>
+                  ) : null}
+                  {!isSqlite ? (
+                    <td>
+                      <input
+                        className="table-structure-editor__cell-input table-structure-editor__cell-input--narrow"
+                        type="number"
+                        value={draft.scale ?? ""}
+                        disabled={isReadOnly || isPendingDrop || sizeClass !== "sized-numeric"}
+                        onChange={(e) =>
+                          state.updateColumn(draft.rowId, {
+                            scale: e.target.value === "" ? undefined : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </td>
+                  ) : null}
                   <td>
-                    <input
-                      className="table-structure-editor__cell-input table-structure-editor__cell-input--narrow"
-                      type="number"
-                      value={draft.length ?? ""}
-                      disabled={isReadOnly || isPendingDrop || sizeClass === "unsized"}
-                      onChange={(e) =>
-                        state.updateColumn(draft.rowId, {
-                          length: e.target.value === "" ? undefined : Number(e.target.value),
-                        })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="table-structure-editor__cell-input table-structure-editor__cell-input--narrow"
-                      type="number"
-                      value={draft.scale ?? ""}
-                      disabled={isReadOnly || isPendingDrop || sizeClass !== "sized-numeric"}
-                      onChange={(e) =>
-                        state.updateColumn(draft.rowId, {
-                          scale: e.target.value === "" ? undefined : Number(e.target.value),
-                        })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="table-structure-editor__checkbox"
-                      type="checkbox"
-                      checked={draft.nullable}
-                      disabled={isReadOnly || isPendingDrop}
-                      onChange={(e) =>
-                        state.updateColumn(draft.rowId, { nullable: e.target.checked })
-                      }
-                    />
+                    {isExistingSqliteColumn ? (
+                      <input
+                        className="table-structure-editor__cell-input"
+                        value={draft.nullable ? "NULL" : "NOT NULL"}
+                        readOnly
+                        aria-readonly="true"
+                      />
+                    ) : (
+                      <input
+                        className="table-structure-editor__checkbox"
+                        type="checkbox"
+                        checked={draft.nullable}
+                        disabled={isReadOnly || isPendingDrop}
+                        onChange={(e) =>
+                          state.updateColumn(draft.rowId, { nullable: e.target.checked })
+                        }
+                      />
+                    )}
                   </td>
                   <td>
                     <input
                       className="table-structure-editor__cell-input"
                       value={draft.defaultValue ?? ""}
                       disabled={isReadOnly || isPendingDrop}
+                      readOnly={isExistingSqliteColumn}
+                      aria-readonly={isExistingSqliteColumn || undefined}
                       onChange={(e) =>
                         state.updateColumn(draft.rowId, {
                           defaultValue: e.target.value === "" ? null : e.target.value,
@@ -157,18 +193,27 @@ function TableStructureEditor({ state }: TableStructureEditorProps) {
                       }
                     />
                   </td>
-                  <td>
-                    <input
-                      className="table-structure-editor__cell-input"
-                      value={draft.comment ?? ""}
-                      disabled={isReadOnly || isPendingDrop}
-                      onChange={(e) =>
-                        state.updateColumn(draft.rowId, {
-                          comment: e.target.value === "" ? null : e.target.value,
-                        })
-                      }
-                    />
-                  </td>
+                  {showCommentColumn ? (
+                    <td>
+                      <input
+                        className="table-structure-editor__cell-input"
+                        value={draft.comment ?? ""}
+                        disabled={isReadOnly || isPendingDrop}
+                        readOnly={commentsReadOnly}
+                        aria-readonly={commentsReadOnly || undefined}
+                        title={
+                          commentsReadOnly
+                            ? "SQLite column comments are read-only."
+                            : undefined
+                        }
+                        onChange={(e) =>
+                          state.updateColumn(draft.rowId, {
+                            comment: e.target.value === "" ? null : e.target.value,
+                          })
+                        }
+                      />
+                    </td>
+                  ) : null}
                   <td>
                     {!state.blockedReason && !draft.readOnlyReason ? (
                       <button

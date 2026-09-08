@@ -37,6 +37,7 @@ const SETTINGS_CATEGORY_MESSAGE_KEYS = {
   database: "settings.category.database",
   queryResult: "settings.category.queryResult",
   ai: "settings.category.ai",
+  experimental: "settings.category.experimental",
 } as const satisfies Record<
   SettingsCategory,
   | "settings.category.appearance"
@@ -44,11 +45,12 @@ const SETTINGS_CATEGORY_MESSAGE_KEYS = {
   | "settings.category.database"
   | "settings.category.queryResult"
   | "settings.category.ai"
+  | "settings.category.experimental"
 >;
 
 type SettingRowProps = {
   title: string;
-  description?: string;
+  description?: ReactNode;
   children: ReactNode;
   className?: string;
 };
@@ -407,6 +409,48 @@ function DatabaseSettings() {
             }
           />
           <span>{t("settings.database.mybatisParametersHint")}</span>
+        </label>
+      </SettingRow>
+    </section>
+  );
+}
+
+function ExperimentalSettings() {
+  const configuration = useConfiguration();
+  const { t } = useI18n();
+
+  return (
+    <section className="settings-section">
+      <h2 className="settings-section__title">{t("settings.experimental.title")}</h2>
+      <p className="settings-placeholder settings-placeholder--intro">
+        {t("settings.experimental.intro")}
+      </p>
+      <SettingRow
+        title={t("settings.experimental.sqliteComments")}
+        description={
+          <>
+            <div>{t("settings.experimental.sqliteCommentsDescription")}</div>
+            <div className="settings-row__example">
+              <div>{t("settings.experimental.sqliteCommentsExampleDescription")}</div>
+              <pre className="settings-row__example-code">
+                <code>{t("settings.experimental.sqliteCommentsExampleSql")}</code>
+              </pre>
+            </div>
+          </>
+        }
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={configuration["experimental.sqliteComments.enabled"]}
+            onChange={(event) =>
+              ConfigurationService.updateValue(
+                "experimental.sqliteComments.enabled",
+                event.target.checked,
+              )
+            }
+          />
+          <span>{t("settings.experimental.sqliteCommentsHint")}</span>
         </label>
       </SettingRow>
     </section>
@@ -922,7 +966,9 @@ function SettingsEditor({ onExportSettings, onImportSettings }: SettingsEditorPr
                 type="button"
                 className={`settings-editor__nav-item${
                   category === item ? " settings-editor__nav-item--active" : ""
-                }${available ? "" : " settings-editor__nav-item--disabled"}`}
+                }${available ? "" : " settings-editor__nav-item--disabled"}${
+                  item === "experimental" ? " settings-editor__nav-item--experimental" : ""
+                }`}
                 disabled={!available}
                 onClick={() => SettingsService.setActiveCategory(item)}
               >
@@ -972,6 +1018,7 @@ function SettingsEditor({ onExportSettings, onImportSettings }: SettingsEditorPr
         {category === "database" ? <DatabaseSettings /> : null}
         {category === "queryResult" ? <QueryResultSettings /> : null}
         {category === "ai" ? <AiSettings /> : null}
+        {category === "experimental" ? <ExperimentalSettings /> : null}
       </div>
     </main>
   );

@@ -60,6 +60,21 @@
   background-color: var(--color-menu-selection-background);
 }
 
+.settings-editor__nav-item--experimental {
+  position: relative;
+  margin-top: 22px;
+}
+
+.settings-editor__nav-item--experimental::before {
+  position: absolute;
+  top: -12px;
+  right: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background-color: var(--color-input-border);
+}
+
 .settings-editor__nav-item--disabled {
   color: var(--color-description);
   cursor: not-allowed;
@@ -175,6 +190,24 @@
 .settings-placeholder code {
   font-family: var(--font-family-monospace);
   font-size: 12px;
+}
+
+.settings-row__example {
+  margin-top: 14px;
+}
+
+.settings-row__example-code {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  color: var(--color-input-foreground);
+  background-color: var(--color-input-background);
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  font-family: var(--font-family-monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
 }
 
 .settings-button {

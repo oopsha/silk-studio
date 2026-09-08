@@ -136,6 +136,9 @@ export function isSystemNamespace(
       // exhaustive, always-stale list of exact names.
       return ORACLE_SYSTEM_SCHEMAS.has(upper) || upper.startsWith("APEX_");
     }
+    case "sqlite":
+      // `temp` contains connection-local transient objects, not the file's user schema.
+      return trimmed.toLowerCase() === "temp";
     default:
       return false;
   }
@@ -161,6 +164,8 @@ export function showSystemObjectsHint(driverId: ConnectionDriverId): string {
       return "When off, hides pg_catalog, information_schema, and other system schemas.";
     case "oracle":
       return "When off, hides SYS, SYSTEM, and other built-in schemas.";
+    case "sqlite":
+      return "When off, hides the temporary SQLite schema.";
     default:
       return "When off, hides vendor system databases or schemas in the Explorer.";
   }

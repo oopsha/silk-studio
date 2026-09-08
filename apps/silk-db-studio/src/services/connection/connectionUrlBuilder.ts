@@ -4,6 +4,7 @@ import {
   DEFAULT_MYSQL_URL,
   DEFAULT_ORACLE_URL,
   DEFAULT_POSTGRESQL_URL,
+  DEFAULT_SQLITE_URL,
   DEFAULT_SQLSERVER_URL,
 } from "./connectionTypes";
 
@@ -25,6 +26,7 @@ export const DEFAULT_PORT_BY_DRIVER: Record<ConnectionDriverId, number> = {
   mysql: 3306,
   mariadb: 3306,
   postgresql: 5432,
+  sqlite: 0,
 };
 
 // statementPoolingCacheSize=0 disables mssql-jdbc's server-side prepared-statement cache.
@@ -50,6 +52,12 @@ export function buildJdbcUrl(
   const database = fields.database.trim();
   const port = resolvePort(driverId, fields.port);
 
+  if (driverId === "sqlite") {
+    return fields.database.trim()
+      ? `jdbc:sqlite:${fields.database.trim()}`
+      : DEFAULT_SQLITE_URL;
+  }
+
   if (!host) {
     return defaultUrlFor(driverId);
   }
@@ -70,6 +78,13 @@ export function buildJdbcUrl(
     case "postgresql":
       return `jdbc:postgresql://${host}:${port}/${database}`;
   }
+}
+
+/** Converts a native file-picker path into SQLite's JDBC URL form without rewriting raw URLs. */
+export function buildSqliteFileJdbcUrl(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) return DEFAULT_SQLITE_URL;
+  return /^jdbc:sqlite:/i.test(trimmed) ? trimmed : `jdbc:sqlite:${trimmed}`;
 }
 
 /**
@@ -105,6 +120,8 @@ function tryRegexParse(
       return parseMysqlLike(url, "mariadb");
     case "postgresql":
       return parsePostgres(url);
+    case "sqlite":
+      return parseSqlite(url);
   }
 }
 
@@ -200,6 +217,12 @@ function parsePostgres(url: string): StructuredConnectionFields | null {
   };
 }
 
+function parseSqlite(url: string): StructuredConnectionFields | null {
+  const match = /^jdbc:sqlite:(.+)$/i.exec(url);
+  if (!match) return null;
+  return { host: "", port: "", database: match[1], oracleConnectType: "service" };
+}
+
 function resolvePort(driverId: ConnectionDriverId, port: string): string {
   const trimmed = port.trim();
   if (/^\d+$/.test(trimmed)) return trimmed;
@@ -218,5 +241,7 @@ function defaultUrlFor(driverId: ConnectionDriverId): string {
       return DEFAULT_MARIADB_URL;
     case "postgresql":
       return DEFAULT_POSTGRESQL_URL;
+    case "sqlite":
+      return DEFAULT_SQLITE_URL;
   }
 }

@@ -368,8 +368,9 @@ class ConnectionServiceImpl {
     // Only for user-initiated connects: a silent auto-connect (app startup, running a query
     // against a disconnected profile) or a non-interactive reconnect (see `promptForPassword`
     // above) must not pop up a modal unprompted — it just fails as before.
-    let password = await this.getPassword(profileId);
-    if (!password && !options.silent && options.promptForPassword !== false) {
+    const isFileBased = getConnectionDriver(profile.driverId).isFileBased;
+    let password = isFileBased ? "" : await this.getPassword(profileId);
+    if (!isFileBased && !password && !options.silent && options.promptForPassword !== false) {
       const promptResult = await ConnectionPasswordPromptService.open(profile.name);
       if (!promptResult.confirmed) return;
       password = promptResult.password;
@@ -418,9 +419,9 @@ class ConnectionServiceImpl {
     });
 
     const tunnel = profile.ssmTunnel;
-    const tunnelEnabled = tunnel ? isSsmTunnelConfigComplete(tunnel) : false;
+    const tunnelEnabled = !isFileBased && tunnel ? isSsmTunnelConfigComplete(tunnel) : false;
     const sshTunnel = profile.sshTunnel;
-    const sshTunnelEnabled = sshTunnel ? isSshTunnelConfigComplete(sshTunnel) : false;
+    const sshTunnelEnabled = !isFileBased && sshTunnel ? isSshTunnelConfigComplete(sshTunnel) : false;
     if (tunnelEnabled && sshTunnelEnabled) {
       this.setState({
         ...this.state,
@@ -647,10 +648,11 @@ class ConnectionServiceImpl {
     input: ConnectionProfileInput,
     options: { profileId?: string; onProgress?: ConnectProgress } = {},
   ): Promise<void> {
+    const isFileBased = getConnectionDriver(input.driverId).isFileBased;
     const tunnel = input.ssmTunnel;
-    const tunnelEnabled = isSsmTunnelConfigComplete(tunnel);
+    const tunnelEnabled = !isFileBased && isSsmTunnelConfigComplete(tunnel);
     const sshTunnel = input.sshTunnel;
-    const sshTunnelEnabled = isSshTunnelConfigComplete(sshTunnel);
+    const sshTunnelEnabled = !isFileBased && isSshTunnelConfigComplete(sshTunnel);
     if (tunnelEnabled && sshTunnelEnabled) {
       throw new Error("A connection can use only one tunnel type at a time.");
     }

@@ -104,6 +104,13 @@ export function schemaCandidatesForCompletion(): string[] {
     add(binding.catalog);
   }
   add(effectiveDefaultSchema(profile));
+  // SQLite resolves an unqualified table name against its primary attached database, `main`.
+  // Without this fallback candidate, `SELECT * FROM MY_TABLE` executes correctly but F4 has no
+  // schema to search when the connection's optional default-schema field is blank. An explicit
+  // schema configured on the profile remains the first choice above.
+  if (profile.driverId === "sqlite") {
+    add("main");
+  }
   add(profile.catalog);
   // Keep login user as a fallback candidate for dialects where user ≈ schema.
   add(profile.user);

@@ -19,6 +19,7 @@ const DRIVER_MONACO_LANGUAGE: Record<ConnectionDriverId, SqlMonacoLanguageId> =
     mysql: "mysql",
     mariadb: "mariadb",
     postgresql: "pgsql",
+    sqlite: "sql",
   };
 
 const DRIVER_FORMATTER_LANGUAGE: Record<ConnectionDriverId, SqlLanguage> = {
@@ -26,7 +27,8 @@ const DRIVER_FORMATTER_LANGUAGE: Record<ConnectionDriverId, SqlLanguage> = {
   sqlserver: "transactsql",
   mysql: "mysql",
   mariadb: "mariadb",
-  postgresql: "postgresql",
+    postgresql: "postgresql",
+    sqlite: "sqlite",
 };
 
 const SQL_LANGUAGE_IDS = new Set<string>([

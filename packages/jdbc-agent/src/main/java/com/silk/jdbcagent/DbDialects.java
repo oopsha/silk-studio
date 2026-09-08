@@ -11,7 +11,8 @@ final class DbDialects {
           new SqlServerDialect(),
           new MySqlDialect(),
           new MariaDbDialect(),
-          new PostgreSqlDialect());
+          new PostgreSqlDialect(),
+          new SqliteDialect());
 
   private DbDialects() {}
 
@@ -27,6 +28,6 @@ final class DbDialects {
     }
     throw new RuntimeException(
         "Unsupported JDBC URL. Supported prefixes: jdbc:oracle:, jdbc:sqlserver:, jdbc:mysql:, "
-            + "jdbc:mariadb:, jdbc:postgresql:");
+            + "jdbc:mariadb:, jdbc:postgresql:, jdbc:sqlite:");
   }
 }

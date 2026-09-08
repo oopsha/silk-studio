@@ -181,6 +181,7 @@ const DRIVER_KEYWORD_EXTRAS: Record<ConnectionDriverId, readonly string[]> = {
   mysql: MYSQL_KEYWORD_EXTRA,
   mariadb: MYSQL_KEYWORD_EXTRA,
   postgresql: PG_KEYWORD_EXTRA,
+  sqlite: ["AUTOINCREMENT", "GLOB", "PRAGMA", "VACUUM", "WITHOUT", "ROWID"],
 };
 
 function uniqueWords(words: Iterable<string>): string[] {

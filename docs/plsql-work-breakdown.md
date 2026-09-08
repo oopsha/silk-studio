@@ -1,4 +1,4 @@
-# PL/SQL 객체 개발 — 작업 배분
+# PL/SQL 개체 개발 — 작업 배분
 
 로드맵 7번 항목을 한 번에 처리하기엔 범위가 크므로, **요청 5~6번**으로 나눈다.  
 각 요청은 한 채팅에서 end-to-end로 끝낼 수 있는 단위다.  
@@ -18,7 +18,7 @@
 - 확인 다이얼로그 패턴 — `ExplorerObjectMutationDialog`, `QueryResultUpdateDialog`, `PlsqlSaveDialog`
 - **미구현**: AI 수정 루프
 
-### v1 대상 DB·객체
+### v1 대상 DB·개체
 
 - **1차**: **Oracle** — procedure, function, package (spec/body 구분은 단계적으로)
 - **2차(선택)**: PostgreSQL function/procedure (`pg_get_functiondef` 기반 편집·저장)
@@ -26,7 +26,7 @@
 
 ---
 
-## 7-A. 객체 소스 열기·편집 탭
+## 7-A. 개체 소스 열기·편집 탭
 
 **상태:** 완료
 
@@ -46,13 +46,13 @@
 
 ### 완료 기준
 
-- 탐색기에서 PL/SQL 객체를 편집 탭으로 열고 내용을 수정할 수 있음
+- 탐색기에서 PL/SQL 개체를 편집 탭으로 열고 내용을 수정할 수 있음
 - DDL 보기 탭과 편집 탭이 혼동되지 않음 (라벨·read-only 구분)
-- 연결·프로필·스키마·객체 식별이 탭 URI에 보존됨
+- 연결·프로필·스키마·개체 식별이 탭 URI에 보존됨
 
 ### 요청 문구 예
 
-> PL/SQL 객체를 탐색기에서 편집 탭으로 열어줘. connection.ddl로 소스를 불러오고 Monaco plsql 편집·dirty 표시를 넣어줘. Oracle procedure/function/package부터.
+> PL/SQL 개체를 탐색기에서 편집 탭으로 열어줘. connection.ddl로 소스를 불러오고 Monaco plsql 편집·dirty 표시를 넣어줘. Oracle procedure/function/package부터.
 
 ---
 
@@ -67,7 +67,7 @@
 - **Save** / `Ctrl+S` — 편집 탭 활성 시
 - 저장 SQL 생성
   - v1: 버퍼 전체를 `CREATE OR REPLACE`로 감싸거나, DB에서 받은 소스가 이미 CR 형태면 그대로 실행 (드라이버 규칙 문서화)
-  - 스키마·객체 이름·kind 메타데이터로 검증(이름 불일치 시 경고)
+  - 스키마·개체 이름·kind 메타데이터로 검증(이름 불일치 시 경고)
 - **미리보기 + 확인** 다이얼로그 (6-E·5-E 패턴)
   - read-only·`sqlGuard` 이중 차단
 - 성공 시: dirty 해제, (선택) 7-D 스냅샷 1건 기록 훅
@@ -103,7 +103,7 @@
   - 툴바/메뉴 **Compile** (`Ctrl+Shift+F9` 등 — 키는 구현 시 코드와 맞출 것)
   - 오류 목록 패널 또는 Problems 스타일 목록
   - Monaco **마커** (`sqlErrorMarkers` 패턴 재사용·확장) — line/column 매핑
-  - invalid 객체 상태는 7-A 탭 배너 또는 탐색기 아이콘(선택·후순위)
+  - invalid 개체 상태는 7-A 탭 배너 또는 탐색기 아이콘(선택·후순위)
 - 저장(7-B) 후 자동 컴파일은 **설정 옵션**으로 (기본 off 권장)
 
 ### 완료 기준
@@ -126,7 +126,7 @@
 
 ### 범위
 
-- 객체 키(`profileId` + schema + kind + name)별 **로컬 이력**
+- 개체 키(`profileId` + schema + kind + name)별 **로컬 이력**
   - 저장 성공 시·수동 “스냅샷” 시 텍스트 보관 (상한 N건, 설정 또는 고정 20)
   - 저장소: `localStorage` 또는 Tauri fs (용량·개인정보 정책에 맞게 선택)
 - **Diff** — 현재 버퍼 vs 선택 스냅샷 (Monaco diff editor 또는 간단한 side-by-side)
@@ -138,7 +138,7 @@
 
 - 저장 이력에서 diff를 볼 수 있음
 - 롤백 후 편집·다시 저장 가능
-- 스냅샷이 프로필/객체별로 섞이지 않음
+- 스냅샷이 프로필/개체별로 섞이지 않음
 
 ### 요청 문구 예
 
@@ -197,7 +197,7 @@
 ## 진행 순서
 
 ```
-7-A 객체 소스 열기·편집 탭
+7-A 개체 소스 열기·편집 탭
  → 7-B 저장 (CREATE OR REPLACE)
  → 7-C 컴파일 + 오류 표시
  → 7-D 로컬 스냅샷 · diff · 롤백

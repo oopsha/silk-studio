@@ -108,8 +108,10 @@
   overflow: auto;
   border: 1px solid var(--color-border);
   border-radius: 4px;
-  background-color: #121314;
-  color: #d4d4d4;
+  /* SQL previews are shared by object, PL/SQL, AI, and table-structure save dialogs.
+     Follow the active input surface rather than forcing a dark code block in light theme. */
+  background-color: var(--color-input-background, #121314);
+  color: var(--color-foreground);
   font-family: var(--font-family-monospace, ui-monospace, monospace);
   font-size: 12px;
   line-height: 1.5;

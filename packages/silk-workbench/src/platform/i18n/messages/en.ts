@@ -51,6 +51,7 @@ export const enMessages = {
       database: "Database",
       queryResult: "Query Result",
       ai: "AI",
+      experimental: "Experimental",
     },
     appearance: {
       title: "Appearance",
@@ -124,6 +125,20 @@ export const enMessages = {
       nullDisplayDescription: "String used to show NULL values in the result grid.",
       columnFilters: "Column Filters",
       columnFiltersHint: "Enable column filters in the result grid by default.",
+    },
+    experimental: {
+      title: "Experimental",
+      intro:
+        "Try features before they are released. Experimental features may change or be removed during updates, and you can turn them off here at any time.",
+      sqliteComments: "Use SQLite column comments",
+      sqliteCommentsDescription:
+        "Shows comments discovered in an existing SQLite CREATE TABLE statement in the Columns properties grid. Both -- and /* */ comments are recognized.",
+      sqliteCommentsHint:
+        "Show existing SQLite column comments (read-only; changing a table never writes comments).",
+      sqliteCommentsExampleDescription:
+        "A line or block comment written to the right of a CREATE TABLE column definition is displayed as that column's comment.",
+      sqliteCommentsExampleSql:
+        "CREATE TABLE MST_SAMPLE (\n  CODE TEXT NOT NULL, -- Code\n  NAME TEXT /* Display name */\n);",
     },
     ai: {
       title: "AI",

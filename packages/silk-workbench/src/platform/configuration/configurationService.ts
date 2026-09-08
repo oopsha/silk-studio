@@ -183,6 +183,10 @@ class ConfigurationServiceImpl {
       values["database.explorer.preloadDefaultSchema"] =
         CONFIGURATION_DEFAULTS["database.explorer.preloadDefaultSchema"];
     }
+    if (typeof values["experimental.sqliteComments.enabled"] !== "boolean") {
+      values["experimental.sqliteComments.enabled"] =
+        CONFIGURATION_DEFAULTS["experimental.sqliteComments.enabled"];
+    }
     if (typeof values["sql.parameters.anonymousEnabled"] !== "boolean") {
       values["sql.parameters.anonymousEnabled"] =
         CONFIGURATION_DEFAULTS["sql.parameters.anonymousEnabled"];

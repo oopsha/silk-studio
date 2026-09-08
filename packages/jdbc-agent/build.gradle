@@ -31,6 +31,8 @@ dependencies {
   // THIRD_PARTY_NOTICES.md. Pure Type-4 driver; pulls in checker-qual (annotations) as a
   // compile/runtime dependency. Claims `jdbc:postgresql:` only.
   implementation 'org.postgresql:postgresql:42.7.13'
+  // Xerial's SQLite JDBC driver bundles platform-native SQLite libraries inside its jar.
+  implementation 'org.xerial:sqlite-jdbc:3.49.1.0'
   implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
 }
 

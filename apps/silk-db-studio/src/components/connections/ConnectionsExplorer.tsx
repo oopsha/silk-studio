@@ -210,6 +210,22 @@ function ProfileTree({
     () => filterCatalogTree(tree.catalogs, filter),
     [tree.catalogs, filter],
   );
+  // `main` is SQLite's mandatory alias for the one database file initially connected.
+  // It does not help navigation until another file has been ATTACHed, at which point every
+  // database alias must remain visible to disambiguate object ownership.
+  const flattenSingleSqliteMain =
+    profile.driverId === "sqlite" &&
+    tree.catalogs.length === 0 &&
+    tree.schemas.length === 1 &&
+    tree.schemas[0].name.toLowerCase() === "main";
+
+  useEffect(() => {
+    const main = flattenSingleSqliteMain ? tree.schemas[0] : undefined;
+    if (!main || main.status !== "idle") return;
+    void ConnectionTreeService.loadSchemaObjects(profile.id, main.name).catch((error) => {
+      setLocalError(formatErrorMessage(error));
+    });
+  }, [flattenSingleSqliteMain, tree.schemas, profile.id]);
 
   async function refreshSchema(schemaName: string, catalogName?: string) {
     await run(async () => {
@@ -341,6 +357,7 @@ function ProfileTree({
   function renderSchemaEntry(
     entry: FilteredSchemaView,
     catalogName?: string,
+    flattenSchema = false,
   ) {
     if (!entry.visible) return null;
     const { schema } = entry;
@@ -348,7 +365,7 @@ function ProfileTree({
       ? `schema:${profile.id}:${catalogName}:${schema.name}`
       : `schema:${profile.id}:${schema.name}`;
     const forceExpand = filterActive && entry.visible;
-    const schemaExpanded = expanded[schemaKey] ?? (forceExpand ? true : false);
+    const schemaExpanded = flattenSchema || (expanded[schemaKey] ?? (forceExpand ? true : false));
     const effective = effectiveDefaultSchema(profile);
     const isDefaultSchema =
       effective.length > 0 &&
@@ -365,26 +382,27 @@ function ProfileTree({
         key={catalogName ? `${catalogName}:${schema.name}` : schema.name}
         className="connections-explorer__node"
       >
-        <div
-          className="connections-explorer__row"
-          onContextMenu={(event) => {
-            event.preventDefault();
-            onOpenContextMenu({
-              x: event.clientX,
-              y: event.clientY,
-              items: isDatabaseNode
-                ? buildCatalogMenuItems({ isDefault: isDefaultSchema })
-                : buildSchemaMenuItems({ isDefault: isDefaultSchema }),
-              payload: isDatabaseNode
-                ? { profileId: profile.id, catalogName: schema.name }
-                : {
-                    profileId: profile.id,
-                    schemaName: schema.name,
-                    catalogName,
-                  },
-            });
-          }}
-        >
+        {!flattenSchema ? (
+          <div
+            className="connections-explorer__row"
+            onContextMenu={(event) => {
+              event.preventDefault();
+              onOpenContextMenu({
+                x: event.clientX,
+                y: event.clientY,
+                items: isDatabaseNode
+                  ? buildCatalogMenuItems({ isDefault: isDefaultSchema })
+                  : buildSchemaMenuItems({ isDefault: isDefaultSchema }),
+                payload: isDatabaseNode
+                  ? { profileId: profile.id, catalogName: schema.name }
+                  : {
+                      profileId: profile.id,
+                      schemaName: schema.name,
+                      catalogName,
+                    },
+              });
+            }}
+          >
           <button
             type="button"
             className="connections-explorer__twistie"
@@ -445,7 +463,8 @@ function ProfileTree({
               <Codicon name="refresh" />
             </button>
           </div>
-        </div>
+          </div>
+        ) : null}
         {schemaExpanded ? (
           <div className="connections-explorer__children">
             {schema.status === "loading" ? (
@@ -926,7 +945,9 @@ function ProfileTree({
               No matches for “{filter.trim()}”.
             </div>
           ) : (
-            filteredSchemas.map((entry) => renderSchemaEntry(entry))
+            filteredSchemas.map((entry) =>
+              renderSchemaEntry(entry, undefined, flattenSingleSqliteMain),
+            )
           )}
         </div>
       ) : null}

@@ -30,6 +30,7 @@ import type {
 import {
   DEFAULT_PORT_BY_DRIVER,
   buildJdbcUrl,
+  buildSqliteFileJdbcUrl,
   parseJdbcUrl,
 } from "../../services/connection/connectionUrlBuilder";
 import {
@@ -52,7 +53,7 @@ import {
   sshSecretGet,
   sshSecretSet,
 } from "../../services/connection/sshTunnelSecretBridge";
-import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
+import { open as openFilePicker, save as saveFilePicker } from "@tauri-apps/plugin-dialog";
 import "./ConnectionEditor.css";
 
 type HostPortState = { host: string; port: string };
@@ -63,6 +64,10 @@ const EMPTY_ORACLE_FIELDS: OracleFieldsState = {
   database: "",
   oracleConnectType: "service",
 };
+
+const SQLITE_FILE_FILTER = [
+  { name: "SQLite Database", extensions: ["db", "sqlite", "sqlite3"] },
+];
 
 const EMPTY_FORM: ConnectionProfileInput = {
   name: "",
@@ -378,6 +383,24 @@ function ConnectionEditor() {
             value={form.driverId}
             onChange={(event) => {
               const nextDriverId = event.target.value as ConnectionDriverId;
+              const nextDriver = getConnectionDriver(nextDriverId);
+
+              if (nextDriver.isFileBased) {
+                setRawMode(true);
+                setRawModeHint(null);
+                setForm((current) => ({
+                  ...current,
+                  driverId: nextDriverId,
+                  url: nextDriver.defaultUrl,
+                  catalog: "",
+                  defaultSchema: "",
+                  user: "",
+                  password: "",
+                  ssmTunnel: EMPTY_SSM_TUNNEL_CONFIG,
+                  sshTunnel: EMPTY_SSH_TUNNEL_CONFIG,
+                }));
+                return;
+              }
 
               if (!rawMode) {
                 // Structured mode: the URL is derived from host/port/catalog, so rebuild it
@@ -445,7 +468,7 @@ function ConnectionEditor() {
             ))}
           </select>
         </label>
-        <label className="connection-editor__field connection-editor__field--checkbox">
+        {!driver.isFileBased ? <label className="connection-editor__field connection-editor__field--checkbox">
           <span className="connection-editor__checkbox-row">
             <input
               type="checkbox"
@@ -478,17 +501,66 @@ function ConnectionEditor() {
           {rawModeHint ? (
             <span className="connection-editor__hint">{rawModeHint}</span>
           ) : null}
-        </label>
-        {rawMode ? (
+        </label> : null}
+        {rawMode || driver.isFileBased ? (
           <label className="connection-editor__field">
-            <span>{t("app.connection.jdbcUrl")}</span>
-            <input
-              className="connection-editor__input"
-              value={form.url}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, url: event.target.value }))
-              }
-            />
+            <span>{driver.isFileBased ? "SQLite database file" : t("app.connection.jdbcUrl")}</span>
+            <div className="connection-editor__schema-row">
+              <input
+                className="connection-editor__input"
+                value={form.url}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, url: event.target.value }))
+                }
+                placeholder={driver.isFileBased ? "jdbc:sqlite:C:/data/app.db" : undefined}
+              />
+              {driver.isFileBased ? (
+                <>
+                  <button
+                    type="button"
+                    className="connection-editor__button"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        const path = await openFilePicker({
+                          multiple: false,
+                          directory: false,
+                          filters: SQLITE_FILE_FILTER,
+                        });
+                        if (typeof path === "string") {
+                          setForm((current) => ({ ...current, url: buildSqliteFileJdbcUrl(path) }));
+                        }
+                      })
+                    }
+                  >
+                    Browse
+                  </button>
+                  <button
+                    type="button"
+                    className="connection-editor__button"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        const path = await saveFilePicker({
+                          filters: SQLITE_FILE_FILTER,
+                          defaultPath: "database.db",
+                        });
+                        if (typeof path === "string") {
+                          setForm((current) => ({ ...current, url: buildSqliteFileJdbcUrl(path) }));
+                        }
+                      })
+                    }
+                  >
+                    New File
+                  </button>
+                </>
+              ) : null}
+            </div>
+            {driver.isFileBased ? (
+              <span className="connection-editor__hint">
+                Select an existing SQLite file, or choose a new path. The database file is created when you connect.
+              </span>
+            ) : null}
           </label>
         ) : (
           <>
@@ -649,7 +721,7 @@ function ConnectionEditor() {
             ) : null}
           </>
         )}
-        <label className="connection-editor__field">
+        {!driver.isFileBased ? <label className="connection-editor__field">
           <span>{t("app.connection.user")}</span>
           <input
             className="connection-editor__input"
@@ -658,8 +730,8 @@ function ConnectionEditor() {
               setForm((current) => ({ ...current, user: event.target.value }))
             }
           />
-        </label>
-        <label className="connection-editor__field">
+        </label> : null}
+        {!driver.isFileBased ? <label className="connection-editor__field">
           <span>{t("app.connection.password")}</span>
           <input
             className="connection-editor__input"
@@ -673,8 +745,8 @@ function ConnectionEditor() {
               }))
             }
           />
-        </label>
-        <label className="connection-editor__field connection-editor__field--checkbox">
+        </label> : null}
+        {!driver.isFileBased ? <label className="connection-editor__field connection-editor__field--checkbox">
           <span className="connection-editor__checkbox-row">
             <input
               type="checkbox"
@@ -686,7 +758,7 @@ function ConnectionEditor() {
           <span className="connection-editor__hint">
             {t("app.connection.savePasswordHint")}
           </span>
-        </label>
+        </label> : null}
         {driver.showSchemaField ? (
           <label className="connection-editor__field">
             <span>{driver.schemaLabel}</span>
@@ -740,6 +812,7 @@ function ConnectionEditor() {
               .replace("{catalog}", driver.catalogLabel)}
           </p>
         )}
+        {!driver.isFileBased ? <>
         <label className="connection-editor__field connection-editor__field--checkbox">
           <span className="connection-editor__checkbox-row">
             <input
@@ -859,6 +932,8 @@ function ConnectionEditor() {
             </label>
           </>
         ) : null}
+        </> : null}
+        {!driver.isFileBased ? <>
         <label className="connection-editor__field connection-editor__field--checkbox">
           <span className="connection-editor__checkbox-row">
             <input
@@ -1085,6 +1160,7 @@ function ConnectionEditor() {
             ) : null}
           </>
         ) : null}
+        </> : null}
         <div className="connection-editor__actions">
           <button
             type="submit"

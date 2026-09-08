@@ -20,6 +20,7 @@ import { supportsTableStructureEdit } from "./explorerObjectMutationSql";
 import type { TableStructureChangeSet } from "./tableStructureDiff";
 import { buildTableStructureSaveSql } from "./tableStructureSaveSql";
 import { TableStructureSaveDialogService } from "./tableStructureSaveDialogService";
+import { TableStructureRefreshService } from "./tableStructureRefreshService";
 
 function assertSaveAllowed(ref: ObjectEditorRef): void {
   const readOnly = ConfigurationService.getValue("database.readOnly");
@@ -160,6 +161,16 @@ export async function executeTableStructureSave(
     registerPendingDdlSave(ref.profileId, {
       onCommit: finalize,
       onRollback: () => {
+        // The save dialog already reloaded while this transaction could still see the DDL.
+        // Once rolled back, tell both the object tree and any open properties editor to fetch
+        // their baseline again from the restored database state.
+        void ConnectionTreeService.invalidateAndRefreshSchema(
+          ref.profileId,
+          ref.schemaName,
+          ref.catalogName ?? undefined,
+        );
+        invalidateObjectPreviewCache(ref.profileId, ref.schemaName, ref.objectName);
+        TableStructureRefreshService.request(ref);
         AppNotificationService.show(tKey("app.plsql.saveRolledBack"), "info");
       },
     });

@@ -15,6 +15,7 @@ manifest `Class-Path`.
 | protobuf-java (MySQL Connector/J dependency) | `com.google.protobuf:protobuf-java` | BSD 3-Clause |
 | MariaDB Connector/J | `org.mariadb.jdbc:mariadb-java-client` | LGPL-2.1-or-later |
 | PostgreSQL JDBC Driver (pgJDBC) | `org.postgresql:postgresql` | BSD-2-Clause |
+| SQLite JDBC | `org.xerial:sqlite-jdbc` | Apache-2.0 |
 | checker-qual (pgJDBC dependency) | `org.checkerframework:checker-qual` | MIT License |
 | Jackson Databind | `com.fasterxml.jackson.core:jackson-databind` (+ core, annotations) | Apache License 2.0 |
 

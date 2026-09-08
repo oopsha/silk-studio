@@ -76,6 +76,33 @@ function collectBlockers(
     }
   }
 
+  if (ctx.driverId === "sqlite") {
+    for (const change of alters) {
+      if (change.type || change.nullable || change.defaultValue || change.comment) {
+        blockers.push(
+          change.comment
+            ? `SQLite column comments are read-only in table properties (${change.original.name}).`
+            : `SQLite can only rename columns directly. Changing ${change.original.name}'s type, nullability, or default requires a table rebuild.`,
+        );
+      }
+    }
+    for (const change of adds) {
+      if (!change.column.nullable && !change.column.defaultValue) {
+        blockers.push(
+          `SQLite cannot add NOT NULL column ${change.column.name} without a non-NULL default.`,
+        );
+      }
+      if (change.column.comment) {
+        blockers.push(
+          `SQLite column comments are read-only in table properties (${change.column.name}).`,
+        );
+      }
+    }
+    if (changes.tableComment) {
+      blockers.push("SQLite table comments are read-only in table properties.");
+    }
+  }
+
   const seenNames = new Map<string, number>();
   for (const change of [...alters, ...adds]) {
     const name =
@@ -585,6 +612,42 @@ function buildSqlServerStatements(
   ];
 }
 
+// -- SQLite --
+
+/**
+ * SQLite's native ALTER TABLE deliberately supports only the non-destructive subset. More
+ * ambitious changes must go through a separate rebuild flow so constraints, indexes, triggers,
+ * and comments are never silently discarded.
+ */
+function buildSqliteStatements(
+  changes: TableStructureChangeSet,
+  ctx: TableStructureSaveSqlContext,
+): string[] {
+  const table = tableRef(ctx, ctx.tableName);
+  const statements: string[] = [];
+  for (const change of dropChanges(changes)) {
+    statements.push(`ALTER TABLE ${table} DROP COLUMN ${qi(ctx, change.original.name)}`);
+  }
+  for (const change of alterChanges(changes)) {
+    if (change.renamed) {
+      statements.push(
+        `ALTER TABLE ${table} RENAME COLUMN ${qi(ctx, change.renamed.before)} TO ${qi(ctx, change.renamed.after)}`,
+      );
+    }
+  }
+  for (const change of addChanges(changes)) {
+    const draft = change.column;
+    const parts = [renderedType(draft)];
+    if (!draft.nullable) parts.push("NOT NULL");
+    if (draft.defaultValue) parts.push(`DEFAULT ${draft.defaultValue}`);
+    statements.push(`ALTER TABLE ${table} ADD COLUMN ${qi(ctx, draft.name.trim())} ${parts.join(" ")}`);
+  }
+  if (changes.tableRename) {
+    statements.push(`ALTER TABLE ${table} RENAME TO ${qi(ctx, changes.tableRename.after)}`);
+  }
+  return statements;
+}
+
 // ---- Entry point ------------------------------------------------------------------------
 
 export function buildTableStructureSaveSql(
@@ -608,6 +671,9 @@ export function buildTableStructureSaveSql(
       break;
     case "sqlserver":
       statements = buildSqlServerStatements(changes, ctx);
+      break;
+    case "sqlite":
+      statements = buildSqliteStatements(changes, ctx);
       break;
     default:
       statements = [];

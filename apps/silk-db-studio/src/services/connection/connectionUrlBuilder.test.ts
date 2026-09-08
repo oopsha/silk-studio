@@ -4,9 +4,10 @@ import {
   DEFAULT_MYSQL_URL,
   DEFAULT_ORACLE_URL,
   DEFAULT_POSTGRESQL_URL,
+  DEFAULT_SQLITE_URL,
   DEFAULT_SQLSERVER_URL,
 } from "./connectionTypes";
-import { buildJdbcUrl, parseJdbcUrl } from "./connectionUrlBuilder";
+import { buildJdbcUrl, buildSqliteFileJdbcUrl, parseJdbcUrl } from "./connectionUrlBuilder";
 
 const EMPTY_FIELDS = {
   host: "",
@@ -22,6 +23,7 @@ describe("buildJdbcUrl", () => {
     expect(buildJdbcUrl("mysql", EMPTY_FIELDS)).toBe(DEFAULT_MYSQL_URL);
     expect(buildJdbcUrl("mariadb", EMPTY_FIELDS)).toBe(DEFAULT_MARIADB_URL);
     expect(buildJdbcUrl("postgresql", EMPTY_FIELDS)).toBe(DEFAULT_POSTGRESQL_URL);
+    expect(buildJdbcUrl("sqlite", EMPTY_FIELDS)).toBe(DEFAULT_SQLITE_URL);
   });
 
   it("builds an Oracle service-name URL", () => {
@@ -83,6 +85,17 @@ describe("buildJdbcUrl", () => {
     ).toBe("jdbc:postgresql://db1:5433/app");
   });
 
+  it("builds a SQLite file URL without a host or port", () => {
+    expect(buildJdbcUrl("sqlite", { ...EMPTY_FIELDS, database: "C:/data/app.db" })).toBe(
+      "jdbc:sqlite:C:/data/app.db",
+    );
+  });
+
+  it("converts native SQLite file paths without changing an existing JDBC URL", () => {
+    expect(buildSqliteFileJdbcUrl("C:\\data\\app.db")).toBe("jdbc:sqlite:C:\\data\\app.db");
+    expect(buildSqliteFileJdbcUrl("jdbc:sqlite::memory:")).toBe("jdbc:sqlite::memory:");
+  });
+
   it("falls back to the driver's default port when port is blank/invalid", () => {
     expect(
       buildJdbcUrl("postgresql", { host: "db1", port: "", database: "app", oracleConnectType: "service" }),
@@ -112,6 +125,11 @@ describe("parseJdbcUrl", () => {
     expect(parseJdbcUrl("postgresql", DEFAULT_POSTGRESQL_URL)).not.toBeNull();
     expect(buildJdbcUrl("postgresql", parseJdbcUrl("postgresql", DEFAULT_POSTGRESQL_URL)!)).toBe(
       DEFAULT_POSTGRESQL_URL,
+    );
+
+    expect(parseJdbcUrl("sqlite", DEFAULT_SQLITE_URL)).not.toBeNull();
+    expect(buildJdbcUrl("sqlite", parseJdbcUrl("sqlite", DEFAULT_SQLITE_URL)!)).toBe(
+      DEFAULT_SQLITE_URL,
     );
   });
 
