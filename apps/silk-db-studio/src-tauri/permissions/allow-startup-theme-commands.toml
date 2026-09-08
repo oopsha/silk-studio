@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-startup-theme-commands"
+description = "Allows saving the last applied workbench colors for the next native window startup."
+commands.allow = ["startup_theme_save"]

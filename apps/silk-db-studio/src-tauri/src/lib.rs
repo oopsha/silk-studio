@@ -5,6 +5,7 @@ mod runtime_paths;
 mod secrets;
 mod ssh_tunnel;
 mod ssm_tunnel;
+mod startup_theme;
 mod window_layout;
 
 use serde_json::Value;
@@ -14,23 +15,42 @@ use tauri::Manager;
 use tauri_plugin_window_controls::{TitleBarColors, WindowControlsExt};
 
 #[cfg(target_os = "windows")]
-fn title_bar_colors() -> TitleBarColors {
+fn title_bar_colors(theme: &startup_theme::StartupTheme) -> TitleBarColors {
     TitleBarColors {
         default: Some("transparent".into()),
-        symbol: Some("#8c8c8c".into()),
-        hover: Some("#323233".into()),
-        pressed: Some("#3c3c3d".into()),
+        symbol: Some(theme.foreground_color.clone()),
+        hover: Some(theme.hover_background.clone()),
+        pressed: Some(theme.pressed_background.clone()),
         inactive: Some("transparent".into()),
         ..Default::default()
     }
 }
 
-fn configure_main_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
-    window.set_background_color(Some(tauri::window::Color(25, 26, 27, 255)))?;
+fn parse_hex_color(value: &str) -> Option<tauri::window::Color> {
+    let hex = value.strip_prefix('#')?;
+    if hex.len() != 6 {
+        return None;
+    }
+    let rgb = u32::from_str_radix(hex, 16).ok()?;
+    Some(tauri::window::Color(
+        ((rgb >> 16) & 0xff) as u8,
+        ((rgb >> 8) & 0xff) as u8,
+        (rgb & 0xff) as u8,
+        255,
+    ))
+}
+
+fn configure_main_window(
+    window: &tauri::WebviewWindow,
+    theme: &startup_theme::StartupTheme,
+) -> tauri::Result<()> {
+    let background = parse_hex_color(&theme.background_color)
+        .unwrap_or(tauri::window::Color(25, 26, 27, 255));
+    window.set_background_color(Some(background))?;
 
     #[cfg(target_os = "windows")]
     {
-        let colors = title_bar_colors();
+        let colors = title_bar_colors(theme);
         window.set_title_bar_height(32)?;
         window.set_title_bar_colors(colors.clone(), colors)?;
         window.set_title_bar_overlay(true)?;
@@ -47,7 +67,8 @@ fn configure_main_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
 
 #[tauri::command]
 fn ensure_title_bar_overlay(window: tauri::WebviewWindow) -> Result<(), String> {
-    configure_main_window(&window).map_err(|e| e.to_string())
+    let theme = startup_theme::load(&window.app_handle());
+    configure_main_window(&window, &theme).map_err(|e| e.to_string())
 }
 
 struct AppState {
@@ -591,6 +612,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_controls::init())
         .invoke_handler(tauri::generate_handler![
             ensure_title_bar_overlay,
+            startup_theme::startup_theme_save,
             query_execute,
             query_execute_paged,
             query_cancel,
@@ -688,8 +710,9 @@ pub fn run() {
             }
 
             if let Some(window) = app.get_webview_window("main") {
+                let theme = startup_theme::load(app.handle());
                 // Overlay/chrome first so restore measures the final frame metrics.
-                configure_main_window(&window)?;
+                configure_main_window(&window, &theme)?;
                 // Always restore (if possible) then show — never leave visible:false stuck.
                 window_layout::restore_main_window(app.handle(), &window);
             }

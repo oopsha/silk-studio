@@ -58,6 +58,7 @@
     "allow-ai-http-commands",
     "allow-open-external-url",
     "allow-window-layout-commands",
+    "allow-startup-theme-commands",
     "allow-app-log-commands",
     "updater:default",
     "process:default"

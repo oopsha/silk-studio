@@ -5,11 +5,76 @@
     <link rel="icon" type="image/svg+xml" href="/tauri.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
+    <style>
+      html,
+      body,
+      #root {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+      }
+
+      html {
+        --startup-background: #191a1b;
+        --startup-foreground: #8c8c8c;
+      }
+
+      body {
+        background: var(--startup-background);
+      }
+
+      #startup-screen {
+        display: flex;
+        box-sizing: border-box;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        color: var(--startup-foreground);
+        background: var(--startup-background);
+        font-family: "Segoe UI", sans-serif;
+        font-size: 13px;
+      }
+
+      #startup-screen::before {
+        width: 12px;
+        height: 12px;
+        margin-right: 9px;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        content: "";
+        animation: silk-startup-spin 0.8s linear infinite;
+      }
+
+      @keyframes silk-startup-spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+    <script>
+      (() => {
+        const dark = { background: "#191a1b", foreground: "#8c8c8c" };
+        const light = { background: "#fafafd", foreground: "#606060" };
+        let selected = "dark";
+        try {
+          const saved = JSON.parse(localStorage.getItem("silk-workbench.configuration") || "{}");
+          selected = saved["workbench.colorTheme"] || selected;
+        } catch { /* Use the dark default when localStorage is unavailable or invalid. */ }
+        const isLight = selected === "light" ||
+          (selected === "system" && window.matchMedia("(prefers-color-scheme: light)").matches);
+        const colors = isLight ? light : dark;
+        document.documentElement.dataset.colorTheme = isLight ? "light" : "dark";
+        document.documentElement.style.setProperty("--startup-background", colors.background);
+        document.documentElement.style.setProperty("--startup-foreground", colors.foreground);
+        document.documentElement.style.backgroundColor = colors.background;
+        document.documentElement.style.colorScheme = isLight ? "light" : "dark";
+      })();
+    </script>
     <title>Silk Editor</title>
   </head>
 
-  <body style="background-color: #191a1b">
-    <div id="root"></div>
+  <body>
+    <div id="root"><div id="startup-screen">Silk DB Studio 시작 중</div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

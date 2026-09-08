@@ -2,6 +2,8 @@ import { useEffect, useState, type MouseEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { detectWorkbenchPlatform } from "@silk-studio/ui/platform/fonts.ts";
+import { resolveEffectiveColorTheme } from "@silk-studio/ui/platform/colorTheme.ts";
+import { useConfiguration } from "../../../platform/configuration/useConfiguration";
 import Menubar from "../../menubar";
 import WindowAppIcon from "./WindowAppIcon";
 import CommandCenter from "./CommandCenter";
@@ -70,6 +72,7 @@ function useWco(): boolean {
 }
 
 function TitleBar() {
+  const configuration = useConfiguration();
   const platform = detectWorkbenchPlatform();
   const isMacOverlay = platform === "mac" && isTauri();
   const wco = useWco();
@@ -102,8 +105,12 @@ function TitleBar() {
 
   useEffect(() => {
     if (!isTauri()) return;
-    void getCurrentWindow().setBackgroundColor("#191a1b");
-  }, []);
+    const background =
+      resolveEffectiveColorTheme(configuration["workbench.colorTheme"]) === "light"
+        ? "#fafafd"
+        : "#191a1b";
+    void getCurrentWindow().setBackgroundColor(background);
+  }, [configuration]);
 
   async function handleDragRegionMouseDown(event: MouseEvent<HTMLDivElement>) {
     if (!isTauri() || event.button !== 0) return;
