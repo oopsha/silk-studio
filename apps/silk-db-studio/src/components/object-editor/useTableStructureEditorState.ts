@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MetadataColumn } from "@silk-studio/db-protocol";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import {
   bridgeGetTableComment,
   bridgeListColumns,
@@ -37,7 +38,8 @@ export type TableStructureEditorState = {
   errorMessage: string | null;
   driverId: ConnectionDriverId;
   editedColumns: EditableColumnDraft[];
-  primaryKeyNames: Set<string>;
+  /** One-based PK position supplied by JDBC metadata (the agent orders KEY_SEQ before returning). */
+  primaryKeyOrders: Map<string, number>;
   pendingDeleteRowIds: Set<string>;
   editedTableName: string;
   editedTableComment: string | null;
@@ -106,7 +108,7 @@ export function useTableStructureEditorState(
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [originalColumns, setOriginalColumns] = useState<OriginalColumnRow[]>([]);
-  const [primaryKeyNames, setPrimaryKeyNames] = useState<Set<string>>(new Set());
+  const [primaryKeyOrders, setPrimaryKeyOrders] = useState<Map<string, number>>(new Map());
   const [editedColumns, setEditedColumns] = useState<EditableColumnDraft[]>([]);
   const [pendingDeleteRowIds, setPendingDeleteRowIds] = useState<Set<string>>(new Set());
 
@@ -149,7 +151,9 @@ export function useTableStructureEditorState(
       setOriginalColumns(rows);
       setEditedColumns(drafts);
       setPendingDeleteRowIds(new Set());
-      setPrimaryKeyNames(new Set(primaryKeysResult.keys.map((key) => key.name.toLowerCase())));
+      setPrimaryKeyOrders(
+        new Map(primaryKeysResult.keys.map((key, index) => [key.name.toLowerCase(), index + 1])),
+      );
       setOriginalTableComment(commentResult.comment ?? null);
       setEditedTableName(objectRef.objectName);
       setEditedTableComment(commentResult.comment ?? null);
@@ -209,6 +213,12 @@ export function useTableStructureEditorState(
 
   const isDirty = !changes.isEmpty;
   const blockedReason = getTableStructureSaveBlockedReason(objectRef);
+
+  // Structure edits live outside Monaco's text model. Mirror their dirty state to the editor
+  // tab so its shared close guard also protects object-editor tabs.
+  useEffect(() => {
+    EditorService.setTabDirtyOverride(tabId, isDirty);
+  }, [tabId, isDirty]);
 
   const updateColumn = useCallback((rowId: string, patch: Partial<EditableColumnDraft>): void => {
     setEditedColumns((prev) =>
@@ -277,7 +287,7 @@ export function useTableStructureEditorState(
     errorMessage,
     driverId,
     editedColumns,
-    primaryKeyNames,
+    primaryKeyOrders,
     pendingDeleteRowIds,
     editedTableName,
     editedTableComment,

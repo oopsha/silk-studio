@@ -1,4 +1,8 @@
-import type { MetadataObject, MetadataObjectKind } from "@silk-studio/db-protocol";
+import type {
+  MetadataGroupId,
+  MetadataObject,
+  MetadataObjectKind,
+} from "@silk-studio/db-protocol";
 import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import type { ConnectionDriverId } from "./connectionTypes";
 import {
@@ -37,6 +41,8 @@ export type ExplorerMenuOptions = {
 };
 
 export const EXPLORER_COMMANDS = {
+  newTable: "silk.explorer.newTable",
+  newTableSql: "silk.explorer.newTableSql",
   openObjectEditor: "silk.explorer.openObjectEditor",
   viewDdl: "silk.explorer.viewDdl",
   refreshSchema: "silk.explorer.refreshSchema",
@@ -387,12 +393,65 @@ export function buildCatalogMenuItems(options?: {
   ];
 }
 
-export function buildGroupMenuItems(): ExplorerMenuItem[] {
+export function buildGroupMenuItems(options: {
+  groupId: MetadataGroupId;
+  canMutate: boolean;
+  readOnly: boolean;
+}): ExplorerMenuItem[] {
+  const isTablesGroup = options.groupId === "tables";
   return [
+    ...(isTablesGroup
+      ? [
+          {
+            id: "newTable",
+            label: I18nService.t("app.explorer.newTable"),
+            commandId: EXPLORER_COMMANDS.newTable,
+            enabled: options.canMutate,
+            stubMessage: options.readOnly
+              ? I18nService.t("app.explorer.stubReadOnly")
+              : undefined,
+          } satisfies ExplorerMenuItem,
+          {
+            id: "newTableSql",
+            label: "SQL로 새 테이블 만들기…",
+            commandId: EXPLORER_COMMANDS.newTableSql,
+            enabled: options.canMutate,
+            stubMessage: options.readOnly
+              ? I18nService.t("app.explorer.stubReadOnly")
+              : undefined,
+          } satisfies ExplorerMenuItem,
+        ]
+      : []),
     {
       id: "refreshGroup",
       label: I18nService.t("common.refresh"),
       commandId: EXPLORER_COMMANDS.refreshSchema,
+      enabled: true,
+      separator: isTablesGroup,
+    },
+    {
+      id: "collapseAll",
+      label: I18nService.t("common.collapseAll"),
+      commandId: EXPLORER_COMMANDS.collapseAll,
+      enabled: true,
+    },
+    {
+      id: "newConnection",
+      label: I18nService.t("workbench.explorer.newConnection"),
+      commandId: "silk.connection.new",
+      enabled: true,
+      separator: true,
+    },
+    {
+      id: "exportConnections",
+      label: I18nService.t("app.connection.exportTitle"),
+      commandId: "silk.connection.exportAll",
+      enabled: true,
+    },
+    {
+      id: "importConnections",
+      label: I18nService.t("app.connection.importTitle"),
+      commandId: "silk.connection.import",
       enabled: true,
     },
   ];

@@ -13,11 +13,43 @@ import { openPlsqlObjectSource } from "../../services/connection/plsqlEditorServ
 import { ExplorerSearchQuickPickService } from "../../services/connection/explorerSearchQuickPickService";
 import { ExplorerUiService } from "../../services/connection/explorerUiService";
 import { openObjectEditor } from "../../services/connection/objectEditorService";
+import { openCreateTableDraft } from "../../services/connection/createTableDraftService";
+import { openCreateTableSql } from "../../services/connection/createTableSqlService";
 import {
   EXPLORER_COMMANDS,
   formatQualifiedName,
   type ExplorerObjectRef,
 } from "../../services/connection/explorerObjectActions";
+
+CommandsRegistry.registerCommand(
+  EXPLORER_COMMANDS.newTable,
+  async (...args: unknown[]) => {
+    const target = args[0] as
+      | { profileId?: string; schemaName?: string; catalogName?: string | null }
+      | undefined;
+    if (!target?.profileId || !target.schemaName) return;
+    openCreateTableDraft({
+      profileId: target.profileId,
+      schemaName: target.schemaName,
+      catalogName: target.catalogName,
+    });
+  },
+);
+
+CommandsRegistry.registerCommand(
+  EXPLORER_COMMANDS.newTableSql,
+  async (...args: unknown[]) => {
+    const target = args[0] as
+      | { profileId?: string; schemaName?: string; catalogName?: string | null }
+      | undefined;
+    if (!target?.profileId || !target.schemaName) return;
+    openCreateTableSql({
+      profileId: target.profileId,
+      schemaName: target.schemaName,
+      catalogName: target.catalogName,
+    });
+  },
+);
 
 CommandsRegistry.registerCommand(
   EXPLORER_COMMANDS.openObjectEditor,

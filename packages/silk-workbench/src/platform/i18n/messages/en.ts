@@ -643,6 +643,7 @@ export const enMessages = {
       deleteConnectionConfirm:
         'Delete the connection profile "{name}"? This cannot be undone.',
       openData: "Open Data",
+      newTable: "New Table…",
       editSpec: "Edit Spec",
       editBody: "Edit Body",
       viewDdl: "View DDL",

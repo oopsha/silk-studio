@@ -14,7 +14,7 @@ import "./ColumnsPreview.css";
 
 type CachedColumnsPreview = {
   columns: MetadataColumn[];
-  primaryKeyNames: Set<string>;
+  primaryKeyOrders: Map<string, number>;
 };
 
 type LoadState =
@@ -61,8 +61,8 @@ function ColumnsPreview({ objectRef }: ColumnsPreviewProps) {
         if (cancelled) return;
         const ready: CachedColumnsPreview = {
           columns: columnsResult.columns,
-          primaryKeyNames: new Set(
-            primaryKeysResult.keys.map((key) => key.name.toLowerCase()),
+          primaryKeyOrders: new Map(
+            primaryKeysResult.keys.map((key, index) => [key.name.toLowerCase(), index + 1]),
           ),
         };
         setLoadState({ status: "ready", ...ready });
@@ -108,7 +108,7 @@ function ColumnsPreview({ objectRef }: ColumnsPreviewProps) {
           <tr>
             <th className="columns-preview__index-cell">#</th>
             <th>{t("app.columns.name")}</th>
-            <th className="columns-preview__pk-cell">{t("app.columns.primaryKey")}</th>
+            <th className="columns-preview__pk-cell">PK 순서</th>
             <th>{t("app.columns.type")}</th>
             <th>{t("app.columns.nullable")}</th>
             <th>{t("app.columns.defaultValue")}</th>
@@ -121,9 +121,7 @@ function ColumnsPreview({ objectRef }: ColumnsPreviewProps) {
               <td className="columns-preview__index-cell">{index + 1}</td>
               <td>{column.name}</td>
               <td className="columns-preview__pk-cell">
-                {loadState.primaryKeyNames.has(column.name.toLowerCase())
-                  ? "✓"
-                  : ""}
+                {loadState.primaryKeyOrders.get(column.name.toLowerCase()) ?? ""}
               </td>
               <td>{formatColumnType(column)}</td>
               <td>

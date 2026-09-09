@@ -42,6 +42,7 @@ import PackagePlsqlHistoryDialog from "../../plsql/PackagePlsqlHistoryDialog.tsx
 import DdlEditorView from "../../ddl/DdlEditorView.tsx";
 import PlsqlEditorView from "../../plsql/PlsqlEditorView.tsx";
 import ObjectEditorView from "../../object-editor/ObjectEditorView.tsx";
+import CreateTableDraftView from "../../object-editor/CreateTableDraftView.tsx";
 import QueryHistoryView from "../../query-history/QueryHistoryView.tsx";
 import SearchExplorer from "../../search/SearchExplorer.tsx";
 // Outline/Timeline sidebar sections are disabled for now — see the matching comment where
@@ -52,6 +53,7 @@ import { ConnectionEditorService } from "../../../services/connection/connection
 import { isDdlEditorTab } from "../../../services/connection/ddlEditorConstants.ts";
 import { isPlsqlEditorTab } from "../../../services/connection/plsqlEditorConstants.ts";
 import { isObjectEditorTab } from "../../../services/connection/objectEditorConstants.ts";
+import { isCreateTableDraftTab } from "../../../services/connection/createTableDraftService.ts";
 import {
   buildConnectionsMenuItems,
   EXPLORER_COMMANDS,
@@ -323,6 +325,9 @@ function AppShell() {
             }
             if (isObjectEditorTab(tab.uri)) {
               return <ObjectEditorView />;
+            }
+            if (isCreateTableDraftTab(tab.uri)) {
+              return <CreateTableDraftView />;
             }
             return null;
           },

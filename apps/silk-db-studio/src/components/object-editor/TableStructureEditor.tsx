@@ -2,7 +2,7 @@ import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { classifyColumnSize } from "../../services/connection/tableColumnTypeFormat";
-import { columnTypeOptionsWithCurrentValue } from "../../services/connection/tableColumnTypeOptions";
+import ColumnTypeCombobox from "./ColumnTypeCombobox";
 import type { TableStructureEditorState } from "./useTableStructureEditorState";
 import "./TableStructureEditor.css";
 
@@ -59,7 +59,7 @@ function TableStructureEditor({ state }: TableStructureEditorProps) {
             <tr>
               <th className="table-structure-editor__index-cell">#</th>
               <th>{t("app.columns.name")}</th>
-              <th className="table-structure-editor__pk-cell">{t("app.columns.primaryKey")}</th>
+              <th className="table-structure-editor__pk-cell">PK 순서</th>
               <th>{t("app.columns.type")}</th>
               {!isSqlite ? <th>{t("app.tableStructure.length")}</th> : null}
               {!isSqlite ? <th>{t("app.tableStructure.scale")}</th> : null}
@@ -95,7 +95,7 @@ function TableStructureEditor({ state }: TableStructureEditorProps) {
                     />
                   </td>
                   <td className="table-structure-editor__pk-cell">
-                    {state.primaryKeyNames.has(draft.name.toLowerCase()) ? "✓" : ""}
+                    {state.primaryKeyOrders.get(draft.name.toLowerCase()) ?? ""}
                   </td>
                   <td>
                     {isExistingSqliteColumn ? (
@@ -106,27 +106,13 @@ function TableStructureEditor({ state }: TableStructureEditorProps) {
                         aria-readonly="true"
                       />
                     ) : (
-                      <select
-                        className="table-structure-editor__cell-input"
+                      <ColumnTypeCombobox
+                        driverId={state.driverId}
                         value={draft.typeName}
                         disabled={isReadOnly || isPendingDrop}
-                        onChange={(e) =>
-                          state.updateColumn(draft.rowId, { typeName: e.target.value })
-                        }
-                      >
-                        {!draft.typeName ? (
-                          <option value="" disabled>
-                            {t("app.tableStructure.selectType")}
-                          </option>
-                        ) : null}
-                        {columnTypeOptionsWithCurrentValue(state.driverId, draft.typeName).map(
-                          (option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ),
-                        )}
-                      </select>
+                        placeholder={t("app.tableStructure.selectType")}
+                        onChange={(typeName) => state.updateColumn(draft.rowId, { typeName })}
+                      />
                     )}
                   </td>
                   {!isSqlite ? (

@@ -1,0 +1,45 @@
+.create-table-draft__sql-preview { position: relative; }
+
+.create-table-draft__sql-preview .explorer-mutation-dialog__sql { margin: 0; }
+
+.create-table-draft__copy-button {
+  position: absolute;
+  z-index: 1;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-foreground);
+  background: var(--color-input-background);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.create-table-draft__sql-preview:hover .create-table-draft__copy-button,
+.create-table-draft__copy-button:focus-visible { opacity: 1; }
+
+.create-table-draft__error {
+  position: relative;
+  margin-top: 10px;
+  padding-right: 34px;
+  color: #b3261e;
+  font-size: 12px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+:root[data-color-theme="dark"] .create-table-draft__error { color: #f48771; }
+
+.create-table-draft__error .create-table-draft__copy-button {
+  top: -4px;
+  right: 0;
+}
+
+.create-table-draft__error:hover .create-table-draft__copy-button,
+.create-table-draft__error .create-table-draft__copy-button:focus-visible { opacity: 1; }

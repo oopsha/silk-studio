@@ -1000,8 +1000,12 @@ function ObjectGroup({
           onOpenContextMenu({
             x: event.clientX,
             y: event.clientY,
-            items: buildGroupMenuItems(),
-            payload: { profileId, schemaName, groupId },
+            items: buildGroupMenuItems({
+              groupId,
+              canMutate: menuOptions.canMutate ?? false,
+              readOnly: menuOptions.readOnly ?? false,
+            }),
+            payload: { profileId, schemaName, catalogName: databaseName, groupId },
           });
         }}
       >
@@ -1293,6 +1297,8 @@ function ConnectionsExplorer() {
 
     if (
       item.commandId === EXPLORER_COMMANDS.openObjectEditor ||
+      item.commandId === EXPLORER_COMMANDS.newTable ||
+      item.commandId === EXPLORER_COMMANDS.newTableSql ||
       item.commandId === EXPLORER_COMMANDS.openSource ||
       item.commandId === EXPLORER_COMMANDS.openPackageBody ||
       item.commandId === EXPLORER_COMMANDS.viewDdl ||

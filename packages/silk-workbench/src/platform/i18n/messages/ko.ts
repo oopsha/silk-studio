@@ -640,6 +640,7 @@ export const koMessages = {
       actionFailed: "작업에 실패했습니다.",
       deleteConnectionConfirm: '연결 프로필 "{name}"을(를) 삭제할까요? 되돌릴 수 없습니다.',
       openData: "데이터 열기",
+      newTable: "새 테이블…",
       editSpec: "스펙 편집",
       editBody: "본문 편집",
       viewDdl: "DDL 보기",
