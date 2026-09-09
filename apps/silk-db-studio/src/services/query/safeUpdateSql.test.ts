@@ -37,6 +37,21 @@ describe("buildUpdateStatement", () => {
       'UPDATE "public"."orders" SET "note" = \'한글\' WHERE "id" = \'1\'',
     );
   });
+
+  it("updates a primary-key value while locating the row by its original value", () => {
+    const sql = buildUpdateStatement({
+      schema: "public",
+      table: "orders",
+      driverId: "postgresql",
+      primaryKeys: ["id"],
+      originalRow: { id: "1" },
+      changes: [{ column: "id", originalValue: "1", currentValue: "2" }],
+    });
+
+    expect(sql).toBe(
+      'UPDATE "public"."orders" SET "id" = \'2\' WHERE "id" = \'1\'',
+    );
+  });
 });
 
 describe("buildInsertStatement", () => {

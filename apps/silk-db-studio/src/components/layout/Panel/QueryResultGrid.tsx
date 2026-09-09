@@ -156,7 +156,6 @@ function QueryResultGrid({
   const apiRef = useRef<GridApi<QueryResultRow> | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const actionTimerRef = useRef<number | null>(null);
-  const [primaryKeys, setPrimaryKeys] = useState<string[] | null>(null);
   const [saveBlockedReason, setSaveBlockedReason] = useState<string | null>(null);
   const [preview, setPreview] = useState<UpdatePreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -221,11 +220,9 @@ function QueryResultGrid({
       (eligibility) => {
       if (cancelled) return;
       if (eligibility.eligible) {
-        setPrimaryKeys(eligibility.primaryKeys);
         setSaveBlockedReason(null);
         return;
       }
-      setPrimaryKeys([]);
       setSaveBlockedReason(eligibility.reason);
     },
     );
@@ -273,11 +270,6 @@ function QueryResultGrid({
     [nullDisplay],
   );
 
-  const primaryKeySet = useMemo(
-    () => new Set(primaryKeys ?? []),
-    [primaryKeys],
-  );
-
   const columnDefs = useMemo<ColDef<QueryResultRow>[]>(
     () => [
       {
@@ -311,26 +303,14 @@ function QueryResultGrid({
         // the database); in Client-Side Row Model mode it's kept identical on purpose so the
         // interaction never changes depending on an invisible "is this result large" state.
         filterParams: { buttons: ["apply", "reset"] },
-        // Editing is always allowed except for known PK columns on an *existing* row (they
-        // identify which row an UPDATE/DELETE targets, so editing them would let a saved edit
-        // silently retarget a different row), or on a row marked for deletion (it won't exist
-        // after Save, so an edit there would be pointless/lost). A new/duplicated row has no
-        // saved identity yet to protect — its PK columns start blank precisely so the user can
-        // fill them in, so they're editable like any other column. Infinite Row Model rows are
-        // editable too — `QueryResultDirtyService.appendOriginalRows` (called from the
-        // datasource's success callback) keeps every loaded page's original values available for
-        // the safe-UPDATE WHERE clause, not just the tab's first batch.
+        // Existing PK values are editable just like DBeaver. Saving remains safe because
+        // `safeUpdateSql` uses the value from the original loaded row in its WHERE clause and
+        // the edited PK value only in SET. Deleted rows are not editable because they won't
+        // exist after Save. Infinite Row Model rows are editable too —
+        // `QueryResultDirtyService.appendOriginalRows` keeps each loaded page's original values
+        // available for the safe-UPDATE WHERE clause, not just the tab's first batch.
         editable: (params: { data?: QueryResultRow }) => {
           const rowIndex = params.data ? getQueryResultRowIndex(params.data) : null;
-          const isNew = rowIndex != null && QueryResultDirtyService.isNewRow(tabId, rowIndex);
-          if (
-            !isNew &&
-            primaryKeys != null &&
-            primaryKeys.length > 0 &&
-            primaryKeySet.has(column)
-          ) {
-            return false;
-          }
           return rowIndex == null || !QueryResultDirtyService.isRowDeleted(tabId, rowIndex);
         },
         sortable: true,
@@ -344,8 +324,6 @@ function QueryResultGrid({
     [
       filterEnabled,
       formatCellValue,
-      primaryKeySet,
-      primaryKeys,
       result.columns,
       tabId,
       useInfiniteMode,
