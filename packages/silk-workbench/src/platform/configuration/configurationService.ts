@@ -183,6 +183,10 @@ class ConfigurationServiceImpl {
       values["database.explorer.preloadDefaultSchema"] =
         CONFIGURATION_DEFAULTS["database.explorer.preloadDefaultSchema"];
     }
+    if (typeof values["database.explorer.showObjectDescriptions"] !== "boolean") {
+      values["database.explorer.showObjectDescriptions"] =
+        CONFIGURATION_DEFAULTS["database.explorer.showObjectDescriptions"];
+    }
     if (typeof values["experimental.sqliteComments.enabled"] !== "boolean") {
       values["experimental.sqliteComments.enabled"] =
         CONFIGURATION_DEFAULTS["experimental.sqliteComments.enabled"];

@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
+import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { ConnectionService } from "../../../services/connection/connectionService";
 import { DatabaseTargetQuickPickService } from "../../../services/connection/databaseTargetQuickPickService";
 import {
@@ -22,6 +23,11 @@ import { ConnectionTreeService } from "../../../services/connection/connectionTr
 import { ActiveDatabaseService } from "../../../services/connection/activeDatabaseService";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import { formatErrorMessage } from "../../../services/formatErrorMessage";
+import {
+  getCreateTableDraft,
+  isCreateTableDraftTab,
+  updateCreateTableDraft,
+} from "../../../services/connection/createTableDraftService";
 import "@silk-studio/workbench/components/layout/TitleBar/OpenEditorsQuickPick/OpenEditorsQuickPick.css";
 import {
   placeOverSilkEditor,
@@ -241,7 +247,21 @@ function DatabaseTargetStatusItem() {
           ? ActiveDatabaseService.useDatabase(profileId, pick.name)
           : ActiveDatabaseService.useSchema(profileId, pick.name);
       void action
-        .then(() => {
+        .then((applied) => {
+          const tab = EditorService.getActiveTab();
+          const draftUri = isCreateTableDraftTab(tab?.uri) ? tab?.uri : null;
+          const draftId = draftUri
+            ? decodeURIComponent(draftUri.slice("silk://create-table/".length))
+            : null;
+          const draft = draftId ? getCreateTableDraft(draftId) : undefined;
+          if (draft && draft.profileId === profileId) {
+            updateCreateTableDraft(draftId!, {
+              ...draft,
+              ...(mode === "catalog"
+                ? { catalogName: applied }
+                : { schemaName: applied }),
+            });
+          }
           AppNotificationService.show(
             (mode === "catalog"
               ? t("app.explorer.usingDatabase")

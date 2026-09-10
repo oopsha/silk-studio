@@ -6,8 +6,9 @@ import {
 import type { ExplorerObjectRef } from "./explorerObjectActions";
 import { monacoLanguageIdForDriver } from "../sql/sqlDialect";
 import { ConnectionService } from "./connectionService";
+import { setObjectEditorSection, type ObjectEditorSection } from "./objectEditorSectionService";
 
-export function openObjectEditor(ref: ExplorerObjectRef): void {
+export function openObjectEditor(ref: ExplorerObjectRef, section: ObjectEditorSection = "properties"): void {
   const profile = ConnectionService.getProfile(ref.profileId);
   const languageId = profile
     ? monacoLanguageIdForDriver(profile.driverId)
@@ -30,4 +31,5 @@ export function openObjectEditor(ref: ExplorerObjectRef): void {
     preview: false,
   });
   EditorService.pinTab(tabId);
+  setObjectEditorSection(tabId, section);
 }

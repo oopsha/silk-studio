@@ -3,7 +3,17 @@ import {
   buildCreateTableDraftSql,
   buildCreateTableDraftStatements,
   buildCreateTableSql,
+  suggestCopiedTableName,
 } from "./createTableSql";
+
+describe("suggestCopiedTableName", () => {
+  it("uses the conventional Copy suffix and increments it on collision", () => {
+    expect(suggestCopiedTableName("ORDERS", [])).toBe("ORDERS_Copy");
+    expect(
+      suggestCopiedTableName("ORDERS", ["orders_copy", "ORDERS_Copy2"]),
+    ).toBe("ORDERS_Copy3");
+  });
+});
 
 describe("buildCreateTableSql", () => {
   it("uses the selected PostgreSQL schema and a portable primary-key starter", () => {

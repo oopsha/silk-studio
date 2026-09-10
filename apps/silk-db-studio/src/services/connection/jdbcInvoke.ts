@@ -10,10 +10,15 @@ import { formatErrorMessage } from "../formatErrorMessage";
  * backend message ever changes.
  */
 const STALE_SESSION_MARKER = "Connection is not open";
+const CONNECTION_LOST_MARKER = "__SILK_CONNECTION_LOST__";
 
 /** True when `error` looks like jdbc-agent's "no live session for this connectionId" exception. */
 export function isStaleSessionError(error: unknown): boolean {
-  return formatErrorMessage(error, "").includes(STALE_SESSION_MARKER);
+  const message = formatErrorMessage(error, "");
+  return (
+    message.includes(STALE_SESSION_MARKER) ||
+    message.includes(CONNECTION_LOST_MARKER)
+  );
 }
 
 /**

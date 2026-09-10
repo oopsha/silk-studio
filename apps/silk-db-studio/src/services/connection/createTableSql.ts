@@ -27,6 +27,27 @@ export type CreateTableDraft = CreateTableTarget & {
   columns: CreateTableColumnDraft[];
 };
 
+/**
+ * Provides a usable, non-conflicting starting name when duplicating a table. Object names are
+ * compared case-insensitively because that is the usual behavior of the supported database
+ * collations and avoids offering an immediately conflicting name on SQL Server/MySQL.
+ */
+export function suggestCopiedTableName(
+  sourceName: string,
+  existingNames: Iterable<string>,
+): string {
+  const existing = new Set(
+    [...existingNames].map((name) => name.trim().toLocaleLowerCase()),
+  );
+  const base = `${sourceName}_Copy`;
+  if (!existing.has(base.toLocaleLowerCase())) return base;
+
+  for (let suffix = 2; ; suffix += 1) {
+    const candidate = `${base}${suffix}`;
+    if (!existing.has(candidate.toLocaleLowerCase())) return candidate;
+  }
+}
+
 function defaultIdType(driverId: ConnectionDriverId): string {
   return driverId === "oracle" ? "NUMBER" : "INTEGER";
 }

@@ -21,6 +21,7 @@ import { monacoLanguageIdForDriver } from "../../services/sql/sqlDialect";
 import { ConnectionService } from "../../services/connection/connectionService";
 import { registerSqlLanguages } from "../../services/sql/registerSqlLanguages";
 import { registerMonacoInstance } from "../../services/editor/monacoInstanceRegistry";
+import { withDdlSchemaQualification } from "../../services/connection/ddlSchemaQualification";
 import "./DdlPreview.css";
 
 export type DdlPreviewRef = {
@@ -43,13 +44,28 @@ type LoadState =
   | { status: "error"; message: string }
   | { status: "ready"; ddl: string };
 
+/** DDL display options survive an editor-tab remount, like the DDL section selection does. */
+const includeSchemaByTabId = new Map<string, boolean>();
+
 /** Read-only DDL preview: fetches (and caches onto the owning tab) a table/view/etc's CREATE statement. */
 function DdlPreview({ objectRef: ref, tabId, tabUri, bufferedContent }: DdlPreviewProps) {
   const { t } = useI18n();
   const configuration = useConfiguration();
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
+  const [includeSchema, setIncludeSchemaState] = useState(
+    () => (tabId ? includeSchemaByTabId.get(tabId) : undefined) ?? true,
+  );
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const unregisterMonacoRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    setIncludeSchemaState((tabId ? includeSchemaByTabId.get(tabId) : undefined) ?? true);
+  }, [tabId]);
+
+  const setIncludeSchema = (value: boolean) => {
+    setIncludeSchemaState(value);
+    if (tabId) includeSchemaByTabId.set(tabId, value);
+  };
 
   useEffect(() => {
     if (!ref) {
@@ -151,41 +167,56 @@ function DdlPreview({ objectRef: ref, tabId, tabUri, bufferedContent }: DdlPrevi
 
   const content =
     loadState.status === "ready"
-      ? loadState.ddl
+      ? withDdlSchemaQualification(
+          loadState.ddl,
+          ref?.schemaName ?? "",
+          profile?.driverId,
+          includeSchema,
+        )
       : loadState.status === "error"
         ? `-- ${loadState.message}\n`
         : `-- ${t("app.ddl.loading")}\n`;
 
   return (
     <div className="ddl-preview">
-      <Editor
-        height="100%"
-        path={tabId ? monacoModelPathForTab({ id: tabId, uri: tabUri }) : undefined}
-        language={languageId}
-        value={loadState.status === "loading" ? undefined : content}
-        theme={monacoThemeForColorTheme(configuration["workbench.colorTheme"])}
-        keepCurrentModel
-        saveViewState
-        beforeMount={handleBeforeMount}
-        onMount={handleMount}
-        options={{
-          readOnly: true,
-          fontFamily: getEditorFontFamily(),
-          fontSize: configuration["editor.fontSize"],
-          tabSize: configuration["editor.tabSize"],
-          insertSpaces: configuration["editor.insertSpaces"],
-          detectIndentation: false,
-          lineNumbers: configuration["editor.lineNumbers"],
-          renderLineHighlight: "line",
-          minimap: { enabled: configuration["editor.minimap.enabled"] },
-          stickyScroll: {
-            enabled: configuration["editor.stickyScroll.enabled"],
-          },
-          wordWrap: configuration["editor.wordWrap"],
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-        }}
-      />
+      <label className="ddl-preview__option">
+        <input
+          type="checkbox"
+          checked={includeSchema}
+          onChange={(event) => setIncludeSchema(event.target.checked)}
+        />
+        <span>{t("app.ddl.includeSchema")}</span>
+      </label>
+      <div className="ddl-preview__editor">
+        <Editor
+          height="100%"
+          path={tabId ? monacoModelPathForTab({ id: tabId, uri: tabUri }) : undefined}
+          language={languageId}
+          value={loadState.status === "loading" ? undefined : content}
+          theme={monacoThemeForColorTheme(configuration["workbench.colorTheme"])}
+          keepCurrentModel
+          saveViewState
+          beforeMount={handleBeforeMount}
+          onMount={handleMount}
+          options={{
+            readOnly: true,
+            fontFamily: getEditorFontFamily(),
+            fontSize: configuration["editor.fontSize"],
+            tabSize: configuration["editor.tabSize"],
+            insertSpaces: configuration["editor.insertSpaces"],
+            detectIndentation: false,
+            lineNumbers: configuration["editor.lineNumbers"],
+            renderLineHighlight: "line",
+            minimap: { enabled: configuration["editor.minimap.enabled"] },
+            stickyScroll: {
+              enabled: configuration["editor.stickyScroll.enabled"],
+            },
+            wordWrap: configuration["editor.wordWrap"],
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+          }}
+        />
+      </div>
     </div>
   );
 }

@@ -14,7 +14,18 @@ import { ExplorerSearchQuickPickService } from "../../services/connection/explor
 import { ExplorerUiService } from "../../services/connection/explorerUiService";
 import { openObjectEditor } from "../../services/connection/objectEditorService";
 import { openCreateTableDraft } from "../../services/connection/createTableDraftService";
+import { openDuplicateTableDraft } from "../../services/connection/duplicateTableDraftService";
+import { openDuplicateSqlObjectDraft } from "../../services/connection/duplicateSqlObjectDraftService";
+import {
+  openCreateIndexSql,
+  openCreateTriggerSql,
+} from "../../services/connection/createTableChildSqlService";
+import {
+  openCreatePackageSql,
+  openCreateRoutineSql,
+} from "../../services/connection/createRoutineSqlService";
 import { openCreateTableSql } from "../../services/connection/createTableSqlService";
+import { openCreateViewDraft } from "../../services/connection/createViewDraftService";
 import {
   EXPLORER_COMMANDS,
   formatQualifiedName,
@@ -36,6 +47,12 @@ CommandsRegistry.registerCommand(
   },
 );
 
+CommandsRegistry.registerCommand(EXPLORER_COMMANDS.newView, async (...args: unknown[]) => {
+  const target = args[0] as { profileId?: string; schemaName?: string; catalogName?: string | null } | undefined;
+  if (!target?.profileId || !target.schemaName) return;
+  openCreateViewDraft({ profileId: target.profileId, schemaName: target.schemaName, catalogName: target.catalogName });
+});
+
 CommandsRegistry.registerCommand(
   EXPLORER_COMMANDS.newTableSql,
   async (...args: unknown[]) => {
@@ -52,11 +69,82 @@ CommandsRegistry.registerCommand(
 );
 
 CommandsRegistry.registerCommand(
+  EXPLORER_COMMANDS.duplicateTable,
+  async (...args: unknown[]) => {
+    const target = args[0] as ExplorerObjectRef | undefined;
+    if (!target || target.object.kind !== "table") return;
+    await openDuplicateTableDraft(target);
+  },
+);
+
+CommandsRegistry.registerCommand(
+  EXPLORER_COMMANDS.duplicateSqlObject,
+  async (...args: unknown[]) => {
+    const target = args[0] as ExplorerObjectRef | undefined;
+    if (!target) return;
+    await openDuplicateSqlObjectDraft(target);
+  },
+);
+
+CommandsRegistry.registerCommand(EXPLORER_COMMANDS.newIndex, async (...args: unknown[]) => {
+  const target = args[0] as ExplorerObjectRef | undefined;
+  if (!target) return;
+  await openCreateIndexSql(target);
+});
+
+CommandsRegistry.registerCommand(EXPLORER_COMMANDS.newTrigger, async (...args: unknown[]) => {
+  const target = args[0] as ExplorerObjectRef | undefined;
+  if (!target) return;
+  await openCreateTriggerSql(target);
+});
+
+for (const [commandId, kind] of [
+  [EXPLORER_COMMANDS.newProcedure, "procedure"],
+  [EXPLORER_COMMANDS.newFunction, "function"],
+] as const) {
+  CommandsRegistry.registerCommand(commandId, async (...args: unknown[]) => {
+    const target = args[0] as
+      | { profileId?: string; schemaName?: string; catalogName?: string | null }
+      | undefined;
+    if (!target?.profileId || !target.schemaName) return;
+    openCreateRoutineSql(
+      {
+        profileId: target.profileId,
+        schemaName: target.schemaName,
+        catalogName: target.catalogName,
+      },
+      kind,
+    );
+  });
+}
+
+CommandsRegistry.registerCommand(EXPLORER_COMMANDS.newPackage, async (...args: unknown[]) => {
+  const target = args[0] as
+    | { profileId?: string; schemaName?: string; catalogName?: string | null }
+    | undefined;
+  if (!target?.profileId || !target.schemaName) return;
+  openCreatePackageSql({
+    profileId: target.profileId,
+    schemaName: target.schemaName,
+    catalogName: target.catalogName,
+  });
+});
+
+CommandsRegistry.registerCommand(
   EXPLORER_COMMANDS.openObjectEditor,
   async (...args: unknown[]) => {
     const target = args[0] as ExplorerObjectRef | undefined;
     if (!target) return;
     openObjectEditor(target);
+  },
+);
+
+CommandsRegistry.registerCommand(
+  EXPLORER_COMMANDS.openObjectData,
+  async (...args: unknown[]) => {
+    const target = args[0] as ExplorerObjectRef | undefined;
+    if (!target) return;
+    openObjectEditor(target, "data");
   },
 );
 

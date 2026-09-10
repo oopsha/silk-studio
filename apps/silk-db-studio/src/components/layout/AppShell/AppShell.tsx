@@ -43,6 +43,9 @@ import DdlEditorView from "../../ddl/DdlEditorView.tsx";
 import PlsqlEditorView from "../../plsql/PlsqlEditorView.tsx";
 import ObjectEditorView from "../../object-editor/ObjectEditorView.tsx";
 import CreateTableDraftView from "../../object-editor/CreateTableDraftView.tsx";
+import CreateViewDraftView from "../../object-editor/CreateViewDraftView.tsx";
+import CreateRoutineDraftView from "../../object-editor/CreateRoutineDraftView.tsx";
+import CreatePackageDraftView from "../../object-editor/CreatePackageDraftView.tsx";
 import QueryHistoryView from "../../query-history/QueryHistoryView.tsx";
 import SearchExplorer from "../../search/SearchExplorer.tsx";
 // Outline/Timeline sidebar sections are disabled for now — see the matching comment where
@@ -54,6 +57,9 @@ import { isDdlEditorTab } from "../../../services/connection/ddlEditorConstants.
 import { isPlsqlEditorTab } from "../../../services/connection/plsqlEditorConstants.ts";
 import { isObjectEditorTab } from "../../../services/connection/objectEditorConstants.ts";
 import { isCreateTableDraftTab } from "../../../services/connection/createTableDraftService.ts";
+import { isCreateViewDraftTab } from "../../../services/connection/createViewDraftService.ts";
+import { isCreateRoutineDraftTab } from "../../../services/connection/createRoutineDraftService.ts";
+import { isCreatePackageDraftTab } from "../../../services/connection/createPackageDraftService.ts";
 import {
   buildConnectionsMenuItems,
   EXPLORER_COMMANDS,
@@ -329,6 +335,9 @@ function AppShell() {
             if (isCreateTableDraftTab(tab.uri)) {
               return <CreateTableDraftView />;
             }
+            if (isCreateViewDraftTab(tab.uri)) return <CreateViewDraftView />;
+            if (isCreateRoutineDraftTab(tab.uri)) return <CreateRoutineDraftView />;
+            if (isCreatePackageDraftTab(tab.uri)) return <CreatePackageDraftView />;
             return null;
           },
           onRunQuery: () =>

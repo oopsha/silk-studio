@@ -131,6 +131,9 @@ function ProfileTree({
   menuOptions: ExplorerMenuOptions;
 }) {
   const { t } = useI18n();
+  const configuration = useConfiguration();
+  const showObjectDescriptions =
+    configuration["database.explorer.showObjectDescriptions"];
   const tree = useConnectionTree(isConnected ? profile.id : null);
   const [expanded, setExpanded] = useState<ExpandedMap>({});
   const [busy, setBusy] = useState(false);
@@ -267,6 +270,16 @@ function ProfileTree({
     }
   }
 
+  async function reconnectProfile() {
+    await run(async () => {
+      if (isConnected) {
+        await ConnectionService.disconnect(profile.id);
+      }
+      await ConnectionService.connect(profile.id);
+      onFlash(t("app.explorer.reconnected").replace("{name}", profile.name));
+    });
+  }
+
   /** Handles the profile row's own context menu (see `buildProfileMenuItems`) — each branch
    *  mirrors the matching hover icon button's onClick exactly, always targeting `profile.id`
    *  captured in this closure rather than whatever profile happens to be globally "active". */
@@ -280,6 +293,9 @@ function ProfileTree({
         return;
       case "disconnect":
         await run(() => ConnectionService.disconnect(profile.id));
+        return;
+      case "reconnect":
+        await reconnectProfile();
         return;
       case "refresh":
         await run(async () => {
@@ -515,6 +531,7 @@ function ProfileTree({
                       title={definition.title}
                       icon={definition.icon}
                       items={filteredObjects}
+                      showObjectDescriptions={showObjectDescriptions}
                       expanded={
                         expanded[groupKey] ??
                         (groupForceExpand || defaultExpanded)
@@ -681,6 +698,15 @@ function ProfileTree({
               <Codicon name="plug" />
             </button>
           )}
+          <button
+            type="button"
+            className="connections-explorer__icon-button"
+            title={t("app.explorer.reconnect")}
+            disabled={busy || isConnecting || !isConnected}
+            onClick={() => void reconnectProfile()}
+          >
+            <Codicon name="debug-restart" />
+          </button>
           <button
             type="button"
             className="connections-explorer__icon-button"
@@ -963,6 +989,7 @@ function ObjectGroup({
   title,
   icon,
   items,
+  showObjectDescriptions,
   expanded,
   selectedKey,
   busy,
@@ -981,6 +1008,7 @@ function ObjectGroup({
   title: string;
   icon: string;
   items: MetadataObject[];
+  showObjectDescriptions: boolean;
   expanded: boolean;
   selectedKey: SelectedObjectKey | null;
   busy: boolean;
@@ -1004,6 +1032,7 @@ function ObjectGroup({
               groupId,
               canMutate: menuOptions.canMutate ?? false,
               readOnly: menuOptions.readOnly ?? false,
+              driverId: menuOptions.driverId,
             }),
             payload: { profileId, schemaName, catalogName: databaseName, groupId },
           });
@@ -1107,10 +1136,21 @@ function ObjectGroup({
                   <span className="connections-explorer__twistie-spacer" />
                   <span
                     className="connections-explorer__label"
-                    title={formatQualifiedName(schemaName, item.name)}
+                    title={
+                      item.comment
+                        ? `${formatQualifiedName(schemaName, item.name)} — ${item.comment}`
+                        : formatQualifiedName(schemaName, item.name)
+                    }
                   >
                     <Codicon name={objectIcon(item.kind)} />
-                    <span>{item.name}</span>
+                    <span className="connections-explorer__object-name">
+                      {item.name}
+                    </span>
+                    {showObjectDescriptions && item.comment ? (
+                      <span className="connections-explorer__object-comment">
+                        {item.comment}
+                      </span>
+                    ) : null}
                   </span>
                 </div>
               );
@@ -1297,8 +1337,13 @@ function ConnectionsExplorer() {
 
     if (
       item.commandId === EXPLORER_COMMANDS.openObjectEditor ||
+      item.commandId === EXPLORER_COMMANDS.openObjectData ||
       item.commandId === EXPLORER_COMMANDS.newTable ||
       item.commandId === EXPLORER_COMMANDS.newTableSql ||
+      item.commandId === EXPLORER_COMMANDS.duplicateTable ||
+      item.commandId === EXPLORER_COMMANDS.duplicateSqlObject ||
+      item.commandId === EXPLORER_COMMANDS.newIndex ||
+      item.commandId === EXPLORER_COMMANDS.newTrigger ||
       item.commandId === EXPLORER_COMMANDS.openSource ||
       item.commandId === EXPLORER_COMMANDS.openPackageBody ||
       item.commandId === EXPLORER_COMMANDS.viewDdl ||

@@ -1007,6 +1007,16 @@ fn parse_agent_result(response: Value) -> Result<Value, String> {
             .and_then(|value| value.get("message"))
             .and_then(Value::as_str)
             .unwrap_or("Unknown jdbc-agent error");
+        // Preserve the agent's JDBC-standard connection-loss classification through Tauri's
+        // string-error boundary. The UI helper consumes this private marker before rendering.
+        if response
+            .get("error")
+            .and_then(|value| value.get("connectionLost"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            return Err(format!("__SILK_CONNECTION_LOST__\n{message}"));
+        }
         return Err(message.to_string());
     }
 

@@ -5,9 +5,21 @@ import type {
 } from "./connectionTreeService";
 
 export function matchesTreeFilter(name: string, filter: string): boolean {
-  const needle = filter.trim().toLowerCase();
+  const needle = filter.trim();
   if (!needle) return true;
-  return name.toLowerCase().includes(needle);
+
+  // Preserve the familiar substring search for ordinary input. When `*` is present, it
+  // represents any number of characters: `order*item` matches `ORDER_LINE_ITEM`, and the
+  // same matcher is used for both object names and descriptions below.
+  if (!needle.includes("*")) {
+    return name.toLowerCase().includes(needle.toLowerCase());
+  }
+
+  const wildcardPattern = needle
+    .split("*")
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join(".*");
+  return new RegExp(wildcardPattern, "i").test(name);
 }
 
 export type FilteredSchemaView = {
@@ -78,7 +90,8 @@ export function filterSchemaTree(
       .map((group) => ({
         group,
         objects: group.objects.filter((object) =>
-          matchesTreeFilter(object.name, needle),
+          matchesTreeFilter(object.name, needle) ||
+          matchesTreeFilter(object.comment ?? "", needle),
         ),
       }))
       .filter((entry) => entry.objects.length > 0);

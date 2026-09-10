@@ -4,30 +4,21 @@ import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEd
 import { parseObjectEditorUri } from "../../services/connection/objectEditorConstants";
 import PropertiesView from "./PropertiesView";
 import DataView from "./DataView";
+import { getObjectEditorSection, onDidChangeObjectEditorSection, setObjectEditorSection, type ObjectEditorSection } from "../../services/connection/objectEditorSectionService";
 import "./ObjectEditorView.css";
-
-type ObjectEditorSection = "properties" | "data";
-
-/**
- * Which section (속성/데이터) was last shown for a given tab. Switching away to
- * another editor tab and back unmounts/remounts this component (see
- * EditorArea's `renderAlternative`), so React state alone doesn't survive —
- * this keeps the choice per tab across that remount.
- */
-const activeSectionByTabId = new Map<string, ObjectEditorSection>();
 
 function ObjectEditorView() {
   const { t } = useI18n();
   const activeTab = useActiveEditor();
   const ref = parseObjectEditorUri(activeTab?.uri);
   const [activeSection, setActiveSectionState] = useState<ObjectEditorSection>(
-    () => (activeTab ? (activeSectionByTabId.get(activeTab.id) ?? "properties") : "properties"),
+    () => (activeTab ? (getObjectEditorSection(activeTab.id) ?? "properties") : "properties"),
   );
 
   const setActiveSection = (section: ObjectEditorSection) => {
     setActiveSectionState(section);
     if (activeTab) {
-      activeSectionByTabId.set(activeTab.id, section);
+      setObjectEditorSection(activeTab.id, section);
     }
   };
 
@@ -35,8 +26,12 @@ function ObjectEditorView() {
   // component instance, different `activeTab`) — resync from the per-tab map.
   useEffect(() => {
     if (!activeTab) return;
-    setActiveSectionState(activeSectionByTabId.get(activeTab.id) ?? "properties");
+    setActiveSectionState(getObjectEditorSection(activeTab.id) ?? "properties");
   }, [activeTab?.id]);
+
+  useEffect(() => onDidChangeObjectEditorSection((tabId, section) => {
+    if (tabId === activeTab?.id) setActiveSectionState(section);
+  }), [activeTab?.id]);
 
   if (!ref || !activeTab) {
     return (

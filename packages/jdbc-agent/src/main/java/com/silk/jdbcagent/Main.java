@@ -15,6 +15,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.SQLNonTransientConnectionException;
+import java.sql.SQLRecoverableException;
+import java.sql.SQLTransientConnectionException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
@@ -362,6 +365,9 @@ public final class Main {
       err.put("message", formatSqlError(error));
       err.put("sqlState", error.getSQLState());
       err.put("errorCode", error.getErrorCode());
+      // Only expose a reconnect signal for JDBC's explicit connection-failure contract. Do not
+      // infer it from vendor message text: localized/version-specific wording is not stable.
+      err.put("connectionLost", isExplicitConnectionFailure(error));
     } catch (Throwable error) {
       // Broad on purpose: classpath/driver failures surface as Errors (e.g.
       // NoClassDefFoundError), and letting those escape would take down the whole
@@ -1552,6 +1558,29 @@ public final class Main {
     builder.append("\nSQLState: ").append(error.getSQLState());
     builder.append("\nErrorCode: ").append(error.getErrorCode());
     return builder.toString();
+  }
+
+  /** JDBC-standard, driver-independent connection-loss classification. */
+  private static boolean isExplicitConnectionFailure(SQLException error) {
+    SQLException current = error;
+    while (current != null) {
+      String state = current.getSQLState();
+      if ((state != null && state.startsWith("08"))
+          || current instanceof SQLTransientConnectionException
+          || current instanceof SQLNonTransientConnectionException
+          || current instanceof SQLRecoverableException) {
+        return true;
+      }
+      current = current.getNextException();
+    }
+    Throwable cause = error.getCause();
+    while (cause != null) {
+      if (cause instanceof SQLException sqlError && isExplicitConnectionFailure(sqlError)) {
+        return true;
+      }
+      cause = cause.getCause();
+    }
+    return false;
   }
 
   private static ObjectNode formatResultSet(ResultSet rs, int maxRows)

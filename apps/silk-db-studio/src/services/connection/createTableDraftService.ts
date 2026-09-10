@@ -4,9 +4,25 @@ import { ConnectionService } from "./connectionService";
 import { EditorConnectionBindingService } from "./editorConnectionBindingService";
 import type { CreateTableDraft, CreateTableTarget } from "./createTableSql";
 
+export type CreateTableDraftInitialValues = Pick<
+  CreateTableDraft,
+  "tableName" | "tableComment" | "columns"
+>;
+
 export const CREATE_TABLE_DRAFT_URI_PREFIX = "silk://create-table/";
 
 const drafts = new Map<string, CreateTableDraft>();
+const listeners = new Set<() => void>();
+
+function fireDidChange(): void {
+  for (const listener of listeners) listener();
+}
+
+/** Lets external target pickers update a visible draft without owning its React state. */
+export function onDidChangeCreateTableDraft(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
 
 export function createTableDraftUri(id: string): string {
   return `${CREATE_TABLE_DRAFT_URI_PREFIX}${encodeURIComponent(id)}`;
@@ -31,20 +47,31 @@ export function getCreateTableDraft(id: string): CreateTableDraft | undefined {
 
 export function updateCreateTableDraft(id: string, draft: CreateTableDraft): void {
   drafts.set(id, draft);
+  fireDidChange();
 }
 
 export function discardCreateTableDraft(id: string): void {
   drafts.delete(id);
+  fireDidChange();
 }
 
-export function openCreateTableDraft(target: CreateTableTarget): void {
+export function openCreateTableDraft(
+  target: CreateTableTarget,
+  initial?: CreateTableDraftInitialValues,
+): void {
   const profile = ConnectionService.getProfile(target.profileId);
   if (!profile) throw new Error("Connection profile was not found.");
   const id = crypto.randomUUID();
-  drafts.set(id, { ...target, tableName: "", columns: [] });
+  drafts.set(id, {
+    ...target,
+    tableName: initial?.tableName ?? "",
+    tableComment: initial?.tableComment,
+    columns: initial?.columns ?? [],
+  });
+  fireDidChange();
   const tabId = EditorService.openEditor({
     uri: createTableDraftUri(id),
-    label: "New Table",
+    label: initial ? `Copy of ${initial.tableName}` : "New Table",
     languageId: monacoLanguageIdForDriver(profile.driverId),
     content: "",
     preview: false,

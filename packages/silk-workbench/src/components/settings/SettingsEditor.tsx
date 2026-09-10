@@ -337,6 +337,24 @@ function DatabaseSettings() {
           <span>{t("settings.database.preloadDefaultSchemaHint")}</span>
         </label>
       </SettingRow>
+      <SettingRow
+        title={t("settings.database.showObjectDescriptions")}
+        description={t("settings.database.showObjectDescriptionsDescription")}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={configuration["database.explorer.showObjectDescriptions"]}
+            onChange={(event) =>
+              ConfigurationService.updateValue(
+                "database.explorer.showObjectDescriptions",
+                event.target.checked,
+              )
+            }
+          />
+          <span>{t("settings.database.showObjectDescriptionsHint")}</span>
+        </label>
+      </SettingRow>
       <h3 className="settings-section__subtitle">
         {t("settings.database.sqlParameters")}
       </h3>

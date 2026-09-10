@@ -22,6 +22,12 @@ import { useConnectionState } from "../../../services/connection/useConnectionSt
 import { useEditorConnectionBinding } from "../../../services/connection/useEditorConnectionBinding";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import { formatErrorMessage } from "../../../services/formatErrorMessage";
+import {
+  getCreateTableDraft,
+  isCreateTableDraftTab,
+  updateCreateTableDraft,
+} from "../../../services/connection/createTableDraftService";
+import { effectiveDefaultSchema } from "../../../services/connection/connectionTypes";
 import "@silk-studio/workbench/components/layout/TitleBar/OpenEditorsQuickPick/OpenEditorsQuickPick.css";
 import {
   placeOverSilkEditor,
@@ -56,6 +62,16 @@ function ConnectionTargetStatusItem() {
   const [filter, setFilter] = useState("");
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [placed, setPlaced] = useState(false);
+  const activeTab = EditorService.getActiveTab();
+  const draftId = isCreateTableDraftTab(activeTab?.uri)
+    ? activeTab?.uri
+        ? activeTab.uri.slice("silk://create-table/".length)
+        : null
+    : null;
+  const draft = draftId ? getCreateTableDraft(decodeURIComponent(draftId)) : undefined;
+  const draftDriverId = draft
+    ? ConnectionService.getProfile(draft.profileId)?.driverId
+    : undefined;
   const inputRef = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -144,6 +160,7 @@ function ConnectionTargetStatusItem() {
     // Show every saved profile — connected or not — like DBeaver's connection
     // dropdown. Picking a disconnected one connects it (see acceptPick).
     const profiles = connection.profiles.filter((profile) => {
+      if (draftDriverId && profile.driverId !== draftDriverId) return false;
       if (!query) return true;
       return (
         profile.name.toLowerCase().includes(query) ||
@@ -183,6 +200,7 @@ function ConnectionTargetStatusItem() {
     connection.profiles,
     connection.connectedProfileIds,
     connection.connectingProfileIds,
+    draftDriverId,
     t,
   ]);
 
@@ -226,19 +244,42 @@ function ConnectionTargetStatusItem() {
       close();
       if (!tab) return;
 
+      const draftUri = isCreateTableDraftTab(tab.uri) ? tab.uri : null;
+      const id = draftUri
+        ? decodeURIComponent(draftUri.slice("silk://create-table/".length))
+        : null;
+      const activeDraft = id ? getCreateTableDraft(id) : undefined;
+
+      if (activeDraft) {
+        void (async () => {
+          try {
+            if (!pick.connected) await ConnectionService.connect(pick.profileId);
+            const profile = ConnectionService.getProfile(pick.profileId);
+            if (!profile) throw new Error("연결 정보를 찾을 수 없습니다.");
+            const next = bindingForProfile(pick.profileId);
+            updateCreateTableDraft(id!, {
+              ...activeDraft,
+              profileId: pick.profileId,
+              catalogName: next.catalog,
+              schemaName: next.schema ?? effectiveDefaultSchema(profile),
+            });
+            EditorConnectionBindingService.setBinding(tab.id, next);
+          } catch (error) {
+            AppNotificationService.show(
+              formatErrorMessage(error, t("app.connectionTarget.connectFailed")),
+              "error",
+            );
+          }
+        })();
+        return;
+      }
+
       // Bind immediately so the status bar reflects the pick right away —
       // query execution lazily connects anyway (resolveExecutionConnection).
-      EditorConnectionBindingService.setBinding(
-        tab.id,
-        bindingForProfile(pick.profileId),
-      );
-
+      EditorConnectionBindingService.setBinding(tab.id, bindingForProfile(pick.profileId));
       if (!pick.connected && !pick.connecting) {
         void ConnectionService.connect(pick.profileId).catch((error) => {
-          AppNotificationService.show(
-            formatErrorMessage(error, t("app.connectionTarget.connectFailed")),
-            "error",
-          );
+          AppNotificationService.show(formatErrorMessage(error, t("app.connectionTarget.connectFailed")), "error");
         });
       }
     },

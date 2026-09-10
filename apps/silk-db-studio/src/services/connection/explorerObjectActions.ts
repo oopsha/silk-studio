@@ -10,6 +10,7 @@ import {
   supportsRenameObject,
 } from "./explorerObjectMutationSql";
 import { supportsPlsqlSourceEdit } from "./plsqlEditorService";
+import { supportsPackageCreation, supportsRoutineCreation } from "./createRoutineSql";
 
 export type ExplorerObjectRef = {
   profileId: string;
@@ -43,7 +44,16 @@ export type ExplorerMenuOptions = {
 export const EXPLORER_COMMANDS = {
   newTable: "silk.explorer.newTable",
   newTableSql: "silk.explorer.newTableSql",
+  duplicateTable: "silk.explorer.duplicateTable",
+  duplicateSqlObject: "silk.explorer.duplicateSqlObject",
+  newIndex: "silk.explorer.newIndex",
+  newTrigger: "silk.explorer.newTrigger",
+  newProcedure: "silk.explorer.newProcedure",
+  newFunction: "silk.explorer.newFunction",
+  newPackage: "silk.explorer.newPackage",
+  newView: "silk.explorer.newView",
   openObjectEditor: "silk.explorer.openObjectEditor",
+  openObjectData: "silk.explorer.openObjectData",
   viewDdl: "silk.explorer.viewDdl",
   refreshSchema: "silk.explorer.refreshSchema",
   useDatabase: "silk.explorer.useDatabase",
@@ -181,40 +191,23 @@ export function buildObjectMenuItems(
     canMutate &&
     driverId !== undefined &&
     supportsRenameObject(kind, driverId);
-  // Relations (table/view) have their own "openObjectEditor" entry above — a view's DDL is
-  // editable there (Properties → DDL), not via this "edit source" entry, which is only for
-  // the dedicated PL/SQL source tab (package only now — see isRoutine above). Without this
-  // guard, once `supportsPlsqlSourceEdit` also covers views (for the Object Editor's DDL
-  // section), this menu item would incorrectly enable and route a view to the wrong tab type.
-  const canEditSource =
-    !isRelation &&
-    !isRoutine &&
-    driverId !== undefined &&
-    supportsPlsqlSourceEdit(driverId, kind);
-  const isPackage = kind === "package";
   const t = I18nService.t.bind(I18nService);
 
   return [
-    {
-      id: "openObjectEditor",
-      label: t("app.explorer.openData"),
-      commandId: EXPLORER_COMMANDS.openObjectEditor,
-      enabled: isRelation,
-    },
-    ...(isRoutine
-      ? []
-      : [
-          {
-            id: "editSource",
-            label: isPackage ? t("app.explorer.editSpec") : t("common.edit"),
-            commandId: EXPLORER_COMMANDS.openSource,
-            enabled: canEditSource,
-            stubMessage:
-              driverId && !supportsPlsqlSourceEdit(driverId, kind)
-                ? t("app.explorer.stubEditOracle")
-                : undefined,
-          } satisfies ExplorerMenuItem,
-        ]),
+    ...(isRelation
+      ? [{
+          id: "openObjectEditor",
+          label: t("app.explorer.openProperties"),
+          commandId: EXPLORER_COMMANDS.openObjectEditor,
+          enabled: true,
+        } satisfies ExplorerMenuItem,
+        {
+          id: "openObjectData",
+          label: t("app.explorer.openData"),
+          commandId: EXPLORER_COMMANDS.openObjectData,
+          enabled: true,
+        } satisfies ExplorerMenuItem]
+      : []),
     {
       id: "viewDdl",
       label: isRoutine ? t("app.explorer.openProperties") : t("app.explorer.viewDdl"),
@@ -228,6 +221,79 @@ export function buildObjectMenuItems(
       commandId: EXPLORER_COMMANDS.copyName,
       enabled: true,
     },
+    ...(kind === "table"
+      ? [
+          {
+            id: "newTable",
+            label: t("app.explorer.newTable"),
+            commandId: EXPLORER_COMMANDS.newTable,
+            enabled: canMutate,
+            separator: true,
+            stubMessage: readOnly ? t("app.explorer.stubReadOnly") : undefined,
+          } satisfies ExplorerMenuItem,
+          {
+            id: "duplicateTable",
+            label: t("app.explorer.duplicateTable"),
+            commandId: EXPLORER_COMMANDS.duplicateTable,
+            enabled: canMutate,
+            stubMessage: readOnly ? t("app.explorer.stubReadOnly") : undefined,
+          } satisfies ExplorerMenuItem,
+          {
+            id: "newIndex",
+            label: t("app.explorer.newIndex"),
+            commandId: EXPLORER_COMMANDS.newIndex,
+            enabled: canMutate,
+            stubMessage: readOnly ? t("app.explorer.stubReadOnly") : undefined,
+          } satisfies ExplorerMenuItem,
+          {
+            id: "newTrigger",
+            label: t("app.explorer.newTrigger"),
+            commandId: EXPLORER_COMMANDS.newTrigger,
+            enabled: canMutate,
+            stubMessage: readOnly ? t("app.explorer.stubReadOnly") : undefined,
+          } satisfies ExplorerMenuItem,
+        ]
+      : [
+          ...(kind === "view"
+            ? [
+                {
+                  id: "newView",
+                  label: t("app.explorer.newView"),
+                  commandId: EXPLORER_COMMANDS.newView,
+                  enabled: canMutate,
+                  separator: true,
+                  stubMessage: readOnly ? t("app.explorer.stubReadOnly") : undefined,
+                } satisfies ExplorerMenuItem,
+              ]
+            : []),
+          ...((kind === "procedure" || kind === "function") && driverId !== undefined && supportsRoutineCreation(driverId)
+            ? [
+                {
+                  id: kind === "procedure" ? "newProcedure" : "newFunction",
+                  label: t(kind === "procedure" ? "app.explorer.newProcedure" : "app.explorer.newFunction"),
+                  commandId: kind === "procedure" ? EXPLORER_COMMANDS.newProcedure : EXPLORER_COMMANDS.newFunction,
+                  enabled: canMutate,
+                  separator: true,
+                  stubMessage: readOnly ? t("app.explorer.stubReadOnly") : undefined,
+                } satisfies ExplorerMenuItem,
+              ]
+            : []),
+          ...(kind === "package" && driverId && supportsPackageCreation(driverId)
+            ? [
+                {
+                  id: "newPackage",
+                  label: t("app.explorer.newPackage"),
+                  commandId: EXPLORER_COMMANDS.newPackage,
+                  enabled: canMutate,
+                  separator: true,
+                  stubMessage: readOnly ? t("app.explorer.stubReadOnly") : undefined,
+                } satisfies ExplorerMenuItem,
+              ]
+            : []),
+          ...((kind === "view" || kind === "procedure" || kind === "function" || kind === "package")
+            ? [{ id: "duplicateSqlObject", label: t(kind === "view" ? "app.explorer.duplicateView" : kind === "procedure" ? "app.explorer.duplicateProcedure" : kind === "function" ? "app.explorer.duplicateFunction" : "app.explorer.duplicatePackage"), commandId: EXPLORER_COMMANDS.duplicateSqlObject, enabled: canMutate, stubMessage: readOnly ? t("app.explorer.stubReadOnly") : undefined } satisfies ExplorerMenuItem]
+            : []),
+        ]),
     {
       id: "renameObject",
       label: t("app.explorer.renameEllipsis"),
@@ -328,6 +394,11 @@ export function buildProfileMenuItems(options: {
       enabled: true,
     },
     {
+      id: "reconnect",
+      label: I18nService.t("app.explorer.reconnect"),
+      enabled: true,
+    },
+    {
       id: "disconnectAll",
       label: I18nService.t("common.disconnectAll"),
       commandId: "silk.connection.disconnectAll",
@@ -397,8 +468,16 @@ export function buildGroupMenuItems(options: {
   groupId: MetadataGroupId;
   canMutate: boolean;
   readOnly: boolean;
+  driverId?: ConnectionDriverId;
 }): ExplorerMenuItem[] {
   const isTablesGroup = options.groupId === "tables";
+  const routineKind =
+    options.groupId === "procedures"
+      ? "procedure"
+      : options.groupId === "functions"
+        ? "function"
+        : null;
+  const isPackagesGroup = options.groupId === "packages";
   return [
     ...(isTablesGroup
       ? [
@@ -422,12 +501,48 @@ export function buildGroupMenuItems(options: {
           } satisfies ExplorerMenuItem,
         ]
       : []),
+    ...(options.groupId === "views"
+      ? [{ id: "newView", label: I18nService.t("app.explorer.newView"), commandId: EXPLORER_COMMANDS.newView, enabled: options.canMutate, stubMessage: options.readOnly ? I18nService.t("app.explorer.stubReadOnly") : undefined } satisfies ExplorerMenuItem]
+      : []),
+    ...(routineKind && options.driverId && supportsRoutineCreation(options.driverId)
+      ? [
+          {
+            id: `new${routineKind === "procedure" ? "Procedure" : "Function"}`,
+            label: I18nService.t(
+              routineKind === "procedure"
+                ? "app.explorer.newProcedure"
+                : "app.explorer.newFunction",
+            ),
+            commandId:
+              routineKind === "procedure"
+                ? EXPLORER_COMMANDS.newProcedure
+                : EXPLORER_COMMANDS.newFunction,
+            enabled: options.canMutate,
+            stubMessage: options.readOnly
+              ? I18nService.t("app.explorer.stubReadOnly")
+              : undefined,
+          } satisfies ExplorerMenuItem,
+        ]
+      : []),
+    ...(isPackagesGroup && options.driverId && supportsPackageCreation(options.driverId)
+      ? [
+          {
+            id: "newPackage",
+            label: I18nService.t("app.explorer.newPackage"),
+            commandId: EXPLORER_COMMANDS.newPackage,
+            enabled: options.canMutate,
+            stubMessage: options.readOnly
+              ? I18nService.t("app.explorer.stubReadOnly")
+              : undefined,
+          } satisfies ExplorerMenuItem,
+        ]
+      : []),
     {
       id: "refreshGroup",
       label: I18nService.t("common.refresh"),
       commandId: EXPLORER_COMMANDS.refreshSchema,
       enabled: true,
-      separator: isTablesGroup,
+      separator: isTablesGroup || options.groupId === "views" || routineKind !== null || isPackagesGroup,
     },
     {
       id: "collapseAll",

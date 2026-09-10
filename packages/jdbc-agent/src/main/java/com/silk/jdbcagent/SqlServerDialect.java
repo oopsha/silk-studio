@@ -148,54 +148,10 @@ final class SqlServerDialect implements DbDialect {
       boolean includeSecondaryKinds,
       ArrayNode objects)
       throws SQLException {
-    if (catalog != null && !catalog.isBlank()) {
-      // Same reasoning as listSchemaNamesInCatalog — getTables/getProcedures/getFunctions
-      // don't reliably see another catalog's objects, so query sys.objects directly.
-      collectSchemaObjectsInCatalog(connection, catalog, schemaName, objects);
-    } else {
-      DatabaseMetaData metadata = connection.getMetaData();
-
-      try (ResultSet tables =
-          metadata.getTables(null, schemaName, "%", new String[] {"TABLE", "VIEW"})) {
-        while (tables.next()) {
-          String name = tables.getString("TABLE_NAME");
-          String type = tables.getString("TABLE_TYPE");
-          if (name == null || name.isBlank()) {
-            continue;
-          }
-          ObjectNode object = objects.addObject();
-          object.put("name", name);
-          object.put(
-              "kind", type != null && type.toUpperCase(Locale.ROOT).contains("VIEW") ? "view" : "table");
-        }
-      }
-
-      try (ResultSet procedures = metadata.getProcedures(null, schemaName, "%")) {
-        while (procedures.next()) {
-          String name = stripProcedureNumberSuffix(procedures.getString("PROCEDURE_NAME"));
-          if (name == null || name.isBlank()) {
-            continue;
-          }
-          ObjectNode object = objects.addObject();
-          object.put("name", name);
-          object.put("kind", "procedure");
-        }
-      }
-
-      // getFunctions (JDBC 4.0+) reports scalar/table-valued functions separately from
-      // getProcedures, so no extra filtering is needed to tell them apart on SQL Server.
-      try (ResultSet functions = metadata.getFunctions(null, schemaName, "%")) {
-        while (functions.next()) {
-          String name = functions.getString("FUNCTION_NAME");
-          if (name == null || name.isBlank()) {
-            continue;
-          }
-          ObjectNode object = objects.addObject();
-          object.put("name", name);
-          object.put("kind", "function");
-        }
-      }
-    }
+    // Query sys.objects even for the current catalog. Besides making current/non-default
+    // catalog results consistent, this lets the explorer fetch MS_Description in the same
+    // listing query rather than issuing a request per object.
+    collectSchemaObjectsInCatalog(connection, catalog, schemaName, objects);
 
     // SQL Server has no PACKAGE concept; nothing to add for the "package" kind.
 
@@ -258,10 +214,15 @@ final class SqlServerDialect implements DbDialect {
       throws SQLException {
     String prefix = CatalogQualifier.prefix(catalog);
     String sql =
-        "SELECT o.name AS NAME, o.type AS OBJ_TYPE "
+        "SELECT o.name AS NAME, o.type AS OBJ_TYPE, "
+            + "CAST(ep.value AS NVARCHAR(4000)) AS DESCRIPTION "
             + "FROM " + prefix + "sys.objects o "
             + "JOIN " + prefix + "sys.schemas s ON s.schema_id = o.schema_id "
-            + "WHERE s.name = ? AND o.type IN ('U', 'V', 'P', 'FN', 'IF', 'TF') "
+            + "LEFT JOIN " + prefix + "sys.extended_properties ep "
+            + "ON ep.class = 1 AND ep.major_id = o.object_id AND ep.minor_id = 0 "
+            + "AND ep.name = N'MS_Description' "
+            + "WHERE s.name = ? AND o.is_ms_shipped = 0 "
+            + "AND o.type IN ('U', 'V', 'P', 'FN', 'IF', 'TF') "
             + "ORDER BY o.name";
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
       statement.setString(1, schemaName);
@@ -286,6 +247,10 @@ final class SqlServerDialect implements DbDialect {
           ObjectNode object = objects.addObject();
           object.put("name", name);
           object.put("kind", kind);
+          String comment = rs.getString("DESCRIPTION");
+          if (comment != null && !comment.isBlank()) {
+            object.put("comment", comment);
+          }
         }
       }
     }
@@ -1488,18 +1453,6 @@ final class SqlServerDialect implements DbDialect {
         + "\nELSE\n    EXEC sys.sp_addextendedproperty "
         + call
         + ";";
-  }
-
-  /**
-   * mssql-jdbc's {@code getProcedures} suffixes names with a numbered-procedure marker
-   * (e.g. {@code "MyProc;1"}); strip it so the Explorer shows the plain object name.
-   */
-  private static String stripProcedureNumberSuffix(String name) {
-    if (name == null) {
-      return null;
-    }
-    int index = name.lastIndexOf(';');
-    return index >= 0 ? name.substring(0, index) : name;
   }
 
   private static String quoteSqlServerIdent(String value) {

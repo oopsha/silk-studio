@@ -13,9 +13,11 @@ import { objectEditorUri, buildObjectEditorTabLabel } from "../../services/conne
 import {
   discardCreateTableDraft,
   getCreateTableDraft,
+  onDidChangeCreateTableDraft,
   parseCreateTableDraftUri,
   updateCreateTableDraft,
 } from "../../services/connection/createTableDraftService";
+import { DatabaseTargetQuickPickService } from "../../services/connection/databaseTargetQuickPickService";
 import { buildCreateTableDraftSql, buildCreateTableDraftStatements, type CreateTableColumnDraft } from "../../services/connection/createTableSql";
 import ColumnTypeCombobox from "./ColumnTypeCombobox";
 import "./TableStructureEditor.css";
@@ -56,6 +58,11 @@ function CreateTableDraftView() {
   useEffect(() => {
     tableNameInputRef.current?.focus();
   }, [draftId]);
+
+  useEffect(
+    () => onDidChangeCreateTableDraft(() => setRevision((value) => value + 1)),
+    [],
+  );
 
   useEffect(() => {
     if (!focusColumnId) return;
@@ -165,7 +172,7 @@ function CreateTableDraftView() {
       <div className="object-editor-header__row">
         <label className="object-editor-header__field object-editor-header__field--name"><span className="object-editor-header__label">이름</span><input ref={tableNameInputRef} className="object-editor-header__input" value={draft.tableName} onChange={(event) => update({ tableName: event.target.value })} /></label>
         <div className="object-editor-header__field object-editor-header__field--type"><span className="object-editor-header__label">타입</span><span className="object-editor-header__box">테이블</span></div>
-        <div className="object-editor-header__field object-editor-header__field--schema"><span className="object-editor-header__label">스키마</span><span className="object-editor-header__box">{draft.schemaName}</span></div>
+        <div className="object-editor-header__field object-editor-header__field--schema"><span className="object-editor-header__label">스키마</span><button type="button" className="object-editor-header__box object-editor-header__target-button" title="스키마 또는 데이터베이스 변경" onClick={() => DatabaseTargetQuickPickService.show()}>{draft.schemaName}</button></div>
         <label className="object-editor-header__field object-editor-header__field--comment"><span className="object-editor-header__label">코멘트</span><input className="object-editor-header__input" value={draft.tableComment ?? ""} onChange={(event) => update({ tableComment: event.target.value || undefined })} /></label>
       </div>
       <div className="object-editor-header__actions"><button type="button" className="object-editor-header__button" onClick={() => EditorService.closeTab(activeTab.id)}><Codicon name="close" />취소</button><button type="button" className="object-editor-header__button object-editor-header__button--primary" onClick={() => { const error = validate(); if (error) AppNotificationService.show(error, "error"); else { setSaveError(null); setShowReview(true); } }}><Codicon name="save" />저장</button></div>

@@ -70,6 +70,8 @@ export type MetadataObjectKind =
 export type MetadataObject = {
   name: string;
   kind: MetadataObjectKind;
+  /** Optional database object description/comment, when the dialect exposes one. */
+  comment?: string;
 };
 
 /**
@@ -563,6 +565,7 @@ function isMetadataObject(value: unknown): value is MetadataObject {
   const entry = value as Record<string, unknown>;
   return (
     typeof entry.name === "string" &&
+    (entry.comment === undefined || typeof entry.comment === "string") &&
     (entry.kind === "table" ||
       entry.kind === "view" ||
       entry.kind === "procedure" ||

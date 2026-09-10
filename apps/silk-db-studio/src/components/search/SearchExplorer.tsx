@@ -9,10 +9,15 @@ import {
   buildObjectMenuItems,
   defaultObjectAction,
   EXPLORER_COMMANDS,
+  formatQualifiedName,
   type ExplorerMenuItem,
   type ExplorerObjectRef,
 } from "../../services/connection/explorerObjectActions";
 import type { ExplorerObjectSearchPick } from "../../services/connection/explorerSearchItems";
+import {
+  beginExplorerObjectPointerDrag,
+  shouldSuppressExplorerObjectClick,
+} from "../../services/dnd/explorerObjectDrag";
 import { useConnectionState } from "../../services/connection/useConnectionState";
 import { SearchConnectionSelectionService } from "../../services/search/searchConnectionSelectionService";
 import { useSearchConnectionSelection } from "../../services/search/useSearchConnectionSelection";
@@ -226,7 +231,31 @@ function SearchExplorer() {
                 className="search-explorer__result"
                 role="button"
                 tabIndex={0}
-                onClick={() => void openResult(pick)}
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
+                  const profile = ConnectionService.getProfile(pick.profileId);
+                  const qualified = formatQualifiedName(pick.schemaName, pick.object.name, {
+                    databaseName: pick.catalogName,
+                    driverId: profile?.driverId,
+                  });
+                  beginExplorerObjectPointerDrag({
+                    payload: {
+                      schemaName: pick.schemaName,
+                      objectName: pick.object.name,
+                      kind: pick.object.kind,
+                      profileId: pick.profileId,
+                      databaseName: pick.catalogName,
+                    },
+                    label: qualified,
+                    pointerId: event.pointerId,
+                    clientX: event.clientX,
+                    clientY: event.clientY,
+                  });
+                }}
+                onClick={() => {
+                  if (shouldSuppressExplorerObjectClick()) return;
+                  void openResult(pick);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
