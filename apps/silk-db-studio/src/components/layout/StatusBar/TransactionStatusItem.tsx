@@ -29,7 +29,11 @@ function useConnectionTransactionDirty(connectionId: string | null): boolean {
 function TransactionStatusItem() {
   const { t } = useI18n();
   const binding = useEditorConnectionBinding();
-  const connectionId = binding.profileId;
+  // Object and DDL editor tabs are not executable SQL tabs, so some have no editor binding.
+  // In that case use the explorer's active profile; this lets a hover-menu DROP immediately
+  // expose its transaction controls without rebinding an unrelated SQL editor.
+  const connectionId =
+    binding.profileId ?? ConnectionService.getActiveProfile()?.id ?? null;
   const dirty = useConnectionTransactionDirty(connectionId);
   const [busy, setBusy] = useState(false);
 

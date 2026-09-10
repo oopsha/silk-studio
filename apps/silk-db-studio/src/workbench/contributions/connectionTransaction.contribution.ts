@@ -3,6 +3,7 @@ import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegist
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import { EditorConnectionBindingService } from "../../services/connection/editorConnectionBindingService";
+import { ConnectionService } from "../../services/connection/connectionService";
 import {
   ConnectionTransactionService,
   commitConnection,
@@ -10,7 +11,8 @@ import {
 } from "../../services/connection/connectionTransactionService";
 
 function updatePendingTransactionContextKey(): void {
-  const { profileId } = EditorConnectionBindingService.getActiveBinding();
+  const { profileId: boundProfileId } = EditorConnectionBindingService.getActiveBinding();
+  const profileId = boundProfileId ?? ConnectionService.getActiveProfile()?.id ?? null;
   ContextKeyService.set(
     "hasPendingTransaction",
     ConnectionTransactionService.isDirty(profileId),
@@ -22,13 +24,15 @@ EditorConnectionBindingService.onDidChange(updatePendingTransactionContextKey);
 updatePendingTransactionContextKey();
 
 CommandsRegistry.registerCommand("silk.connection.commit", async () => {
-  const { profileId } = EditorConnectionBindingService.getActiveBinding();
+  const { profileId: boundProfileId } = EditorConnectionBindingService.getActiveBinding();
+  const profileId = boundProfileId ?? ConnectionService.getActiveProfile()?.id ?? null;
   if (!profileId) return;
   await commitConnection(profileId);
 });
 
 CommandsRegistry.registerCommand("silk.connection.rollback", async () => {
-  const { profileId } = EditorConnectionBindingService.getActiveBinding();
+  const { profileId: boundProfileId } = EditorConnectionBindingService.getActiveBinding();
+  const profileId = boundProfileId ?? ConnectionService.getActiveProfile()?.id ?? null;
   if (!profileId) return;
   await rollbackConnection(profileId);
 });

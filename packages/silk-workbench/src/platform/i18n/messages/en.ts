@@ -687,6 +687,9 @@ export const enMessages = {
       executeRename: "Execute RENAME",
       invalidRename: "Invalid rename.",
       executeFailed: "Failed to execute statement.",
+      objectMutationPendingCommit:
+        "The object change is pending commit — commit it from the status bar for it to take effect.",
+      objectMutationRolledBack: "The object change was rolled back and did not take effect.",
       searchTitle: "Search Database Objects",
       searchPlaceholder: "Search tables, views, procedures…",
       searchAria: "Search database objects",

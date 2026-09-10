@@ -1,9 +1,13 @@
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
+import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
+import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import { ConnectionService } from "./connectionService";
 import type { ExplorerObjectRef } from "./explorerObjectActions";
 import { ConnectionTreeService } from "./connectionTreeService";
+import { ConnectionTransactionService } from "./connectionTransactionService";
 import { ActiveDatabaseService } from "./activeDatabaseService";
 import { ExplorerObjectMutationDialogService } from "./explorerObjectMutationDialogService";
+import { registerPendingDdlSave } from "./pendingDdlSaveService";
 import {
   buildDropObjectSql,
   buildRenameObjectSql,
@@ -14,6 +18,7 @@ import {
 import { formatErrorMessage } from "../formatErrorMessage";
 import { QueryExecutionService } from "../query/queryExecutionService";
 import { assertReadOnlyQueryAllowed } from "../query/sqlGuard";
+import { driverAutoCommitsDdl } from "../sql/sqlDialect";
 
 function assertMutationsAllowed(): void {
   const readOnly = ConfigurationService.getValue("database.readOnly");
@@ -77,6 +82,9 @@ export async function executeExplorerMutation(
   newName?: string,
 ): Promise<void> {
   assertMutationsAllowed();
+  // An explorer action establishes this profile as the current connection context. Object/DDL
+  // editor tabs are not SQL tabs and may not carry a direct editor binding for the status bar.
+  ConnectionService.setActiveProfile(ref.profileId);
 
   const ctx = mutationContextFromRef(ref, driverId);
   const sql =
@@ -93,11 +101,43 @@ export async function executeExplorerMutation(
   await QueryExecutionService.executeWriteStatement(sql, {
     connectionId: ref.profileId,
   });
+  // Explorer mutations do not create a query-result tab, so make the transaction state explicit
+  // here rather than relying on that UI path to have observed the successful DDL write already.
+  const pendingTransaction =
+    !ConfigurationService.getValue("database.autoCommit") &&
+    !driverAutoCommitsDdl(driverId);
+  if (pendingTransaction) {
+    ConnectionTransactionService.markDirty(ref.profileId);
+  }
   await ConnectionTreeService.invalidateAndRefreshSchema(
     ref.profileId,
     ref.schemaName,
     ref.catalogName ?? undefined,
   );
+
+  // PostgreSQL and SQL Server keep DDL inside the active transaction. The first refresh above
+  // deliberately reflects that session's pending state; restore the tree from the database when
+  // the user later rolls back instead of leaving the deleted/renamed object hidden until reconnect.
+  if (pendingTransaction && ConnectionTransactionService.isDirty(ref.profileId)) {
+    registerPendingDdlSave(ref.profileId, {
+      onCommit: () => undefined,
+      onRollback: () => {
+        void ConnectionTreeService.invalidateAndRefreshSchema(
+          ref.profileId,
+          ref.schemaName,
+          ref.catalogName ?? undefined,
+        );
+        AppNotificationService.show(
+          tKey("app.explorer.objectMutationRolledBack"),
+          "info",
+        );
+      },
+    });
+    AppNotificationService.show(
+      tKey("app.explorer.objectMutationPendingCommit"),
+      "info",
+    );
+  }
 }
 
 export function formatMutationError(error: unknown, fallback: string): string {

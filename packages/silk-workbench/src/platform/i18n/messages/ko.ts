@@ -684,6 +684,9 @@ export const koMessages = {
       executeRename: "RENAME 실행",
       invalidRename: "잘못된 이름입니다.",
       executeFailed: "문 실행에 실패했습니다.",
+      objectMutationPendingCommit:
+        "개체 변경이 커밋 대기 중입니다 — 상태 표시줄에서 커밋해야 적용됩니다.",
+      objectMutationRolledBack: "개체 변경이 롤백되어 적용되지 않았습니다.",
       searchTitle: "데이터베이스 개체 검색",
       searchPlaceholder: "테이블, 뷰, 프로시저 검색…",
       searchAria: "데이터베이스 개체 검색",

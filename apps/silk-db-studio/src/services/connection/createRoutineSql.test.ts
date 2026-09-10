@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCreateRoutineSql,
+  buildCreateRoutineDraftSql,
   buildCreatePackageSql,
   defaultRoutineBody,
   supportsPackageCreation,
@@ -20,6 +21,19 @@ describe("buildCreateRoutineSql", () => {
     expect(defaultRoutineBody("sqlserver", "procedure")).toBe(
       "BEGIN\n  SET NOCOUNT ON;\nEND;",
     );
+  });
+
+  it("uses valid initial procedure bodies for MySQL-family dialects", () => {
+    expect(defaultRoutineBody("mysql", "procedure")).toContain("SELECT 1;");
+    expect(defaultRoutineBody("mariadb", "procedure")).toContain("SELECT 1;");
+    expect(defaultRoutineBody("postgresql", "procedure")).toContain("NULL;");
+  });
+
+  it("keeps dialect-specific function wrappers when saving a draft", () => {
+    const body = "BEGIN\n  RETURN 0;\nEND;";
+    expect(buildCreateRoutineDraftSql("postgresql", target, "function", "F1", body)).toContain("$$;");
+    expect(buildCreateRoutineDraftSql("mysql", target, "function", "F1", body)).toContain("DETERMINISTIC\nBEGIN");
+    expect(buildCreateRoutineDraftSql("mariadb", target, "procedure", "P1", "BEGIN\n  SELECT 1;\nEND;")).toContain("CREATE PROCEDURE");
   });
 
   it("creates an Oracle function body with a return value", () => {
