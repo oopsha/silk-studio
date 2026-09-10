@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCreateRoutineSql,
   buildCreatePackageSql,
+  defaultRoutineBody,
   supportsPackageCreation,
   supportsRoutineCreation,
 } from "./createRoutineSql";
@@ -12,6 +13,12 @@ describe("buildCreateRoutineSql", () => {
   it("uses a schema-qualified SQL Server name; the selected database is a session target", () => {
     expect(buildCreateRoutineSql("sqlserver", target, "procedure")).toContain(
       "CREATE PROCEDURE [dbo].[NEW_PROCEDURE]",
+    );
+  });
+
+  it("uses a valid T-SQL procedure body for a new draft", () => {
+    expect(defaultRoutineBody("sqlserver", "procedure")).toBe(
+      "BEGIN\n  SET NOCOUNT ON;\nEND;",
     );
   });
 

@@ -105,6 +105,90 @@ function objectSelectionKey(
   return `${profileId}::${schemaName}::${objectName}`;
 }
 
+function ExplorerRowAction({
+  item,
+  icon,
+  onClick,
+}: {
+  item: ExplorerMenuItem;
+  icon: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="connections-explorer__icon-button"
+      title={item.label}
+      aria-label={item.label}
+      disabled={!item.enabled}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+    >
+      <Codicon name={icon} />
+    </button>
+  );
+}
+
+/** Only commands whose target is the object row itself belong in its hover actions. */
+function objectHoverMenuItems(
+  kind: MetadataObjectKind,
+  options: ExplorerMenuOptions,
+): ExplorerMenuItem[] {
+  const allowedIds =
+    kind === "table" || kind === "view"
+      ? [
+          "openObjectEditor",
+          "openObjectData",
+          "copyName",
+          kind === "table" ? "duplicateTable" : "duplicateSqlObject",
+          "renameObject",
+          "dropObject",
+        ]
+      : [
+          "viewDdl",
+          "copyName",
+          "duplicateSqlObject",
+          "renameObject",
+          "dropObject",
+        ];
+  return buildObjectMenuItems(kind, options).filter((item) =>
+    allowedIds.includes(item.id),
+  );
+}
+
+function objectHoverIcon(id: string): string {
+  switch (id) {
+    case "openObjectEditor":
+      // Routines already use the DDL document glyph for "속성 열기". Relations use the
+      // same glyph so the common label has one visual meaning throughout the explorer.
+      return "file-code";
+    case "openObjectData":
+      return "table";
+    case "viewDdl":
+      return "file-code";
+    case "copyName":
+      return "copy";
+    case "duplicateTable":
+    case "duplicateSqlObject":
+      return "clone";
+    case "renameObject":
+      return "rename";
+    case "dropObject":
+      return "trash";
+    default:
+      return "ellipsis";
+  }
+}
+
+function groupHoverIcon(id: string): string {
+  // A group row may offer more than one way to create its object (for example, table
+  // editor and SQL). Keep the creation glyph for the usual flow; the SQL alternative needs
+  // its own glyph because the table group exposes both side by side.
+  return id === "newTableSql" ? "edit-code" : "add";
+}
+
 function ProfileTree({
   profile,
   isConnected,
@@ -254,6 +338,16 @@ function ProfileTree({
       );
       onFlash(`Refreshed ${catalogName}`);
     });
+  }
+
+  /** Runs the same registered command as the context menu, scoped to this tree row. */
+  async function executeExplorerCommand(item: ExplorerMenuItem, payload: unknown) {
+    if (!item.enabled || !item.commandId) return;
+    try {
+      await CommandService.executeCommand(item.commandId, payload);
+    } catch (error) {
+      onFlash(formatErrorMessage(error, t("app.explorer.actionFailed")));
+    }
   }
 
   /** Opens a new SQL tab bound to this row's specific `profile.id` — not the globally "active"
@@ -466,6 +560,29 @@ function ProfileTree({
             <span>{schema.name}</span>
           </span>
           <div className="connections-explorer__row-actions">
+            {(isDatabaseNode
+              ? buildCatalogMenuItems({
+                  isCurrent: isDefaultSchema,
+                  isDefault: isDefaultSchema,
+                })
+              : buildSchemaMenuItems({ isDefault: isDefaultSchema })
+            )
+              .filter((item) => !["refreshSchema", "refreshCatalog"].includes(item.id))
+              .map((item) => (
+                <ExplorerRowAction
+                  key={item.id}
+                  item={item}
+                  icon={item.id === "useSchema" || item.id === "useDatabase" ? "arrow-swap" : "check"}
+                  onClick={() =>
+                    void executeExplorerCommand(item, {
+                      profileId: profile.id,
+                      ...(isDatabaseNode
+                        ? { catalogName: schema.name }
+                        : { schemaName: schema.name, catalogName }),
+                    })
+                  }
+                />
+              ))}
             <button
               type="button"
               className="connections-explorer__icon-button"
@@ -551,6 +668,9 @@ function ProfileTree({
                           object,
                           catalogName,
                         })
+                      }
+                      onCommand={(item, payload) =>
+                        void executeExplorerCommand(item, payload)
                       }
                     />
                   );
@@ -910,6 +1030,21 @@ function ProfileTree({
                         <span>{catalog.name}</span>
                       </span>
                       <div className="connections-explorer__row-actions">
+                        {buildCatalogMenuItems({ isCurrent, isDefault })
+                          .filter((item) => item.id !== "refreshCatalog")
+                          .map((item) => (
+                            <ExplorerRowAction
+                              key={item.id}
+                              item={item}
+                              icon={item.id === "useDatabase" ? "arrow-swap" : "check"}
+                              onClick={() =>
+                                void executeExplorerCommand(item, {
+                                  profileId: profile.id,
+                                  catalogName: catalog.name,
+                                })
+                              }
+                            />
+                          ))}
                         <button
                           type="button"
                           className="connections-explorer__icon-button"
@@ -998,6 +1133,7 @@ function ObjectGroup({
   onOpenContextMenu,
   onRefresh,
   onObjectAction,
+  onCommand,
   menuOptions,
 }: {
   profileId: string;
@@ -1017,6 +1153,7 @@ function ObjectGroup({
   onOpenContextMenu: (state: ContextMenuState) => void;
   onRefresh: () => void;
   onObjectAction: (object: MetadataObject) => void;
+  onCommand: (item: ExplorerMenuItem, payload: unknown) => void;
 }) {
   const { t } = useI18n();
   return (
@@ -1053,6 +1190,37 @@ function ObjectGroup({
           </span>
         </span>
         <div className="connections-explorer__row-actions">
+          {buildGroupMenuItems({
+            groupId,
+            canMutate: menuOptions.canMutate ?? false,
+            readOnly: menuOptions.readOnly ?? false,
+            driverId: menuOptions.driverId,
+          })
+            .filter((item) =>
+              [
+                "newTable",
+                "newTableSql",
+                "newView",
+                "newProcedure",
+                "newFunction",
+                "newPackage",
+              ].includes(item.id),
+            )
+            .map((item) => (
+              <ExplorerRowAction
+                key={item.id}
+                item={item}
+                icon={groupHoverIcon(item.id)}
+                onClick={() =>
+                  onCommand(item, {
+                    profileId,
+                    schemaName,
+                    catalogName: databaseName,
+                    groupId,
+                  })
+                }
+              />
+            ))}
           <button
             type="button"
             className="connections-explorer__icon-button"
@@ -1152,6 +1320,23 @@ function ObjectGroup({
                       </span>
                     ) : null}
                   </span>
+                  <div className="connections-explorer__row-actions">
+                    {objectHoverMenuItems(item.kind, menuOptions).map((action) => (
+                      <ExplorerRowAction
+                        key={action.id}
+                        item={action}
+                        icon={objectHoverIcon(action.id)}
+                        onClick={() =>
+                          onCommand(action, {
+                            profileId,
+                            schemaName,
+                            object: item,
+                            catalogName: databaseName,
+                          } satisfies ExplorerObjectRef)
+                        }
+                      />
+                    ))}
+                  </div>
                 </div>
               );
             })

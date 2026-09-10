@@ -4,6 +4,20 @@ import type { CreateTableTarget } from "./createTableSql";
 
 export type CreateRoutineKind = "procedure" | "function";
 
+/** Dialect-valid initial text for the routine draft editor. */
+export function defaultRoutineBody(
+  driverId: ConnectionDriverId,
+  kind: CreateRoutineKind,
+): string {
+  if (kind === "function") {
+    return "BEGIN\n  RETURN 0;\nEND;";
+  }
+  if (driverId === "sqlserver") {
+    return "BEGIN\n  SET NOCOUNT ON;\nEND;";
+  }
+  return "BEGIN\n  NULL;\nEND;";
+}
+
 /** SQLite has application-defined functions, not SQL DDL for stored routines. */
 export function supportsRoutineCreation(driverId: ConnectionDriverId): boolean {
   return driverId !== "sqlite";

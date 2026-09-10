@@ -2,6 +2,7 @@ import { ConfigurationService } from "@silk-studio/workbench/platform/configurat
 import { ConnectionService } from "./connectionService";
 import type { ExplorerObjectRef } from "./explorerObjectActions";
 import { ConnectionTreeService } from "./connectionTreeService";
+import { ActiveDatabaseService } from "./activeDatabaseService";
 import { ExplorerObjectMutationDialogService } from "./explorerObjectMutationDialogService";
 import {
   buildDropObjectSql,
@@ -47,7 +48,7 @@ export function openRenameObjectDialog(ref: ExplorerObjectRef): void {
   assertMutationsAllowed();
   const driverId = resolveDriverId(ref);
   if (!supportsRenameObject(ref.object.kind, driverId)) {
-    throw new Error("Rename is only supported on Oracle and PostgreSQL (tables/views) in v1.");
+    throw new Error("Rename is supported for Oracle, PostgreSQL tables/views, and SQL Server tables.");
   }
   ExplorerObjectMutationDialogService.open({ mode: "rename", ref, driverId });
 }
@@ -84,6 +85,11 @@ export async function executeExplorerMutation(
       : buildRenameObjectSql(ctx, newName ?? "");
 
   assertReadOnlyQueryAllowed(sql, ConfigurationService.getValue("database.readOnly"));
+  // SQL Server's sys.sp_rename may rename objects in the current database only. Explorer can
+  // list other catalogs under the same connection, so make the clicked catalog current first.
+  if (mode === "rename" && driverId === "sqlserver" && ref.catalogName?.trim()) {
+    await ActiveDatabaseService.useDatabase(ref.profileId, ref.catalogName);
+  }
   await QueryExecutionService.executeWriteStatement(sql, {
     connectionId: ref.profileId,
   });

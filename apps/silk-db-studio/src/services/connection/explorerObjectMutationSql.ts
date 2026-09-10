@@ -83,7 +83,7 @@ export function supportsTableStructureEdit(
   return kind === "table" && TABLE_STRUCTURE_EDIT_DRIVERS.has(driverId);
 }
 
-/** v1 rename: PostgreSQL (table/view) and Oracle (all explorer kinds). */
+/** Native rename support intentionally stays limited to object kinds with verified SQL. */
 export function supportsRenameObject(
   kind: MetadataObjectKind,
   driverId: ConnectionDriverId,
@@ -96,6 +96,9 @@ export function supportsRenameObject(
   }
   if (driverId === "postgresql") {
     return kind === "table" || kind === "view";
+  }
+  if (driverId === "sqlserver") {
+    return kind === "table";
   }
   return false;
 }
@@ -164,6 +167,17 @@ export function buildRenameObjectSql(
           "PostgreSQL rename is only supported for tables and views in v1.",
         );
     }
+  }
+
+  if (ctx.driverId === "sqlserver") {
+    if (ctx.kind !== "table") {
+      throw new Error(
+        "SQL Server rename is only supported for tables.",
+      );
+    }
+    // sp_rename only permits objects in the current database. The mutation service switches
+    // the JDBC session to ref.catalogName before this statement when necessary.
+    return `EXEC sys.sp_rename @objname = N'${schema}.${oldName}', @newname = N'${trimmed}', @objtype = N'OBJECT'`;
   }
 
   throw new Error("Rename is not supported for this database driver.");
