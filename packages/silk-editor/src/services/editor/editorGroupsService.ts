@@ -65,10 +65,19 @@ class EditorGroupsServiceImpl {
     const unsubscribeAnyGroup = instance.onDidChange(() => {
       this.fireAnyGroupDidChange();
     });
+    // A dirty tab is removed only after the user confirms its close prompt. The explicit
+    // closeTab wrapper has already returned by then, so it cannot observe the group becoming
+    // empty. Watch every mutation as well, which also covers any other deferred tab removal.
+    const unsubscribeEmptyGroup = instance.onDidChange(() => {
+      if (!this.isRebuildingGroups && this.groups.get(id) === instance) {
+        this.collapseIfEmpty(id, instance);
+      }
+    });
     this.groupUnsubs.set(id, () => {
       unsubscribeAggregate();
       unsubscribeHostSync();
       unsubscribeAnyGroup();
+      unsubscribeEmptyGroup();
     });
     for (const listener of this.addListeners) {
       try {

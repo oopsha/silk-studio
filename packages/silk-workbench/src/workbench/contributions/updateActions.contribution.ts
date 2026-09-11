@@ -10,7 +10,7 @@ CommandsRegistry.registerCommand("update.check", () => {
 // updates — the user shouldn't have to remember to open Manage → Check for Updates. Silent
 // when already up to date; only interrupts with a prompt when a newer build actually exists.
 const AUTO_CHECK_INITIAL_DELAY_MS = 10_000;
-const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const AUTO_CHECK_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 if (isTauri()) {
   setTimeout(() => {
