@@ -3,7 +3,12 @@ import { Editor } from "@monaco-editor/react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
+import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
+import {
+  defineWorkbenchMonacoThemes,
+  monacoThemeForColorTheme,
+} from "@silk-studio/editor/themes/dark-monaco.ts";
 import { ConnectionService } from "../../services/connection/connectionService";
 import { ConnectionTreeService } from "../../services/connection/connectionTreeService";
 import { QueryExecutionService } from "../../services/query/queryExecutionService";
@@ -14,6 +19,7 @@ import { monacoLanguageIdForDriver } from "../../services/sql/sqlDialect";
 
 function CreateViewDraftView() {
   const activeTab = useActiveEditor();
+  const configuration = useConfiguration();
   const id = parseCreateViewDraftUri(activeTab?.uri);
   const draft = id ? getCreateViewDraft(id) : undefined;
   const [revision, setRevision] = useState(0);
@@ -35,6 +41,6 @@ function CreateViewDraftView() {
     } catch (error) { AppNotificationService.show(error instanceof Error ? error.message : "뷰 생성에 실패했습니다.", "error"); }
     finally { setSaving(false); }
   };
-  return <div className="object-editor-properties-page"><div className="object-editor-header"><div className="object-editor-header__row"><label className="object-editor-header__field object-editor-header__field--name"><span className="object-editor-header__label">이름</span><input className="object-editor-header__input" value={draft.viewName} onChange={(e) => update({ viewName: e.target.value })} /></label><div className="object-editor-header__field object-editor-header__field--type"><span className="object-editor-header__label">타입</span><span className="object-editor-header__box">뷰</span></div><div className="object-editor-header__field object-editor-header__field--schema"><span className="object-editor-header__label">스키마</span><span className="object-editor-header__box">{draft.schemaName}</span></div></div><div className="object-editor-header__actions"><button type="button" className="object-editor-header__button" onClick={() => EditorService.closeTab(activeTab.id)}><Codicon name="close" />취소</button><button type="button" className="object-editor-header__button object-editor-header__button--primary" disabled={saving} onClick={() => void save()}><Codicon name="save" />{saving ? "생성 중…" : "저장"}</button></div></div><div className="view-ddl-editor"><div className="view-ddl-editor__banner">SELECT 정의</div><div className="view-ddl-editor__body"><Editor height="100%" language={monacoLanguageIdForDriver(profile.driverId)} value={draft.definition} onChange={(value) => update({ definition: value ?? "" })} options={{ automaticLayout: true, minimap: { enabled: false } }} /></div></div></div>;
+  return <div className="object-editor-properties-page"><div className="object-editor-header"><div className="object-editor-header__row"><label className="object-editor-header__field object-editor-header__field--name"><span className="object-editor-header__label">이름</span><input className="object-editor-header__input" value={draft.viewName} onChange={(e) => update({ viewName: e.target.value })} /></label><div className="object-editor-header__field object-editor-header__field--type"><span className="object-editor-header__label">타입</span><span className="object-editor-header__box">뷰</span></div><div className="object-editor-header__field object-editor-header__field--schema"><span className="object-editor-header__label">스키마</span><span className="object-editor-header__box">{draft.schemaName}</span></div></div><div className="object-editor-header__actions"><button type="button" className="object-editor-header__button" onClick={() => EditorService.closeTab(activeTab.id)}><Codicon name="close" />취소</button><button type="button" className="object-editor-header__button object-editor-header__button--primary" disabled={saving} onClick={() => void save()}><Codicon name="save" />{saving ? "생성 중…" : "저장"}</button></div></div><div className="view-ddl-editor"><div className="view-ddl-editor__banner">SELECT 정의</div><div className="view-ddl-editor__body"><Editor height="100%" language={monacoLanguageIdForDriver(profile.driverId)} value={draft.definition} theme={monacoThemeForColorTheme(configuration["workbench.colorTheme"])} beforeMount={defineWorkbenchMonacoThemes} onChange={(value) => update({ definition: value ?? "" })} options={{ automaticLayout: true, minimap: { enabled: false } }} /></div></div></div>;
 }
 export default CreateViewDraftView;
