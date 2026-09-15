@@ -1,7 +1,7 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { isTauri } from "@tauri-apps/api/core";
-import type { CellRange, Column, GridApi } from "ag-grid-community";
+import type { GridApi } from "ag-grid-community";
 import { ConnectionService } from "../connection/connectionService";
 import {
   clearColumnLayout,
@@ -34,6 +34,11 @@ type ActiveGrid = {
   columns: string[];
   nullDisplay: string;
   profileId: string | null;
+  cellSelection: {
+    columns: string[];
+    startRowIndex: number;
+    endRowIndex: number;
+  } | null;
 };
 
 type SnapshotListener = () => void;
@@ -67,7 +72,7 @@ class QueryResultGridServiceImpl {
     nullDisplay: string,
   ): void {
     const profileId = resolveLayoutProfileId();
-    this.active = { api, columns, nullDisplay, profileId };
+    this.active = { api, columns, nullDisplay, profileId, cellSelection: null };
     this.layoutDirty = false;
     this.restoreColumnLayout();
     this.refreshSnapshot();
@@ -237,6 +242,19 @@ class QueryResultGridServiceImpl {
     return true;
   }
 
+  setCellSelection(
+    columns: string[],
+    startRowIndex: number,
+    endRowIndex: number,
+  ): void {
+    if (!this.active) return;
+    this.active.cellSelection = {
+      columns,
+      startRowIndex,
+      endRowIndex,
+    };
+  }
+
   async exportCsv(): Promise<boolean> {
     const grid = this.active;
     if (!grid) return false;
@@ -324,20 +342,16 @@ class QueryResultGridServiceImpl {
       const cellMatrix = this.collectCellSelectionMatrix(grid);
       if (cellMatrix && cellMatrix.rows.length > 0) {
         return toTsv(cellMatrix.columns, cellMatrix.rows, grid.nullDisplay, {
-          // Single cell → raw value; multi-column ranges include a header row.
-          includeHeader: cellMatrix.columns.length > 1,
+          // Cell copy mirrors spreadsheet behavior: values only, never headers.
+          includeHeader: false,
         });
       }
-      // Fall back to selected rows, then focused row, then all visible.
-      const rowMatrix = this.collectSelectedRowsMatrix(grid);
-      if (rowMatrix && rowMatrix.rows.length > 0) {
-        return toTsv(rowMatrix.columns, rowMatrix.rows, grid.nullDisplay);
-      }
-      const focused = this.collectFocusedRowMatrix(grid);
-      if (focused) {
-        return toTsv(focused.columns, focused.rows, grid.nullDisplay);
-      }
-      return this.buildTsv("all");
+      const focusedCell = this.collectFocusedCellMatrix(grid);
+      return focusedCell
+        ? toTsv(focusedCell.columns, focusedCell.rows, grid.nullDisplay, {
+            includeHeader: false,
+          })
+        : null;
     }
 
     if (mode === "rows") {
@@ -397,33 +411,44 @@ class QueryResultGridServiceImpl {
     };
   }
 
+  /** Return exactly the focused cell when no drag/range selection exists. */
+  private collectFocusedCellMatrix(grid: ActiveGrid): {
+    columns: string[];
+    rows: Array<Array<string | null>>;
+  } | null {
+    const focused = grid.api.getFocusedCell();
+    if (!focused) return null;
+
+    const field = focused.column.getColDef().field;
+    if (typeof field !== "string" || field.length === 0) return null;
+
+    const node = grid.api.getDisplayedRowAtIndex(focused.rowIndex);
+    if (!node?.data) return null;
+
+    return {
+      columns: [field],
+      rows: [[node.data[field] ?? null]],
+    };
+  }
+
   private collectCellSelectionMatrix(grid: ActiveGrid): {
     columns: string[];
     rows: Array<Array<string | null>>;
   } | null {
-    const ranges = grid.api.getCellRanges();
-    if (!ranges || ranges.length === 0) return null;
-
-    // Use the last (most recent) range — typical Excel-like behavior.
-    const range = ranges[ranges.length - 1];
-    const rangeColumns = columnsFromRange(range);
-    const fields = rangeColumns
-      .map(columnField)
-      .filter((field): field is string => Boolean(field));
-    if (fields.length === 0) return null;
-
-    const rowIndexes = rowIndexesFromRange(range);
-    if (rowIndexes.length === 0) return null;
+    const selection = grid.cellSelection;
+    if (!selection || selection.columns.length === 0) return null;
+    const from = Math.min(selection.startRowIndex, selection.endRowIndex);
+    const to = Math.max(selection.startRowIndex, selection.endRowIndex);
 
     const rows: Array<Array<string | null>> = [];
-    for (const rowIndex of rowIndexes) {
+    for (let rowIndex = from; rowIndex <= to; rowIndex += 1) {
       const node = grid.api.getDisplayedRowAtIndex(rowIndex);
       if (!node?.data) continue;
-      rows.push(fields.map((field) => node.data?.[field] ?? null));
+      rows.push(selection.columns.map((field) => node.data?.[field] ?? null));
     }
 
     if (rows.length === 0) return null;
-    return { columns: fields, rows };
+    return { columns: selection.columns, rows };
   }
 
   private fire(): void {
@@ -470,28 +495,6 @@ function visibleColumnFields(
   return displayed
     .map((column) => column.getColDef().field)
     .filter((field): field is string => typeof field === "string" && field.length > 0);
-}
-
-function columnsFromRange(range: CellRange): Column[] {
-  return range.columns ?? [];
-}
-
-function columnField(column: Column): string | undefined {
-  const field = column.getColDef().field;
-  return typeof field === "string" ? field : undefined;
-}
-
-function rowIndexesFromRange(range: CellRange): number[] {
-  const start = range.startRow?.rowIndex;
-  const end = range.endRow?.rowIndex;
-  if (start == null || end == null) return [];
-  const from = Math.min(start, end);
-  const to = Math.max(start, end);
-  const indexes: number[] = [];
-  for (let index = from; index <= to; index += 1) {
-    indexes.push(index);
-  }
-  return indexes;
 }
 
 function formatTimestamp(date: Date): string {

@@ -3,6 +3,10 @@ import {
   AllCommunityModule,
   ModuleRegistry,
   themeQuartz,
+  type CellContextMenuEvent,
+  type CellMouseDownEvent,
+  type CellMouseOverEvent,
+  type CellClassParams,
   type CellValueChangedEvent,
   type ColDef,
   type ColumnState,
@@ -11,6 +15,7 @@ import {
   type GridReadyEvent,
   type IDatasource,
   type IGetRowsParams,
+  type NavigateToNextCellParams,
   type ValueFormatterParams,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
@@ -65,6 +70,13 @@ type GridContextMenuState =
   | { kind: "filter"; x: number; y: number; columnId: string };
 
 type FilterInput = HTMLInputElement | HTMLTextAreaElement;
+
+type GridCellSelection = {
+  anchorRowIndex: number;
+  focusRowIndex: number;
+  anchorColumnIndex: number;
+  focusColumnIndex: number;
+};
 
 /**
  * Filter/sort survive a remount of the *same* result tab (e.g. the Object
@@ -154,6 +166,8 @@ function QueryResultGrid({
   // live connectionId). Filtering/sorting are not yet wired into paged fetches (5-D v2 stages 3-4).
   const useInfiniteMode = truncated && !!connectionId?.trim();
   const apiRef = useRef<GridApi<QueryResultRow> | null>(null);
+  const cellSelectionRef = useRef<GridCellSelection | null>(null);
+  const draggingCellSelectionRef = useRef(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const actionTimerRef = useRef<number | null>(null);
   const [saveBlockedReason, setSaveBlockedReason] = useState<string | null>(null);
@@ -163,6 +177,14 @@ function QueryResultGrid({
   const [openingPreview, setOpeningPreview] = useState(false);
   const [contextMenu, setContextMenu] = useState<GridContextMenuState | null>(null);
   const filterContextInputRef = useRef<FilterInput | null>(null);
+
+  useEffect(() => {
+    const stopCellSelectionDrag = () => {
+      draggingCellSelectionRef.current = false;
+    };
+    window.addEventListener("mouseup", stopCellSelectionDrag);
+    return () => window.removeEventListener("mouseup", stopCellSelectionDrag);
+  }, []);
 
   const dirtyCount = useSyncExternalStore(
     (onStoreChange) => QueryResultDirtyService.onDidChange(onStoreChange),
@@ -319,6 +341,38 @@ function QueryResultGrid({
         minWidth: 80,
         maxWidth: 480,
         valueFormatter: formatCellValue,
+        cellClassRules: {
+          "query-result-grid__cell--range-selected": (
+            params: CellClassParams<QueryResultRow>,
+          ) => {
+            const selection = cellSelectionRef.current;
+            const rowIndex = params.node.rowIndex;
+            const columnIndex = result.columns.indexOf(column);
+            if (!selection || rowIndex == null || columnIndex < 0) return false;
+            const firstRow = Math.min(
+              selection.anchorRowIndex,
+              selection.focusRowIndex,
+            );
+            const lastRow = Math.max(
+              selection.anchorRowIndex,
+              selection.focusRowIndex,
+            );
+            const firstColumn = Math.min(
+              selection.anchorColumnIndex,
+              selection.focusColumnIndex,
+            );
+            const lastColumn = Math.max(
+              selection.anchorColumnIndex,
+              selection.focusColumnIndex,
+            );
+            return (
+              rowIndex >= firstRow &&
+              rowIndex <= lastRow &&
+              columnIndex >= firstColumn &&
+              columnIndex <= lastColumn
+            );
+          },
+        },
       })),
     ],
     [
@@ -674,6 +728,144 @@ function QueryResultGrid({
       api.ensureIndexVisible(addIndex);
       api.setFocusedCell(addIndex, firstColumn);
     }
+  };
+
+  const applyCellSelection = (
+    anchorRowIndex: number,
+    anchorColumnIndex: number,
+    focusRowIndex: number,
+    focusColumnIndex: number,
+  ) => {
+    const selection = {
+      anchorRowIndex,
+      anchorColumnIndex,
+      focusRowIndex,
+      focusColumnIndex,
+    };
+    cellSelectionRef.current = selection;
+
+    const firstColumn = Math.min(anchorColumnIndex, focusColumnIndex);
+    const lastColumn = Math.max(anchorColumnIndex, focusColumnIndex);
+    QueryResultGridService.setCellSelection(
+      result.columns.slice(firstColumn, lastColumn + 1),
+      anchorRowIndex,
+      focusRowIndex,
+    );
+    apiRef.current?.refreshCells({ force: true });
+  };
+
+  const handleCellMouseDown = (event: CellMouseDownEvent<QueryResultRow>) => {
+    const mouseEvent = event.event;
+    if (
+      !(mouseEvent instanceof MouseEvent) ||
+      mouseEvent.button !== 0 ||
+      event.rowIndex == null
+    ) {
+      return;
+    }
+
+    // Row selection is intentionally driven only by real cells. Keeping AG Grid's
+    // row-wide click selection disabled prevents the empty space after the last
+    // column from selecting a row.
+    event.api.setFocusedCell(event.rowIndex, event.column);
+    if (mouseEvent.ctrlKey || mouseEvent.metaKey) {
+      event.node.setSelected(!event.node.isSelected(), false);
+    } else {
+      event.node.setSelected(true, true);
+    }
+
+    const field = event.column.getColDef().field;
+    if (typeof field !== "string") return;
+    const columnIndex = result.columns.indexOf(field);
+    if (columnIndex < 0) return;
+
+    draggingCellSelectionRef.current = true;
+    applyCellSelection(
+      event.rowIndex,
+      columnIndex,
+      event.rowIndex,
+      columnIndex,
+    );
+  };
+
+  const handleCellMouseOver = (event: CellMouseOverEvent<QueryResultRow>) => {
+    const selection = cellSelectionRef.current;
+    const field = event.column.getColDef().field;
+    if (
+      !draggingCellSelectionRef.current ||
+      !selection ||
+      event.rowIndex == null ||
+      typeof field !== "string"
+    ) {
+      return;
+    }
+    const columnIndex = result.columns.indexOf(field);
+    if (columnIndex < 0) return;
+
+    applyCellSelection(
+      selection.anchorRowIndex,
+      selection.anchorColumnIndex,
+      event.rowIndex,
+      columnIndex,
+    );
+  };
+
+  const handleCellContextMenu = (
+    event: CellContextMenuEvent<QueryResultRow>,
+  ) => {
+    if (event.rowIndex == null) return;
+
+    event.api.setFocusedCell(event.rowIndex, event.column);
+    event.node.setSelected(true, true);
+
+    const field = event.column.getColDef().field;
+    if (typeof field !== "string") return;
+    const columnIndex = result.columns.indexOf(field);
+    if (columnIndex < 0) return;
+
+    const selection = cellSelectionRef.current;
+    const isInsideSelection = selection
+      ? event.rowIndex >=
+          Math.min(selection.anchorRowIndex, selection.focusRowIndex) &&
+        event.rowIndex <=
+          Math.max(selection.anchorRowIndex, selection.focusRowIndex) &&
+        columnIndex >=
+          Math.min(selection.anchorColumnIndex, selection.focusColumnIndex) &&
+        columnIndex <=
+          Math.max(selection.anchorColumnIndex, selection.focusColumnIndex)
+      : false;
+    if (!isInsideSelection) {
+      applyCellSelection(
+        event.rowIndex,
+        columnIndex,
+        event.rowIndex,
+        columnIndex,
+      );
+    }
+  };
+
+  /** Keep the row highlight and cell selection in sync with keyboard navigation. */
+  const navigateToNextCell = (
+    params: NavigateToNextCellParams<QueryResultRow>,
+  ) => {
+    const next = params.nextCellPosition;
+    if (next && next.rowPinned == null) {
+      const field = next.column.getColDef().field;
+      const columnIndex =
+        typeof field === "string" ? result.columns.indexOf(field) : -1;
+      if (columnIndex >= 0) {
+        applyCellSelection(
+          next.rowIndex,
+          columnIndex,
+          next.rowIndex,
+          columnIndex,
+        );
+      }
+      if (params.key === "ArrowUp" || params.key === "ArrowDown") {
+        params.api.getDisplayedRowAtIndex(next.rowIndex)?.setSelected(true, true);
+      }
+    }
+    return next;
   };
 
   /** Discards every pending change for this tab without saving — irreversible, so confirm first. */
@@ -1279,6 +1471,24 @@ function QueryResultGrid({
       </div>
       <div
         className="query-result-grid__body"
+        onKeyDownCapture={(event) => {
+          const target = event.target;
+          const isEditableTarget =
+            target instanceof HTMLInputElement ||
+            target instanceof HTMLTextAreaElement ||
+            (target instanceof HTMLElement && target.isContentEditable);
+          if (
+            !isEditableTarget &&
+            (event.ctrlKey || event.metaKey) &&
+            !event.altKey &&
+            !event.shiftKey &&
+            event.key.toLowerCase() === "c"
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            void handleCopySelection();
+          }
+        }}
         onContextMenu={(event) => {
           const target = event.target instanceof Element ? event.target : null;
           const filter = target?.closest(".ag-floating-filter");
@@ -1366,15 +1576,18 @@ function QueryResultGrid({
               );
             },
           }}
-          cellSelection
           rowSelection={{
             mode: "multiRow",
             checkboxes: false,
             headerCheckbox: false,
-            enableClickSelection: true,
+            enableClickSelection: false,
           }}
+          navigateToNextCell={navigateToNextCell}
           onGridReady={handleGridReady}
           onFirstDataRendered={handleFirstDataRendered}
+          onCellContextMenu={handleCellContextMenu}
+          onCellMouseDown={handleCellMouseDown}
+          onCellMouseOver={handleCellMouseOver}
           onCellValueChanged={handleCellValueChanged}
           onFilterChanged={() => {
             discardStaleEditsOnReshuffle();

@@ -114,6 +114,18 @@
   border-radius: 0;
 }
 
+/* Community grid builds do not include AG Grid's enterprise cell-range module.
+   The result grid therefore paints its own drag-selected cell range. */
+.query-result-grid .ag-cell.query-result-grid__cell--range-selected {
+  background-color: rgba(57, 148, 188, 0.22) !important;
+}
+
+:root[data-color-theme="light"]
+  .query-result-grid
+  .ag-cell.query-result-grid__cell--range-selected {
+  background-color: rgba(0, 105, 204, 0.15) !important;
+}
+
 /* Column title row */
 .query-result-grid .ag-header {
   background-color: transparent;
