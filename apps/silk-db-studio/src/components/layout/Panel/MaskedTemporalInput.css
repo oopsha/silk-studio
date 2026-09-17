@@ -1,0 +1,26 @@
+.masked-temporal-input {
+  width: min(320px, 100%);
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-editor-foreground);
+  background: var(--color-input-background);
+  font-family: var(--font-family-monospace, Consolas, monospace);
+  font-size: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.masked-temporal-input:focus {
+  outline: 1px solid var(--color-focus-border, #007fd4);
+  outline-offset: -1px;
+}
+
+/* Inline AG Grid editor: it must stay inside the active cell, unlike the dialog input. */
+.masked-temporal-input.query-result-grid__temporal-cell-editor {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  border-radius: 0;
+}

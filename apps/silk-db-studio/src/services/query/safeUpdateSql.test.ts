@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildInsertStatement, buildUpdateStatement } from "./safeUpdateSql";
+import { CURRENT_TIMESTAMP_VALUE } from "./queryResultTemporalValue";
 
 describe("buildUpdateStatement", () => {
   it("prefixes string literals with N for SQL Server (Unicode literal)", () => {
@@ -51,6 +52,70 @@ describe("buildUpdateStatement", () => {
     expect(sql).toBe(
       'UPDATE "public"."orders" SET "id" = \'2\' WHERE "id" = \'1\'',
     );
+  });
+
+  it("uses an explicit Oracle timestamp conversion instead of the session date format", () => {
+    const sql = buildUpdateStatement({
+      schema: "STUDY",
+      table: "HANDOVER",
+      driverId: "oracle",
+      primaryKeys: ["HANDOVER_ID"],
+      originalRow: { HANDOVER_ID: "2" },
+      columnTypes: { WORK_DATE: { jdbcType: 93, typeName: "TIMESTAMP" } },
+      changes: [{ column: "WORK_DATE", originalValue: "2026-09-16 00:00:00.0", currentValue: "2026-09-17 01:01:01" }],
+    });
+
+    expect(sql).toBe(
+      'UPDATE "STUDY"."HANDOVER" SET "WORK_DATE" = TO_TIMESTAMP(\'2026-09-17 01:01:01\', \'YYYY-MM-DD HH24:MI:SS\') WHERE "HANDOVER_ID" = \'2\'',
+    );
+  });
+
+  it("uses explicit temporal conversions for SQL Server and PostgreSQL", () => {
+    const common = {
+      schema: "public",
+      table: "events",
+      primaryKeys: ["id"],
+      originalRow: { id: "1" },
+      columnTypes: { OCCURRED_AT: { jdbcType: 93, typeName: "TIMESTAMP" } },
+      changes: [{ column: "OCCURRED_AT", originalValue: "2026-09-16 00:00:00", currentValue: "2026-09-17 01:01:01" }],
+    };
+
+    expect(buildUpdateStatement({ ...common, driverId: "sqlserver" })).toContain(
+      "CONVERT(datetime2, N'2026-09-17 01:01:01', 120)",
+    );
+    expect(buildUpdateStatement({ ...common, driverId: "postgresql" })).toContain(
+      "'2026-09-17 01:01:01'::timestamp",
+    );
+  });
+
+  it("uses each database's current-time expression for the Now cell value", () => {
+    const input = {
+      schema: "STUDY",
+      table: "HANDOVER",
+      primaryKeys: ["HANDOVER_ID"],
+      originalRow: { HANDOVER_ID: "2" },
+      columnTypes: { WORK_DATE: { jdbcType: 93, typeName: "TIMESTAMP" } },
+      changes: [{ column: "WORK_DATE", originalValue: "2026-09-16 00:00:00", currentValue: CURRENT_TIMESTAMP_VALUE }],
+    };
+
+    expect(buildUpdateStatement({ ...input, driverId: "oracle" })).toContain('"WORK_DATE" = SYSTIMESTAMP');
+    expect(buildUpdateStatement({ ...input, driverId: "sqlserver" })).toContain("[WORK_DATE] = SYSDATETIME()");
+    expect(buildUpdateStatement({ ...input, driverId: "postgresql" })).toContain('"WORK_DATE" = CURRENT_TIMESTAMP');
+  });
+
+  it("keeps an explicit empty value out of Oracle's timestamp conversion", () => {
+    const sql = buildUpdateStatement({
+      schema: "STUDY",
+      table: "HANDOVER",
+      driverId: "oracle",
+      primaryKeys: ["HANDOVER_ID"],
+      originalRow: { HANDOVER_ID: "2" },
+      columnTypes: { WORK_DATE: { jdbcType: 93, typeName: "TIMESTAMP" } },
+      changes: [{ column: "WORK_DATE", originalValue: "2026-09-16 00:00:00", currentValue: "" }],
+    });
+
+    expect(sql).toContain('"WORK_DATE" = \'\'');
+    expect(sql).not.toContain("TO_TIMESTAMP");
   });
 });
 

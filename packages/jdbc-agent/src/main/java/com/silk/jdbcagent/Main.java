@@ -11,6 +11,8 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.sql.Connection;
 import java.sql.Clob;
 import java.sql.DriverManager;
@@ -39,6 +41,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public final class Main {
+  private static final DateTimeFormatter RESULT_TIMESTAMP_FORMAT =
+      DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+  private static final DateTimeFormatter RESULT_TIME_FORMAT =
+      DateTimeFormatter.ofPattern("HH:mm:ss");
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   /**
@@ -1626,6 +1632,9 @@ public final class Main {
         if (value == null) {
           row.addNull();
           rowLobTruncated.add(false);
+        } else if (isTemporalJdbcType(metadata.getColumnType(i))) {
+          row.add(formatTemporalValue(rs, i, metadata.getColumnType(i)));
+          rowLobTruncated.add(false);
         } else if (value instanceof Clob clob) {
           LobText text = readClob(clob, readFullLobs ? Integer.MAX_VALUE : LOB_PREVIEW_LENGTH);
           // The ellipsis makes the grid preview's incomplete state visible. The editor re-reads
@@ -1660,6 +1669,31 @@ public final class Main {
   }
 
   private record LobText(String value, boolean truncated) {}
+
+  private static boolean isTemporalJdbcType(int jdbcType) {
+    return jdbcType == Types.DATE || jdbcType == Types.TIME || jdbcType == Types.TIMESTAMP;
+  }
+
+  /**
+   * JDBC drivers format temporal values differently (and Oracle commonly appends {@code .0}).
+   * Send one ISO-like representation so normal cell editing, the value editor and grid display
+   * all start from the same value. Fractions are retained only when meaningful.
+   */
+  private static String formatTemporalValue(ResultSet rs, int columnIndex, int jdbcType)
+      throws SQLException {
+    if (jdbcType == Types.TIME) {
+      return RESULT_TIME_FORMAT.format(rs.getTime(columnIndex).toLocalTime());
+    }
+    java.sql.Timestamp timestamp = rs.getTimestamp(columnIndex);
+    if (jdbcType == Types.DATE && timestamp.toLocalDateTime().toLocalTime().equals(LocalTime.MIDNIGHT)) {
+      return timestamp.toLocalDateTime().toLocalDate().toString();
+    }
+    String text = RESULT_TIMESTAMP_FORMAT.format(timestamp.toLocalDateTime());
+    int nanos = timestamp.getNanos();
+    if (nanos == 0) return text;
+    String fraction = String.format("%09d", nanos).replaceFirst("0+$", "");
+    return text + "." + fraction;
+  }
 
   private static LobText readClob(Clob clob, int maxLength) throws SQLException {
     StringBuilder result = new StringBuilder(Math.min(maxLength, 8192));

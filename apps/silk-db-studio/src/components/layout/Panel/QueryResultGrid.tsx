@@ -4,6 +4,7 @@ import {
   ModuleRegistry,
   themeQuartz,
   type CellContextMenuEvent,
+  type CellEditorSelectorFunc,
   type CellDoubleClickedEvent,
   type CellMouseDownEvent,
   type CellMouseOverEvent,
@@ -16,6 +17,7 @@ import {
   type GridReadyEvent,
   type NavigateToNextCellParams,
   type ValueFormatterParams,
+  type ValueParserParams,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
@@ -50,6 +52,11 @@ import {
 } from "../../../services/query/queryResultUpdateService";
 import QueryResultUpdateDialog from "./QueryResultUpdateDialog";
 import QueryResultValueEditorDialog from "./QueryResultValueEditorDialog";
+import MaskedTemporalCellEditor from "./MaskedTemporalCellEditor";
+import {
+  CURRENT_TIMESTAMP_VALUE,
+  isCurrentTimestampValue,
+} from "../../../services/query/queryResultTemporalValue";
 import "./QueryResultGrid.css";
 import "./QueryResultUpdateDialog.css";
 
@@ -80,9 +87,13 @@ type ValueEditorTarget = {
   columnIndex: number;
   value: string | null;
   valueIsTruncated: boolean;
+  editorKind: "text" | "date" | "time" | "datetime";
 };
 
 const LARGE_TEXT_JDBC_TYPES = new Set([-1, -16, 2005, 2011]);
+const DATE_JDBC_TYPE = 91;
+const TIME_JDBC_TYPE = 92;
+const TIMESTAMP_JDBC_TYPES = new Set([93, 2013, 2014]);
 
 /**
  * Filter/sort survive a remount of the *same* result tab (e.g. the Object
@@ -226,17 +237,19 @@ function QueryResultGrid({
   );
 
   const normalizeEditedValue = useCallback(
-    (value: unknown): string | null => {
+    (value: unknown, columnIndex?: number): string | null => {
       if (value === null || value === undefined) {
         return null;
       }
       const text = String(value);
-      if (text === nullDisplay || text.trim() === "") {
+      if (text === nullDisplay) {
         return null;
       }
-      return text;
+      return columnIndex == null
+        ? text
+        : normalizeTemporalValue(text, result.columnTypes?.[columnIndex]);
     },
-    [nullDisplay],
+    [nullDisplay, result.columnTypes],
   );
 
   const isLargeTextColumn = useCallback((columnIndex: number) => {
@@ -246,8 +259,24 @@ function QueryResultGrid({
   }, [result.columnTypes]);
 
   const supportsValueEditor = useCallback((columnIndex: number, value: string | null) => {
+    return isLargeTextColumn(columnIndex) || temporalEditorKind(result.columnTypes?.[columnIndex], value) != null || Boolean(value?.includes("\n") || value?.includes("\r"));
+  }, [isLargeTextColumn, result.columnTypes]);
+
+  const getValueEditorKind = useCallback((columnIndex: number, value: string | null) => {
+    return temporalEditorKind(result.columnTypes?.[columnIndex], value) ?? "text";
+  }, [result.columnTypes]);
+
+  const shouldOpenTextValueEditorOnEnter = useCallback(() => {
+    const api = apiRef.current;
+    const focused = api?.getFocusedCell();
+    const field = focused?.column.getColDef().field;
+    if (!api || !focused || typeof field !== "string") return false;
+    const columnIndex = result.columns.indexOf(field);
+    const row = api.getDisplayedRowAtIndex(focused.rowIndex)?.data;
+    if (!row || columnIndex < 0) return false;
+    const value = row[field] ?? null;
     return isLargeTextColumn(columnIndex) || Boolean(value?.includes("\n") || value?.includes("\r"));
-  }, [isLargeTextColumn]);
+  }, [isLargeTextColumn, result.columns]);
 
   const openValueEditor = useCallback(() => {
     const api = apiRef.current;
@@ -265,8 +294,9 @@ function QueryResultGrid({
       columnIndex,
       value: row[field] ?? null,
       valueIsTruncated: result.lobTruncated?.[sourceRowIndex]?.[columnIndex] === true,
+      editorKind: getValueEditorKind(columnIndex, row[field] ?? null),
     });
-  }, [result.columns, result.lobTruncated, supportsValueEditor]);
+  }, [getValueEditorKind, result.columns, result.lobTruncated, supportsValueEditor]);
 
   useEffect(() => {
     // No cleanup here: tab lifecycle (removeTab/removeTabs) is owned by
@@ -327,13 +357,19 @@ function QueryResultGrid({
 
   const formatCellValue = useMemo(
     () =>
-      (params: ValueFormatterParams<QueryResultRow>): string => {
+      (
+        params: ValueFormatterParams<QueryResultRow>,
+        columnType?: NonNullable<QueryResultPayload["columnTypes"]>[number],
+      ): string => {
         if (params.value === null || params.value === undefined) {
           return nullDisplay;
         }
-        return String(params.value).replace(/\r?\n/g, " ↵ ");
-      },
-    [nullDisplay],
+        if (isCurrentTimestampValue(String(params.value))) {
+          return t("app.query.currentTimeValue");
+        }
+        return normalizeTemporalValue(String(params.value), columnType).replace(/\r?\n/g, " ↵ ");
+    },
+    [nullDisplay, t],
   );
 
   const columnDefs = useMemo<ColDef<QueryResultRow>[]>(
@@ -382,7 +418,25 @@ function QueryResultGrid({
         unSortIcon: true,
         minWidth: 80,
         maxWidth: 480,
-        valueFormatter: formatCellValue,
+        cellEditorSelector: ((params) => {
+          const editorKind = temporalEditorKind(
+            result.columnTypes?.[result.columns.indexOf(column)],
+            params.value ?? null,
+          );
+          return editorKind
+            ? {
+                component: MaskedTemporalCellEditor,
+                params: { editorKind },
+              }
+            : undefined;
+        }) as CellEditorSelectorFunc<QueryResultRow>,
+        valueFormatter: (params: ValueFormatterParams<QueryResultRow>) =>
+          formatCellValue(params, result.columnTypes?.[result.columns.indexOf(column)]),
+        valueParser: (params: ValueParserParams<QueryResultRow>) =>
+          normalizeEditedValue(
+            params.newValue,
+            result.columns.indexOf(column),
+          ),
         cellClassRules: {
           "query-result-grid__cell--range-selected": (
             params: CellClassParams<QueryResultRow>,
@@ -420,7 +474,9 @@ function QueryResultGrid({
     [
       filterEnabled,
       formatCellValue,
+      normalizeEditedValue,
       result.columns,
+      result.columnTypes,
       tabId,
     ],
   );
@@ -633,7 +689,7 @@ function QueryResultGrid({
       tabId,
       rowIndex,
       field,
-      normalizeEditedValue(event.newValue),
+      normalizeEditedValue(event.newValue, result.columns.indexOf(field)),
     );
   };
 
@@ -746,6 +802,7 @@ function QueryResultGrid({
     if (firstColumn) {
       api.ensureIndexVisible(addIndex);
       api.setFocusedCell(addIndex, firstColumn);
+      applyCellSelection(addIndex, 0, addIndex, 0);
       api.startEditingCell({ rowIndex: addIndex, colKey: firstColumn });
     }
   };
@@ -776,6 +833,9 @@ function QueryResultGrid({
     if (firstColumn) {
       api.ensureIndexVisible(addIndex);
       api.setFocusedCell(addIndex, firstColumn);
+      // The custom cell-range paint is independent of AG Grid's row selection. Move it as
+      // well, otherwise the source cell remains painted after its duplicate is inserted.
+      applyCellSelection(addIndex, 0, addIndex, 0);
     }
   };
 
@@ -929,6 +989,7 @@ function QueryResultGrid({
       columnIndex,
       value: event.data[field] ?? null,
       valueIsTruncated: result.lobTruncated?.[rowIndex]?.[columnIndex] === true,
+      editorKind: getValueEditorKind(columnIndex, event.data[field] ?? null),
     });
   };
 
@@ -1027,6 +1088,16 @@ function QueryResultGrid({
     flashMessage(t("app.query.filtersCleared"));
   };
 
+  const focusedCellForMenu = apiRef.current?.getFocusedCell();
+  const focusedFieldForMenu = focusedCellForMenu?.column.getColDef().field;
+  const focusedColumnIndexForMenu = typeof focusedFieldForMenu === "string"
+    ? result.columns.indexOf(focusedFieldForMenu)
+    : -1;
+  const focusedRowForMenu = focusedCellForMenu
+    ? apiRef.current?.getDisplayedRowAtIndex(focusedCellForMenu.rowIndex)?.data
+    : undefined;
+  const hasFocusedDataCell = focusedRowForMenu != null && focusedColumnIndexForMenu >= 0;
+
   const gridContextMenuItems: ContextMenuItem[] = [
     {
       id: "editValue",
@@ -1040,7 +1111,18 @@ function QueryResultGrid({
         return columnIndex >= 0 && row != null && supportsValueEditor(columnIndex, row[field] ?? null);
       })(),
     },
-    { id: "copySelection", label: t("app.query.copySelection"), enabled: true },
+    { id: "setEmptyValue", label: t("app.query.setEmptyValue"), enabled: hasFocusedDataCell },
+    { id: "setNullValue", label: t("app.query.setNullValue"), enabled: hasFocusedDataCell },
+    ...(() => {
+      const focused = apiRef.current?.getFocusedCell();
+      const field = focused?.column.getColDef().field;
+      if (typeof field !== "string" || !focused) return [];
+      const columnIndex = result.columns.indexOf(field);
+      const row = apiRef.current?.getDisplayedRowAtIndex(focused.rowIndex)?.data;
+      if (!row || temporalEditorKind(result.columnTypes?.[columnIndex], row[field] ?? null) == null) return [];
+      return [{ id: "setCurrentTime", label: t("app.query.setCurrentTime"), enabled: true }];
+    })(),
+    { id: "copySelection", label: t("app.query.copySelection"), enabled: true, separator: hasFocusedDataCell },
     { id: "copyRows", label: t("app.query.copySelectedRows"), enabled: true },
     { id: "copyAll", label: t("app.query.copyAllFiltered"), enabled: true },
     {
@@ -1151,6 +1233,22 @@ function QueryResultGrid({
       case "editValue":
         openValueEditor();
         return;
+      case "setCurrentTime": {
+        const api = apiRef.current;
+        const focused = api?.getFocusedCell();
+        const field = focused?.column.getColDef().field;
+        const node = focused && typeof field === "string"
+          ? api?.getDisplayedRowAtIndex(focused.rowIndex)
+          : undefined;
+        node?.setDataValue(field!, CURRENT_TIMESTAMP_VALUE);
+        return;
+      }
+      case "setEmptyValue":
+        setFocusedGridCellValue("");
+        return;
+      case "setNullValue":
+        setFocusedGridCellValue(null);
+        return;
       case "copySelection":
         void handleCopySelection();
         return;
@@ -1169,6 +1267,14 @@ function QueryResultGrid({
       default:
         return;
     }
+  }
+
+  function setFocusedGridCellValue(value: string | null) {
+    const api = apiRef.current;
+    const focused = api?.getFocusedCell();
+    const field = focused?.column.getColDef().field;
+    if (!api || !focused || typeof field !== "string") return;
+    api.getDisplayedRowAtIndex(focused.rowIndex)?.setDataValue(field, value);
   }
 
   function handleHeaderContextMenuSelect(item: ContextMenuItem) {
@@ -1303,7 +1409,7 @@ function QueryResultGrid({
     setOpeningPreview(true);
     setPreviewError(null);
     try {
-      const nextPreview = await buildUpdatePreview(tabId, sql, result.columns, {
+      const nextPreview = await buildUpdatePreview(tabId, sql, result.columns, result.columnTypes, {
         relationKind,
         connectionId,
       });
@@ -1584,6 +1690,20 @@ function QueryResultGrid({
             (target instanceof HTMLElement && target.isContentEditable);
           if (
             !isEditableTarget &&
+            !event.shiftKey &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.altKey &&
+            event.key === "Enter" &&
+            shouldOpenTextValueEditorOnEnter()
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            openValueEditor();
+            return;
+          }
+          if (
+            !isEditableTarget &&
             event.shiftKey &&
             !event.ctrlKey &&
             !event.metaKey &&
@@ -1764,6 +1884,7 @@ function QueryResultGrid({
           rowIndex={valueEditorTarget.rowIndex}
           value={valueEditorTarget.value}
           valueIsTruncated={valueEditorTarget.valueIsTruncated}
+          editorKind={valueEditorTarget.editorKind}
           result={result}
           sql={executedSql ?? sql}
           binds={binds}
@@ -1771,13 +1892,55 @@ function QueryResultGrid({
           onCancel={() => setValueEditorTarget(null)}
           onSave={(value) => {
             const node = apiRef.current?.getRowNode(String(valueEditorTarget.rowIndex));
-            node?.setDataValue(valueEditorTarget.column, normalizeEditedValue(value));
+            node?.setDataValue(valueEditorTarget.column, normalizeEditedValue(value, valueEditorTarget.columnIndex));
             setValueEditorTarget(null);
           }}
         />
       ) : null}
     </div>
   );
+}
+
+function temporalEditorKind(
+  columnType: NonNullable<QueryResultPayload["columnTypes"]>[number] | undefined,
+  value: string | null,
+): "date" | "time" | "datetime" | null {
+  if (!columnType) return null;
+  const typeName = columnType.typeName.toUpperCase();
+  // Native date/time inputs have no lossless representation for an offset/zone. Keep those as
+  // ordinary text until a dedicated time-zone editor is added rather than silently dropping it.
+  if (columnType.jdbcType === 2013 || columnType.jdbcType === 2014 || /WITH\s+TIME\s+ZONE/.test(typeName)) {
+    return null;
+  }
+  const hasDate = /DATE|DATETIME|TIMESTAMP/.test(typeName) || columnType.jdbcType === DATE_JDBC_TYPE || TIMESTAMP_JDBC_TYPES.has(columnType.jdbcType);
+  const hasTime = /TIME|DATETIME|TIMESTAMP/.test(typeName) || columnType.jdbcType === TIME_JDBC_TYPE || TIMESTAMP_JDBC_TYPES.has(columnType.jdbcType);
+  if (hasDate && hasTime) return "datetime";
+  if (hasDate) return value && /\d{2}:\d{2}/.test(value) ? "datetime" : "date";
+  if (hasTime) return "time";
+  return null;
+}
+
+/** Converts native-input and ordinary Enter edits to the exact representation shown in the grid. */
+function normalizeTemporalValue(
+  value: string,
+  columnType: NonNullable<QueryResultPayload["columnTypes"]>[number] | undefined,
+): string {
+  // This is a semantic grid value, not ISO text. In particular, do not turn the `T` in the
+  // sentinel into a space before `safeUpdateSql` can translate it to the database's NOW syntax.
+  if (isCurrentTimestampValue(value)) return value;
+  const kind = temporalEditorKind(columnType, value);
+  if (!kind) return value;
+  const normalized = value.trim().replace("T", " ");
+  if (kind === "date") {
+    return normalized.match(/^\d{4}-\d{2}-\d{2}$/) ? normalized : value;
+  }
+  if (kind === "time") {
+    return normalized.match(/^\d{2}:\d{2}$/) ? `${normalized}:00` : normalized;
+  }
+  if (normalized.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)) {
+    return `${normalized}:00`;
+  }
+  return normalized;
 }
 
 function formatRowStatus(

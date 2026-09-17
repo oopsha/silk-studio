@@ -514,6 +514,11 @@ export type AgentResponse<TResult = unknown> = {
 
 export type QueryResultKind = "resultSet" | "update";
 
+export type QueryResultColumnType = {
+  jdbcType: number;
+  typeName: string;
+};
+
 export type QueryResultPayload = {
   kind: QueryResultKind;
   columns: string[];
@@ -522,7 +527,7 @@ export type QueryResultPayload = {
   updateCount: number | null;
   message: string;
   /** JDBC metadata aligned with `columns`. Optional for agents from before typed results. */
-  columnTypes?: Array<{ jdbcType: number; typeName: string }>;
+  columnTypes?: QueryResultColumnType[];
   /** True for a cell whose text was shortened for the grid preview. */
   lobTruncated?: boolean[][];
   /** True when the agent stopped at maxRows and more rows may exist. */

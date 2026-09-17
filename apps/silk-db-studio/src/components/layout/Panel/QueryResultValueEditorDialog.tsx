@@ -4,6 +4,15 @@ import { useBackdropDismiss } from "@silk-studio/ui/hooks/useBackdropDismiss.ts"
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { fetchQueryResultPage } from "../../../services/query/queryResultPaging";
 import type { QueryResultPayload } from "../../../services/query/queryResult";
+import {
+  CURRENT_TIMESTAMP_VALUE,
+  isCurrentTimestampValue,
+} from "../../../services/query/queryResultTemporalValue";
+import {
+  MaskedTemporalInput,
+  isCompleteTemporalValue,
+  type TemporalEditorKind,
+} from "./MaskedTemporalInput";
 import "./QueryResultValueEditorDialog.css";
 
 type QueryResultValueEditorDialogProps = {
@@ -12,6 +21,7 @@ type QueryResultValueEditorDialogProps = {
   rowIndex: number;
   value: string | null;
   valueIsTruncated: boolean;
+  editorKind: "text" | TemporalEditorKind;
   result: QueryResultPayload;
   sql: string;
   binds?: Array<string | null>;
@@ -26,6 +36,7 @@ function QueryResultValueEditorDialog({
   rowIndex,
   value,
   valueIsTruncated,
+  editorKind,
   result,
   sql,
   binds,
@@ -35,13 +46,17 @@ function QueryResultValueEditorDialog({
 }: QueryResultValueEditorDialogProps) {
   const { t } = useI18n();
   const [text, setText] = useState(value ?? "");
+  const [isNull, setIsNull] = useState(value === null);
   const [loading, setLoading] = useState(valueIsTruncated && Boolean(connectionId));
   const [loadError, setLoadError] = useState<string | null>(null);
-  const canSave = !loading && !(valueIsTruncated && (!connectionId || loadError));
+  const isCurrentTime = !isNull && isCurrentTimestampValue(text);
+  const isTemporalValueValid = isNull || editorKind === "text" || isCurrentTime || isCompleteTemporalValue(text, editorKind);
+  const canSave = !loading && isTemporalValueValid && !(valueIsTruncated && (!connectionId || loadError));
   const backdropDismiss = useBackdropDismiss(onCancel, !loading);
 
   useEffect(() => {
     setText(value ?? "");
+    setIsNull(value === null);
   }, [value]);
 
   useEffect(() => {
@@ -55,7 +70,9 @@ function QueryResultValueEditorDialog({
     })
       .then((payload) => {
         if (cancelled) return;
-        setText(payload.rows[0]?.[columnIndex] ?? "");
+        const loadedValue = payload.rows[0]?.[columnIndex] ?? null;
+        setText(loadedValue ?? "");
+        setIsNull(loadedValue === null);
       })
       .catch((error) => {
         if (!cancelled) {
@@ -72,7 +89,7 @@ function QueryResultValueEditorDialog({
 
   return (
     <div className="query-result-value-editor__backdrop" role="presentation" {...backdropDismiss}>
-      <div className="query-result-value-editor" role="dialog" aria-modal="true" aria-labelledby="query-result-value-editor-title">
+      <div className={`query-result-value-editor${editorKind === "text" ? "" : " query-result-value-editor--temporal"}`} role="dialog" aria-modal="true" aria-labelledby="query-result-value-editor-title">
         <header className="query-result-value-editor__header">
           <div>
             <h2 id="query-result-value-editor-title">{t("app.query.editValue")}</h2>
@@ -86,18 +103,40 @@ function QueryResultValueEditorDialog({
           {loading ? <p className="query-result-value-editor__hint">{t("app.query.loadingFullValue")}</p> : null}
           {loadError ? <p className="query-result-value-editor__error">{t("app.query.loadFullValueFailed").replace("{message}", loadError)}</p> : null}
           {valueIsTruncated && !connectionId ? <p className="query-result-value-editor__error">{t("app.query.fullValueUnavailable")}</p> : null}
-          <textarea
-            className="query-result-value-editor__textarea"
-            value={text}
-            disabled={loading}
-            autoFocus
-            spellCheck={false}
-            onChange={(event) => setText(event.target.value)}
-          />
+          {isNull ? <p className="query-result-value-editor__current-time">NULL</p> : editorKind === "text" ? (
+            <textarea
+              className="query-result-value-editor__textarea"
+              value={text}
+              disabled={loading}
+              autoFocus
+              spellCheck={false}
+              onChange={(event) => {
+                setIsNull(false);
+                setText(event.target.value);
+              }}
+            />
+          ) : (
+            isCurrentTime ? <p className="query-result-value-editor__current-time">{t("app.query.currentTimeValue")}</p> : (
+              <MaskedTemporalInput
+                key={`${column}:${rowIndex}:${editorKind}`}
+                kind={editorKind}
+                value={text}
+                disabled={loading}
+                autoFocus
+                onChange={(nextValue) => {
+                  setIsNull(false);
+                  setText(nextValue);
+                }}
+              />
+            )
+          )}
         </div>
         <footer className="query-result-value-editor__footer">
           <button type="button" className="query-result-value-editor__button" disabled={loading} onClick={onCancel}>{t("common.cancel")}</button>
-          <button type="button" className="query-result-value-editor__button query-result-value-editor__button--primary" disabled={!canSave} onClick={() => onSave(text)}>{t("common.save")}</button>
+          <button type="button" className="query-result-value-editor__button" disabled={loading} onClick={() => { setIsNull(false); setText(""); }}>{t("app.query.setEmptyValue")}</button>
+          <button type="button" className="query-result-value-editor__button" disabled={loading} onClick={() => { setIsNull(true); setText(""); }}>{t("app.query.setNullValue")}</button>
+          {editorKind !== "text" ? <button type="button" className="query-result-value-editor__button" disabled={loading} onClick={() => { setIsNull(false); setText(CURRENT_TIMESTAMP_VALUE); }}>{t("app.query.setCurrentTime")}</button> : null}
+          <button type="button" className="query-result-value-editor__button query-result-value-editor__button--primary" disabled={!canSave} onClick={() => onSave(isNull ? null : text)}>{t("common.save")}</button>
         </footer>
       </div>
     </div>

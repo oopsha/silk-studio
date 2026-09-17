@@ -11,6 +11,7 @@ import { formatErrorMessage } from "../formatErrorMessage";
 import { resolveActiveDriverId } from "../sql/sqlDialect";
 import { QueryExecutionService } from "./queryExecutionService";
 import { QueryResultDirtyService } from "./queryResultDirtyService";
+import type { QueryResultColumnType } from "@silk-studio/db-protocol";
 import {
   buildDeleteStatements,
   buildInsertStatements,
@@ -235,6 +236,7 @@ export async function buildUpdatePreview(
   tabId: string,
   sql: string,
   resultColumns: string[],
+  columnTypes?: QueryResultColumnType[],
   options?: UpdateEligibilityOptions,
 ): Promise<UpdatePreview | { blocked: true; reason: string }> {
   const newRowIndexes = QueryResultDirtyService.getNewRowIndexes(tabId);
@@ -263,6 +265,9 @@ export async function buildUpdatePreview(
   }
 
   const originalRows = QueryResultDirtyService.getOriginalRows(tabId);
+  const columnTypesByName = Object.fromEntries(
+    resultColumns.map((column, index) => [column, columnTypes?.[index]]),
+  );
   const newRows = newRowIndexes
     .map((rowIndex) => QueryResultDirtyService.getEffectiveRow(tabId, rowIndex))
     .filter((row): row is Record<string, string | null> => row != null);
@@ -280,6 +285,7 @@ export async function buildUpdatePreview(
       primaryKeys: eligibility.primaryKeys,
       originalRows,
       deletedRowIndexes,
+      columnTypes: columnTypesByName,
     }),
     ...buildUpdateStatements({
       catalog: eligibility.catalog,
@@ -289,6 +295,7 @@ export async function buildUpdatePreview(
       primaryKeys: eligibility.primaryKeys,
       originalRows,
       dirtyRows,
+      columnTypes: columnTypesByName,
     }),
     ...buildInsertStatements({
       catalog: eligibility.catalog,
@@ -297,6 +304,7 @@ export async function buildUpdatePreview(
       driverId: eligibility.driverId,
       columns: resultColumns,
       rows: newRows,
+      columnTypes: columnTypesByName,
     }),
   ];
 
