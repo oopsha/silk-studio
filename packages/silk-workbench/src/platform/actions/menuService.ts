@@ -186,6 +186,7 @@ class MenuServiceImpl {
       case "silk.query.clearHistory":
         return "hasQueryHistory";
       case "silk.queryResult.copySelection":
+      case "silk.queryResult.editValue":
       case "silk.queryResult.copyRows":
       case "silk.queryResult.copyAll":
       case "silk.queryResult.exportCsv":

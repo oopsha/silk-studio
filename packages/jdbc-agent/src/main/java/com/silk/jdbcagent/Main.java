@@ -5,11 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.Clob;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -1435,7 +1438,7 @@ public final class Main {
         }
 
         try {
-          return formatResultSet(rs, limit);
+          return formatResultSet(rs, limit, params.path("readFullLobs").asBoolean(false));
         } finally {
           rs.close();
         }
@@ -1583,7 +1586,14 @@ public final class Main {
     return false;
   }
 
+  private static final int LOB_PREVIEW_LENGTH = 2_048;
+
   private static ObjectNode formatResultSet(ResultSet rs, int maxRows)
+      throws SQLException {
+    return formatResultSet(rs, maxRows, false);
+  }
+
+  private static ObjectNode formatResultSet(ResultSet rs, int maxRows, boolean readFullLobs)
       throws SQLException {
     ResultSetMetaData metadata = rs.getMetaData();
     int columnCount = metadata.getColumnCount();
@@ -1594,7 +1604,15 @@ public final class Main {
       columns.add(header);
     }
 
+    ArrayNode columnTypes = MAPPER.createArrayNode();
+    for (int i = 1; i <= columnCount; i++) {
+      ObjectNode columnType = columnTypes.addObject();
+      columnType.put("jdbcType", metadata.getColumnType(i));
+      columnType.put("typeName", metadata.getColumnTypeName(i));
+    }
+
     ArrayNode rows = MAPPER.createArrayNode();
+    ArrayNode lobTruncated = MAPPER.createArrayNode();
     boolean truncated = false;
     while (rs.next()) {
       if (rows.size() >= maxRows) {
@@ -1602,12 +1620,21 @@ public final class Main {
         break;
       }
       ArrayNode row = MAPPER.createArrayNode();
+      ArrayNode rowLobTruncated = lobTruncated.addArray();
       for (int i = 1; i <= columnCount; i++) {
         Object value = rs.getObject(i);
         if (value == null) {
           row.addNull();
+          rowLobTruncated.add(false);
+        } else if (value instanceof Clob clob) {
+          LobText text = readClob(clob, readFullLobs ? Integer.MAX_VALUE : LOB_PREVIEW_LENGTH);
+          // The ellipsis makes the grid preview's incomplete state visible. The editor re-reads
+          // this one cell with readFullLobs, so it never exposes this marker as actual content.
+          row.add(text.truncated() ? text.value() + "…" : text.value());
+          rowLobTruncated.add(text.truncated());
         } else {
           row.add(String.valueOf(value));
+          rowLobTruncated.add(false);
         }
       }
       rows.add(row);
@@ -1616,7 +1643,9 @@ public final class Main {
     ObjectNode result = MAPPER.createObjectNode();
     result.put("kind", "resultSet");
     result.set("columns", columns);
+    result.set("columnTypes", columnTypes);
     result.set("rows", rows);
+    result.set("lobTruncated", lobTruncated);
     result.put("rowCount", rows.size());
     result.putNull("updateCount");
     result.put("truncated", truncated);
@@ -1628,6 +1657,24 @@ public final class Main {
       result.put("message", rows.size() + " row(s)");
     }
     return result;
+  }
+
+  private record LobText(String value, boolean truncated) {}
+
+  private static LobText readClob(Clob clob, int maxLength) throws SQLException {
+    StringBuilder result = new StringBuilder(Math.min(maxLength, 8192));
+    try (Reader reader = clob.getCharacterStream()) {
+      char[] buffer = new char[4096];
+      int remaining = maxLength;
+      int read;
+      while (remaining > 0 && (read = reader.read(buffer, 0, Math.min(buffer.length, remaining))) != -1) {
+        result.append(buffer, 0, read);
+        remaining -= read;
+      }
+      return new LobText(result.toString(), reader.read() != -1);
+    } catch (IOException error) {
+      throw new SQLException("Unable to read CLOB text.", error);
+    }
   }
 
   private static String[] uniqueColumnLabels(ResultSetMetaData metadata) throws SQLException {

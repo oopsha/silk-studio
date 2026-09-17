@@ -39,6 +39,7 @@ type ActiveGrid = {
     startRowIndex: number;
     endRowIndex: number;
   } | null;
+  openValueEditor: () => void;
 };
 
 type SnapshotListener = () => void;
@@ -70,9 +71,10 @@ class QueryResultGridServiceImpl {
     api: GridApi<QueryResultRow>,
     columns: string[],
     nullDisplay: string,
+    openValueEditor: () => void,
   ): void {
     const profileId = resolveLayoutProfileId();
-    this.active = { api, columns, nullDisplay, profileId, cellSelection: null };
+    this.active = { api, columns, nullDisplay, profileId, cellSelection: null, openValueEditor };
     this.layoutDirty = false;
     this.restoreColumnLayout();
     this.refreshSnapshot();
@@ -98,6 +100,10 @@ class QueryResultGridServiceImpl {
 
   isAttached(): boolean {
     return this.active !== null;
+  }
+
+  openValueEditor(): void {
+    this.active?.openValueEditor();
   }
 
   getSnapshot(): QueryResultGridSnapshot {
@@ -253,6 +259,11 @@ class QueryResultGridServiceImpl {
       startRowIndex,
       endRowIndex,
     };
+  }
+
+  clearCellSelection(): void {
+    if (!this.active) return;
+    this.active.cellSelection = null;
   }
 
   async exportCsv(): Promise<boolean> {

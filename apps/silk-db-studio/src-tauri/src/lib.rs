@@ -146,6 +146,7 @@ async fn query_execute_paged(
     auto_commit: Option<bool>,
     read_only: Option<bool>,
     binds: Option<Vec<Option<String>>>,
+    read_full_lobs: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<Value, String> {
     require_connection_id(&connection_id)?;
@@ -168,6 +169,7 @@ async fn query_execute_paged(
             auto_commit,
             read_only,
             binds.as_deref(),
+            read_full_lobs.unwrap_or(false),
         )
     })
     .await

@@ -7,14 +7,17 @@ export type FetchQueryResultPageOptions = {
   binds?: Array<string | null>;
   filters?: FilterColumnWire[];
   sort?: SortColumnWire[];
+  /** Retrieves complete CLOB/NCLOB text for a single cell editor. */
+  readFullLobs?: boolean;
 };
 
 /**
  * Re-runs `sql` (the exact statement text actually executed — any bind-parameter placeholders
  * already rewritten to positional `?`, paired with `binds`) wrapped with offset/limit pagination
  * and an optional translated AG-Grid filter, server-side (`query_execute_paged` / jdbc-agent's
- * `query.executePaged`) — backs the large-result scroll feature (5-D v2) via AG-Grid's Infinite
- * Row Model. Only ever called when the initial `query_execute` already reported `truncated: true`.
+ * `query.executePaged`) — backs the large-result scroll feature (5-D v2). The grid retains AG
+ * Grid's Client-Side Row Model and appends these blocks, so local add/duplicate changes remain
+ * available. Only ever called when the initial `query_execute` already reported `truncated: true`.
  *
  * `knownColumns` (the result's own column list) is forwarded so the agent can validate `filters`'
  * column names before embedding them in generated SQL — see `FilterSqlBuilder.java`.
@@ -47,6 +50,7 @@ export async function fetchQueryResultPage(
       binds: binds && binds.length > 0 ? binds : null,
       filters: filters && filters.length > 0 ? filters : null,
       sort: sort && sort.length > 0 ? sort : null,
+      readFullLobs: options?.readFullLobs ?? false,
     },
     connectionId,
   );

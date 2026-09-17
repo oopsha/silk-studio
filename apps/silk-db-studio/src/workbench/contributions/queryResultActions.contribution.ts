@@ -21,6 +21,11 @@ CommandsRegistry.registerCommand("silk.queryResult.copySelection", async () => {
   }
 });
 
+CommandsRegistry.registerCommand("silk.queryResult.editValue", () => {
+  if (!QueryResultGridService.isAttached()) return;
+  QueryResultGridService.openValueEditor();
+});
+
 CommandsRegistry.registerCommand("silk.queryResult.copyRows", async () => {
   if (!QueryResultGridService.isAttached()) return;
   try {
@@ -61,6 +66,15 @@ CommandsRegistry.registerCommand("silk.queryResult.saveColumnLayout", () => {
 CommandsRegistry.registerCommand("silk.queryResult.resetColumnLayout", () => {
   if (!QueryResultGridService.isAttached()) return;
   QueryResultGridService.resetColumnLayout();
+});
+
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
+  command: {
+    id: "silk.queryResult.editValue",
+    title: "Edit Cell Value",
+  },
+  group: "6_result",
+  order: 79,
 });
 
 MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
@@ -126,6 +140,10 @@ MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   order: 86,
 });
 
+KeybindingsRegistry.registerKeybinding(
+  "silk.queryResult.editValue",
+  "Shift+Enter",
+);
 KeybindingsRegistry.registerKeybinding(
   "silk.queryResult.copyAll",
   "Ctrl+Shift+C",

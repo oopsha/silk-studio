@@ -682,6 +682,7 @@ impl JdbcAgentClient {
         auto_commit: Option<bool>,
         read_only: Option<bool>,
         binds: Option<&[Option<String>]>,
+        read_full_lobs: bool,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let mut params = json!({
@@ -714,6 +715,9 @@ impl JdbcAgentClient {
             if !binds.is_empty() {
                 params["binds"] = json!(binds);
             }
+        }
+        if read_full_lobs {
+            params["readFullLobs"] = json!(true);
         }
         self.send_request("query.executePaged", params)
     }

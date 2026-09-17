@@ -59,10 +59,10 @@ class QueryResultDirtyServiceImpl {
 
   /**
    * Registers the "original" (pre-edit) values for one page of rows fetched after `initTab` —
-   * Infinite Row Model scrolling (`QueryResultGrid`'s `useInfiniteMode`) loads rows in blocks well
-   * beyond the tab's initial batch, and `setCell`'s dirty-tracking needs an original snapshot for
-   * *every* row a user might edit, not just the first page. `startIndex` must match the row's own
-   * stamped `__rowIndex` (see `toQueryResultRows`'s `startIndex` param) so indices line up.
+   * Incremental result scrolling loads rows in blocks well beyond the tab's initial batch, and
+   * `setCell`'s dirty-tracking needs an original snapshot for every row a user might edit, not
+   * just the first page. `startIndex` must match the row's own stamped `__rowIndex` (see
+   * `toQueryResultRows`'s `startIndex` param) so indices line up.
    */
   appendOriginalRows(
     tabId: string,

@@ -521,6 +521,10 @@ export type QueryResultPayload = {
   rowCount: number;
   updateCount: number | null;
   message: string;
+  /** JDBC metadata aligned with `columns`. Optional for agents from before typed results. */
+  columnTypes?: Array<{ jdbcType: number; typeName: string }>;
+  /** True for a cell whose text was shortened for the grid preview. */
+  lobTruncated?: boolean[][];
   /** True when the agent stopped at maxRows and more rows may exist. */
   truncated?: boolean;
 };
@@ -543,7 +547,21 @@ export function isQueryResultPayload(
     typeof record.rowCount === "number" &&
     (record.updateCount === null || typeof record.updateCount === "number") &&
     typeof record.message === "string" &&
-    (record.truncated === undefined || typeof record.truncated === "boolean")
+    (record.truncated === undefined || typeof record.truncated === "boolean") &&
+    (record.columnTypes === undefined ||
+      (Array.isArray(record.columnTypes) &&
+        record.columnTypes.every(
+          (type) =>
+            !!type &&
+            typeof type === "object" &&
+            typeof (type as Record<string, unknown>).jdbcType === "number" &&
+            typeof (type as Record<string, unknown>).typeName === "string",
+        ))) &&
+    (record.lobTruncated === undefined ||
+      (Array.isArray(record.lobTruncated) &&
+        record.lobTruncated.every(
+          (row) => Array.isArray(row) && row.every((cell) => typeof cell === "boolean"),
+        )))
   );
 }
 

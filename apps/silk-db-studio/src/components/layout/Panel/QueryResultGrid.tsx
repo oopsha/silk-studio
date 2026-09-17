@@ -4,6 +4,7 @@ import {
   ModuleRegistry,
   themeQuartz,
   type CellContextMenuEvent,
+  type CellDoubleClickedEvent,
   type CellMouseDownEvent,
   type CellMouseOverEvent,
   type CellClassParams,
@@ -13,8 +14,6 @@ import {
   type FirstDataRenderedEvent,
   type GridApi,
   type GridReadyEvent,
-  type IDatasource,
-  type IGetRowsParams,
   type NavigateToNextCellParams,
   type ValueFormatterParams,
 } from "ag-grid-community";
@@ -38,10 +37,6 @@ import {
 import { QueryResultGridService } from "../../../services/query/queryResultGridService";
 import ContextMenu, { type ContextMenuItem } from "../../common/ContextMenu";
 import { fetchQueryResultPage } from "../../../services/query/queryResultPaging";
-import {
-  translateFilterModel,
-  translateSortModel,
-} from "../../../services/query/filterModelTranslator";
 import { QueryResultDirtyService } from "../../../services/query/queryResultDirtyService";
 import { formatErrorMessage } from "../../../services/formatErrorMessage";
 import { ConfirmDialogService } from "../../../services/ui/confirmDialogService";
@@ -54,6 +49,7 @@ import {
   type UpdatePreview,
 } from "../../../services/query/queryResultUpdateService";
 import QueryResultUpdateDialog from "./QueryResultUpdateDialog";
+import QueryResultValueEditorDialog from "./QueryResultValueEditorDialog";
 import "./QueryResultGrid.css";
 import "./QueryResultUpdateDialog.css";
 
@@ -78,6 +74,16 @@ type GridCellSelection = {
   focusColumnIndex: number;
 };
 
+type ValueEditorTarget = {
+  rowIndex: number;
+  column: string;
+  columnIndex: number;
+  value: string | null;
+  valueIsTruncated: boolean;
+};
+
+const LARGE_TEXT_JDBC_TYPES = new Set([-1, -16, 2005, 2011]);
+
 /**
  * Filter/sort survive a remount of the *same* result tab (e.g. the Object
  * Editor's Data tab unmounting when the user switches to another editor tab
@@ -86,11 +92,11 @@ type GridCellSelection = {
 const gridUiStateByTabId = new Map<string, GridUiState>();
 
 /**
- * Infinite Row Model page size — decoupled from `queryResult.maxRows` (which only controls when
- * a result is *considered* truncated / switches into this mode at all) so a small maxRows used to
- * detect truncation early doesn't also force tiny, chatty scroll pages.
+ * Next-page size for a result that was initially truncated. We deliberately retain AG Grid's
+ * Client-Side Row Model and append server pages ourselves: local added/duplicated rows can then
+ * coexist with the loaded rows and keep a stable identity while more data arrives.
  */
-const INFINITE_SCROLL_BLOCK_SIZE = 100;
+const INCREMENTAL_SCROLL_PAGE_SIZE = 100;
 
 const GRID_THEME_PALETTES: Record<
   EffectiveColorThemeId,
@@ -161,11 +167,19 @@ function QueryResultGrid({
   const colorTheme = configuration["workbench.colorTheme"];
   const maxRows = configuration["queryResult.maxRows"];
   const truncated = isResultTruncated(result, maxRows);
-  // A truncated result switches the grid to server-paged Infinite Row Model scrolling — but only
-  // when there's a connection to page against (e.g. AI-context previews may show a result with no
-  // live connectionId). Filtering/sorting are not yet wired into paged fetches (5-D v2 stages 3-4).
-  const useInfiniteMode = truncated && !!connectionId?.trim();
+  // A truncated result keeps its initial batch and appends subsequent pages on demand. Unlike AG
+  // Grid's Infinite Row Model, this lets Client-Side transactions add/duplicate rows safely.
+  const useIncrementalScroll = truncated && !!connectionId?.trim();
   const apiRef = useRef<GridApi<QueryResultRow> | null>(null);
+  // Display-row index at which the current multi-row selection began. This deliberately tracks
+  // the displayed position (rather than the database row id), so Shift selection follows the
+  // user's current sort/filter order.
+  const rowSelectionAnchorRef = useRef<number | null>(null);
+  const pagingRef = useRef({
+    nextOffset: result.rows.length,
+    hasMore: useIncrementalScroll,
+    loading: false,
+  });
   const cellSelectionRef = useRef<GridCellSelection | null>(null);
   const draggingCellSelectionRef = useRef(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -176,6 +190,7 @@ function QueryResultGrid({
   const [executingUpdates, setExecutingUpdates] = useState(false);
   const [openingPreview, setOpeningPreview] = useState(false);
   const [contextMenu, setContextMenu] = useState<GridContextMenuState | null>(null);
+  const [valueEditorTarget, setValueEditorTarget] = useState<ValueEditorTarget | null>(null);
   const filterContextInputRef = useRef<FilterInput | null>(null);
 
   useEffect(() => {
@@ -223,6 +238,35 @@ function QueryResultGrid({
     },
     [nullDisplay],
   );
+
+  const isLargeTextColumn = useCallback((columnIndex: number) => {
+    const columnType = result.columnTypes?.[columnIndex];
+    if (!columnType) return false;
+    return LARGE_TEXT_JDBC_TYPES.has(columnType.jdbcType) || /^(?:CLOB|NCLOB|TEXT|LONG(?:\s+)?VARCHAR|LONG(?:\s+)?NVARCHAR)/i.test(columnType.typeName);
+  }, [result.columnTypes]);
+
+  const supportsValueEditor = useCallback((columnIndex: number, value: string | null) => {
+    return isLargeTextColumn(columnIndex) || Boolean(value?.includes("\n") || value?.includes("\r"));
+  }, [isLargeTextColumn]);
+
+  const openValueEditor = useCallback(() => {
+    const api = apiRef.current;
+    const focused = api?.getFocusedCell();
+    if (!api || !focused || focused.rowIndex == null) return;
+    const field = focused.column.getColDef().field;
+    if (typeof field !== "string") return;
+    const columnIndex = result.columns.indexOf(field);
+    const row = api.getDisplayedRowAtIndex(focused.rowIndex)?.data;
+    if (!row || columnIndex < 0 || !supportsValueEditor(columnIndex, row[field] ?? null)) return;
+    const sourceRowIndex = getQueryResultRowIndex(row);
+    setValueEditorTarget({
+      rowIndex: sourceRowIndex,
+      column: field,
+      columnIndex,
+      value: row[field] ?? null,
+      valueIsTruncated: result.lobTruncated?.[sourceRowIndex]?.[columnIndex] === true,
+    });
+  }, [result.columns, result.lobTruncated, supportsValueEditor]);
 
   useEffect(() => {
     // No cleanup here: tab lifecycle (removeTab/removeTabs) is owned by
@@ -287,7 +331,7 @@ function QueryResultGrid({
         if (params.value === null || params.value === undefined) {
           return nullDisplay;
         }
-        return String(params.value);
+        return String(params.value).replace(/\r?\n/g, " ↵ ");
       },
     [nullDisplay],
   );
@@ -320,17 +364,15 @@ function QueryResultGrid({
         headerName: column,
         filter: filterEnabled ? "agTextColumnFilter" : false,
         floatingFilter: filterEnabled,
-        // Both modes require an explicit Apply (click or Enter) rather than filtering per
-        // keystroke — in Infinite Row Model mode this is a hard requirement (each Apply re-queries
-        // the database); in Client-Side Row Model mode it's kept identical on purpose so the
-        // interaction never changes depending on an invisible "is this result large" state.
+        // Require an explicit Apply (click or Enter) rather than filtering per keystroke. The
+        // same client-side behaviour applies before and after incremental pages are appended.
         filterParams: { buttons: ["apply", "reset"] },
         // Existing PK values are editable just like DBeaver. Saving remains safe because
         // `safeUpdateSql` uses the value from the original loaded row in its WHERE clause and
         // the edited PK value only in SET. Deleted rows are not editable because they won't
-        // exist after Save. Infinite Row Model rows are editable too —
-        // `QueryResultDirtyService.appendOriginalRows` keeps each loaded page's original values
-        // available for the safe-UPDATE WHERE clause, not just the tab's first batch.
+        // exist after Save. `QueryResultDirtyService.appendOriginalRows` keeps each incrementally
+        // loaded page's original values available for the safe-UPDATE WHERE clause, not just the
+        // tab's first batch.
         editable: (params: { data?: QueryResultRow }) => {
           const rowIndex = params.data ? getQueryResultRowIndex(params.data) : null;
           return rowIndex == null || !QueryResultDirtyService.isRowDeleted(tabId, rowIndex);
@@ -380,7 +422,6 @@ function QueryResultGrid({
       formatCellValue,
       result.columns,
       tabId,
-      useInfiniteMode,
     ],
   );
 
@@ -403,49 +444,6 @@ function QueryResultGrid({
     [filterEnabled],
   );
 
-  /**
-   * Backs the grid's Infinite Row Model in `useInfiniteMode` — re-runs the tab's original SQL
-   * wrapped with server-side offset/limit pagination and a translated filter/sort
-   * (`query_execute_paged`) per requested block.
-   */
-  const datasource = useMemo<IDatasource | undefined>(() => {
-    if (!useInfiniteMode || !connectionId) return undefined;
-    const pagingSql = executedSql ?? sql;
-    return {
-      getRows: (params: IGetRowsParams) => {
-        const limit = params.endRow - params.startRow;
-        const filters = translateFilterModel(params.filterModel, result.columns);
-        const sortColumns = translateSortModel(params.sortModel, result.columns);
-        fetchQueryResultPage(connectionId, pagingSql, result.columns, params.startRow, limit, {
-          binds,
-          filters,
-          sort: sortColumns,
-        })
-          .then((payload) => {
-            QueryResultDirtyService.appendOriginalRows(
-              tabId,
-              params.startRow,
-              payload.columns,
-              payload.rows,
-            );
-            const rows = toQueryResultRows(payload.columns, payload.rows, params.startRow);
-            const lastRow = rows.length < limit ? params.startRow + rows.length : -1;
-            params.successCallback(rows, lastRow);
-          })
-          .catch((error) => {
-            console.warn("[query-result] paged fetch failed", error);
-            flashMessage(
-              t("app.query.pagedFetchFailed").replace(
-                "{message}",
-                formatErrorMessage(error, ""),
-              ),
-            );
-            params.failCallback();
-          });
-      },
-    };
-  }, [useInfiniteMode, connectionId, executedSql, sql, binds, result.columns, tabId]);
-
   useEffect(() => {
     return () => {
       if (apiRef.current) {
@@ -460,13 +458,13 @@ function QueryResultGrid({
   useEffect(() => {
     const api = apiRef.current;
     if (!api) return;
-    QueryResultGridService.attach(api, result.columns, nullDisplay);
+    QueryResultGridService.attach(api, result.columns, nullDisplay, openValueEditor);
     // New result while the grid is already mounted — size after paint.
     const frame = window.requestAnimationFrame(() => {
       QueryResultGridService.autoSizeToContent();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [nullDisplay, result.columns, result.rows]);
+  }, [nullDisplay, openValueEditor, result.columns, result.rows]);
 
   const flashMessage = (message: string) => {
     setActionMessage(message);
@@ -480,25 +478,77 @@ function QueryResultGrid({
   };
 
   /**
-   * In Infinite Row Model mode, `__rowIndex` means "this row's position under the *current*
-   * filter/sort" — changing either reassigns every index to a different underlying DB row once
-   * the grid re-fetches. Any pending edit tracked against an index would then silently attach to
-   * the wrong row's original values once that index's new page loads (`appendOriginalRows`
-   * overwrites the snapshot, but the dirty *edit* itself doesn't know its row moved). Discarding
-   * pending edits here is the safe response — CSRM mode doesn't need this: filtering/sorting there
-   * only changes what's *displayed*, never each row's own `__rowIndex`/original snapshot.
+   * Loads the next server page into the Client-Side Row Model. Existing rows retain their stable
+   * result index and locally added/duplicated rows remain in their transaction position, which is
+   * the same separation of remote rows and local edit changes used by DevExtreme.
    */
-  const discardStaleEditsOnReshuffle = () => {
-    if (!useInfiniteMode || !QueryResultDirtyService.hasPendingChanges(tabId)) {
+  const loadNextPage = useCallback(async () => {
+    const api = apiRef.current;
+    const paging = pagingRef.current;
+    if (!api || !useIncrementalScroll || !connectionId || paging.loading || !paging.hasMore) {
       return;
     }
-    QueryResultDirtyService.clearTab(tabId);
-    flashMessage(t("app.query.pendingEditsDiscardedOnReshuffle"));
-  };
+
+    paging.loading = true;
+    const offset = paging.nextOffset;
+    try {
+      const payload = await fetchQueryResultPage(
+        connectionId,
+        executedSql ?? sql,
+        result.columns,
+        offset,
+        INCREMENTAL_SCROLL_PAGE_SIZE,
+        { binds },
+      );
+      const rows = toQueryResultRows(payload.columns, payload.rows, offset);
+      QueryResultDirtyService.appendOriginalRows(
+        tabId,
+        offset,
+        payload.columns,
+        payload.rows,
+      );
+      if (rows.length > 0) {
+        api.applyTransaction({ add: rows });
+      }
+      paging.nextOffset += rows.length;
+      // A full page may still be the final page. One cheap final empty-page request is preferable
+      // to assuming an inaccurate total count from a JDBC driver.
+      paging.hasMore = rows.length === INCREMENTAL_SCROLL_PAGE_SIZE;
+    } catch (error) {
+      console.warn("[query-result] incremental page fetch failed", error);
+      paging.hasMore = false;
+      flashMessage(
+        t("app.query.pagedFetchFailed").replace(
+          "{message}",
+          formatErrorMessage(error, ""),
+        ),
+      );
+    } finally {
+      paging.loading = false;
+    }
+  }, [binds, connectionId, executedSql, result.columns, sql, tabId, t, useIncrementalScroll]);
+
+  const handleBodyScrollEnd = useCallback(() => {
+    const api = apiRef.current;
+    if (!api || !useIncrementalScroll) return;
+    const lastVisibleRow = api.getLastDisplayedRowIndex();
+    const displayedRowCount = api.getDisplayedRowCount();
+    if (displayedRowCount > 0 && lastVisibleRow >= displayedRowCount - 3) {
+      void loadNextPage();
+    }
+  }, [loadNextPage, useIncrementalScroll]);
+
+  useEffect(() => {
+    pagingRef.current = {
+      nextOffset: result.rows.length,
+      hasMore: useIncrementalScroll,
+      loading: false,
+    };
+  }, [result.rows, useIncrementalScroll]);
 
   const handleGridReady = (event: GridReadyEvent<QueryResultRow>) => {
     apiRef.current = event.api;
-    QueryResultGridService.attach(event.api, result.columns, nullDisplay);
+    QueryResultGridService.attach(event.api, result.columns, nullDisplay, openValueEditor);
 
     const savedUiState = gridUiStateByTabId.get(tabId);
     if (savedUiState) {
@@ -548,22 +598,18 @@ function QueryResultGrid({
       }
     }
 
-    // New/duplicated rows only exist in CSRM mode (see the disabled Add/Duplicate buttons in
-    // infinite mode) — nothing to replay there.
-    if (!useInfiniteMode) {
-      // Oldest-first (see getNewRowIndexes' doc) — each row is re-added individually, right after
-      // its recorded anchor, so a row anchored to an *earlier* new row lands in the right spot
-      // once that earlier row already has a grid node.
-      for (const rowIndex of QueryResultDirtyService.getNewRowIndexes(tabId)) {
-        const row = buildGridRow(
-          rowIndex,
-          QueryResultDirtyService.getEffectiveRow(tabId, rowIndex) ?? {},
-        );
-        const anchor = QueryResultDirtyService.getNewRowAnchor(tabId, rowIndex);
-        const anchorNode = anchor != null ? api.getRowNode(String(anchor)) : undefined;
-        const addIndex = anchorNode?.rowIndex != null ? anchorNode.rowIndex + 1 : 0;
-        api.applyTransaction({ add: [row], addIndex });
-      }
+    // Oldest-first (see getNewRowIndexes' doc) — each row is re-added individually, right after
+    // its recorded anchor, so a row anchored to an *earlier* new row lands in the right spot
+    // once that earlier row already has a grid node.
+    for (const rowIndex of QueryResultDirtyService.getNewRowIndexes(tabId)) {
+      const row = buildGridRow(
+        rowIndex,
+        QueryResultDirtyService.getEffectiveRow(tabId, rowIndex) ?? {},
+      );
+      const anchor = QueryResultDirtyService.getNewRowAnchor(tabId, rowIndex);
+      const anchorNode = anchor != null ? api.getRowNode(String(anchor)) : undefined;
+      const addIndex = anchorNode?.rowIndex != null ? anchorNode.rowIndex + 1 : 0;
+      api.applyTransaction({ add: [row], addIndex });
     }
   };
 
@@ -572,6 +618,9 @@ function QueryResultGrid({
   ) => {
     rehydratePendingEdits();
     QueryResultGridService.autoSizeToContent();
+    // A small configured initial-result limit can leave the viewport already at the end, with no
+    // physical scroll event to trigger the first append.
+    window.requestAnimationFrame(handleBodyScrollEnd);
   };
 
   const handleCellValueChanged = (event: CellValueChangedEvent<QueryResultRow>) => {
@@ -768,14 +817,36 @@ function QueryResultGrid({
     // row-wide click selection disabled prevents the empty space after the last
     // column from selecting a row.
     event.api.setFocusedCell(event.rowIndex, event.column);
-    if (mouseEvent.ctrlKey || mouseEvent.metaKey) {
+    if (mouseEvent.shiftKey && rowSelectionAnchorRef.current != null) {
+      const anchor = rowSelectionAnchorRef.current;
+      const start = Math.min(anchor, event.rowIndex);
+      const end = Math.max(anchor, event.rowIndex);
+      // Shift replaces the prior row selection; Ctrl/Cmd+Shift extends it instead.
+      if (!mouseEvent.ctrlKey && !mouseEvent.metaKey) {
+        event.api.deselectAll();
+      }
+      for (let rowIndex = start; rowIndex <= end; rowIndex += 1) {
+        event.api.getDisplayedRowAtIndex(rowIndex)?.setSelected(true, false);
+      }
+    } else if (mouseEvent.ctrlKey || mouseEvent.metaKey) {
       event.node.setSelected(!event.node.isSelected(), false);
+      if (event.node.isSelected()) {
+        rowSelectionAnchorRef.current = event.rowIndex;
+      }
     } else {
       event.node.setSelected(true, true);
+      rowSelectionAnchorRef.current = event.rowIndex;
     }
 
     const field = event.column.getColDef().field;
-    if (typeof field !== "string") return;
+    if (typeof field !== "string") {
+      // The row-number gutter is not a result cell. It selects the row but must not leave the
+      // previously selected data-cell range painted behind it.
+      cellSelectionRef.current = null;
+      QueryResultGridService.clearCellSelection();
+      event.api.refreshCells({ force: true });
+      return;
+    }
     const columnIndex = result.columns.indexOf(field);
     if (columnIndex < 0) return;
 
@@ -817,6 +888,7 @@ function QueryResultGrid({
 
     event.api.setFocusedCell(event.rowIndex, event.column);
     event.node.setSelected(true, true);
+    rowSelectionAnchorRef.current = event.rowIndex;
 
     const field = event.column.getColDef().field;
     if (typeof field !== "string") return;
@@ -842,6 +914,22 @@ function QueryResultGrid({
         columnIndex,
       );
     }
+  };
+
+  const handleCellDoubleClicked = (event: CellDoubleClickedEvent<QueryResultRow>) => {
+    const field = event.column.getColDef().field;
+    if (event.rowIndex == null || typeof field !== "string") return;
+    const columnIndex = result.columns.indexOf(field);
+    if (columnIndex < 0 || !event.data || !supportsValueEditor(columnIndex, event.data[field] ?? null)) return;
+    event.api.stopEditing();
+    const rowIndex = getQueryResultRowIndex(event.data);
+    setValueEditorTarget({
+      rowIndex,
+      column: field,
+      columnIndex,
+      value: event.data[field] ?? null,
+      valueIsTruncated: result.lobTruncated?.[rowIndex]?.[columnIndex] === true,
+    });
   };
 
   /** Keep the row highlight and cell selection in sync with keyboard navigation. */
@@ -940,6 +1028,18 @@ function QueryResultGrid({
   };
 
   const gridContextMenuItems: ContextMenuItem[] = [
+    {
+      id: "editValue",
+      label: t("app.query.editValue"),
+      enabled: (() => {
+        const focused = apiRef.current?.getFocusedCell();
+        const field = focused?.column.getColDef().field;
+        if (typeof field !== "string" || !focused) return false;
+        const columnIndex = result.columns.indexOf(field);
+        const row = apiRef.current?.getDisplayedRowAtIndex(focused.rowIndex)?.data;
+        return columnIndex >= 0 && row != null && supportsValueEditor(columnIndex, row[field] ?? null);
+      })(),
+    },
     { id: "copySelection", label: t("app.query.copySelection"), enabled: true },
     { id: "copyRows", label: t("app.query.copySelectedRows"), enabled: true },
     { id: "copyAll", label: t("app.query.copyAllFiltered"), enabled: true },
@@ -1048,6 +1148,9 @@ function QueryResultGrid({
 
   function handleGridContextMenuSelect(item: ContextMenuItem) {
     switch (item.id) {
+      case "editValue":
+        openValueEditor();
+        return;
       case "copySelection":
         void handleCopySelection();
         return;
@@ -1235,6 +1338,14 @@ function QueryResultGrid({
       setPreviewError(outcome.message);
       return;
     }
+    // `refreshTabResult` replaces row data in the existing grid. Clear both selection models
+    // before those row positions can be reused by the refreshed result (for example, after two
+    // deleted rows make different rows occupy the same indexes).
+    apiRef.current?.deselectAll();
+    rowSelectionAnchorRef.current = null;
+    cellSelectionRef.current = null;
+    QueryResultGridService.clearCellSelection();
+    apiRef.current?.refreshCells({ force: true });
     setPreview(null);
     flashMessage(outcome.message);
   };
@@ -1293,7 +1404,7 @@ function QueryResultGrid({
             <span
               className="query-result-grid__badge query-result-grid__badge--warn"
               title={
-                useInfiniteMode
+                useIncrementalScroll
                   ? t("app.query.scrollableTitle")
                   : t("app.query.truncatedTitle").replace(
                       "{n}",
@@ -1301,7 +1412,7 @@ function QueryResultGrid({
                     )
               }
             >
-              {useInfiniteMode
+              {useIncrementalScroll
                 ? t("app.query.badgeScrollable")
                 : t("app.query.badgeTruncated").replace(
                     "{n}",
@@ -1368,12 +1479,9 @@ function QueryResultGrid({
             type="button"
             className="query-result-grid__action"
             title={
-              useInfiniteMode
-                ? t("app.query.rowAddDisabledInfiniteMode")
-                : t("app.query.addRowTitle")
+              t("app.query.addRowTitle")
             }
             aria-label={t("app.query.addRow")}
-            disabled={useInfiniteMode}
             onClick={handleAddRow}
           >
             <Codicon name="add" />
@@ -1382,12 +1490,9 @@ function QueryResultGrid({
             type="button"
             className="query-result-grid__action"
             title={
-              useInfiniteMode
-                ? t("app.query.rowAddDisabledInfiniteMode")
-                : t("app.query.duplicateRowTitle")
+              t("app.query.duplicateRowTitle")
             }
             aria-label={t("app.query.duplicateRow")}
-            disabled={useInfiniteMode}
             onClick={handleDuplicateRow}
           >
             <Codicon name="files" />
@@ -1479,6 +1584,19 @@ function QueryResultGrid({
             (target instanceof HTMLElement && target.isContentEditable);
           if (
             !isEditableTarget &&
+            event.shiftKey &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.altKey &&
+            event.key === "Enter"
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            openValueEditor();
+            return;
+          }
+          if (
+            !isEditableTarget &&
             (event.ctrlKey || event.metaKey) &&
             !event.altKey &&
             !event.shiftKey &&
@@ -1527,18 +1645,10 @@ function QueryResultGrid({
         }}
       >
         <AgGridReact<QueryResultRow>
-          // Row model is effectively fixed for a grid instance's lifetime — remount (rather than
-          // toggle rowModelType live) if a refresh flips this same tab between modes.
-          key={useInfiniteMode ? "infinite" : "csrm"}
+          key="client"
           theme={gridTheme}
           columnDefs={columnDefs}
-          {...(useInfiniteMode
-            ? {
-                rowModelType: "infinite" as const,
-                datasource,
-                cacheBlockSize: INFINITE_SCROLL_BLOCK_SIZE,
-              }
-            : { rowData })}
+          rowData={rowData}
           defaultColDef={defaultColDef}
           // SQL result column labels are always literal strings (e.g. an unaliased
           // `PKG.FUNC('a')` call), never a dotted nested-object path — without this,
@@ -1585,17 +1695,17 @@ function QueryResultGrid({
           navigateToNextCell={navigateToNextCell}
           onGridReady={handleGridReady}
           onFirstDataRendered={handleFirstDataRendered}
+          onBodyScrollEnd={handleBodyScrollEnd}
           onCellContextMenu={handleCellContextMenu}
+          onCellDoubleClicked={handleCellDoubleClicked}
           onCellMouseDown={handleCellMouseDown}
           onCellMouseOver={handleCellMouseOver}
           onCellValueChanged={handleCellValueChanged}
           onFilterChanged={() => {
-            discardStaleEditsOnReshuffle();
             QueryResultGridService.refreshSnapshot();
             captureGridUiState();
           }}
           onSortChanged={() => {
-            discardStaleEditsOnReshuffle();
             QueryResultGridService.refreshSnapshot();
             captureGridUiState();
           }}
@@ -1645,6 +1755,25 @@ function QueryResultGrid({
           executing={executingUpdates}
           onCancel={handleClosePreview}
           onConfirm={() => void handleConfirmUpdates()}
+        />
+      ) : null}
+      {valueEditorTarget ? (
+        <QueryResultValueEditorDialog
+          column={valueEditorTarget.column}
+          columnIndex={valueEditorTarget.columnIndex}
+          rowIndex={valueEditorTarget.rowIndex}
+          value={valueEditorTarget.value}
+          valueIsTruncated={valueEditorTarget.valueIsTruncated}
+          result={result}
+          sql={executedSql ?? sql}
+          binds={binds}
+          connectionId={connectionId}
+          onCancel={() => setValueEditorTarget(null)}
+          onSave={(value) => {
+            const node = apiRef.current?.getRowNode(String(valueEditorTarget.rowIndex));
+            node?.setDataValue(valueEditorTarget.column, normalizeEditedValue(value));
+            setValueEditorTarget(null);
+          }}
         />
       ) : null}
     </div>
