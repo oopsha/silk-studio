@@ -64,6 +64,12 @@ export const koMessages = {
     },
     editor: {
       title: "편집기",
+      fontFamily: "글꼴",
+      fontFamilyDescription: "CSS 글꼴 목록을 쉼표로 구분해 입력합니다. 비워 두면 현재 운영체제의 기본 고정폭 글꼴을 사용합니다.",
+      restoreDefault: "기본값 복원",
+      fontLigatures: "글꼴 합자",
+      fontLigaturesDescription: "글꼴이 지원하는 연산자 조합을 하나의 기호로 표시합니다.",
+      fontLigaturesHint: "글꼴 합자 사용",
       fontSize: "글꼴 크기",
       tabSize: "탭 크기",
       insertSpaces: "공백 삽입",

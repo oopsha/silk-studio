@@ -21,6 +21,8 @@ import "./EditorArea.css";
 
 export type EditorConfigurationOptions = {
   colorTheme: WorkbenchColorThemeId;
+  fontFamily: string;
+  fontLigatures: boolean;
   fontSize: number;
   tabSize: number;
   insertSpaces: boolean;
@@ -141,6 +143,8 @@ function EditorArea({
     if (!instance) return;
 
     instance.updateOptions({
+      fontFamily: getEditorFontFamily(configuration.fontFamily),
+      fontLigatures: configuration.fontLigatures,
       fontSize: configuration.fontSize,
       tabSize: configuration.tabSize,
       insertSpaces: configuration.insertSpaces,
@@ -201,7 +205,8 @@ function EditorArea({
         onMount={handleMount}
         onChange={handleChange}
         options={{
-          fontFamily: getEditorFontFamily(),
+          fontFamily: getEditorFontFamily(configuration.fontFamily),
+          fontLigatures: configuration.fontLigatures,
           fontSize: configuration.fontSize,
           tabSize: configuration.tabSize,
           insertSpaces: configuration.insertSpaces,

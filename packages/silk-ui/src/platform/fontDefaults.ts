@@ -21,14 +21,6 @@ const EDITOR_FONT_FAMILY: Record<WorkbenchPlatform, string> = {
     "'Droid Sans Mono', 'Ubuntu Mono', 'Liberation Mono', 'DejaVu Sans Mono', 'Courier New', monospace",
 };
 
-/** CJK glyphs are linked via OS in native VS Code; WebView/Monaco needs explicit fallbacks. */
-const EDITOR_FONT_FAMILY_KO: Record<WorkbenchPlatform, string> = {
-  windows: "Consolas, 'Malgun Gothic', 'Courier New', monospace",
-  mac: "Menlo, Monaco, 'Apple SD Gothic Neo', 'Nanum Gothic', 'Courier New', monospace",
-  linux:
-    "'Droid Sans Mono', 'Ubuntu Mono', 'Source Han Sans K', 'Source Han Sans', 'UnDotum', 'Courier New', monospace",
-};
-
 const EDITOR_FONT_SIZE: Record<WorkbenchPlatform, number> = {
   windows: 14,
   mac: 12,
@@ -53,10 +45,17 @@ export function getUiFontFamily(platform = resolvePlatform()): string {
     : UI_FONT_FAMILY[platform];
 }
 
-export function getEditorFontFamily(platform = resolvePlatform()): string {
-  return useKoreanUiFont()
-    ? EDITOR_FONT_FAMILY_KO[platform]
-    : EDITOR_FONT_FAMILY[platform];
+export function getEditorFontFamily(
+  configuredFontFamily?: string,
+  platform = resolvePlatform(),
+): string {
+  const custom = configuredFontFamily?.trim();
+  const defaultFamily = EDITOR_FONT_FAMILY[platform];
+  // A configured family may not be installed on the current machine. Keep the platform's
+  // monospace stack as a final fallback rather than relying on the browser's generic default.
+  return !custom || custom === defaultFamily
+    ? defaultFamily
+    : `${custom}, ${defaultFamily}`;
 }
 
 export function getEditorFontSize(platform = resolvePlatform()): number {

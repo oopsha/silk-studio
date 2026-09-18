@@ -339,7 +339,8 @@ function PlsqlSnapshotDialog() {
                   options={{
                     readOnly: true,
                     renderSideBySide: true,
-                    fontFamily: getEditorFontFamily(),
+                    fontFamily: getEditorFontFamily(configuration["editor.fontFamily"]),
+                    fontLigatures: configuration["editor.fontLigatures"],
                     fontSize: configuration["editor.fontSize"],
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,

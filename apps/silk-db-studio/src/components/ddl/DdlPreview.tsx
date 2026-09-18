@@ -200,7 +200,8 @@ function DdlPreview({ objectRef: ref, tabId, tabUri, bufferedContent }: DdlPrevi
           onMount={handleMount}
           options={{
             readOnly: true,
-            fontFamily: getEditorFontFamily(),
+            fontFamily: getEditorFontFamily(configuration["editor.fontFamily"]),
+            fontLigatures: configuration["editor.fontLigatures"],
             fontSize: configuration["editor.fontSize"],
             tabSize: configuration["editor.tabSize"],
             insertSpaces: configuration["editor.insertSpaces"],

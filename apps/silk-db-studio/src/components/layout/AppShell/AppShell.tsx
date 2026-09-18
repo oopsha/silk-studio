@@ -296,6 +296,8 @@ function AppShell() {
         editorProps={{
           configuration: {
             colorTheme: configuration["workbench.colorTheme"],
+            fontFamily: configuration["editor.fontFamily"],
+            fontLigatures: configuration["editor.fontLigatures"],
             fontSize: configuration["editor.fontSize"],
             tabSize: configuration["editor.tabSize"],
             insertSpaces: configuration["editor.insertSpaces"],

@@ -130,6 +130,12 @@ class ConfigurationServiceImpl {
       24,
       CONFIGURATION_DEFAULTS["editor.fontSize"],
     );
+    const configuredFontFamily =
+      typeof values["editor.fontFamily"] === "string"
+        ? values["editor.fontFamily"].trim().slice(0, 500)
+        : "";
+    values["editor.fontFamily"] =
+      configuredFontFamily || CONFIGURATION_DEFAULTS["editor.fontFamily"];
     values["editor.tabSize"] = clampNumber(
       values["editor.tabSize"],
       2,

@@ -67,6 +67,12 @@ export const enMessages = {
     },
     editor: {
       title: "Editor",
+      fontFamily: "Font Family",
+      fontFamilyDescription: "A comma-separated CSS font-family list. Leave empty to use the current platform's default monospace font.",
+      restoreDefault: "Restore Default",
+      fontLigatures: "Font Ligatures",
+      fontLigaturesDescription: "Render supported operator combinations as a single glyph.",
+      fontLigaturesHint: "Enable font ligatures",
       fontSize: "Font Size",
       tabSize: "Tab Size",
       insertSpaces: "Insert Spaces",

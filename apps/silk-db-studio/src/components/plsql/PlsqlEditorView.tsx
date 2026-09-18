@@ -320,7 +320,8 @@ function PlsqlEditorView() {
           onChange={handleChange}
           options={{
             readOnly: readOnly || loadState.status === "loading",
-            fontFamily: getEditorFontFamily(),
+            fontFamily: getEditorFontFamily(configuration["editor.fontFamily"]),
+            fontLigatures: configuration["editor.fontLigatures"],
             fontSize: configuration["editor.fontSize"],
             tabSize: configuration["editor.tabSize"],
             insertSpaces: configuration["editor.insertSpaces"],

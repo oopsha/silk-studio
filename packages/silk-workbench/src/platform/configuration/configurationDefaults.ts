@@ -1,4 +1,5 @@
 import type { ColorThemeId } from "@silk-studio/ui/platform/colorTheme.ts";
+import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
 export type { ColorThemeId };
 export type LineNumbersMode = "on" | "off" | "relative";
 export type WordWrapMode = "off" | "on";
@@ -19,6 +20,9 @@ export type WorkbenchConfiguration = {
   "workbench.colorTheme": ColorThemeId;
   "workbench.fontSize": number;
   "workbench.locale": LocaleId;
+  /** CSS font-family list for code editors; empty uses the platform default. */
+  "editor.fontFamily": string;
+  "editor.fontLigatures": boolean;
   "editor.fontSize": number;
   "editor.tabSize": number;
   "editor.insertSpaces": boolean;
@@ -73,6 +77,8 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "workbench.colorTheme": "dark",
   "workbench.fontSize": 13,
   "workbench.locale": "en",
+  "editor.fontFamily": getEditorFontFamily(),
+  "editor.fontLigatures": true,
   "editor.fontSize": 14,
   "editor.tabSize": 4,
   "editor.insertSpaces": true,

@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { ConfigurationService } from "../../platform/configuration/configurationService";
-import type {
-  AiProviderId,
-  ColorThemeId,
-  LineNumbersMode,
-  WordWrapMode,
+import {
+  CONFIGURATION_DEFAULTS,
+  type AiProviderId,
+  type ColorThemeId,
+  type LineNumbersMode,
+  type WordWrapMode,
 } from "../../platform/configuration/configurationDefaults";
 import { COLOR_THEMES } from "../../platform/configuration/colorThemes";
 import { useConfiguration } from "../../platform/configuration/useConfiguration";
@@ -145,6 +146,49 @@ function EditorSettings() {
   return (
     <section className="settings-section">
       <h2 className="settings-section__title">{t("settings.editor.title")}</h2>
+      <SettingRow
+        title={t("settings.editor.fontFamily")}
+        description={t("settings.editor.fontFamilyDescription")}
+      >
+        <div className="settings-font-family-control">
+          <input
+            className="settings-control"
+            type="text"
+            value={configuration["editor.fontFamily"]}
+            spellCheck={false}
+            onChange={(event) =>
+              ConfigurationService.updateValue("editor.fontFamily", event.target.value)
+            }
+          />
+          <button
+            type="button"
+            className="settings-button"
+            onClick={() =>
+              ConfigurationService.updateValue(
+                "editor.fontFamily",
+                CONFIGURATION_DEFAULTS["editor.fontFamily"],
+              )
+            }
+          >
+            {t("settings.editor.restoreDefault")}
+          </button>
+        </div>
+      </SettingRow>
+      <SettingRow
+        title={t("settings.editor.fontLigatures")}
+        description={t("settings.editor.fontLigaturesDescription")}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={configuration["editor.fontLigatures"]}
+            onChange={(event) =>
+              ConfigurationService.updateValue("editor.fontLigatures", event.target.checked)
+            }
+          />
+          {t("settings.editor.fontLigaturesHint")}
+        </label>
+      </SettingRow>
       <SettingRow title={t("settings.editor.fontSize")}>
         <input
           className="settings-control settings-control--number"

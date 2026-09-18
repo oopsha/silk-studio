@@ -516,7 +516,8 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
             }}
             options={{
               readOnly: readOnly || buffer.loading,
-              fontFamily: getEditorFontFamily(),
+              fontFamily: getEditorFontFamily(configuration["editor.fontFamily"]),
+              fontLigatures: configuration["editor.fontLigatures"],
               fontSize: configuration["editor.fontSize"],
               tabSize: configuration["editor.tabSize"],
               insertSpaces: configuration["editor.insertSpaces"],
