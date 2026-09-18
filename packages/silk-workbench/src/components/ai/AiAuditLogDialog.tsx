@@ -3,7 +3,6 @@ import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useI18n } from "../../platform/i18n/useI18n";
 import { AiAuditLogDialogService } from "../../services/ai/aiAuditLogDialogService";
 import { AiAuditLogService } from "../../services/ai/aiAuditLogService";
-import { formatEstimatedCostUsd } from "../../services/ai/aiAuditLogPricing";
 import type { AiAuditLogEntry } from "../../services/ai/aiAuditLogTypes";
 import { useAiAuditLog } from "../../services/ai/useAiAuditLog";
 import { AI_PROVIDER_LABELS } from "../../services/settings/aiSettingsConstants";
@@ -28,12 +27,17 @@ function formatTokenPair(entry: AiAuditLogEntry): string {
   return `${input} / ${output}`;
 }
 
+function formatTotalTokenPair(entries: readonly AiAuditLogEntry[]): string {
+  const input = entries.reduce((sum, entry) => sum + (entry.inputTokens ?? 0), 0);
+  const output = entries.reduce((sum, entry) => sum + (entry.outputTokens ?? 0), 0);
+  return `${input} / ${output}`;
+}
+
 function AiAuditLogDialog() {
   const { t } = useI18n();
   const [open, setOpen] = useState(() => AiAuditLogDialogService.isOpen());
   const entries = useAiAuditLog();
   const visible = entries.slice(0, AI_AUDIT_DISPLAY_LIMIT);
-  const totalCost = AiAuditLogService.getTotalEstimatedCostUsd();
 
   useEffect(() => {
     return AiAuditLogDialogService.onDidChange(() => {
@@ -101,7 +105,7 @@ function AiAuditLogDialog() {
               ? t("app.ai.auditEmpty")
               : t("app.ai.auditSummary")
                   .replace("{n}", String(entries.length))
-                  .replace("{cost}", formatEstimatedCostUsd(totalCost))}
+                  .replace("{tokens}", formatTotalTokenPair(entries))}
           </p>
           <p className="ai-audit-log-dialog__note">{t("app.ai.auditNote")}</p>
           <div className="ai-audit-log-dialog__actions">
@@ -145,11 +149,7 @@ function AiAuditLogDialog() {
                   </div>
                   <div className="ai-audit-log-dialog__item-detail">
                     {t("app.ai.auditTokensLine")
-                      .replace("{tokens}", formatTokenPair(entry))
-                      .replace(
-                        "{cost}",
-                        formatEstimatedCostUsd(entry.estimatedCostUsd),
-                      )}
+                      .replace("{tokens}", formatTokenPair(entry))}
                     {typeof entry.durationMs === "number"
                       ? ` · ${entry.durationMs}ms`
                       : ""}

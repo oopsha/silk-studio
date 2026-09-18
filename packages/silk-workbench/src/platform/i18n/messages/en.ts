@@ -1252,15 +1252,15 @@ export const enMessages = {
       usage: "Usage",
       auditLog: "AI call log",
       auditEmpty: "No AI calls recorded yet.",
-      auditSummary: "{n} call(s) · est. total {cost} (approx.)",
+      auditSummary: "{n} call(s) · total tokens in/out {tokens}",
       auditNote:
-        "Stores time, provider, model, tokens, and rough cost locally. Prompts and API keys are never logged. Prices are estimates only.",
+        "Stores time, provider, model, and tokens locally. Prompts and API keys are never logged.",
       auditExport: "Export JSON",
       auditClear: "Clear log",
       auditClearConfirm: "Clear all AI audit log entries?",
       auditKindTest: "Test",
       auditKindChat: "Chat",
-      auditTokensLine: "tokens in/out {tokens} · est. {cost}",
+      auditTokensLine: "tokens in/out {tokens}",
       auditShowingLatest:
         "Showing latest {n}. Export JSON for the full ring buffer.",
       placeholderReady:

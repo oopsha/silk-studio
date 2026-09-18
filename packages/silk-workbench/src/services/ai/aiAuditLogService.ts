@@ -73,8 +73,10 @@ class AiAuditLogServiceImpl {
     return JSON.stringify(
       {
         exportedAt: new Date().toISOString(),
-        note: "Approximate costs only. No prompts or API keys are stored.",
-        entries: this.entries,
+        note: "No prompts or API keys are stored.",
+        entries: this.entries.map(
+          ({ estimatedCostUsd: _estimatedCostUsd, ...entry }) => entry,
+        ),
       },
       null,
       2,

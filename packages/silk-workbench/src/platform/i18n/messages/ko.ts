@@ -1242,15 +1242,15 @@ export const koMessages = {
       usage: "사용량",
       auditLog: "AI 호출 로그",
       auditEmpty: "기록된 AI 호출이 없습니다.",
-      auditSummary: "호출 {n}건 · 예상 합계 {cost} (대략)",
+      auditSummary: "호출 {n}건 · 토큰 입/출 합계 {tokens}",
       auditNote:
-        "시간·제공자·모델·토큰·대략 비용만 로컬에 저장합니다. 프롬프트와 API 키는 기록하지 않습니다. 가격은 추정치입니다.",
+        "시간·제공자·모델·토큰만 로컬에 저장합니다. 프롬프트와 API 키는 기록하지 않습니다.",
       auditExport: "JSON 내보내기",
       auditClear: "로그 지우기",
       auditClearConfirm: "AI 호출 로그를 모두 지울까요?",
       auditKindTest: "테스트",
       auditKindChat: "채팅",
-      auditTokensLine: "토큰 입/출 {tokens} · 예상 {cost}",
+      auditTokensLine: "토큰 입/출 {tokens}",
       auditShowingLatest:
         "최근 {n}건만 표시합니다. 전체 링 버퍼는 JSON으로 내보내세요.",
       placeholderReady:

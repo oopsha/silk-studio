@@ -70,7 +70,7 @@ export const SILK_USAGE_TOPICS: readonly SilkUsageTopic[] = [
     title: "The AI chat feature itself",
     content: [
       "This AI chat: BYOK — Settings → AI: enable it, pick a Provider (Gemini/OpenAI/Anthropic/Custom with its own Base URL), pick or type a Model, paste an API key and Save ('Test Connection' validates it); the key goes to the OS credential store, never plain settings. Open the chat with Ctrl+Shift+A. There is one ongoing conversation — 'New AI Chat' clears it with no undo; history persists across restarts. Four Settings → AI toggles control what's sent as context: Include schema context, Include editor selection, Include query history, Include open PL/SQL dependencies. The assistant cannot run queries or write to the DB directly — a proposed SQL block gets Review/Copy buttons and, only if 'Allow SQL Execution' is on, an Execute… button that opens a confirmation dialog before anything runs.",
-      "AI Call Log (Help menu): a metadata-only log of requests made to the AI provider — timestamp, provider/model, success/error, token counts, estimated cost, duration. It never stores prompts, responses, or the API key, so it's for usage/cost tracking and catching failures, not for reviewing exact content. Export saves it as JSON; Clear (with confirmation) only empties this log, not the chat history itself.",
+      "AI Call Log (Help menu): a metadata-only log of requests made to the AI provider — timestamp, provider/model, success/error, token counts, and duration. It never stores prompts, responses, or the API key, so it's for tracking usage and catching failures, not for reviewing exact content. Export saves it as JSON; Clear (with confirmation) only empties this log, not the chat history itself.",
     ].join(" "),
   },
   {
