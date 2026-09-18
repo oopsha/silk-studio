@@ -28,15 +28,18 @@ const EDITOR_FONT_SIZE: Record<WorkbenchPlatform, number> = {
 };
 
 function resolvePlatform(): WorkbenchPlatform {
-  const root = document.documentElement;
-  if (root.classList.contains("platform-mac")) return "mac";
-  if (root.classList.contains("platform-linux")) return "linux";
-  if (root.classList.contains("platform-windows")) return "windows";
-  return detectWorkbenchPlatform();
+  if (typeof document !== "undefined") {
+    const root = document.documentElement;
+    if (root.classList.contains("platform-mac")) return "mac";
+    if (root.classList.contains("platform-linux")) return "linux";
+    if (root.classList.contains("platform-windows")) return "windows";
+  }
+  return typeof navigator !== "undefined" ? detectWorkbenchPlatform() : "windows";
 }
 
 function useKoreanUiFont(): boolean {
-  return document.documentElement.lang.toLowerCase().startsWith("ko");
+  return typeof document !== "undefined" &&
+    document.documentElement.lang.toLowerCase().startsWith("ko");
 }
 
 export function getUiFontFamily(platform = resolvePlatform()): string {
