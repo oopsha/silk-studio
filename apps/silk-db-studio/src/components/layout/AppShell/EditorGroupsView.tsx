@@ -44,7 +44,7 @@ const crossGroupDnd: TabBarCrossGroupDnd = {
 type EditorAreaSharedProps = {
   configuration: EditorConfigurationOptions;
   beforeMount?: (monaco: Monaco) => void;
-  renderAlternative?: (tab: EditorTab) => React.ReactNode | null;
+  renderAlternative?: (tab: EditorTab, groupId: EditorGroupId) => React.ReactNode | null;
   onRunQuery?: () => void;
   onRunScript?: () => void;
 };

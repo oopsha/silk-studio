@@ -305,7 +305,7 @@ function AppShell() {
             wordWrap: configuration["editor.wordWrap"],
           },
           beforeMount: handleEditorBeforeMount,
-          renderAlternative: (tab) => {
+          renderAlternative: (tab, groupId) => {
             if (SettingsService.isSettingsTab(tab.uri)) {
               return (
                 <SettingsEditor
@@ -330,7 +330,7 @@ function AppShell() {
               return <PlsqlEditorView />;
             }
             if (isObjectEditorTab(tab.uri)) {
-              return <ObjectEditorView />;
+              return <ObjectEditorView groupId={groupId} />;
             }
             if (isCreateTableDraftTab(tab.uri)) {
               return <CreateTableDraftView />;

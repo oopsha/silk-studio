@@ -1,15 +1,21 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { parseObjectEditorUri } from "../../services/connection/objectEditorConstants";
 import PropertiesView from "./PropertiesView";
 import DataView from "./DataView";
 import { getObjectEditorSection, onDidChangeObjectEditorSection, setObjectEditorSection, type ObjectEditorSection } from "../../services/connection/objectEditorSectionService";
 import "./ObjectEditorView.css";
 
-function ObjectEditorView() {
+type ObjectEditorViewProps = {
+  /** The pane this view belongs to; it may be visible without being focused. */
+  groupId: EditorGroupId;
+};
+
+function ObjectEditorView({ groupId }: ObjectEditorViewProps) {
   const { t } = useI18n();
-  const activeTab = useActiveEditor();
+  const activeTab = useActiveEditor(groupId);
   const ref = parseObjectEditorUri(activeTab?.uri);
   const [activeSection, setActiveSectionState] = useState<ObjectEditorSection>(
     () => (activeTab ? (getObjectEditorSection(activeTab.id) ?? "properties") : "properties"),

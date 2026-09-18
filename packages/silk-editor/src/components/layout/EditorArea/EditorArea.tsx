@@ -38,7 +38,7 @@ type EditorAreaProps = {
   onRunQuery?: () => void;
   /** Execute Script (Ctrl+Shift+Enter) — whole buffer or selection with GO batches. */
   onRunScript?: () => void;
-  renderAlternative?: (tab: EditorTab) => React.ReactNode | null;
+  renderAlternative?: (tab: EditorTab, groupId: EditorGroupId) => React.ReactNode | null;
   configuration: EditorConfigurationOptions;
   /** Extra Monaco setup (language registration, providers) before the first editor mounts. */
   beforeMount?: (monaco: Monaco) => void;
@@ -182,7 +182,7 @@ function EditorArea({
     return <main className="editor-area editor-area--empty" />;
   }
 
-  const alternative = renderAlternative?.(activeTab);
+  const alternative = renderAlternative?.(activeTab, groupId);
   if (alternative) {
     return <main className="editor-area">{alternative}</main>;
   }
