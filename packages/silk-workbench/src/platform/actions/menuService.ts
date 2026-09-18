@@ -170,6 +170,13 @@ class MenuServiceImpl {
       case "silk.ai.exportCallLog":
       case "silk.ai.clearCallLog":
         return "hasAiCallLogEntries";
+      // Account/profile and settings-sync are intentional placeholders until the account
+      // service is available. They remain visible in the activity menus but cannot run.
+      case "workbench.userData.actions.manageSettings":
+      case "silk.account.signIn":
+      case "silk.account.editProfile":
+      case "silk.account.signOut":
+        return "accountFeaturesEnabled";
       // Run menu — Silk-specific, no VS Code equivalent. Judgment calls, kept consistent
       // with the positive-existence style used for Save/Find above (default disabled
       // absent evidence of a target to act on).

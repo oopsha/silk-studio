@@ -4,6 +4,11 @@ import { CommandsRegistry } from "../../platform/commands/commandRegistry";
 import { KeybindingsRegistry } from "../../platform/keybinding/keybindingRegistry";
 import { ConfigurationService } from "../../platform/configuration/configurationService";
 import { COLOR_THEMES } from "../../platform/configuration/colorThemes";
+import { ContextKeyService } from "../../platform/context/contextKeyService";
+
+// Account, profile, and settings-sync backends are not available yet. Keep their menu
+// positions visible but disabled, and model sign-in/sign-out as mutually exclusive states.
+ContextKeyService.set("accountSignedOut", true);
 
 function registerStubCommand(id: string): void {
   CommandsRegistry.registerCommand(id, () => {
@@ -120,6 +125,7 @@ MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
   },
   group: "1_account",
   order: 1,
+  when: "accountSignedOut",
 });
 
 MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
@@ -129,6 +135,7 @@ MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
   },
   group: "1_account",
   order: 2,
+  when: "accountSignedIn",
 });
 
 MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
@@ -138,6 +145,7 @@ MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
   },
   group: "1_account",
   order: 3,
+  when: "accountSignedIn",
 });
 
 MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
