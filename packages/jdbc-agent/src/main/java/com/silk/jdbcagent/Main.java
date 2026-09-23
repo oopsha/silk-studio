@@ -1314,8 +1314,13 @@ public final class Main {
       session.activeStatement = statement;
       try {
         statement.setQueryTimeout(effectiveTimeout);
-        // Fetch one extra row so we can tell whether the result was truncated.
-        statement.setMaxRows(effectiveMaxRows + 1);
+        // Fetch one extra row so we can tell whether a result set was truncated. Do not apply
+        // this display-only cap to write statements: SQL Server honours Statement#setMaxRows
+        // for UPDATE/DELETE as a server-side row limit, which would otherwise turn the grid's
+        // 200-row preview limit into an unintended partial data change.
+        if (!isWriteSql(sql)) {
+          statement.setMaxRows(effectiveMaxRows + 1);
+        }
 
         boolean hasResultSet;
         if (useBinds) {
