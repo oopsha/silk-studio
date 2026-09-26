@@ -49,6 +49,13 @@ describe("extractPlsqlObjectName", () => {
       ),
     ).toBeNull();
   });
+
+  it("extracts a procedure name after leading line and block comments", () => {
+    expect(extractPlsqlObjectName(
+      "-- author\n/* description */\nCREATE PROCEDURE [dbo].[SP_TRAN_DIVIDE_PROM_EVENT] AS BEGIN RETURN END",
+      "procedure",
+    )).toBe("SP_TRAN_DIVIDE_PROM_EVENT");
+  });
 });
 
 describe("buildPlsqlSaveSql", () => {
@@ -94,6 +101,35 @@ describe("buildPlsqlSaveSql", () => {
   });
 
   describe("SQL Server", () => {
+    it("accepts a commented procedure header and preserves comments when rewriting CREATE", () => {
+      const procedureRef: PlsqlEditorRef = {
+        ...ref,
+        kind: "procedure",
+        objectName: "SP_TRAN_DIVIDE_PROM_EVENT",
+      };
+      const source = "-- =============================================\n" +
+        "-- Author: sywooda\n/* Description: 매출 분리 => Tax */\n" +
+        "CREATE PROCEDURE [dbo].[SP_TRAN_DIVIDE_PROM_EVENT]\n@IN_TRAN_YMD VARCHAR(8)\nAS\nBEGIN\n  RETURN\nEND";
+      const result = buildPlsqlSaveSql(source, procedureRef, "sqlserver");
+      expect(result.statements).toHaveLength(1);
+      expect(result.statements[0]).toContain("-- Author: sywooda");
+      expect(result.statements[0]).toContain("/* Description: 매출 분리 => Tax */");
+      expect(result.statements[0]).toContain("ALTER PROCEDURE [dbo].[SP_TRAN_DIVIDE_PROM_EVENT]");
+      expect(result.warnings).toContain("Rewrote CREATE to ALTER (SQL Server has no CREATE OR REPLACE).");
+      expect(result.warnings.some((warning) => warning.includes("Buffer defines"))).toBe(false);
+    });
+
+    it("leaves CREATE OR ALTER after leading comments unchanged", () => {
+      const result = buildPlsqlSaveSql("-- header\nCREATE OR ALTER VIEW myview AS SELECT 1", ref, "sqlserver");
+      expect(result.statements).toEqual(["-- header\nCREATE OR ALTER VIEW myview AS SELECT 1"]);
+      expect(result.warnings).toEqual([]);
+    });
+
+    it("still rejects a buffer containing only comments", () => {
+      expect(() => buildPlsqlSaveSql("-- CREATE VIEW myview\n/* ALTER VIEW myview */", ref, "sqlserver"))
+        .toThrow(/Source is empty/);
+    });
+
     it("rewrites plain CREATE VIEW to ALTER VIEW", () => {
       const result = buildPlsqlSaveSql(
         "CREATE VIEW myview AS SELECT 1;",

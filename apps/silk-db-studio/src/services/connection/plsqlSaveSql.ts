@@ -52,6 +52,31 @@ function namesEqual(a: string, b: string): boolean {
   return normalizeIdent(a) === normalizeIdent(b);
 }
 
+/** Skip whitespace and leading SQL comments without removing them from the saved source. */
+function skipLeadingSqlTrivia(sql: string): number {
+  let index = 0;
+  while (index < sql.length) {
+    while (index < sql.length && /\s|\uFEFF/.test(sql[index])) index += 1;
+    if (sql.startsWith("--", index)) {
+      const newline = sql.indexOf("\n", index + 2);
+      index = newline < 0 ? sql.length : newline + 1;
+      continue;
+    }
+    if (sql.startsWith("/*", index)) {
+      let depth = 1;
+      index += 2;
+      while (index < sql.length && depth > 0) {
+        if (sql.startsWith("/*", index)) { depth += 1; index += 2; }
+        else if (sql.startsWith("*/", index)) { depth -= 1; index += 2; }
+        else index += 1;
+      }
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
 /**
  * Best-effort object name from a CREATE [OR REPLACE] header.
  * Handles schema.object and quoted identifiers.
@@ -69,7 +94,7 @@ export function extractPlsqlObjectName(
     String.raw`^\s*(?:CREATE(?:\s+OR\s+(?:REPLACE|ALTER))?|ALTER)\s+(?:EDITIONABLE\s+|NONEDITIONABLE\s+)?(?:${keyword})(?:\s+BODY)?\s+(${identToken}(?:\s*\.\s*${identToken})?)`,
     "i",
   );
-  const match = header.exec(sql);
+  const match = header.exec(sql.slice(skipLeadingSqlTrivia(sql)));
   if (!match) return null;
   const qualified = match[1].replace(/\s+/g, "");
   const parts = qualified.split(".");
@@ -136,7 +161,7 @@ export function buildPlsqlSaveSql(
   }
 
   let sql = stripTrailingSemicolon(body);
-  if (!sql.trim()) {
+  if (!sql.slice(skipLeadingSqlTrivia(sql)).trim()) {
     throw new Error("Source is empty. Nothing to save.");
   }
 
@@ -151,8 +176,10 @@ export function buildPlsqlSaveSql(
   const needsDropCreate =
     (driverId === "mysql" || driverId === "mariadb") &&
     (ref.kind === "procedure" || ref.kind === "function" || ref.kind === "trigger");
-  const startsWithCreate = /^\s*CREATE\b/i.test(sql);
-  const startsWithAlter = /^\s*ALTER\b/i.test(sql);
+  const headerStart = skipLeadingSqlTrivia(sql);
+  const headerSql = sql.slice(headerStart);
+  const startsWithCreate = /^CREATE\b/i.test(headerSql);
+  const startsWithAlter = /^ALTER\b/i.test(headerSql);
 
   if (!startsWithCreate && !(isSqlServer && startsWithAlter)) {
     const keyword =
@@ -174,20 +201,20 @@ export function buildPlsqlSaveSql(
     // way and needs no rewrite. Only a plain leading CREATE (a manually pasted/older buffer, or
     // a routine kind the agent doesn't normalize) still gets rewritten to ALTER, since SQL
     // Server has no bare CREATE OR REPLACE and this editor only ever edits an existing object.
-    if (startsWithCreate && !/^\s*CREATE\s+OR\s+ALTER\b/i.test(sql)) {
-      sql = sql.replace(/^\s*CREATE\b/i, "ALTER");
+    if (startsWithCreate && !/^CREATE\s+OR\s+ALTER\b/i.test(headerSql)) {
+      sql = sql.slice(0, headerStart) + headerSql.replace(/^CREATE\b/i, "ALTER");
       warnings.push("Rewrote CREATE to ALTER (SQL Server has no CREATE OR REPLACE).");
     }
   } else if (needsDropCreate) {
     // Leave a leading CREATE exactly as fetched — no OR REPLACE rewrite (invalid syntax for
     // MySQL/MariaDB routines). The DROP statement built below handles the "replace" half.
-  } else if (/^\s*CREATE\s+(?!OR\s+REPLACE\b)/i.test(sql)) {
-    sql = sql.replace(/^\s*CREATE\b/i, "CREATE OR REPLACE");
+  } else if (/^CREATE\s+(?!OR\s+REPLACE\b)/i.test(headerSql)) {
+    sql = sql.slice(0, headerStart) + headerSql.replace(/^CREATE\b/i, "CREATE OR REPLACE");
     warnings.push("Rewrote CREATE to CREATE OR REPLACE.");
   }
 
-  const isBodySql = /^\s*CREATE(?:\s+OR\s+REPLACE)?\s+(?:EDITIONABLE\s+|NONEDITIONABLE\s+)?PACKAGE\s+BODY\b/i.test(
-    sql,
+  const isBodySql = /^CREATE(?:\s+OR\s+REPLACE)?\s+(?:EDITIONABLE\s+|NONEDITIONABLE\s+)?PACKAGE\s+BODY\b/i.test(
+    sql.slice(skipLeadingSqlTrivia(sql)),
   );
   if (ref.kind === "package") {
     if (ref.packageBody && !isBodySql) {
