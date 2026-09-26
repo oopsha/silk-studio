@@ -764,6 +764,7 @@ export const enMessages = {
       defaultValue: "Default",
       comment: "Comment",
       primaryKey: "PK",
+      primaryKeyOrder: "PK Order",
       yes: "Yes",
       no: "No",
     },
@@ -849,6 +850,7 @@ export const enMessages = {
     tableStructure: {
       editButton: "Edit Structure",
       addColumn: "Add Column",
+      duplicateColumn: "Duplicate Column",
       dropColumn: "Drop",
       undoDrop: "Undo Drop",
       discard: "Discard Changes",

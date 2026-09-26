@@ -50,6 +50,7 @@ export type TableStructureEditorState = {
   setEditedTableComment: (comment: string | null) => void;
   updateColumn: (rowId: string, patch: Partial<EditableColumnDraft>) => void;
   addColumn: () => void;
+  duplicateColumn: (draft: EditableColumnDraft) => void;
   toggleDrop: (draft: EditableColumnDraft) => void;
   discard: () => void;
   refresh: () => void;
@@ -246,6 +247,22 @@ export function useTableStructureEditorState(
     setEditedColumns((prev) => [...prev, newColumnDraft()]);
   }, []);
 
+  const duplicateColumn = useCallback((draft: EditableColumnDraft): void => {
+    setEditedColumns((prev) => {
+      const index = prev.findIndex((column) => column.rowId === draft.rowId);
+      const copy: EditableColumnDraft = {
+        ...draft,
+        rowId: crypto.randomUUID(),
+        name: "",
+        origin: null,
+        readOnlyReason: undefined,
+      };
+      const next = [...prev];
+      next.splice(index + 1, 0, copy);
+      return next;
+    });
+  }, []);
+
   const discardOrRefresh = useCallback(async () => {
     if (isDirty) {
       const confirmed = await ConfirmDialogService.confirm({
@@ -298,6 +315,7 @@ export function useTableStructureEditorState(
     setEditedTableComment,
     updateColumn,
     addColumn,
+    duplicateColumn,
     toggleDrop,
     discard: discardOrRefresh,
     refresh: discardOrRefresh,

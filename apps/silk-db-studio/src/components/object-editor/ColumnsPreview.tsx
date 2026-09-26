@@ -10,6 +10,7 @@ import {
   setCachedObjectPreview,
 } from "../../services/connection/objectPreviewCache";
 import { formatColumnType } from "../../services/connection/tableColumnTypeFormat";
+import ColumnGrid, { type ColumnGridColumn } from "./ColumnGrid";
 import "./ColumnsPreview.css";
 
 type CachedColumnsPreview = {
@@ -101,44 +102,16 @@ function ColumnsPreview({ objectRef }: ColumnsPreviewProps) {
     );
   }
 
-  return (
-    <div className="columns-preview">
-      <table className="columns-preview__table">
-        <thead>
-          <tr>
-            <th className="columns-preview__index-cell">#</th>
-            <th>{t("app.columns.name")}</th>
-            <th className="columns-preview__pk-cell">PK 순서</th>
-            <th>{t("app.columns.type")}</th>
-            <th>{t("app.columns.nullable")}</th>
-            <th>{t("app.columns.defaultValue")}</th>
-            <th>{t("app.columns.comment")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {loadState.columns.map((column, index) => (
-            <tr key={column.name}>
-              <td className="columns-preview__index-cell">{index + 1}</td>
-              <td>{column.name}</td>
-              <td className="columns-preview__pk-cell">
-                {loadState.primaryKeyOrders.get(column.name.toLowerCase()) ?? ""}
-              </td>
-              <td>{formatColumnType(column)}</td>
-              <td>
-                {column.nullable === undefined
-                  ? ""
-                  : column.nullable
-                    ? t("app.columns.yes")
-                    : t("app.columns.no")}
-              </td>
-              <td>{column.defaultValue ?? ""}</td>
-              <td>{column.comment ?? ""}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+  const rows = loadState.columns.map((column, index) => ({ ...column, rowId: String(index) }));
+  const columns: ColumnGridColumn<(typeof rows)[number]>[] = [
+    { field: "name", title: t("app.columns.name"), value: (row) => row.name },
+    { field: "pk", title: t("app.columns.primaryKeyOrder"), width: 90, value: (row) => String(loadState.primaryKeyOrders.get(row.name.toLowerCase()) ?? "") },
+    { field: "type", title: t("app.columns.type"), value: (row) => formatColumnType(row) },
+    { field: "nullable", title: t("app.columns.nullable"), value: (row) => row.nullable === undefined ? "" : row.nullable ? t("app.columns.yes") : t("app.columns.no") },
+    { field: "defaultValue", title: t("app.columns.defaultValue"), value: (row) => row.defaultValue ?? "" },
+    { field: "comment", title: t("app.columns.comment"), value: (row) => row.comment ?? "" },
+  ];
+  return <ColumnGrid rows={rows} columns={columns} filename={`${objectRef.objectName}-columns`} />;
 }
 
 export default ColumnsPreview;

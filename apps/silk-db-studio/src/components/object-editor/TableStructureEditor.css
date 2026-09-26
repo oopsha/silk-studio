@@ -94,6 +94,11 @@
   text-decoration: line-through;
 }
 
+.column-grid .ag-row.table-structure-editor__row--pending-drop .ag-cell {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
 .table-structure-editor__cell-input {
   box-sizing: border-box;
   width: 100%;

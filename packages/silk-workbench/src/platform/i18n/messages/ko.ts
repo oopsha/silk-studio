@@ -762,6 +762,7 @@ export const koMessages = {
       defaultValue: "기본값",
       comment: "코멘트",
       primaryKey: "PK",
+      primaryKeyOrder: "PK 순서",
       yes: "예",
       no: "아니오",
     },
@@ -847,6 +848,7 @@ export const koMessages = {
     tableStructure: {
       editButton: "구조 편집",
       addColumn: "컬럼 추가",
+      duplicateColumn: "컬럼 복제",
       dropColumn: "삭제",
       undoDrop: "삭제 취소",
       discard: "변경 취소",

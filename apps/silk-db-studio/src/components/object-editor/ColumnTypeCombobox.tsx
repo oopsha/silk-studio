@@ -7,21 +7,23 @@ type ColumnTypeComboboxProps = {
   driverId: ConnectionDriverId;
   value: string;
   disabled?: boolean;
+  autoFocus?: boolean;
   placeholder: string;
   onChange: (value: string) => void;
 };
 
 /** Keyboard-searchable type picker (typeahead combobox), shared by table editors. */
-function ColumnTypeCombobox({ driverId, value, disabled, placeholder, onChange }: ColumnTypeComboboxProps) {
+function ColumnTypeCombobox({ driverId, value, disabled, autoFocus, placeholder, onChange }: ColumnTypeComboboxProps) {
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const options = useMemo(() => columnTypeOptionsWithCurrentValue(driverId, value), [driverId, value]);
   useEffect(() => setQuery(value), [value]);
   const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
+    const normalized = searching ? query.trim().toLowerCase() : "";
     return normalized ? options.filter((option) => option.toLowerCase().includes(normalized)) : options;
-  }, [options, query]);
+  }, [options, query, searching]);
 
   const select = (option: string) => {
     setQuery(option);
@@ -32,6 +34,7 @@ function ColumnTypeCombobox({ driverId, value, disabled, placeholder, onChange }
   return (
     <div className="column-type-combobox">
       <input
+        autoFocus={autoFocus}
         className="table-structure-editor__cell-input"
         role="combobox"
         aria-autocomplete="list"
@@ -39,8 +42,12 @@ function ColumnTypeCombobox({ driverId, value, disabled, placeholder, onChange }
         value={query}
         disabled={disabled}
         placeholder={placeholder}
-        onFocus={() => { setOpen(true); setActiveIndex(0); }}
-        onChange={(event) => { setQuery(event.target.value); setOpen(true); setActiveIndex(0); }}
+        onFocus={() => {
+          setSearching(false);
+          setOpen(true);
+          setActiveIndex(Math.max(0, options.findIndex((option) => option.toLowerCase() === value.toLowerCase())));
+        }}
+        onChange={(event) => { setQuery(event.target.value); setSearching(true); setOpen(true); setActiveIndex(0); }}
         onBlur={() => window.setTimeout(() => {
           const exact = options.find((option) => option.toLowerCase() === query.trim().toLowerCase());
           if (exact) select(exact);

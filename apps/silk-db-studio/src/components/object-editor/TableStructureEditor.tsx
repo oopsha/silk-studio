@@ -1,227 +1,97 @@
+import { useState } from "react";
+import type { ICellRendererParams } from "ag-grid-community";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { classifyColumnSize } from "../../services/connection/tableColumnTypeFormat";
-import ColumnTypeCombobox from "./ColumnTypeCombobox";
+import type { EditableColumnDraft } from "../../services/connection/tableStructureDiff";
+import ColumnTypeGridEditor from "./ColumnTypeGridEditor";
+import ColumnGrid, { type ColumnGridColumn } from "./ColumnGrid";
 import type { TableStructureEditorState } from "./useTableStructureEditorState";
 import "./TableStructureEditor.css";
 
-type TableStructureEditorProps = {
-  state: TableStructureEditorState;
-};
+type Props = { state: TableStructureEditorState };
 
-/**
- * The Columns tab's editable grid. Table name/comment and Save/Discard/Refresh live in
- * `ObjectEditorHeader` instead (they act on the table as a whole, not just this grid — see
- * `useTableStructureEditorState`'s doc comment) — this component only owns what's meaningless
- * outside the grid itself: adding a row and editing/dropping individual columns.
- */
-function TableStructureEditor({ state }: TableStructureEditorProps) {
+function TableStructureEditor({ state }: Props) {
   const { t } = useI18n();
   const configuration = useConfiguration();
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const isSqlite = state.driverId === "sqlite";
-  // SQLite exposes comments embedded in its CREATE TABLE text; it has no safe native
-  // ALTER statement that can persist a changed column comment. Keep the discovered
-  // metadata visible, but never let the grid imply that it can be saved.
-  const commentsReadOnly = isSqlite;
-  const showCommentColumn = !isSqlite || configuration["experimental.sqliteComments.enabled"];
-
-  if (state.status === "loading") {
-    return <div className="table-structure-editor__status">{t("app.columns.loading")}</div>;
+  const showComment = !isSqlite || configuration["experimental.sqliteComments.enabled"];
+  const rows = state.editedColumns;
+  const canEdit = (row: EditableColumnDraft) =>
+    !state.blockedReason && !row.readOnlyReason && !state.pendingDeleteRowIds.has(row.rowId);
+  const editText = (field: "name" | "defaultValue" | "comment", readOnly = false) => ({
+    enabled: (row: EditableColumnDraft) => canEdit(row) && !readOnly && !(isSqlite && row.origin && field === "defaultValue"),
+    value: (row: EditableColumnDraft) => row[field] ?? "",
+    apply: (row: EditableColumnDraft, value: unknown) =>
+      state.updateColumn(row.rowId, { [field]: field !== "name" && String(value ?? "") === "" ? null : String(value ?? "") }),
+  });
+  const columns: ColumnGridColumn<EditableColumnDraft>[] = [
+    { field: "name", title: t("app.columns.name"), width: 190, value: (row) => row.name, edit: editText("name") },
+    { field: "pk", title: t("app.columns.primaryKeyOrder"), width: 90,
+      value: (row) => String(state.primaryKeyOrders.get(row.name.toLowerCase()) ?? "") },
+    { field: "typeName", title: t("app.columns.type"), width: 180, value: (row) => row.typeName,
+      edit: {
+        enabled: (row) => canEdit(row) && !(isSqlite && row.origin !== null),
+        value: (row) => row.typeName,
+        apply: (row, value) => state.updateColumn(row.rowId, { typeName: String(value ?? "") }),
+        editor: ColumnTypeGridEditor,
+        editorParams: { driverId: state.driverId, placeholder: t("app.tableStructure.selectType") },
+      } },
+  ];
+  if (!isSqlite) {
+    columns.push({ field: "length", title: t("app.tableStructure.length"), width: 85,
+      value: (row) => String(row.length ?? ""),
+      edit: {
+        enabled: (row) => canEdit(row) && classifyColumnSize(row.typeName) !== "unsized",
+        value: (row) => row.length ?? null,
+        apply: (row, value) => state.updateColumn(row.rowId, { length: value === "" || value == null ? undefined : Number(value) }),
+        editor: "agNumberCellEditor",
+      } });
+    columns.push({ field: "scale", title: t("app.tableStructure.scale"), width: 85,
+      value: (row) => String(row.scale ?? ""),
+      edit: {
+        enabled: (row) => canEdit(row) && classifyColumnSize(row.typeName) === "sized-numeric",
+        value: (row) => row.scale ?? null,
+        apply: (row, value) => state.updateColumn(row.rowId, { scale: value === "" || value == null ? undefined : Number(value) }),
+        editor: "agNumberCellEditor",
+      } });
   }
+  columns.push({ field: "nullable", title: t("app.columns.nullable"), width: 90,
+    value: (row) => isSqlite && row.origin ? row.nullable ? "NULL" : "NOT NULL" :
+      row.nullable ? t("app.columns.yes") : t("app.columns.no"),
+    edit: {
+      enabled: (row) => canEdit(row) && !(isSqlite && row.origin !== null),
+      value: (row) => row.nullable ? t("app.columns.yes") : t("app.columns.no"),
+      apply: (row, value) => state.updateColumn(row.rowId, { nullable: value === t("app.columns.yes") }),
+      editor: "agSelectCellEditor",
+      editorParams: { values: [t("app.columns.yes"), t("app.columns.no")] },
+    } });
+  columns.push({ field: "defaultValue", title: t("app.columns.defaultValue"), width: 160,
+    value: (row) => row.defaultValue ?? "", edit: editText("defaultValue") });
+  if (showComment) columns.push({ field: "comment", title: t("app.columns.comment"), width: 220,
+    value: (row) => row.comment ?? "", edit: editText("comment", isSqlite) });
+  columns.push({ field: "action", title: "", width: 90, value: () => "",
+    render: (params: ICellRendererParams<EditableColumnDraft>) => {
+      const row = params.data;
+      return row && !state.blockedReason && !row.readOnlyReason ?
+        <button type="button" className="table-structure-editor__row-action" onClick={() => state.toggleDrop(row)}>
+          <Codicon name={state.pendingDeleteRowIds.has(row.rowId) ? "discard" : "trash"} />
+          {state.pendingDeleteRowIds.has(row.rowId) ? t("app.tableStructure.undoDrop") : t("app.tableStructure.dropColumn")}
+        </button> : null;
+    } });
 
-  if (state.status === "error") {
-    return (
-      <div className="table-structure-editor__status table-structure-editor__status--error">
-        {state.errorMessage}
-      </div>
-    );
-  }
+  if (state.status === "loading") return <div className="table-structure-editor__status">{t("app.columns.loading")}</div>;
+  if (state.status === "error") return <div className="table-structure-editor__status table-structure-editor__status--error">{state.errorMessage}</div>;
 
-  return (
-    <div className="table-structure-editor">
-      <div className="table-structure-editor__toolbar">
-        <div className="table-structure-editor__toolbar-spacer" />
-        <button
-          type="button"
-          className="table-structure-editor__toolbar-button"
-          disabled={!!state.blockedReason}
-          onClick={state.addColumn}
-        >
-          <Codicon name="add" />
-          {t("app.tableStructure.addColumn")}
-        </button>
-      </div>
-
-      <div className="table-structure-editor__grid">
-        <table className="table-structure-editor__table">
-          <thead>
-            <tr>
-              <th className="table-structure-editor__index-cell">#</th>
-              <th>{t("app.columns.name")}</th>
-              <th className="table-structure-editor__pk-cell">PK 순서</th>
-              <th>{t("app.columns.type")}</th>
-              {!isSqlite ? <th>{t("app.tableStructure.length")}</th> : null}
-              {!isSqlite ? <th>{t("app.tableStructure.scale")}</th> : null}
-              <th>{t("app.columns.nullable")}</th>
-              <th>{t("app.columns.defaultValue")}</th>
-              {showCommentColumn ? <th>{t("app.columns.comment")}</th> : null}
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {state.editedColumns.map((draft, index) => {
-              const sizeClass = classifyColumnSize(draft.typeName);
-              const isReadOnly = !!draft.readOnlyReason || !!state.blockedReason;
-              const isPendingDrop = state.pendingDeleteRowIds.has(draft.rowId);
-              // SQLite can only change the structure of an existing column by renaming it.
-              // New column drafts keep their supported inputs; existing values remain selectable
-              // and copyable through readOnly inputs instead of looking unavailable.
-              const isExistingSqliteColumn = isSqlite && draft.origin !== null;
-              return (
-                <tr
-                  key={draft.rowId}
-                  className={
-                    isPendingDrop ? "table-structure-editor__row--pending-drop" : undefined
-                  }
-                >
-                  <td className="table-structure-editor__index-cell">{index + 1}</td>
-                  <td>
-                    <input
-                      className="table-structure-editor__cell-input"
-                      value={draft.name}
-                      disabled={isReadOnly || isPendingDrop}
-                      onChange={(e) => state.updateColumn(draft.rowId, { name: e.target.value })}
-                    />
-                  </td>
-                  <td className="table-structure-editor__pk-cell">
-                    {state.primaryKeyOrders.get(draft.name.toLowerCase()) ?? ""}
-                  </td>
-                  <td>
-                    {isExistingSqliteColumn ? (
-                      <input
-                        className="table-structure-editor__cell-input"
-                        value={draft.typeName}
-                        readOnly
-                        aria-readonly="true"
-                      />
-                    ) : (
-                      <ColumnTypeCombobox
-                        driverId={state.driverId}
-                        value={draft.typeName}
-                        disabled={isReadOnly || isPendingDrop}
-                        placeholder={t("app.tableStructure.selectType")}
-                        onChange={(typeName) => state.updateColumn(draft.rowId, { typeName })}
-                      />
-                    )}
-                  </td>
-                  {!isSqlite ? (
-                    <td>
-                      <input
-                        className="table-structure-editor__cell-input table-structure-editor__cell-input--narrow"
-                        type="number"
-                        value={draft.length ?? ""}
-                        disabled={isReadOnly || isPendingDrop || sizeClass === "unsized"}
-                        onChange={(e) =>
-                          state.updateColumn(draft.rowId, {
-                            length: e.target.value === "" ? undefined : Number(e.target.value),
-                          })
-                        }
-                      />
-                    </td>
-                  ) : null}
-                  {!isSqlite ? (
-                    <td>
-                      <input
-                        className="table-structure-editor__cell-input table-structure-editor__cell-input--narrow"
-                        type="number"
-                        value={draft.scale ?? ""}
-                        disabled={isReadOnly || isPendingDrop || sizeClass !== "sized-numeric"}
-                        onChange={(e) =>
-                          state.updateColumn(draft.rowId, {
-                            scale: e.target.value === "" ? undefined : Number(e.target.value),
-                          })
-                        }
-                      />
-                    </td>
-                  ) : null}
-                  <td>
-                    {isExistingSqliteColumn ? (
-                      <input
-                        className="table-structure-editor__cell-input"
-                        value={draft.nullable ? "NULL" : "NOT NULL"}
-                        readOnly
-                        aria-readonly="true"
-                      />
-                    ) : (
-                      <input
-                        className="table-structure-editor__checkbox"
-                        type="checkbox"
-                        checked={draft.nullable}
-                        disabled={isReadOnly || isPendingDrop}
-                        onChange={(e) =>
-                          state.updateColumn(draft.rowId, { nullable: e.target.checked })
-                        }
-                      />
-                    )}
-                  </td>
-                  <td>
-                    <input
-                      className="table-structure-editor__cell-input"
-                      value={draft.defaultValue ?? ""}
-                      disabled={isReadOnly || isPendingDrop}
-                      readOnly={isExistingSqliteColumn}
-                      aria-readonly={isExistingSqliteColumn || undefined}
-                      onChange={(e) =>
-                        state.updateColumn(draft.rowId, {
-                          defaultValue: e.target.value === "" ? null : e.target.value,
-                        })
-                      }
-                    />
-                  </td>
-                  {showCommentColumn ? (
-                    <td>
-                      <input
-                        className="table-structure-editor__cell-input"
-                        value={draft.comment ?? ""}
-                        disabled={isReadOnly || isPendingDrop}
-                        readOnly={commentsReadOnly}
-                        aria-readonly={commentsReadOnly || undefined}
-                        title={
-                          commentsReadOnly
-                            ? "SQLite column comments are read-only."
-                            : undefined
-                        }
-                        onChange={(e) =>
-                          state.updateColumn(draft.rowId, {
-                            comment: e.target.value === "" ? null : e.target.value,
-                          })
-                        }
-                      />
-                    </td>
-                  ) : null}
-                  <td>
-                    {!state.blockedReason && !draft.readOnlyReason ? (
-                      <button
-                        type="button"
-                        className="table-structure-editor__row-action"
-                        onClick={() => state.toggleDrop(draft)}
-                      >
-                        <Codicon name={isPendingDrop ? "discard" : "trash"} />
-                        {isPendingDrop
-                          ? t("app.tableStructure.undoDrop")
-                          : t("app.tableStructure.dropColumn")}
-                      </button>
-                    ) : null}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+  return <ColumnGrid rows={rows} columns={columns} filename="table-columns" onFocusedRow={(row) => setSelectedRowId(row.rowId)}
+    rowClassRules={{ "table-structure-editor__row--pending-drop": (params) => !!params.data && state.pendingDeleteRowIds.has(params.data.rowId) }} actions={<>
+    <button title={t("app.tableStructure.addColumn")} aria-label={t("app.tableStructure.addColumn")}
+      disabled={!!state.blockedReason} onClick={state.addColumn}><Codicon name="add" /></button>
+    <button title={t("app.tableStructure.duplicateColumn")} aria-label={t("app.tableStructure.duplicateColumn")} disabled={!!state.blockedReason || !selectedRowId}
+      onClick={() => { const row = rows.find((item) => item.rowId === selectedRowId); if (row) state.duplicateColumn(row); }}><Codicon name="files" /></button>
+  </>} />;
 }
 
 export default TableStructureEditor;
