@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import { CommandService } from "../../../../../platform/commands/commandService";
-import { KeybindingsRegistry } from "../../../../../platform/keybinding/keybindingRegistry";
-import { useI18n } from "../../../../../platform/i18n/useI18n";
-import type { MessageKey } from "../../../../../platform/i18n/translate";
+import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
+import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
+import type { MessageKey } from "@silk-studio/workbench/platform/i18n/translate.ts";
 import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import { useEditorGroupsLayout } from "@silk-studio/editor/services/editor/useEditorGroupsLayout.ts";
 import {
@@ -18,12 +18,15 @@ import type {
   TabBarCommandAdapter,
   TabBarLabels,
 } from "@silk-studio/editor/components/layout/TabBar/TabBar.tsx";
-import AccordionPanel from "../../AccordionPanel/AccordionPanel";
-import { PaneSash, useResizablePanes } from "../../PaneView";
-import ViewPaneTitle from "../../ViewPaneTitle/ViewPaneTitle";
+import AccordionPanel from "@silk-studio/workbench/components/layout/Sidebar/AccordionPanel/AccordionPanel.tsx";
+import {
+  PaneSash,
+  useResizablePanes,
+} from "@silk-studio/workbench/components/layout/Sidebar/PaneView/index.ts";
+import ViewPaneTitle from "@silk-studio/workbench/components/layout/Sidebar/ViewPaneTitle/ViewPaneTitle.tsx";
 import ViewsVisibilityMenu, {
   type ViewsVisibilityItem,
-} from "../../ViewsVisibilityMenu/ViewsVisibilityMenu";
+} from "@silk-studio/workbench/components/layout/Sidebar/ViewsVisibilityMenu/ViewsVisibilityMenu.tsx";
 import OutlineSectionActions from "./OutlineSectionActions";
 import TimelineSectionActions from "./TimelineSectionActions";
 import "./ExplorerView.css";

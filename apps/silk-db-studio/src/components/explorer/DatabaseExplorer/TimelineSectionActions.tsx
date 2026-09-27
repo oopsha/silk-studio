@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import { TimelineViewState } from "../../../../../services/timeline/timelineViewState";
-import { useTimelineViewState } from "../../../../../services/timeline/useTimelineViewState";
-import TimelineMoreMenu from "../../TimelineMoreMenu/TimelineMoreMenu";
+import { TimelineViewState } from "@silk-studio/workbench/services/timeline/timelineViewState.ts";
+import { useTimelineViewState } from "@silk-studio/workbench/services/timeline/useTimelineViewState.ts";
+import TimelineMoreMenu from "@silk-studio/workbench/components/layout/Sidebar/TimelineMoreMenu/TimelineMoreMenu.tsx";
 
 type TimelineSectionActionsProps = {
   onMenuOpenChange?: (open: boolean) => void;

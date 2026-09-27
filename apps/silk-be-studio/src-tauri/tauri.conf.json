@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Silk BE Studio",
+  "version": "0.1.0",
+  "identifier": "com.oopsha.silk-be-studio",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1422",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Silk BE Studio",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 800,
+        "minHeight": 520,
+        "visible": false,
+        "decorations": false,
+        "dragDropEnabled": true,
+        "backgroundColor": "#191a1b"
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "../../silk-db-studio/src-tauri/icons/32x32.png",
+      "../../silk-db-studio/src-tauri/icons/128x128.png",
+      "../../silk-db-studio/src-tauri/icons/128x128@2x.png",
+      "../../silk-db-studio/src-tauri/icons/icon-macos.icns",
+      "../../silk-db-studio/src-tauri/icons/icon.ico"
+    ]
+  }
+}

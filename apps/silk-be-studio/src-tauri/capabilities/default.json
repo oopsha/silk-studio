@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Minimal capability for the Silk BE Studio main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "fs:default",
+    "window-controls:default",
+    "allow-ensure-title-bar-overlay",
+    "allow-startup-theme-commands"
+  ]
+}

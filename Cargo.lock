@@ -4795,6 +4795,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "silk-be-studio"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-window-controls",
+]
+
+[[package]]
 name = "silk-db-agent-client"
 version = "0.1.0"
 dependencies = [

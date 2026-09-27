@@ -32,7 +32,7 @@ export type EditorConfigurationOptions = {
   wordWrap: "off" | "on";
 };
 
-type EditorAreaProps = {
+export type EditorAreaProps = {
   /** Which editor group this instance renders — one Monaco instance per group. */
   groupId: EditorGroupId;
   /** Gates the shared cursor-position status bar so an unfocused pane can't stomp it. */

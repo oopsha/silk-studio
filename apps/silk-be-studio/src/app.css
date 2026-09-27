@@ -1,0 +1,15 @@
+.be-project-empty {
+  padding: 12px 14px;
+  color: var(--color-description);
+  font-size: 12px;
+}
+
+.be-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.be-status-project { color: inherit; }

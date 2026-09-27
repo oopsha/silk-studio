@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "apps/silk-db-studio/src-tauri",
+  "apps/silk-be-studio/src-tauri",
   "crates/silk-db-agent-client",
   "crates/ssm-tunnel-client",
   "crates/ssh-tunnel-client",

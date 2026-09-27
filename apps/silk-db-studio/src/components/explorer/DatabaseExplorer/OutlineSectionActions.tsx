@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import { OutlineViewState } from "../../../../../services/outline/outlineViewState";
-import { useOutlineViewState } from "../../../../../services/outline/useOutlineViewState";
-import OutlineMoreMenu from "../../OutlineMoreMenu/OutlineMoreMenu";
+import { OutlineViewState } from "@silk-studio/workbench/services/outline/outlineViewState.ts";
+import { useOutlineViewState } from "@silk-studio/workbench/services/outline/useOutlineViewState.ts";
+import OutlineMoreMenu from "@silk-studio/workbench/components/layout/Sidebar/OutlineMoreMenu/OutlineMoreMenu.tsx";
 
 type OutlineSectionActionsProps = {
   onMenuOpenChange?: (open: boolean) => void;

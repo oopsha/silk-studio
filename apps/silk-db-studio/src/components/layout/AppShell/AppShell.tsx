@@ -1,8 +1,10 @@
+import "@silk-studio/workbench/components/layout/WorkbenchShell/WorkbenchShell.css";
 import "./AppShell.css";
 import { useEffect, useState } from "react";
 import ActivityBar from "@silk-studio/workbench/components/layout/ActivityBar/index.ts";
 import Sidebar from "@silk-studio/workbench/components/layout/Sidebar/index.ts";
-import EditorGroupsView from "./EditorGroupsView.tsx";
+import ExplorerView from "../../explorer/DatabaseExplorer/ExplorerView.tsx";
+import EditorGroupsView from "@silk-studio/workbench/components/layout/EditorGroupsView/index.ts";
 import SecondarySidebar from "@silk-studio/workbench/components/layout/SecondarySidebar/index.ts";
 import WorkbenchSash from "@silk-studio/workbench/components/layout/WorkbenchSash/index.ts";
 import StatusBar from "@silk-studio/workbench/components/layout/StatusBar/index.ts";
@@ -11,6 +13,7 @@ import DatabaseTargetStatusItem from "../StatusBar/DatabaseTargetStatusItem.tsx"
 import TransactionStatusItem from "../StatusBar/TransactionStatusItem.tsx";
 import TitleBar from "@silk-studio/workbench/components/layout/TitleBar/index.ts";
 import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
+import type { ActivityViewContribution } from "@silk-studio/workbench/services/view/viewService.ts";
 import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayoutState.ts";
 import { useWorkbenchSashDrag } from "@silk-studio/workbench/services/layout/useWorkbenchSashDrag.ts";
 import SettingsEditor from "@silk-studio/workbench/components/settings/index.ts";
@@ -48,6 +51,7 @@ import CreateRoutineDraftView from "../../object-editor/CreateRoutineDraftView.t
 import CreatePackageDraftView from "../../object-editor/CreatePackageDraftView.tsx";
 import QueryHistoryView from "../../query-history/QueryHistoryView.tsx";
 import SearchExplorer from "../../search/SearchExplorer.tsx";
+import Panel from "../Panel";
 // Outline/Timeline sidebar sections are disabled for now — see the matching comment where
 // these were wired into <Sidebar> below.
 // import OutlineView from "../../outline/OutlineView.tsx";
@@ -68,7 +72,15 @@ import {
 import { ConnectionService } from "../../../services/connection/connectionService.ts";
 import {
   setExplorerObjectDropHandler,
+  SILK_EDITOR_DROP_ATTR,
+  SILK_EDITOR_DROP_GROUP_ATTR,
 } from "../../../services/dnd/explorerObjectDrag.ts";
+import {
+  cancelEditorTabSplitDrag,
+  commitEditorTabSplitDrop,
+  updateEditorTabSplitHover,
+} from "../../../services/dnd/editorTabSplitDrag.ts";
+import { isVirtualEditorTab } from "../../../services/editor/virtualEditorTab.ts";
 import { insertSqlIntoActiveEditor } from "../../../services/query/querySqlActions.ts";
 import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
@@ -101,6 +113,12 @@ const tabBarCommands = {
     CommandService.executeCommand(commandId),
   lookupKeybinding: (commandId: string) =>
     KeybindingsRegistry.lookupKeybinding(commandId),
+};
+
+const crossGroupEditorDnd = {
+  updateHover: updateEditorTabSplitHover,
+  commitDrop: commitEditorTabSplitDrop,
+  cancel: cancelEditorTabSplitDrag,
 };
 
 function AppShell() {
@@ -289,10 +307,48 @@ function AppShell() {
     </>
   );
 
+  const activityViews: ActivityViewContribution[] = [
+    {
+      id: "explorer",
+      icon: "files",
+      label: t("workbench.activityBar.explorer"),
+      render: () => (
+        <ExplorerView
+          connectionsTitle={t("workbench.sidebar.connections")}
+          connectionsActions={connectionsActions}
+          connectionsHeaderContextMenu={(event) => {
+            event.preventDefault();
+            setConnectionsHeaderMenu({ x: event.clientX, y: event.clientY });
+          }}
+          renderConnections={() => <ConnectionsExplorer />}
+        />
+      ),
+    },
+    {
+      id: "search",
+      icon: "search",
+      label: t("workbench.activityBar.search"),
+      render: () => <SearchExplorer />,
+    },
+    {
+      id: "history",
+      icon: "history",
+      label: t("workbench.activityBar.history"),
+      render: () => <QueryHistoryView />,
+    },
+  ];
+
   const editorArea = (
-    <div className="app-shell__editor">
+    <div className="workbench-shell__editor">
       <EditorGroupsView
         commands={tabBarCommands}
+        crossGroupDnd={crossGroupEditorDnd}
+        renderPanel={(groupId) => <Panel groupId={groupId} />}
+        shouldShowPanelForTab={(tab) => !isVirtualEditorTab(tab?.uri)}
+        getPaneProps={(groupId) => ({
+          [SILK_EDITOR_DROP_ATTR]: "",
+          [SILK_EDITOR_DROP_GROUP_ATTR]: groupId,
+        })}
         editorProps={{
           configuration: {
             colorTheme: configuration["workbench.colorTheme"],
@@ -352,38 +408,27 @@ function AppShell() {
   );
 
   const editorColumn = (
-    <div className="app-shell__editor-column">{editorArea}</div>
+    <div className="workbench-shell__editor-column">{editorArea}</div>
   );
 
   return (
-    <div className="app-shell" data-testid="app-shell">
+    <div className="workbench-shell" data-testid="app-shell">
       <TitleBar />
 
-      <div className="app-shell__body">
-        <div className="app-shell__workbench">
-          <ActivityBar />
+      <div className="workbench-shell__body">
+        <div className="workbench-shell__workbench">
+          <ActivityBar views={activityViews} />
 
-          <div className="app-shell__main">
-            <div className="app-shell__workspace">
+          <div className="workbench-shell__main">
+            <div className="workbench-shell__workspace">
               {layout.sidebar ? (
                 <>
                   <div
-                    className="app-shell__sidebar"
+                    className="workbench-shell__sidebar"
                     style={{ width: layout.sidebarWidth }}
                   >
                     <Sidebar
-                      connectionsTitle={t("workbench.sidebar.connections")}
-                      connectionsActions={connectionsActions}
-                      connectionsHeaderContextMenu={(event) => {
-                        event.preventDefault();
-                        setConnectionsHeaderMenu({
-                          x: event.clientX,
-                          y: event.clientY,
-                        });
-                      }}
-                      renderConnections={() => <ConnectionsExplorer />}
-                      renderHistory={() => <QueryHistoryView />}
-                      renderSearch={() => <SearchExplorer />}
+                      views={activityViews}
                       // Outline/Timeline sidebar sections are disabled for now — see the
                       // matching comment in ExplorerView.tsx's SECTION_ORDER/VIEW_MENU_DEFS.
                       // renderOutline={() => <OutlineView />}
@@ -439,7 +484,7 @@ function AppShell() {
                     }}
                   />
                   <div
-                    className="app-shell__auxiliary-bar"
+                    className="workbench-shell__auxiliary-bar"
                     style={{ width: layout.auxiliaryBarWidth }}
                   >
                     <SecondarySidebar />

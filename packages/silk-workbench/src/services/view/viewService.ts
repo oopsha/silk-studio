@@ -1,6 +1,15 @@
 import { LayoutService } from "../layout/layoutService";
+import type { ReactNode } from "react";
 
-export type ActivityViewId = "explorer" | "search" | "scm" | "history";
+export type ActivityViewId = string;
+
+/** An app-owned view shown in the shared ActivityBar and Sidebar. */
+export type ActivityViewContribution = {
+  id: ActivityViewId;
+  icon: string;
+  label: string;
+  render: () => ReactNode;
+};
 
 type ViewChangeListener = () => void;
 

@@ -1,82 +1,15 @@
-.app-shell {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  color: var(--color-foreground);
-  background-color: var(--color-surface);
-}
-
-.app-shell__body {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.app-shell__workbench {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
-.app-shell__main {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.app-shell__workspace {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-}
-
-.app-shell__sidebar {
-  display: flex;
-  flex-shrink: 0;
-  min-width: 0;
-  height: 100%;
-  overflow: hidden;
-}
-
-.app-shell__sidebar .sidebar {
-  width: 100%;
-  min-width: 0;
-  border-right: none;
-}
-
-.app-shell__editor-column {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-}
-
-.app-shell__editor {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-}
-
-.app-shell__auxiliary-bar {
-  display: flex;
-  flex-shrink: 0;
-  min-width: 0;
-  height: 100%;
-  overflow: hidden;
-}
-
-.app-shell__auxiliary-bar .secondary-sidebar {
-  width: 100%;
-  min-width: 0;
-  border-left: none;
-}
-
-.app-shell__editor-column > :not(:first-child):not(.workbench-sash) {
-  border-top: 1px solid var(--color-workbench-separator);
+/* DB Studio's editor-tab split drag preview is app-specific. */
+.silk-editor-split-drop-overlay {
+  position: absolute;
+  z-index: 50;
+  background-color: var(--color-focus-border);
+  opacity: 0.18;
+  border: 2px solid var(--color-focus-border);
+  box-sizing: border-box;
+  pointer-events: none;
+  transition:
+    top 0.08s ease-out,
+    left 0.08s ease-out,
+    width 0.08s ease-out,
+    height 0.08s ease-out;
 }

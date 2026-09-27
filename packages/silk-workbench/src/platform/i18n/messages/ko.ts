@@ -207,6 +207,7 @@ export const koMessages = {
       search: "검색",
       scm: "소스 제어",
       history: "쿼리 기록",
+      runDebug: "실행 및 디버그",
       accounts: "계정",
       manage: "관리",
     },

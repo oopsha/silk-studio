@@ -1,5 +1,4 @@
-import { Fragment, useRef, type ReactNode } from "react";
-import type { Monaco } from "@monaco-editor/react";
+import { Fragment, useRef, type HTMLAttributes, type ReactNode } from "react";
 import TabBar from "@silk-studio/editor/components/layout/TabBar/index.ts";
 import type {
   TabBarCommandAdapter,
@@ -8,7 +7,7 @@ import type {
 } from "@silk-studio/editor/components/layout/TabBar/TabBar.tsx";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import EditorArea from "@silk-studio/editor/components/layout/EditorArea/index.ts";
-import type { EditorConfigurationOptions } from "@silk-studio/editor/components/layout/EditorArea/EditorArea.tsx";
+import type { EditorAreaProps } from "@silk-studio/editor/components/layout/EditorArea/EditorArea.tsx";
 import type { EditorTab } from "@silk-studio/editor/services/editor/editorTypes.ts";
 import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import { useEditorGroupsLayout } from "@silk-studio/editor/services/editor/useEditorGroupsLayout.ts";
@@ -22,44 +21,42 @@ import { useWorkbenchSashDrag } from "@silk-studio/workbench/services/layout/use
 import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayoutState.ts";
 import { useGroupPanelState } from "@silk-studio/workbench/services/layout/useGroupPanelState.ts";
 import { GroupPanelStateService } from "@silk-studio/workbench/services/layout/groupPanelStateService.ts";
-import Panel from "../Panel";
-import { isVirtualEditorTab } from "../../../services/editor/virtualEditorTab.ts";
-import {
-  SILK_EDITOR_DROP_ATTR,
-  SILK_EDITOR_DROP_GROUP_ATTR,
-} from "../../../services/dnd/explorerObjectDrag.ts";
-import {
-  cancelEditorTabSplitDrag,
-  commitEditorTabSplitDrop,
-  updateEditorTabSplitHover,
-} from "../../../services/dnd/editorTabSplitDrag.ts";
 import "./EditorGroupsView.css";
 
-const crossGroupDnd: TabBarCrossGroupDnd = {
-  updateHover: updateEditorTabSplitHover,
-  commitDrop: commitEditorTabSplitDrop,
-  cancel: cancelEditorTabSplitDrag,
-};
-
-type EditorAreaSharedProps = {
-  configuration: EditorConfigurationOptions;
-  beforeMount?: (monaco: Monaco) => void;
-  renderAlternative?: (tab: EditorTab, groupId: EditorGroupId) => React.ReactNode | null;
-  onRunQuery?: () => void;
-  onRunScript?: () => void;
-};
+export type EditorAreaSharedProps = Omit<
+  EditorAreaProps,
+  "groupId" | "isFocusedGroup"
+>;
 
 type StartDrag = ReturnType<typeof useWorkbenchSashDrag>["startDrag"];
 
-type EditorGroupsViewProps = {
+export type EditorGroupsViewProps = {
   commands: TabBarCommandAdapter;
   editorProps: EditorAreaSharedProps;
+  /** App-owned panel rendered below or beside each editor group. */
+  renderPanel?: (groupId: EditorGroupId) => ReactNode;
+  /** Apps can hide their panel for editor tabs that do not use it. */
+  shouldShowPanelForTab?: (tab: EditorTab | undefined) => boolean;
+  /** Optional app-owned cross-group drag behavior. */
+  crossGroupDnd?: TabBarCrossGroupDnd;
+  /** App-owned DOM hooks for editor integrations such as project-tree drag and drop. */
+  getPaneProps?: (groupId: EditorGroupId) => EditorPaneProps;
 };
+
+export type EditorPaneProps = HTMLAttributes<HTMLDivElement> &
+  Record<`data-${string}`, unknown>;
 
 /** Minimum ratio either side of a sash can shrink to. */
 const MIN_PANE_RATIO = 0.15;
 
-function EditorGroupsView({ commands, editorProps }: EditorGroupsViewProps) {
+function EditorGroupsView({
+  commands,
+  editorProps,
+  renderPanel,
+  shouldShowPanelForTab,
+  crossGroupDnd,
+  getPaneProps,
+}: EditorGroupsViewProps) {
   const { t } = useI18n();
   const { layout, focusedGroupId } = useEditorGroupsLayout();
   const { startDrag } = useWorkbenchSashDrag();
@@ -94,6 +91,10 @@ function EditorGroupsView({ commands, editorProps }: EditorGroupsViewProps) {
         labels,
         editorProps,
         startDrag,
+        renderPanel,
+        shouldShowPanelForTab,
+        crossGroupDnd,
+        getPaneProps,
       )}
     </>
   );
@@ -107,6 +108,10 @@ function renderLayoutNode(
   labels: TabBarLabels,
   editorProps: EditorAreaSharedProps,
   startDrag: StartDrag,
+  renderPanel: EditorGroupsViewProps["renderPanel"],
+  shouldShowPanelForTab: EditorGroupsViewProps["shouldShowPanelForTab"],
+  crossGroupDnd: TabBarCrossGroupDnd | undefined,
+  getPaneProps: EditorGroupsViewProps["getPaneProps"],
 ): ReactNode {
   if (node.type === "group") {
     return (
@@ -119,6 +124,10 @@ function renderLayoutNode(
         labels={labels}
         editorProps={editorProps}
         startDrag={startDrag}
+        renderPanel={renderPanel}
+        shouldShowPanelForTab={shouldShowPanelForTab}
+        crossGroupDnd={crossGroupDnd}
+        getPaneProps={getPaneProps}
       />
     );
   }
@@ -133,6 +142,10 @@ function renderLayoutNode(
       labels={labels}
       editorProps={editorProps}
       startDrag={startDrag}
+      renderPanel={renderPanel}
+      shouldShowPanelForTab={shouldShowPanelForTab}
+      crossGroupDnd={crossGroupDnd}
+      getPaneProps={getPaneProps}
     />
   );
 }
@@ -145,6 +158,10 @@ function EditorGroupPane({
   labels,
   editorProps,
   startDrag,
+  renderPanel,
+  shouldShowPanelForTab,
+  crossGroupDnd,
+  getPaneProps,
 }: {
   groupId: EditorGroupId;
   isFocused: boolean;
@@ -153,6 +170,10 @@ function EditorGroupPane({
   labels: TabBarLabels;
   editorProps: EditorAreaSharedProps;
   startDrag: StartDrag;
+  renderPanel: EditorGroupsViewProps["renderPanel"];
+  shouldShowPanelForTab: EditorGroupsViewProps["shouldShowPanelForTab"];
+  crossGroupDnd: TabBarCrossGroupDnd | undefined;
+  getPaneProps: EditorGroupsViewProps["getPaneProps"];
 }) {
   const layout = useLayoutState();
   const panelVisual = useGroupPanelState(groupId);
@@ -162,8 +183,12 @@ function EditorGroupPane({
   // (DDL preview, object editor, settings, …) — keep it hidden there without
   // touching the group's own visible/size/maximized toggle state, so it comes
   // back exactly as the user left it when they return to a real SQL tab.
-  const showPanel = panelVisual.visible && !isVirtualEditorTab(activeTab?.uri);
+  const showPanel =
+    Boolean(renderPanel) &&
+    panelVisual.visible &&
+    (shouldShowPanelForTab?.(activeTab) ?? true);
   const showEditorHalf = !(panelVisual.maximized && showPanel);
+  const paneProps = getPaneProps?.(groupId);
 
   const editorHalf = (
     <div
@@ -188,7 +213,7 @@ function EditorGroupPane({
           : { width: panelVisual.maximized ? undefined : panelVisual.size }
       }
     >
-      <Panel groupId={groupId} />
+      {renderPanel?.(groupId)}
     </div>
   ) : null;
 
@@ -215,11 +240,11 @@ function EditorGroupPane({
   return (
     <div
       className={`editor-groups-pane${isFocused && showFocusRing ? " editor-groups-pane--focused" : ""}`}
-      {...{
-        [SILK_EDITOR_DROP_ATTR]: "",
-        [SILK_EDITOR_DROP_GROUP_ATTR]: groupId,
+      {...paneProps}
+      onPointerDownCapture={(event) => {
+        paneProps?.onPointerDownCapture?.(event);
+        EditorGroupsService.setFocusedGroup(groupId);
       }}
-      onPointerDownCapture={() => EditorGroupsService.setFocusedGroup(groupId)}
     >
       {panelOnBottom ? (
         <>
@@ -246,6 +271,10 @@ function EditorSplitPane({
   labels,
   editorProps,
   startDrag,
+  renderPanel,
+  shouldShowPanelForTab,
+  crossGroupDnd,
+  getPaneProps,
 }: {
   node: Extract<EditorLayoutNode, { type: "split" }>;
   focusedGroupId: EditorGroupId;
@@ -254,6 +283,10 @@ function EditorSplitPane({
   labels: TabBarLabels;
   editorProps: EditorAreaSharedProps;
   startDrag: StartDrag;
+  renderPanel: EditorGroupsViewProps["renderPanel"];
+  shouldShowPanelForTab: EditorGroupsViewProps["shouldShowPanelForTab"];
+  crossGroupDnd: TabBarCrossGroupDnd | undefined;
+  getPaneProps: EditorGroupsViewProps["getPaneProps"];
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isRow = node.direction === "row";
@@ -325,6 +358,10 @@ function EditorSplitPane({
                 labels,
                 editorProps,
                 startDrag,
+                renderPanel,
+                shouldShowPanelForTab,
+                crossGroupDnd,
+                getPaneProps,
               )}
             </div>
           </Fragment>

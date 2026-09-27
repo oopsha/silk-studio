@@ -18,6 +18,52 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/debug@4.1.13)
 
+  apps/silk-be-studio:
+    dependencies:
+      '@silk-studio/editor':
+        specifier: workspace:*
+        version: link:../../packages/silk-editor
+      '@silk-studio/ui':
+        specifier: workspace:*
+        version: link:../../packages/silk-ui
+      '@silk-studio/workbench':
+        specifier: workspace:*
+        version: link:../../packages/silk-workbench
+      '@tauri-apps/api':
+        specifier: ^2
+        version: 2.11.1
+      '@tauri-apps/plugin-dialog':
+        specifier: ~2.7.1
+        version: 2.7.1
+      '@tauri-apps/plugin-fs':
+        specifier: ~2.5.1
+        version: 2.5.1
+      react:
+        specifier: ^19.1.0
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.7(react@19.2.7)
+    devDependencies:
+      '@tauri-apps/cli':
+        specifier: ^2
+        version: 2.11.3
+      '@types/react':
+        specifier: ^19.1.8
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.1.6
+        version: 19.2.3(@types/react@19.2.17)
+      '@vitejs/plugin-react':
+        specifier: ^4.6.0
+        version: 4.7.0(vite@7.3.5)
+      typescript:
+        specifier: ~5.8.3
+        version: 5.8.3
+      vite:
+        specifier: ^7.0.4
+        version: 7.3.5
+
   apps/silk-db-studio:
     dependencies:
       '@monaco-editor/react':

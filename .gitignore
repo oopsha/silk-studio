@@ -29,6 +29,7 @@ dist-ssr
 **/jdbc-agent/build
 target
 target-release-build/
+**/src-tauri/gen/schemas/
 
 # Bundled runtime (staged by scripts/prepare-runtime-resources.mjs)
 apps/silk-db-studio/src-tauri/resources/jdbc-agent/**
@@ -47,4 +48,3 @@ apps/silk-db-studio/src-tauri/resources/ssm-plugin/**
 /playwright-report/
 /blob-report/
 /playwright/.cache/
-

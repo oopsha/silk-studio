@@ -209,6 +209,7 @@ export const enMessages = {
       search: "Search",
       scm: "Source Control",
       history: "Query History",
+      runDebug: "Run and Debug",
       accounts: "Accounts",
       manage: "Manage",
     },

@@ -2,28 +2,21 @@ import { useRef, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { MenuId } from "../../../platform/actions/menuId";
 import { useI18n } from "../../../platform/i18n/useI18n";
-import type { MessageKey } from "../../../platform/i18n/translate";
-import { ViewService, type ActivityViewId } from "../../../services/view/viewService";
+import {
+  ViewService,
+  type ActivityViewContribution,
+} from "../../../services/view/viewService";
 import { useActiveView } from "../../../services/view/useActiveView";
 import ActivityBarContextMenu from "./ActivityBarContextMenu";
 import "./ActivityBar.css";
 
-type ActivityView = {
-  id: ActivityViewId;
-  icon: string;
-  labelKey: MessageKey;
-};
-
 type GlobalMenuId = "accounts" | "manage";
 
-const ACTIVITY_VIEWS: ActivityView[] = [
-  { id: "explorer", icon: "files", labelKey: "workbench.activityBar.explorer" },
-  { id: "search", icon: "search", labelKey: "workbench.activityBar.search" },
-  // "scm" (소스 제어)는 실험실 기능으로 나중에 발전시킬 예정이라 당분간 숨김
-  { id: "history", icon: "history", labelKey: "workbench.activityBar.history" },
-];
-
-function ActivityBar() {
+function ActivityBar({
+  views,
+}: {
+  views: readonly ActivityViewContribution[];
+}) {
   const { t } = useI18n();
   const activeViewId = useActiveView();
   const accountsButtonRef = useRef<HTMLButtonElement>(null);
@@ -44,9 +37,9 @@ function ActivityBar() {
     >
       <div className="activity-bar__content">
         <div className="activity-bar__composite-bar" role="tablist">
-          {ACTIVITY_VIEWS.map((view) => {
+          {views.map((view) => {
             const isChecked = activeViewId === view.id;
-            const label = t(view.labelKey);
+            const label = view.label;
 
             return (
               <div

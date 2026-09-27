@@ -13,10 +13,6 @@ CommandsRegistry.registerCommand("silk.view.search", () => {
   ViewService.openView("search");
 });
 
-CommandsRegistry.registerCommand("silk.view.history", () => {
-  ViewService.openView("history");
-});
-
 MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
   command: {
     id: "silk.view.explorer",
@@ -35,15 +31,5 @@ MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
   order: 12,
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
-  command: {
-    id: "silk.view.history",
-    title: { value: "Query History", mnemonicTitle: "Query &&History" },
-  },
-  group: "1_views",
-  order: 15,
-});
-
 KeybindingsRegistry.registerKeybinding("silk.view.explorer", "Ctrl+Shift+E");
 KeybindingsRegistry.registerKeybinding("silk.view.search", "Ctrl+Shift+F");
-KeybindingsRegistry.registerKeybinding("silk.view.history", "Ctrl+Shift+H");

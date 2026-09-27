@@ -1,6 +1,7 @@
 import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
+import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
 import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import { ViewService } from "@silk-studio/workbench/services/view/viewService.ts";
 import { ConfirmDialogService } from "../../services/ui/confirmDialogService";
@@ -16,6 +17,21 @@ import {
 function updateHasQueryHistoryContextKey(): void {
   ContextKeyService.set("hasQueryHistory", QueryHistoryService.getEntries().length > 0);
 }
+
+CommandsRegistry.registerCommand("silk.view.history", () => {
+  ViewService.openView("history");
+});
+
+MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
+  command: {
+    id: "silk.view.history",
+    title: { value: "Query History", mnemonicTitle: "Query &&History" },
+  },
+  group: "1_views",
+  order: 15,
+});
+
+KeybindingsRegistry.registerKeybinding("silk.view.history", "Ctrl+Shift+H");
 
 QueryHistoryService.onDidChange(updateHasQueryHistoryContextKey);
 updateHasQueryHistoryContextKey();
