@@ -7,7 +7,7 @@ import { ConnectionService } from "./services/connection/connectionService";
 import { startFileDropListener } from "./services/dnd/startFileDropListener";
 import { startExternalFileWatch } from "./services/files/startExternalFileWatch";
 import { startEditorSessionSync } from "./services/editor/startEditorSessionSync";
-import { startWindowLayoutSync } from "./services/windowLayoutSync";
+import { startWindowLayoutSync } from "@silk-studio/workbench/services/layout/windowLayoutSync.ts";
 import { saveStartupTheme } from "./services/startupTheme";
 
 function App() {

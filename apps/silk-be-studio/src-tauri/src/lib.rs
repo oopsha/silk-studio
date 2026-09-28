@@ -1,4 +1,5 @@
 mod startup_theme;
+mod window_layout;
 
 use tauri::Manager;
 #[cfg(target_os = "windows")]
@@ -52,12 +53,19 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_window_controls::init())
-        .invoke_handler(tauri::generate_handler![ensure_title_bar_overlay, startup_theme::startup_theme_save])
+        .invoke_handler(tauri::generate_handler![
+            ensure_title_bar_overlay,
+            startup_theme::startup_theme_save,
+            window_layout::window_layout_save,
+            window_layout::window_layout_apply_and_show,
+            window_layout::window_layout_show,
+            window_layout::window_layout_file_exists,
+        ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let theme = startup_theme::load(app.handle());
                 configure_main_window(&window, &theme)?;
-                window.show()?;
+                silk_window_state::restore_main_window(app.handle(), &window);
             }
             Ok(())
         })

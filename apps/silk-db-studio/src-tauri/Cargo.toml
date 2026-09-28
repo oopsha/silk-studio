@@ -34,3 +34,4 @@ url = "2"
 silk-db-agent-client = { path = "../../../crates/silk-db-agent-client" }
 ssm-tunnel-client = { path = "../../../crates/ssm-tunnel-client" }
 ssh-tunnel-client = { path = "../../../crates/ssh-tunnel-client" }
+silk-window-state = { path = "../../../crates/silk-window-state" }

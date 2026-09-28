@@ -9,6 +9,7 @@
     "fs:default",
     "window-controls:default",
     "allow-ensure-title-bar-overlay",
-    "allow-startup-theme-commands"
+    "allow-startup-theme-commands",
+    "allow-window-layout-commands"
   ]
 }

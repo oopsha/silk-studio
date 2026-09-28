@@ -18,6 +18,7 @@ import { useWorkbenchKeybindings } from "@silk-studio/workbench/services/keybind
 import { WindowTitleService } from "@silk-studio/workbench/services/windowTitle/windowTitleService.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import type { ActivityViewContribution } from "@silk-studio/workbench/services/view/viewService.ts";
+import { startWindowLayoutSync } from "@silk-studio/workbench/services/layout/windowLayoutSync.ts";
 import { saveStartupTheme } from "./services/startupTheme";
 
 const tabBarCommands = {
@@ -120,6 +121,8 @@ function App() {
     WindowTitleService.setWorkspaceName("silk-be-studio");
     LayoutService.showAuxiliaryBar();
   }, []);
+
+  useEffect(() => startWindowLayoutSync(), []);
 
   useEffect(() => {
     void saveStartupTheme();

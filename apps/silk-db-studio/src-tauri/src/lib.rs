@@ -716,7 +716,7 @@ pub fn run() {
                 // Overlay/chrome first so restore measures the final frame metrics.
                 configure_main_window(&window, &theme)?;
                 // Always restore (if possible) then show — never leave visible:false stuck.
-                window_layout::restore_main_window(app.handle(), &window);
+                silk_window_state::restore_main_window(app.handle(), &window);
             }
 
             Ok(())

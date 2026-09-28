@@ -4,7 +4,7 @@ import {
   LayoutService,
   WINDOW_LAYOUT_MIN,
   type WindowLayoutState,
-} from "@silk-studio/workbench/services/layout/layoutService.ts";
+} from "./layoutService";
 
 const PERSIST_DEBOUNCE_MS = 250;
 /** Ignore restore/overlay-triggered move/resize noise on startup. */
@@ -15,7 +15,6 @@ async function captureWindowLayout(): Promise<WindowLayoutState | null> {
     const win = getCurrentWindow();
     const factor = await win.scaleFactor();
     const maximized = await win.isMaximized();
-    // set_size applies inner size — capture the same metric to avoid grow-on-restart.
     const size = (await win.innerSize()).toLogical(factor);
     const position = (await win.outerPosition()).toLogical(factor);
     return {
@@ -51,14 +50,10 @@ async function ensureWindowVisible(): Promise<void> {
 }
 
 function resolveLayoutToPersist(layout: WindowLayoutState): WindowLayoutState {
-  if (!layout.windowMaximized) {
-    return layout;
-  }
+  if (!layout.windowMaximized) return layout;
 
   const previous = LayoutService.getWindowLayout();
-  if (!previous) {
-    return layout;
-  }
+  if (!previous) return layout;
 
   return {
     windowX: previous.windowX,
@@ -79,15 +74,12 @@ async function persistWindowLayout(): Promise<void> {
 }
 
 /**
- * Keep OS window geometry in sync with layout storage.
- * Startup geometry is applied in Rust (always show). This module migrates
- * legacy localStorage geometry once and persists user move/resize.
- * Size is stored as inner (client) size to match Tauri `set_size`.
+ * Keep OS window geometry in sync with layout storage. Rust restores the saved
+ * geometry at startup; this service migrates legacy localStorage state once and
+ * persists subsequent move/resize events.
  */
 export function startWindowLayoutSync(): () => void {
-  if (!isTauri()) {
-    return () => undefined;
-  }
+  if (!isTauri()) return () => undefined;
 
   let disposed = false;
   let suppressPersistUntil = 0;
@@ -95,15 +87,13 @@ export function startWindowLayoutSync(): () => void {
   const unlisteners: Array<() => void> = [];
 
   const schedulePersist = () => {
-    if (disposed) return;
-    if (Date.now() < suppressPersistUntil) return;
-    if (debounceTimer !== null) {
-      clearTimeout(debounceTimer);
-    }
+    if (disposed || Date.now() < suppressPersistUntil) return;
+    if (debounceTimer !== null) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      if (disposed || Date.now() < suppressPersistUntil) return;
-      void persistWindowLayout();
+      if (!disposed && Date.now() >= suppressPersistUntil) {
+        void persistWindowLayout();
+      }
     }, PERSIST_DEBOUNCE_MS);
   };
 
@@ -115,7 +105,7 @@ export function startWindowLayoutSync(): () => void {
       hasLayoutFile = false;
     }
 
-    // One-shot migration: localStorage → file (Rust clamps + shows).
+    // One-shot migration: localStorage → app-specific file (Rust clamps + shows).
     if (!hasLayoutFile && !disposed) {
       const stored = LayoutService.getWindowLayout();
       if (stored) {
@@ -128,35 +118,23 @@ export function startWindowLayoutSync(): () => void {
       }
     }
 
-    // Safety net: Rust should already have shown; never leave visible:false stuck.
-    if (!disposed) {
-      await ensureWindowVisible();
-    }
-
+    if (!disposed) await ensureWindowVisible();
     if (disposed) return;
 
     try {
       const win = getCurrentWindow();
-      // Do not persist on startup — restore/overlay already set geometry; capturing
-      // here (especially outer vs inner) caused size/position drift every launch.
       suppressPersistUntil = Date.now() + STARTUP_SUPPRESS_MS;
-      unlisteners.push(await win.onResized(() => schedulePersist()));
-      unlisteners.push(await win.onMoved(() => schedulePersist()));
-      unlisteners.push(await win.onScaleChanged(() => schedulePersist()));
+      unlisteners.push(await win.onResized(schedulePersist));
+      unlisteners.push(await win.onMoved(schedulePersist));
+      unlisteners.push(await win.onScaleChanged(schedulePersist));
     } catch {
-      if (!disposed) {
-        await ensureWindowVisible();
-      }
+      if (!disposed) await ensureWindowVisible();
     }
   })();
 
   return () => {
     disposed = true;
-    if (debounceTimer !== null) {
-      clearTimeout(debounceTimer);
-    }
-    for (const unlisten of unlisteners) {
-      unlisten();
-    }
+    if (debounceTimer !== null) clearTimeout(debounceTimer);
+    for (const unlisten of unlisteners) unlisten();
   };
 }
