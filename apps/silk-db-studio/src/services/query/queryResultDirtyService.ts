@@ -130,6 +130,32 @@ class QueryResultDirtyServiceImpl {
     return rowIndex;
   }
 
+  /** Adds imported values as pending INSERT rows, preserving source row order. */
+  addImportedRows(
+    tabId: string,
+    columns: string[],
+    rows: Array<Record<string, string | null>>,
+    insertAfter: number | null,
+  ): number[] {
+    const store = this.stores.get(tabId);
+    if (!store || rows.length === 0) return [];
+    let anchor = insertAfter;
+    const indexes: number[] = [];
+    for (const values of rows) {
+      const rowIndex = (store.nextNewRowIndex -= 1);
+      const row: Record<string, string | null> = {};
+      columns.forEach((column) => {
+        row[column] = values[column] ?? null;
+      });
+      store.originalRows[rowIndex] = row;
+      store.newRows.set(rowIndex, anchor);
+      indexes.push(rowIndex);
+      anchor = rowIndex;
+    }
+    this.emit();
+    return indexes;
+  }
+
   /**
    * Adds a new row seeded from `sourceRowIndex`'s current (edit-overlaid) values, including its
    * primary key — PK columns are editable on new/duplicated rows (see `QueryResultGrid`'s
