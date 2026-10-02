@@ -356,6 +356,8 @@ class ConnectionServiceImpl {
        * Defaults to `true` (prompt) whenever the connect isn't `silent`.
        */
       promptForPassword?: boolean;
+      /** Preserve the Explorer cache while replacing an existing JDBC session. */
+      preserveTree?: boolean;
     } = {},
   ): Promise<void> {
     const profile = this.getProfile(profileId);
@@ -464,7 +466,9 @@ class ConnectionServiceImpl {
         catalog: profile.catalog.trim() || undefined,
       });
 
-      ConnectionTreeService.invalidate(profileId);
+      if (!options.preserveTree) {
+        ConnectionTreeService.invalidate(profileId);
+      }
       ConnectionTreeService.addConnectedProfile(profileId);
       ConnectionTreeService.setExplorerFilter(profileId, {
         driverId: profile.driverId,

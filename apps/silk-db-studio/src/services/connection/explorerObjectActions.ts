@@ -54,6 +54,7 @@ export const EXPLORER_COMMANDS = {
   newView: "silk.explorer.newView",
   openObjectEditor: "silk.explorer.openObjectEditor",
   openObjectData: "silk.explorer.openObjectData",
+  importObjectData: "silk.explorer.importObjectData",
   viewDdl: "silk.explorer.viewDdl",
   refreshSchema: "silk.explorer.refreshSchema",
   useDatabase: "silk.explorer.useDatabase",
@@ -215,6 +216,12 @@ export function buildObjectMenuItems(
       enabled: supportsDdlView(kind),
       stubMessage: supportsDdlView(kind) ? undefined : t("app.explorer.stubViewDdl"),
     },
+    ...(kind === "table" ? [{
+      id: "importObjectData",
+      label: t("app.explorer.importData"),
+      commandId: EXPLORER_COMMANDS.importObjectData,
+      enabled: !readOnly,
+    } satisfies ExplorerMenuItem] : []),
     {
       id: "copyName",
       label: t("app.explorer.copyName"),

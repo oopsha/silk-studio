@@ -95,6 +95,9 @@ export const enMessages = {
         "Maximum seconds per statement or script batch (0 = no limit). Execute Script uses at least 300s unless unlimited. Timeouts are reported as errors, not cancellations.",
       autoCommit: "Auto Commit",
       autoCommitHint: "Use JDBC auto-commit on connections.",
+      importSqlPreviewMaxRows: "Import SQL preview row limit",
+      importSqlPreviewMaxRowsDescription: "Bulk import SQL is hidden in the confirmation dialog above this row count. Set to 0 to always hide it.",
+      bulkSqlPreviewHidden: "SQL preview is omitted for this bulk import. Check the target and row count before execution.",
       readOnly: "Read Only",
       readOnlyDescription:
         "When enabled, blocks write queries such as INSERT/UPDATE/DELETE/DDL.",
@@ -655,6 +658,7 @@ export const enMessages = {
       deleteConnectionConfirm:
         'Delete the connection profile "{name}"? This cannot be undone.',
       openData: "Open Data",
+      importData: "Import Data…",
       newTable: "New Table…",
       duplicateTable: "Duplicate Table…",
       duplicateObject: "Duplicate Object…",
@@ -971,7 +975,11 @@ export const enMessages = {
       importFileTitle: "Import Excel/CSV/TSV File",
       importSheet: "Sheet",
       importPreviewTitle: "Preview Grid Data Import",
-      importFirstRowHeader: "Use first row as headers",
+      importHeaderStartRow: "Header start row",
+      importHeaderEndRow: "Header end row",
+      importNoHeader: "No header",
+      importMapByOrder: "Map by order",
+      importTruncateExisting: "Clear existing table data before import",
       importSkipColumn: "Import as NULL",
       importPendingHint: "Unmapped columns are imported as NULL. Imported rows stay unsaved until you review the SQL preview and save.",
       importRows: "Import {n} rows",
@@ -1151,6 +1159,9 @@ export const enMessages = {
         "Only simple single-table SELECT results can be saved.",
       confirmUpdateTitle: "Confirm UPDATE",
       confirmDeleteTitle: "Confirm DELETE",
+      confirmTruncateTitle: "Confirm Clearing Existing Data",
+      executeTruncate: "Clear and Import",
+      confirmTruncateSummary: "All existing data in {table} will be deleted before the imported rows are saved. This cannot be undone.",
       confirmInsertTitle: "Confirm INSERT",
       confirmChangesTitle: "Confirm Changes",
       confirmUpdateSummary:
@@ -1159,6 +1170,7 @@ export const enMessages = {
       confirmInsertSummary: "Insert {rows} new row(s) into {table}?",
       confirmUpdateHint:
         "Review the generated SQL below. Nothing is written until you confirm.",
+      bulkSqlPreviewHidden: "SQL preview is omitted for this bulk import. Check the target and row count before execution.",
       executeDelete: "Execute DELETE",
       executeInsert: "Execute INSERT",
       executeChanges: "Execute Changes",

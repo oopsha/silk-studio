@@ -366,10 +366,7 @@ function ProfileTree({
 
   async function reconnectProfile() {
     await run(async () => {
-      if (isConnected) {
-        await ConnectionService.disconnect(profile.id);
-      }
-      await ConnectionService.connect(profile.id);
+      await ConnectionService.connect(profile.id, { preserveTree: true });
       onFlash(t("app.explorer.reconnected").replace("{name}", profile.name));
     });
   }
@@ -1523,6 +1520,7 @@ function ConnectionsExplorer() {
     if (
       item.commandId === EXPLORER_COMMANDS.openObjectEditor ||
       item.commandId === EXPLORER_COMMANDS.openObjectData ||
+      item.commandId === EXPLORER_COMMANDS.importObjectData ||
       item.commandId === EXPLORER_COMMANDS.newTable ||
       item.commandId === EXPLORER_COMMANDS.newTableSql ||
       item.commandId === EXPLORER_COMMANDS.duplicateTable ||

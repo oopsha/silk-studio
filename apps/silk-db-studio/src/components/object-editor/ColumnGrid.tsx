@@ -146,7 +146,7 @@ export default function ColumnGrid<Row extends ColumnGridRow>({ rows, columns, f
   };
   const updateSelection = (anchorRow: number, anchorColumn: number, focusRow: number, focusColumn: number) => {
     selectionRef.current = { anchorRow, anchorColumn, focusRow, focusColumn };
-    apiRef.current?.refreshCells();
+    apiRef.current?.refreshCells({ force: true });
   };
   const onMouseDown = (event: CellMouseDownEvent<Row>) => {
     const mouse = event.event;
@@ -162,7 +162,14 @@ export default function ColumnGrid<Row extends ColumnGridRow>({ rows, columns, f
       event.node.setSelected(true, true);
       return;
     }
-    if (index < 0) { event.node.setSelected(true, true); return; }
+    if (index < 0) {
+      // Selecting the row-number gutter replaces the cell range with row selection.
+      selectionRef.current = null;
+      draggingRef.current = false;
+      event.node.setSelected(true, true);
+      event.api.refreshCells({ force: true });
+      return;
+    }
     if (mouse.shiftKey && selectionRef.current) {
       updateSelection(selectionRef.current.anchorRow, selectionRef.current.anchorColumn, event.rowIndex, index);
     } else {

@@ -90,6 +90,15 @@ MenuRegistry.appendMenuItem(MenuId.LayoutControlMenu, {
 
 MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
   command: {
+    id: "workbench.action.togglePanel",
+    title: { value: "Toggle Panel", mnemonicTitle: "&&Toggle Panel" },
+  },
+  group: "2_panel",
+  order: 0,
+});
+
+MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
+  command: {
     id: "workbench.action.toggleMaximizedPanel",
     title: { value: "Maximize Panel Size", mnemonicTitle: "Ma&&ximize Panel Size" },
   },
@@ -126,6 +135,10 @@ MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
   order: 22,
 });
 
+KeybindingsRegistry.registerKeybinding(
+  "workbench.action.togglePanel",
+  "Ctrl+J",
+);
 KeybindingsRegistry.registerKeybinding(
   "workbench.action.toggleMaximizedPanel",
   "Ctrl+Shift+J",

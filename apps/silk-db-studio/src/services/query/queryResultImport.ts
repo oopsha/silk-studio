@@ -1,3 +1,5 @@
+import type { CellObject } from "xlsx";
+
 export type ParsedDelimitedFile = {
   delimiter: "," | "\t" | ";";
   rows: string[][];
@@ -10,25 +12,57 @@ export type ParsedImportSource =
 /** SheetJS reads both legacy BIFF .xls files and OOXML .xlsx files. */
 export async function parseExcelWorkbook(data: ArrayBuffer): Promise<ParsedImportSource> {
   const XLSX = await import("xlsx");
-  const workbook = XLSX.read(data, { type: "array", cellDates: true });
+  const workbook = XLSX.read(data, { type: "array", cellNF: true });
+  const date1904 = Boolean(workbook.Workbook?.WBProps?.date1904);
   return {
     kind: "workbook",
     sheets: workbook.SheetNames.map((name: string) => {
       const sheet = workbook.Sheets[name];
-      const cells = XLSX.utils.sheet_to_json(sheet, {
-        header: 1,
-        defval: "",
-        raw: false,
-        blankrows: false,
-      }) as unknown[][];
-      const rows = cells.map((row) => row.map((value) => String(value ?? "")));
-      const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
-      return {
-        name,
-        rows: rows.map((row) => [...row, ...Array<string>(Math.max(0, width - row.length)).fill("")]),
-      };
+      const rows: string[][] = [];
+      if (sheet["!ref"]) {
+        const range = XLSX.utils.decode_range(sheet["!ref"]);
+        for (let rowIndex = range.s.r; rowIndex <= range.e.r; rowIndex += 1) {
+          const row: string[] = [];
+          for (let columnIndex = range.s.c; columnIndex <= range.e.c; columnIndex += 1) {
+            const cell = sheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })];
+            row.push(excelCellValue(cell, XLSX, date1904));
+          }
+          if (row.some((value) => value !== "")) rows.push(row);
+        }
+      }
+      return { name, rows };
     }),
   };
+}
+
+/** Preserve Excel's displayed numeric precision while removing number-format decoration. */
+function excelCellValue(cell: CellObject | undefined, XLSX: typeof import("xlsx"), date1904: boolean): string {
+  if (cell?.v == null) return "";
+  if (cell.t === "e") return cell.w ?? "#ERROR!";
+  const format = String(cell.z ?? "");
+  if (typeof cell.v !== "number") return String(cell.v);
+  if (!XLSX.SSF.is_date(format)) {
+    const displayed = cell.w ?? String(cell.v);
+    if (format.includes("%")) return String(cell.v);
+    const parenthesizedNegative = /^\(.*\)$/.test(displayed.trim());
+    const numeric = displayed.replace(/,/g, "").replace(/[^\dEe+\-.]/g, "");
+    if (!numeric || numeric === "." || numeric === "-" || numeric === "+") return String(cell.v);
+    return parenthesizedNegative ? `-${numeric}` : numeric;
+  }
+
+  // Excel dates are serial numbers without a timezone. Format them directly to avoid shifting
+  // a date/time through the machine timezone. Keep time-only cells free of Excel's base date.
+  const tokens = format
+    .replace(/"[^"]*"|\\./g, "")
+    .replace(/\[([^\]]*)\]/g, (_match, value: string) => /^[hms]+$/i.test(value) ? value : "");
+  const hasTime = /[hs]/i.test(tokens);
+  const hasDate = /[yd]/i.test(tokens) || !hasTime;
+  const date = XLSX.SSF.parse_date_code(cell.v, { date1904 });
+  const fractional = date && Math.abs(date.u) >= 0.0005 ? ".000" : "";
+  const targetFormat = hasDate
+    ? `yyyy-mm-dd${hasTime ? ` hh:mm:ss${fractional}` : ""}`
+    : `hh:mm:ss${fractional}`;
+  return XLSX.SSF.format(targetFormat, cell.v, { date1904 });
 }
 
 /** Parse CSV/TSV text, including quoted delimiters and embedded newlines. */

@@ -1,6 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { buildInsertStatement, buildUpdateStatement } from "./safeUpdateSql";
+import { buildInsertStatement, buildUpdateStatement, buildInsertStatements, iterateInsertBatches } from "./safeUpdateSql";
 import { CURRENT_TIMESTAMP_VALUE } from "./queryResultTemporalValue";
+
+describe("lazy import batches", () => {
+  it("does not format 60,000 rows in advance", () => {
+    let reads = 0;
+    const rows = Array.from({ length: 60_000 }, (_, index) => ({
+      get id() { reads++; return String(index); },
+    }));
+    const batches = iterateInsertBatches({ schema: null, table: "items", driverId: "oracle", columns: ["id"], rows });
+    expect(reads).toBe(0);
+    expect(batches.next().value?.rowCount).toBe(50);
+    expect(reads).toBeLessThanOrEqual(51);
+    batches.return(undefined);
+  });
+
+  it("preserves all rows and respects SQL length limits across dialects", () => {
+    for (const driverId of ["oracle", "postgresql", "mysql", "mariadb", "sqlserver", "sqlite"] as const) {
+      const input = { schema: null, table: "items", driverId, columns: ["value"], rows: Array.from({ length: 123 }, () => ({ value: "x".repeat(2000) })) };
+      const batches = Array.from(iterateInsertBatches(input));
+      expect(batches.reduce((sum, batch) => sum + batch.rowCount, 0)).toBe(123);
+      expect(batches.every((batch) => batch.rowCount <= 50 && batch.sql.length <= (driverId === "oracle" ? 24_000 : 128_000))).toBe(true);
+      expect(buildInsertStatements(input)).toEqual(batches.map((batch) => batch.sql));
+    }
+  });
+});
 
 describe("buildUpdateStatement", () => {
   it("prefixes string literals with N for SQL Server (Unicode literal)", () => {

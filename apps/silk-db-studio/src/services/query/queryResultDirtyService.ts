@@ -15,6 +15,7 @@ type TabDirtyStore = {
    *  remount (see `QueryResultGrid`'s `rehydratePendingEdits`), since insertion order alone
    *  doesn't capture *where* a row was added. */
   newRows: Map<number, number | null>;
+  truncateBeforeImport: boolean;
   nextNewRowIndex: number;
 };
 
@@ -52,6 +53,7 @@ class QueryResultDirtyServiceImpl {
       dirtyByRow: new Map(),
       deletedRows: new Set(),
       newRows: new Map(),
+      truncateBeforeImport: false,
       nextNewRowIndex: 0,
     });
     this.emit();
@@ -88,8 +90,20 @@ class QueryResultDirtyServiceImpl {
     return (
       store.dirtyByRow.size > 0 ||
       store.deletedRows.size > 0 ||
-      store.newRows.size > 0
+      store.newRows.size > 0 ||
+      store.truncateBeforeImport
     );
+  }
+
+  setTruncateBeforeImport(tabId: string, value: boolean): void {
+    const store = this.stores.get(tabId);
+    if (!store || store.truncateBeforeImport === value) return;
+    store.truncateBeforeImport = value;
+    this.emit();
+  }
+
+  getTruncateBeforeImport(tabId: string): boolean {
+    return this.stores.get(tabId)?.truncateBeforeImport ?? false;
   }
 
   /**
@@ -245,7 +259,8 @@ class QueryResultDirtyServiceImpl {
       !store ||
       (store.dirtyByRow.size === 0 &&
         store.deletedRows.size === 0 &&
-        store.newRows.size === 0)
+        store.newRows.size === 0 &&
+        !store.truncateBeforeImport)
     ) {
       return;
     }
@@ -255,6 +270,7 @@ class QueryResultDirtyServiceImpl {
       delete store.originalRows[rowIndex];
     }
     store.newRows.clear();
+    store.truncateBeforeImport = false;
     this.emit();
   }
 

@@ -1284,6 +1284,7 @@ final class OracleDialect implements DbDialect {
             type != null && type.toUpperCase(java.util.Locale.ROOT).contains("VIEW")
                 ? "view"
                 : "table");
+        DbDialect.appendObjectRemarks(object, tables);
       }
     }
 

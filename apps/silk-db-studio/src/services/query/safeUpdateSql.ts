@@ -133,7 +133,7 @@ export function buildInsertStatement(input: {
   return `INSERT INTO ${tableRef} (${columnList}) VALUES (${valueList})`;
 }
 
-export function buildInsertStatements(input: {
+type InsertStatementsInput = {
   catalog?: string | null;
   schema: string | null;
   table: string;
@@ -141,18 +141,64 @@ export function buildInsertStatements(input: {
   columns: string[];
   rows: Array<Record<string, string | null>>;
   columnTypes?: Record<string, QueryResultColumnType | undefined>;
-}): string[] {
-  return input.rows.map((row) =>
-    buildInsertStatement({
-      catalog: input.catalog,
-      schema: input.schema,
-      table: input.table,
-      driverId: input.driverId,
-      columns: input.columns,
-      row,
-      columnTypes: input.columnTypes,
-    }),
+};
+
+export function buildInsertStatements(input: InsertStatementsInput): string[] {
+  return Array.from(iterateInsertBatches(input), (batch) => batch.sql);
+}
+
+/** Format only the next bounded batch; do not materialize SQL for all rows. */
+export function* iterateInsertBatches(input: InsertStatementsInput): Generator<{ sql: string; rowCount: number }> {
+  if (input.rows.length === 0) return;
+  const tableRef = formatTableReference(
+    input.schema,
+    input.table,
+    input.driverId,
+    input.catalog,
   );
+  const columnList = input.columns
+    .map((column) => quoteIdentifier(column, input.driverId))
+    .join(", ");
+  const oracle = input.driverId === "oracle";
+  const maxRowsPerStatement = 50;
+  const maxStatementLength = oracle ? 24_000 : 128_000;
+  const prefix = oracle
+    ? "INSERT ALL\n"
+    : `INSERT INTO ${tableRef} (${columnList}) VALUES\n`;
+  const suffix = oracle ? "\nSELECT 1 FROM DUAL" : "";
+  const fragmentForRow = (row: Record<string, string | null>) => {
+    const values = input.columns
+      .map((column) => formatColumnValue(
+        row[column] ?? null,
+        input.driverId,
+        input.columnTypes?.[column],
+      ))
+      .join(", ");
+    return oracle
+      ? `INTO ${tableRef} (${columnList}) VALUES (${values})`
+      : `(${values})`;
+  };
+
+  let batch: string[] = [];
+  let batchLength = prefix.length + suffix.length;
+  for (const row of input.rows) {
+    const fragment = fragmentForRow(row);
+    const separatorLength = batch.length === 0 ? 0 : oracle ? 1 : 2;
+    if (
+      batch.length > 0 &&
+      (batch.length >= maxRowsPerStatement ||
+        batchLength + separatorLength + fragment.length > maxStatementLength)
+    ) {
+      yield { sql: `${prefix}${batch.join(oracle ? "\n" : ",\n")}${suffix}`, rowCount: batch.length };
+      batch = [];
+      batchLength = prefix.length + suffix.length;
+    }
+    batchLength += (batch.length === 0 ? 0 : oracle ? 1 : 2) + fragment.length;
+    batch.push(fragment);
+  }
+  if (batch.length > 0) {
+    yield { sql: `${prefix}${batch.join(oracle ? "\n" : ",\n")}${suffix}`, rowCount: batch.length };
+  }
 }
 
 export function buildUpdateStatements(input: {

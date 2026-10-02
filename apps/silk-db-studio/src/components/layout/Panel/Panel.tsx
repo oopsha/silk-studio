@@ -6,6 +6,7 @@ import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayoutState.ts";
 import { useGroupPanelState } from "@silk-studio/workbench/services/layout/useGroupPanelState.ts";
+import { GroupPanelStateService } from "@silk-studio/workbench/services/layout/groupPanelStateService.ts";
 import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { QueryExecutionService } from "../../../services/query/queryExecutionService";
 import { truncateSqlLabel } from "../../../services/query/queryResultTab";
@@ -203,6 +204,15 @@ function Panel({ groupId }: { groupId: EditorGroupId }) {
                 panelVisual.maximized ? "chevron-down" : "chevron-up"
               }
             />
+          </button>
+          <button
+            type="button"
+            className="panel__action"
+            title={t("workbench.panel.close")}
+            aria-label={t("workbench.panel.close")}
+            onClick={() => GroupPanelStateService.togglePanel(groupId)}
+          >
+            <Codicon name="close" />
           </button>
         </div>
       </header>

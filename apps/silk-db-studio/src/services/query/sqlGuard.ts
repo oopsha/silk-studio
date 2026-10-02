@@ -2,6 +2,9 @@ import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
 
 const WRITE_SQL_PATTERN =
   /^\s*(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|call|exec|execute|comment)\b/i;
+const PROCEDURAL_SQL_PATTERN = /^\s*(declare|begin|do)\b/i;
+const NESTED_WRITE_SQL_PATTERN =
+  /\b(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|call|exec|execute|comment)\b/i;
 
 /** DDL/DCL keywords — the subset of {@link WRITE_SQL_PATTERN} that Oracle/MySQL implicitly
  *  commit on execution (see `driverAutoCommitsDdl` in sqlDialect.ts). `call`/`exec`/
@@ -30,7 +33,15 @@ function stripLeadingComments(sql: string): string {
 }
 
 export function isWriteSql(sql: string): boolean {
-  return WRITE_SQL_PATTERN.test(stripLeadingComments(sql));
+  const statement = stripLeadingComments(sql);
+  if (WRITE_SQL_PATTERN.test(statement)) return true;
+
+  // Procedural blocks can contain writes even though their first token is not DML.
+  // Check the body so read-only enforcement and pending-transaction tracking see them.
+  return (
+    PROCEDURAL_SQL_PATTERN.test(statement) &&
+    NESTED_WRITE_SQL_PATTERN.test(statement)
+  );
 }
 
 export function isDdlSql(sql: string): boolean {

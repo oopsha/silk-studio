@@ -12,7 +12,9 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Set;
 
@@ -132,14 +134,17 @@ final class PostgreSqlDialect implements DbDialect {
     // signatures, and Explorer currently shows a flat name list (no arg-type disambiguation).
     Set<String> tableNames = new LinkedHashSet<>();
     Set<String> viewNames = new LinkedHashSet<>();
+    Map<String, String> tableRemarks = new LinkedHashMap<>();
     try (ResultSet tables =
         metadata.getTables(catalog, schemaName, "%", new String[] {"TABLE", "VIEW"})) {
       while (tables.next()) {
         String name = tables.getString("TABLE_NAME");
         String type = tables.getString("TABLE_TYPE");
+        String remarks = tables.getString("REMARKS");
         if (name == null || name.isBlank()) {
           continue;
         }
+        if (remarks != null && !remarks.isBlank()) tableRemarks.put(name, remarks);
         if (type != null && type.toUpperCase(Locale.ROOT).contains("VIEW")) {
           viewNames.add(name);
         } else {
@@ -151,11 +156,15 @@ final class PostgreSqlDialect implements DbDialect {
       ObjectNode object = objects.addObject();
       object.put("name", name);
       object.put("kind", "table");
+      String remarks = tableRemarks.get(name);
+      if (remarks != null) object.put("comment", remarks);
     }
     for (String name : viewNames) {
       ObjectNode object = objects.addObject();
       object.put("name", name);
       object.put("kind", "view");
+      String remarks = tableRemarks.get(name);
+      if (remarks != null) object.put("comment", remarks);
     }
 
     Set<String> procedureNames = new LinkedHashSet<>();

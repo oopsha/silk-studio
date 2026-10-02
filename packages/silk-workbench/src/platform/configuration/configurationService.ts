@@ -181,6 +181,10 @@ class ConfigurationServiceImpl {
       values["database.autoCommit"] =
         CONFIGURATION_DEFAULTS["database.autoCommit"];
     }
+    values["database.importSqlPreviewMaxRows"] = clampNumber(
+      values["database.importSqlPreviewMaxRows"], 0, 10000,
+      CONFIGURATION_DEFAULTS["database.importSqlPreviewMaxRows"],
+    );
     if (typeof values["database.readOnly"] !== "boolean") {
       values["database.readOnly"] =
         CONFIGURATION_DEFAULTS["database.readOnly"];
