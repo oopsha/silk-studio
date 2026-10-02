@@ -284,6 +284,7 @@ export const koMessages = {
       laterNotice:
         "업데이트 {version}을(를) 사용할 수 있습니다. 준비되면 업데이트 확인을 실행하세요.",
       downloading: "{version} 다운로드 중…",
+      installing: "{version} 설치 중…",
       installed: "업데이트가 설치되었습니다. 재시작 중…",
       signingKeyMissing:
         "업데이트 서명 키가 아직 설정되지 않았습니다. docs/release.md를 참고하세요.",

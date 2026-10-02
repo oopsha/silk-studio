@@ -286,6 +286,7 @@ export const enMessages = {
       laterNotice:
         "Update {version} is available. Run Check for Updates when ready.",
       downloading: "Downloading {version}…",
+      installing: "Installing {version}…",
       installed: "Update installed. Restarting…",
       signingKeyMissing:
         "Updater signing key is not configured yet. See docs/release.md.",

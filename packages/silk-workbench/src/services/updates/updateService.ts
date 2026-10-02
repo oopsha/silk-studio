@@ -9,6 +9,7 @@ import { tKey } from "../../platform/i18n/activeLocale";
 // `ask` is asynchronous, so periodic checks can otherwise queue multiple native dialogs
 // while the first update prompt is still waiting for the user's response.
 let isUpdatePromptOpen = false;
+let isUpdateInProgress = false;
 
 function formatError(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message;
@@ -27,6 +28,7 @@ export async function checkForUpdates(options?: {
   silentWhenUpToDate?: boolean;
 }): Promise<void> {
   const silent = options?.silentWhenUpToDate ?? false;
+  if (isUpdatePromptOpen || isUpdateInProgress) return;
 
   if (!isTauri()) {
     if (!silent) {
@@ -81,17 +83,40 @@ export async function checkForUpdates(options?: {
       return;
     }
 
+    isUpdateInProgress = true;
     AppNotificationService.show(
       tKey("workbench.update.downloading").replace("{version}", update.version),
-      "info",
+      "info", 0, null,
     );
-    await update.downloadAndInstall();
+    let downloaded = 0;
+    let total: number | undefined;
+    let lastShown = 0;
+    const formatBytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    await update.downloadAndInstall((event) => {
+      if (event.event === "Finished") {
+        AppNotificationService.show(tKey("workbench.update.installing").replace("{version}", update.version), "info", 0, null);
+        return;
+      }
+      if (event.event === "Started") {
+        downloaded = 0;
+        total = event.data.contentLength;
+      } else {
+        downloaded += event.data.chunkLength;
+        if (Date.now() - lastShown < 100 && (!total || downloaded < total)) return;
+      }
+      lastShown = Date.now();
+      const percent = total && total > 0 ? Math.min(100, downloaded / total * 100) : null;
+      const detail = percent === null
+        ? formatBytes(downloaded)
+        : `${Math.floor(percent)}% · ${formatBytes(downloaded)} / ${formatBytes(total!)}`;
+      AppNotificationService.show(`${tKey("workbench.update.downloading").replace("{version}", update.version)} ${detail}`, "info", 0, percent);
+    });
     AppNotificationService.show(tKey("workbench.update.installed"), "success");
     await relaunch();
   } catch (error) {
     const message = formatError(error);
     void AppLogService.error(message, "update.check");
-    if (silent) return;
+    if (silent && !isUpdateInProgress) return;
 
     if (
       message.includes("REPLACE_AFTER_tauri_signer_generate") ||
@@ -121,5 +146,7 @@ export async function checkForUpdates(options?: {
       tKey("workbench.update.checkFailed").replace("{message}", message),
       "error",
     );
+  } finally {
+    isUpdateInProgress = false;
   }
 }

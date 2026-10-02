@@ -267,7 +267,7 @@ export default function ColumnGrid<Row extends ColumnGridRow>({ rows, columns, f
     </div></div>
     <div className="column-grid__body" onKeyDownCapture={(event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c" && !(event.target instanceof HTMLInputElement)) { event.preventDefault(); runAction(copy("selection"), t("app.query.copyFailed")); } }}>
       <AgGridReact<Row> theme={theme} rowData={rows} columnDefs={defs} getRowId={(params) => params.data.rowId} rowClassRules={rowClassRules}
-        defaultColDef={{ sortable: true, filter: "agTextColumnFilter", floatingFilter: true, filterParams: { buttons: ["apply", "reset"] }, resizable: true, suppressHeaderMenuButton: true }}
+        defaultColDef={{ sortable: true, filter: "agTextColumnFilter", floatingFilter: true, filterParams: { buttons: ["reset"], debounceMs: 0 }, resizable: true, suppressHeaderMenuButton: true }}
         rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: false }}
         suppressFieldDotNotation animateRows={false} rowHeight={rowHeight} suppressColumnVirtualisation suppressClickEdit stopEditingWhenCellsLoseFocus
         onGridReady={(event) => { apiRef.current = event.api; const saved = localStorage.getItem(layoutKey); if (saved) { try { applyingLayoutRef.current = true; event.api.applyColumnState({ state: JSON.parse(saved), applyOrder: true }); setHasLayout(true); window.setTimeout(() => { applyingLayoutRef.current = false; }, 150); } catch { applyingLayoutRef.current = false; localStorage.removeItem(layoutKey); } } updateFlags(); }} onCellMouseDown={onMouseDown} onCellMouseOver={onMouseOver}
