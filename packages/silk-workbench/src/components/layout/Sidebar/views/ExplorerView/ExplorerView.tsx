@@ -219,7 +219,7 @@ function OpenEditorsGroupSection({
           <li
             key={tab.id}
             className={`open-editors-list__item${isActive ? " open-editors-list__item--active" : ""}${tab.isDirty ? " open-editors-list__item--dirty" : ""}${tab.isPreview ? " open-editors-list__item--preview" : ""}`}
-            title={tab.uri ?? tab.label}
+            title={tab.tooltip ?? tab.uri ?? tab.label}
             onClick={() => {
               // Clicking a tab in an unfocused group's section must focus
               // that group too, not just activate the tab within it.
@@ -243,6 +243,9 @@ function OpenEditorsGroupSection({
               <Codicon name={codiconForLanguage(tab.languageId)} />
             </span>
             <span className="open-editors-list__label">{tab.label}</span>
+            {tab.description ? (
+              <span className="open-editors-list__description">{tab.description}</span>
+            ) : null}
             <span className="open-editors-list__actions">
               {tab.isDirty ? (
                 <span className="open-editors-list__dirty" aria-hidden />
