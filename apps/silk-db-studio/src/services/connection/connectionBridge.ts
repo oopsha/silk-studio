@@ -104,8 +104,7 @@ export async function bridgeFindObjectsByName(
   options?: {
     contains?: boolean;
     kinds?: MetadataObjectKind[];
-    /** Default `true` (search everything) — matches the pre-filter behavior for every caller
-     *  that doesn't pass this. */
+    /** Defaults to false. Callers pass the connection's visibility preference. */
     includeSystemObjects?: boolean;
   },
 ): Promise<ConnectionFindObjectsByNameResult> {
@@ -123,7 +122,7 @@ export async function bridgeFindObjectsByName(
       name: name.trim(),
       contains: options?.contains ?? false,
       kinds: options?.kinds && options.kinds.length > 0 ? options.kinds : undefined,
-      includeSystemObjects: options?.includeSystemObjects,
+      includeSystemObjects: options?.includeSystemObjects ?? false,
     },
     id,
   );

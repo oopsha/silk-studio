@@ -277,7 +277,7 @@ class ConnectionTreeServiceImpl {
         );
         const allowed = new Set(schemaNames.map((name) => name.toLowerCase()));
         const schemas = result.schemas.filter((item) =>
-          allowed.has(item.name.toLowerCase()),
+          allowed.has(item.name.toLowerCase()) && (filter?.showSystemObjects !== false || !item.system),
         );
         this.caches.set(profileId, {
           status: "loaded",
@@ -346,7 +346,7 @@ class ConnectionTreeServiceImpl {
       const schemasResult = {
         ...result,
         schemas: result.schemas.filter((item) =>
-          allowed.has(item.name.toLowerCase()),
+          allowed.has(item.name.toLowerCase()) && (filter?.showSystemObjects !== false || !item.system),
         ),
       };
       const schemas = toSchemaNodes(schemasResult, catalog.schemas);

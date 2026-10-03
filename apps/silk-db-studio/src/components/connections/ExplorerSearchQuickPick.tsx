@@ -98,7 +98,7 @@ function ExplorerSearchQuickPick() {
             const response = await bridgeFindObjectsByName(
               profile.id,
               searchTerm,
-              { contains: true },
+              { contains: true, includeSystemObjects: profile.showSystemObjects },
             );
             for (const found of response.objects) {
               results.push(

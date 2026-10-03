@@ -239,7 +239,7 @@ final class PostgreSqlDialect implements DbDialect {
    * {@code pg_toast_temp_NN}) are handled separately via a prefix check below.
    */
   private static final java.util.Set<String> POSTGRES_SYSTEM_SCHEMAS =
-      java.util.Set.of("information_schema", "pg_catalog", "pg_toast");
+      java.util.Set.of("information_schema", "pg_catalog", "pg_toast", "rds_tools");
 
   /**
    * Builds a {@code nspname NOT IN (...) AND nspname NOT LIKE 'pg\_temp\_%' ...} fragment

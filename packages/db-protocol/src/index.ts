@@ -99,6 +99,7 @@ export type MetadataGroup = {
 };
 
 export type MetadataSchema = {
+  system?: boolean;
   name: string;
   /** Only groups the connected database supports are present here — see `MetadataGroupId`. */
   groups: MetadataGroup[];
@@ -618,6 +619,7 @@ function isMetadataSchema(value: unknown): value is MetadataSchema {
   const item = value as Record<string, unknown>;
   return (
     typeof item.name === "string" &&
+    (item.system === undefined || typeof item.system === "boolean") &&
     Array.isArray(item.groups) &&
     item.groups.every(isMetadataGroup)
   );

@@ -6,6 +6,7 @@ const SQLSERVER_SYSTEM_CATALOGS = new Set([
   "model",
   "msdb",
   "tempdb",
+  "rdsadmin",
 ]);
 
 /**
@@ -41,6 +42,7 @@ const POSTGRES_SYSTEM_SCHEMAS = new Set([
   "information_schema",
   "pg_catalog",
   "pg_toast",
+  "rds_tools",
 ]);
 
 /**
@@ -51,6 +53,13 @@ const POSTGRES_SYSTEM_SCHEMAS = new Set([
  * provisioning.
  */
 const ORACLE_SYSTEM_SCHEMAS = new Set([
+  "RDSADMIN",
+  "OPS$RDSDB",
+  "C##RDSADMIN",
+  "C##RDS_DATAGUARD",
+  "C##CLOUD$SERVICE",
+  "C##ADP$SERVICE",
+  "C##OMLIDM",
   "ANONYMOUS",
   "APPQOSSYS",
   "AUDSYS",
@@ -72,6 +81,9 @@ const ORACLE_SYSTEM_SCHEMAS = new Set([
   "OUTLN",
   "REMOTE_SCHEDULER_AGENT",
   "SYS",
+  "SYS$UMF",
+  "DVF",
+  "MDDATA",
   "SYSBACKUP",
   "SYSDG",
   "SYSKM",
@@ -102,7 +114,7 @@ export type ExplorerFilterContext = {
  * SQL Server has two real levels (catalog, then schema within it) with *different* system-name
  * sets — `master` is a system catalog but isn't a schema name, and `db_owner` is a system
  * schema but isn't a catalog name. Other drivers don't distinguish the two, so `level` is a
- * no-op for them; only the `"sqlserver"` branch below actually reads it.
+ * no-op for MySQL and Oracle. PostgreSQL also distinguishes databases from schemas.
  */
 export type NamespaceLevel = "catalog" | "schema";
 
@@ -125,6 +137,7 @@ export function isSystemNamespace(
       return MYSQL_SYSTEM_CATALOGS.has(trimmed.toLowerCase());
     case "postgresql": {
       const lower = trimmed.toLowerCase();
+      if (level === "catalog") return ["rdsadmin", "template0", "template1"].includes(lower);
       if (POSTGRES_SYSTEM_SCHEMAS.has(lower)) return true;
       // Temporary schemas: pg_temp_NN, pg_toast_temp_NN
       return lower.startsWith("pg_temp_") || lower.startsWith("pg_toast_temp_");
@@ -156,7 +169,7 @@ export function filterSystemNamespaces(
 export function showSystemObjectsHint(driverId: ConnectionDriverId): string {
   switch (driverId) {
     case "sqlserver":
-      return "When off, hides master, model, msdb, and tempdb in the Explorer.";
+      return "When off, hides master, model, msdb, tempdb, and rdsadmin in the Explorer.";
     case "mysql":
     case "mariadb":
       return "When off, hides mysql, sys, information_schema, and performance_schema.";

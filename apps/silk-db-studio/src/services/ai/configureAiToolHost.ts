@@ -242,7 +242,9 @@ async function executeTool(
         }> = [];
         for (const profile of profiles) {
           try {
-            const result = await bridgeFindObjectsByName(profile.id, objectName);
+            const result = await bridgeFindObjectsByName(profile.id, objectName, {
+              includeSystemObjects: profile.showSystemObjects,
+            });
             for (const object of result.objects) {
               matches.push({ connectionName: profile.name, ...object });
             }

@@ -5,6 +5,20 @@ import {
 } from "./systemNamespaces";
 
 describe("isSystemNamespace", () => {
+  it("excludes cloud administration namespaces without hiding customer schemas", () => {
+    for (const name of ["RDSADMIN", "C##RDSADMIN", "C##RDS_DATAGUARD", "C##CLOUD$SERVICE", "C##ADP$SERVICE", "C##OMLIDM"]) {
+      expect(isSystemNamespace("oracle", name.toLowerCase(), "schema")).toBe(true);
+    }
+    expect(isSystemNamespace("oracle", "ADMIN", "schema")).toBe(false);
+    expect(isSystemNamespace("oracle", "C##CUSTOMER", "schema")).toBe(false);
+    expect(isSystemNamespace("sqlserver", "rdsadmin", "catalog")).toBe(true);
+    expect(isSystemNamespace("sqlserver", "rdsadmin", "schema")).toBe(false);
+    expect(isSystemNamespace("postgresql", "rdsadmin", "catalog")).toBe(true);
+    expect(isSystemNamespace("postgresql", "rdsadmin", "schema")).toBe(false);
+    expect(isSystemNamespace("postgresql", "rds_tools", "schema")).toBe(true);
+    expect(filterSystemNamespaces(["RDSADMIN", "ADMIN"], { driverId: "oracle", showSystemObjects: false }, "schema")).toEqual(["ADMIN"]);
+    expect(filterSystemNamespaces(["RDSADMIN", "ADMIN"], { driverId: "oracle", showSystemObjects: true }, "schema")).toEqual(["RDSADMIN", "ADMIN"]);
+  });
   it("detects SQL Server system catalogs", () => {
     expect(isSystemNamespace("sqlserver", "master", "catalog")).toBe(true);
     expect(isSystemNamespace("sqlserver", "PSM", "catalog")).toBe(false);

@@ -111,6 +111,11 @@ interface DbDialect {
     return false;
   }
 
+  /** Database-provided classification supplements static system namespace lists. */
+  default java.util.Set<String> listMaintainedSchemas(Connection connection) throws SQLException {
+    return java.util.Set.of();
+  }
+
   /**
    * Lists catalog/database names for {@link #usesCatalogExplorer()} dialects. Default: empty.
    */

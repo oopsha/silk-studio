@@ -99,6 +99,18 @@ final class OracleDialect implements DbDialect {
     return new ArrayList<>(names);
   }
 
+  @Override
+  public java.util.Set<String> listMaintainedSchemas(Connection connection) throws SQLException {
+    if (connection.getMetaData().getDatabaseMajorVersion() < 12) return java.util.Set.of();
+    java.util.Set<String> names = new java.util.HashSet<>();
+    try (Statement statement = connection.createStatement();
+        ResultSet result = statement.executeQuery(
+            "SELECT USERNAME FROM ALL_USERS WHERE ORACLE_MAINTAINED = 'Y'")) {
+      while (result.next()) names.add(result.getString(1));
+    }
+    return names;
+  }
+
   /**
    * Queries {@code ALL_TAB_COLUMNS}/{@code ALL_COL_COMMENTS} directly instead of JDBC's {@code
    * getColumns} — like {@link #collectRoutineArguments}, the standard JDBC metadata call is
@@ -1390,7 +1402,9 @@ final class OracleDialect implements DbDialect {
           "SYSDG", "SYSKM", "SYSRAC", "SYSTEM", "WMSYS", "XDB", "XS$NULL", "ADBSNMP",
           "ADB_APP_STORE", "APEX_PUBLIC_USER", "APEX_REST_PUBLIC_USER",
           "APEX_INSTANCE_ADMIN_USER", "ORDS_METADATA", "ORDS_PUBLIC_USER", "DBSFWUSER",
-          "GSMROOTUSER", "PDBADMIN");
+          "GSMROOTUSER", "PDBADMIN", "RDSADMIN", "C##RDSADMIN", "C##RDS_DATAGUARD",
+          "C##CLOUD$SERVICE", "C##ADP$SERVICE", "C##OMLIDM", "SYS$UMF", "DVF", "MDDATA",
+          "OPS$RDSDB");
 
   @Override
   public void findObjectsByName(
