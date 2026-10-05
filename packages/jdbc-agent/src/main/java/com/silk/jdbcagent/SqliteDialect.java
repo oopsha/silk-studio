@@ -225,7 +225,10 @@ final class SqliteDialect implements DbDialect {
       ObjectNode primaryKey = constraints.addObject();
       primaryKey.put("name", "pk_" + tableName);
       primaryKey.put("type", "primaryKey");
-      primaryKey.set("columns", keys);
+      ArrayNode names = primaryKey.putArray("columns");
+      for (JsonNode key : keys) {
+        names.add(key.path("name").asText());
+      }
     }
     String sql = "PRAGMA " + quoteIdent(schema) + ".index_list(" + stringLiteral(tableName) + ")";
     try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
