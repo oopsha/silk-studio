@@ -323,6 +323,10 @@ public final class Main {
           response.put("ok", true);
           response.set("result", runtime.listObjectDependents(params));
         }
+        case "query.prepareMybatis" -> {
+          response.put("ok", true);
+          response.set("result", MybatisScript.prepare(params));
+        }
         case "query.execute" -> {
           String sql = params.path("sql").asText("").trim();
           if (sql.isEmpty()) {
@@ -483,6 +487,7 @@ public final class Main {
       Connection connection =
           connProps.isEmpty() ? DriverManager.getConnection(url) : DriverManager.getConnection(url, connProps);
       dialect.afterConnect(connection, params);
+      setNetworkTimeoutQuietly(connection, timeoutSeconds);
 
       Session session = new Session(connectionId);
       session.connection = connection;
@@ -1305,6 +1310,9 @@ public final class Main {
       int effectiveTimeout =
           timeoutOverride >= 0 ? timeoutOverride : timeoutSeconds;
 
+      int previousNetworkTimeout = getNetworkTimeoutQuietly(session.connection);
+      setNetworkTimeoutQuietly(session.connection, effectiveTimeout);
+
 
       JsonNode bindsNode = params.path("binds");
       boolean useBinds = bindsNode.isArray() && bindsNode.size() > 0;
@@ -1364,6 +1372,7 @@ public final class Main {
           statement.close();
         } catch (SQLException ignored) {
         }
+        restoreNetworkTimeoutQuietly(session.connection, previousNetworkTimeout);
       }
     }
 
@@ -1395,6 +1404,9 @@ public final class Main {
           ? params.path("queryTimeoutSec").asInt(-1)
           : -1;
       int effectiveTimeout = timeoutOverride >= 0 ? timeoutOverride : timeoutSeconds;
+
+      int previousNetworkTimeout = getNetworkTimeoutQuietly(session.connection);
+      setNetworkTimeoutQuietly(session.connection, effectiveTimeout);
 
       Set<String> knownColumns = new LinkedHashSet<>();
       for (JsonNode column : params.path("knownColumns")) {
@@ -1463,6 +1475,36 @@ public final class Main {
           statement.close();
         } catch (SQLException ignored) {
         }
+        restoreNetworkTimeoutQuietly(session.connection, previousNetworkTimeout);
+      }
+    }
+
+    private static int getNetworkTimeoutQuietly(Connection connection) {
+      try {
+        return connection.getNetworkTimeout();
+      } catch (SQLException | UnsupportedOperationException error) {
+        return -1;
+      }
+    }
+
+    private static void setNetworkTimeoutQuietly(Connection connection, int timeoutSeconds) {
+      int timeoutMillis = timeoutSeconds <= 0
+          ? 0
+          : (int) Math.min((long) timeoutSeconds * 1000L, Integer.MAX_VALUE);
+      try {
+        connection.setNetworkTimeout(MISC_EXECUTOR, timeoutMillis);
+      } catch (SQLException | UnsupportedOperationException ignored) {
+        // JDBC drivers may not implement network timeouts. Statement#setQueryTimeout remains active.
+      }
+    }
+
+    private static void restoreNetworkTimeoutQuietly(Connection connection, int timeoutMillis) {
+      if (timeoutMillis < 0) {
+        return;
+      }
+      try {
+        connection.setNetworkTimeout(MISC_EXECUTOR, timeoutMillis);
+      } catch (SQLException | UnsupportedOperationException ignored) {
       }
     }
 

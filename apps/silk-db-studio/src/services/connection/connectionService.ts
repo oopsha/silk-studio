@@ -75,6 +75,7 @@ class ConnectionServiceImpl {
   private state: ConnectionState = INITIAL_STATE;
   private readonly listeners = new Set<ConnectionListener>();
   private initPromise: Promise<void> | null = null;
+  private readonly reconnectPromises = new Map<string, Promise<void>>();
 
   getState(): ConnectionState {
     return this.state;
@@ -519,6 +520,56 @@ class ConnectionServiceImpl {
         throw new Error(message);
       }
     }
+  }
+
+  /**
+   * Replaces the JDBC session and any tunnel for one profile while retaining its Explorer
+   * cache. This is deliberately separate from {@link connect}: reconnect must tear down stale
+   * native resources first, even when the frontend still considers the profile connected.
+   */
+  reconnect(
+    profileId: string,
+    options: {
+      silent?: boolean;
+      onProgress?: ConnectProgress;
+      promptForPassword?: boolean;
+      preserveTree?: boolean;
+    } = {},
+  ): Promise<void> {
+    const inFlight = this.reconnectPromises.get(profileId);
+    if (inFlight) return inFlight;
+
+    const task = (async () => {
+      // A dead socket can make disconnect fail. Tunnel cleanup and the fresh connect must still
+      // proceed, because both native tunnel managers and the JDBC agent replace resources by id.
+      await bridgeDisconnect(profileId).catch((error) => {
+        console.warn("[silk.connection] stale JDBC session cleanup failed", profileId, error);
+      });
+      await Promise.all([
+        closeSsmTunnel(profileId).catch(() => {}),
+        closeSshTunnel(profileId).catch(() => {}),
+      ]);
+
+      // Replacing a session discards any uncommitted transaction in the old connection.
+      const [{ ConnectionTransactionService }, { discardPendingDdlSaves }] = await Promise.all([
+        import("./connectionTransactionService"),
+        import("./pendingDdlSaveService"),
+      ]);
+      ConnectionTransactionService.clear(profileId);
+      discardPendingDdlSaves(profileId);
+
+      await this.connect(profileId, {
+        ...options,
+        preserveTree: options.preserveTree ?? true,
+      });
+    })().finally(() => {
+      if (this.reconnectPromises.get(profileId) === task) {
+        this.reconnectPromises.delete(profileId);
+      }
+    });
+
+    this.reconnectPromises.set(profileId, task);
+    return task;
   }
 
   private async preloadDefaultSchema(profileId: string): Promise<void> {

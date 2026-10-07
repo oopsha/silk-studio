@@ -75,3 +75,8 @@ copied into the Tauri bundle. Temurin builds are licensed under
 notices inside the JRE tree. Keep the runtime unmodified; do not mix its classes into
 `jdbc-agent` jars. A `SILK_JRE_SOURCE.txt` stamp is written next to the staged JRE for
 provenance. Full packaging notes: [`docs/bundled-runtime.md`](../../docs/bundled-runtime.md).
+# MyBatis
+
+This distribution includes MyBatis 3.5.19 (org.mybatis:mybatis), licensed under the Apache License 2.0.
+Project: https://mybatis.org/mybatis-3/
+License: https://www.apache.org/licenses/LICENSE-2.0

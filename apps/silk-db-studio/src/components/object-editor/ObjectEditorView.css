@@ -49,3 +49,13 @@
   flex: 1;
   min-height: 0;
 }
+
+.object-editor-view__section {
+  display: none;
+  flex: 1;
+  min-height: 0;
+}
+
+.object-editor-view__section--active {
+  display: flex;
+}

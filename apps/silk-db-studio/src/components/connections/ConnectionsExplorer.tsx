@@ -366,7 +366,7 @@ function ProfileTree({
 
   async function reconnectProfile() {
     await run(async () => {
-      await ConnectionService.connect(profile.id, { preserveTree: true });
+      await ConnectionService.reconnect(profile.id);
       onFlash(t("app.explorer.reconnected").replace("{name}", profile.name));
     });
   }

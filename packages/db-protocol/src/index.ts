@@ -434,9 +434,11 @@ export type ConnectionCompileError = {
 };
 
 export type ConnectionCompileResult = {
-  /** True when `errors` is empty after compile. */
+  /** True when diagnostics are empty and the database reports the object as VALID. */
   success: boolean;
   dialectId: string;
+  /** Database object status after compilation. Oracle reports VALID/INVALID via ALL_OBJECTS. */
+  objectStatus?: "VALID" | "INVALID" | "UNKNOWN";
   errors: ConnectionCompileError[];
 };
 
@@ -941,6 +943,10 @@ export function isConnectionCompileResult(
   return (
     typeof record.success === "boolean" &&
     typeof record.dialectId === "string" &&
+    (record.objectStatus === undefined ||
+      record.objectStatus === "VALID" ||
+      record.objectStatus === "INVALID" ||
+      record.objectStatus === "UNKNOWN") &&
     Array.isArray(record.errors) &&
     record.errors.every(isConnectionCompileError)
   );

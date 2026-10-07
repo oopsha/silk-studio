@@ -7,12 +7,12 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
 }));
 
-const mockConnect = vi.fn();
+const mockReconnect = vi.fn();
 const mockIsConnected = vi.fn();
 const mockGetProfile = vi.fn();
 vi.mock("./connectionService", () => ({
   ConnectionService: {
-    connect: (...args: unknown[]) => mockConnect(...args),
+    reconnect: (...args: unknown[]) => mockReconnect(...args),
     isConnected: (...args: unknown[]) => mockIsConnected(...args),
     getProfile: (...args: unknown[]) => mockGetProfile(...args),
   },
@@ -48,7 +48,7 @@ describe("isStaleSessionError", () => {
 describe("invokeJdbcCommand", () => {
   beforeEach(() => {
     mockInvoke.mockReset();
-    mockConnect.mockReset();
+    mockReconnect.mockReset();
     mockIsConnected.mockReset();
     mockGetProfile.mockReset();
   });
@@ -65,7 +65,7 @@ describe("invokeJdbcCommand", () => {
 
     expect(result).toEqual({ ok: true });
     expect(mockInvoke).toHaveBeenCalledTimes(1);
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockReconnect).not.toHaveBeenCalled();
   });
 
   it("rethrows a non-stale-session error unchanged, with no reconnect attempted", async () => {
@@ -75,7 +75,7 @@ describe("invokeJdbcCommand", () => {
     await expect(
       invokeJdbcCommand("connection_columns", { connectionId: "conn-1" }, "conn-1"),
     ).rejects.toThrow("ORA-00942");
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockReconnect).not.toHaveBeenCalled();
     expect(mockInvoke).toHaveBeenCalledTimes(1);
   });
 
@@ -84,7 +84,7 @@ describe("invokeJdbcCommand", () => {
     mockInvoke
       .mockRejectedValueOnce(new Error("Connection is not open (conn-1)."))
       .mockResolvedValueOnce({ ok: true });
-    mockConnect.mockResolvedValueOnce(undefined);
+    mockReconnect.mockResolvedValueOnce(undefined);
     mockIsConnected.mockReturnValueOnce(true);
 
     const result = await invokeJdbcCommand<{ ok: boolean }>(
@@ -94,7 +94,7 @@ describe("invokeJdbcCommand", () => {
     );
 
     expect(result).toEqual({ ok: true });
-    expect(mockConnect).toHaveBeenCalledWith("conn-1", {
+    expect(mockReconnect).toHaveBeenCalledWith("conn-1", {
       silent: true,
       promptForPassword: false,
     });
@@ -104,7 +104,7 @@ describe("invokeJdbcCommand", () => {
   it("throws a clear reconnect-failed error when the silent reconnect itself throws", async () => {
     const { invokeJdbcCommand } = await import("./jdbcInvoke");
     mockInvoke.mockRejectedValueOnce(new Error("Connection is not open (conn-1)."));
-    mockConnect.mockRejectedValueOnce(new Error("auth failed"));
+    mockReconnect.mockRejectedValueOnce(new Error("auth failed"));
     mockIsConnected.mockReturnValueOnce(false);
     mockGetProfile.mockReturnValueOnce({ name: "Prod Oracle" });
 
@@ -117,7 +117,7 @@ describe("invokeJdbcCommand", () => {
   it("throws a clear reconnect-failed error when reconnect succeeds but the profile is still not connected", async () => {
     const { invokeJdbcCommand } = await import("./jdbcInvoke");
     mockInvoke.mockRejectedValueOnce(new Error("Connection is not open (conn-1)."));
-    mockConnect.mockResolvedValueOnce(undefined);
+    mockReconnect.mockResolvedValueOnce(undefined);
     mockIsConnected.mockReturnValueOnce(false);
     mockGetProfile.mockReturnValueOnce(undefined);
 
@@ -132,13 +132,13 @@ describe("invokeJdbcCommand", () => {
     mockInvoke
       .mockRejectedValueOnce(new Error("Connection is not open (conn-1)."))
       .mockRejectedValueOnce(new Error("Connection is not open (conn-1)."));
-    mockConnect.mockResolvedValueOnce(undefined);
+    mockReconnect.mockResolvedValueOnce(undefined);
     mockIsConnected.mockReturnValueOnce(true);
 
     await expect(
       invokeJdbcCommand("connection_columns", { connectionId: "conn-1" }, "conn-1"),
     ).rejects.toThrow("Connection is not open");
     expect(mockInvoke).toHaveBeenCalledTimes(2);
-    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(mockReconnect).toHaveBeenCalledTimes(1);
   });
 });

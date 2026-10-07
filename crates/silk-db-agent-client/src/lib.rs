@@ -630,6 +630,10 @@ impl JdbcAgentClient {
         self.send_request("connection.dependents", params)
     }
 
+    pub fn prepare_mybatis(&self, sql: &str, parameters: Value) -> Result<Value, String> {
+        self.send_request("query.prepareMybatis", json!({ "sql": sql, "parameters": parameters }))
+    }
+
     pub fn execute_query(
         &self,
         connection_id: &str,

@@ -85,7 +85,12 @@ export async function reportPlsqlCompileDiagnostics(
       ref.kind,
       ref.kind === "package" ? ref.packageBody === true : undefined,
     );
-    PlsqlCompileStateService.setResult(tabId, result.success, result.errors);
+    PlsqlCompileStateService.setResult(
+      tabId,
+      result.success,
+      result.errors,
+      result.objectStatus,
+    );
     if (result.errors.length > 0) {
       applyPlsqlCompileMarkers(result.errors);
     } else {

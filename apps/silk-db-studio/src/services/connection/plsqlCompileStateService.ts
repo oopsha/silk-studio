@@ -1,4 +1,7 @@
-import type { ConnectionCompileError } from "@silk-studio/db-protocol";
+import type {
+  ConnectionCompileError,
+  ConnectionCompileResult,
+} from "@silk-studio/db-protocol";
 
 export type PlsqlCompileStatus =
   | "idle"
@@ -45,13 +48,17 @@ class PlsqlCompileStateServiceImpl {
     tabId: string,
     success: boolean,
     errors: ConnectionCompileError[],
+    objectStatus?: ConnectionCompileResult["objectStatus"],
   ): void {
+    const statusLabel = objectStatus ? `${objectStatus} · ` : "";
     this.state = {
       tabId,
       status: success ? "success" : "error",
       message: success
-        ? "Compiled successfully."
-        : `${errors.length} compile error${errors.length === 1 ? "" : "s"}.`,
+        ? `${statusLabel}Compiled successfully.`
+        : errors.length > 0
+          ? `${statusLabel}${errors.length} compile error${errors.length === 1 ? "" : "s"}.`
+          : `${statusLabel}Compilation did not produce a valid object.`,
       errors,
     };
     this.fire();

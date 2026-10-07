@@ -11,6 +11,7 @@ export type SqlParameterDialogRequest = {
   initialValues: Map<string, SqlParameterValue>;
   /** SQL fingerprint used for anonymous-parameter memory (null = named-only). */
   sqlFingerprint: string | null;
+  mybatis?: boolean;
 };
 
 export type SqlParameterDialogResult =
@@ -20,6 +21,7 @@ export type SqlParameterDialogResult =
 export type SqlParameterDialogOpenOptions = {
   /** Original SQL — used to scope remembered `?` values per statement. */
   sql?: string;
+  mybatis?: boolean;
 };
 
 type SqlParameterDialogListener = () => void;
@@ -58,7 +60,7 @@ class SqlParameterDialogServiceImpl {
 
     const initialValues = loadRememberedParameterValues(fields, sqlFingerprint);
 
-    this.request = { fields, initialValues, sqlFingerprint };
+    this.request = { fields, initialValues, sqlFingerprint, mybatis: options?.mybatis };
     this.fireDidChange();
     return new Promise((resolve) => {
       this.pendingResolve = resolve;

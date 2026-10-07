@@ -23,6 +23,7 @@ import {
   openTableStructureSaveDialog,
 } from "../../services/connection/tableStructureSaveService";
 import { TableStructureRefreshService } from "../../services/connection/tableStructureRefreshService";
+import { ConnectionService } from "../../services/connection/connectionService";
 
 type LoadStatus = "loading" | "error" | "ready";
 
@@ -214,6 +215,25 @@ export function useTableStructureEditorState(
 
   const isDirty = !changes.isEmpty;
   const blockedReason = getTableStructureSaveBlockedReason(objectRef);
+
+  useEffect(() => {
+    let wasConnecting = ConnectionService.getState().connectingProfileIds.includes(
+      objectRef.profileId,
+    );
+    return ConnectionService.onDidChange(() => {
+      const connection = ConnectionService.getState();
+      const isConnecting = connection.connectingProfileIds.includes(objectRef.profileId);
+      if (
+        wasConnecting &&
+        !isConnecting &&
+        ConnectionService.isConnected(objectRef.profileId) &&
+        !isDirty
+      ) {
+        void load();
+      }
+      wasConnecting = isConnecting;
+    });
+  }, [objectRef.profileId, isDirty, load]);
 
   // Structure edits live outside Monaco's text model. Mirror their dirty state to the editor
   // tab so its shared close guard also protects object-editor tabs.

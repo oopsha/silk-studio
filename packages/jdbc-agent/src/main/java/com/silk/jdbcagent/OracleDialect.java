@@ -995,11 +995,52 @@ final class OracleDialect implements DbDialect {
       }
     }
 
+    String objectStatus = resolveCompiledObjectStatus(
+        connection, schemaName, objectName, oracleTypes);
     ObjectNode result = mapper.createObjectNode();
-    result.put("success", errors.size() == 0);
+    result.put("success", errors.size() == 0 && "VALID".equals(objectStatus));
     result.put("dialectId", id());
+    result.put("objectStatus", objectStatus);
     result.set("errors", errors);
     return result;
+  }
+
+  private static String resolveCompiledObjectStatus(
+      Connection connection,
+      String schemaName,
+      String objectName,
+      List<String> oracleTypes)
+      throws SQLException {
+    String placeholders =
+        String.join(", ", java.util.Collections.nCopies(oracleTypes.size(), "?"));
+    String sql =
+        "SELECT OBJECT_TYPE, STATUS FROM ALL_OBJECTS "
+            + "WHERE OWNER = ? AND OBJECT_NAME = ? AND OBJECT_TYPE IN ("
+            + placeholders
+            + ")";
+    for (String schema : distinctCases(schemaName)) {
+      for (String object : distinctCases(objectName)) {
+        java.util.Set<String> foundTypes = new java.util.HashSet<>();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+          int index = 1;
+          statement.setString(index++, schema);
+          statement.setString(index++, object);
+          for (String oracleType : oracleTypes) {
+            statement.setString(index++, oracleType);
+          }
+          try (ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) {
+              foundTypes.add(rs.getString("OBJECT_TYPE"));
+              if (!"VALID".equalsIgnoreCase(rs.getString("STATUS"))) {
+                return "INVALID";
+              }
+            }
+          }
+        }
+        if (foundTypes.containsAll(oracleTypes)) return "VALID";
+      }
+    }
+    return "UNKNOWN";
   }
 
   @Override
