@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type ClipboardEvent } from "react";
 import {
   AllCommunityModule,
   ModuleRegistry,
@@ -51,12 +51,14 @@ import {
   type UpdatePreview,
 } from "../../../services/query/queryResultUpdateService";
 import QueryResultUpdateDialog from "./QueryResultUpdateDialog";
+import QueryResultImportDialog from "./QueryResultImportDialog";
 import QueryResultValueEditorDialog from "./QueryResultValueEditorDialog";
 import MaskedTemporalCellEditor from "./MaskedTemporalCellEditor";
 import {
   CURRENT_TIMESTAMP_VALUE,
   isCurrentTimestampValue,
 } from "../../../services/query/queryResultTemporalValue";
+import { parseDelimitedFile, parseExcelWorkbook, type ParsedImportSource } from "../../../services/query/queryResultImport";
 import "./QueryResultGrid.css";
 import "./QueryResultUpdateDialog.css";
 
@@ -158,6 +160,8 @@ type QueryResultGridProps = {
   result: QueryResultPayload;
   relationKind?: QueryRelationKind;
   connectionId?: string;
+  importFile?: File | null;
+  onImportFileConsumed?: (file: File) => void;
 };
 
 function QueryResultGrid({
@@ -168,6 +172,8 @@ function QueryResultGrid({
   result,
   relationKind,
   connectionId,
+  importFile,
+  onImportFileConsumed,
 }: QueryResultGridProps) {
   const { t } = useI18n();
   const configuration = useConfiguration();
@@ -199,9 +205,12 @@ function QueryResultGrid({
   const [preview, setPreview] = useState<UpdatePreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [executingUpdates, setExecutingUpdates] = useState(false);
+  const [executionProgress, setExecutionProgress] = useState<{ completed: number; total: number } | null>(null);
   const [openingPreview, setOpeningPreview] = useState(false);
   const [contextMenu, setContextMenu] = useState<GridContextMenuState | null>(null);
   const [valueEditorTarget, setValueEditorTarget] = useState<ValueEditorTarget | null>(null);
+  const [importPreview, setImportPreview] = useState<{ filename: string; source: ParsedImportSource } | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const filterContextInputRef = useRef<FilterInput | null>(null);
 
   useEffect(() => {
@@ -228,6 +237,12 @@ function QueryResultGrid({
     (onStoreChange) => QueryResultDirtyService.onDidChange(onStoreChange),
     () => QueryResultDirtyService.getNewRowCount(tabId),
     () => QueryResultDirtyService.getNewRowCount(tabId),
+  );
+
+  const truncateBeforeImport = useSyncExternalStore(
+    (onStoreChange) => QueryResultDirtyService.onDidChange(onStoreChange),
+    () => QueryResultDirtyService.getTruncateBeforeImport(tabId),
+    () => QueryResultDirtyService.getTruncateBeforeImport(tabId),
   );
 
   const snapshot = useSyncExternalStore(
@@ -312,6 +327,7 @@ function QueryResultGrid({
     void resolveUpdateEligibility(sql, result.columns, {
       relationKind,
       connectionId,
+      allowNoPrimaryKey: truncateBeforeImport,
     }).then(
       (eligibility) => {
       if (cancelled) return;
@@ -325,7 +341,7 @@ function QueryResultGrid({
     return () => {
       cancelled = true;
     };
-  }, [sql, result.columns, relationKind, connectionId]);
+  }, [sql, result.columns, relationKind, connectionId, truncateBeforeImport]);
 
   const gridTheme = useMemo(() => {
     const palette = GRID_THEME_PALETTES[resolveEffectiveColorTheme(colorTheme)];
@@ -481,10 +497,17 @@ function QueryResultGrid({
     ],
   );
 
-  const rowData = useMemo(
-    () => toQueryResultRows(result.columns, result.rows),
-    [result.columns, result.rows],
-  );
+  const rowData = useMemo(() => {
+    if (!truncateBeforeImport) return toQueryResultRows(result.columns, result.rows);
+    return QueryResultDirtyService.getNewRowIndexes(tabId).map((rowIndex) => {
+      const values = QueryResultDirtyService.getEffectiveRow(tabId, rowIndex) ?? {};
+      const row: QueryResultRow = { [QUERY_RESULT_ROW_INDEX_KEY]: String(rowIndex) };
+      result.columns.forEach((column) => {
+        row[column] = values[column] ?? null;
+      });
+      return row;
+    });
+  }, [result.columns, result.rows, tabId, truncateBeforeImport, newRowCount]);
 
   const defaultColDef = useMemo<ColDef>(
     () => ({
@@ -541,7 +564,7 @@ function QueryResultGrid({
   const loadNextPage = useCallback(async () => {
     const api = apiRef.current;
     const paging = pagingRef.current;
-    if (!api || !useIncrementalScroll || !connectionId || paging.loading || !paging.hasMore) {
+    if (!api || !useIncrementalScroll || truncateBeforeImport || !connectionId || paging.loading || !paging.hasMore) {
       return;
     }
 
@@ -582,25 +605,25 @@ function QueryResultGrid({
     } finally {
       paging.loading = false;
     }
-  }, [binds, connectionId, executedSql, result.columns, sql, tabId, t, useIncrementalScroll]);
+  }, [binds, connectionId, executedSql, result.columns, sql, tabId, t, truncateBeforeImport, useIncrementalScroll]);
 
   const handleBodyScrollEnd = useCallback(() => {
     const api = apiRef.current;
-    if (!api || !useIncrementalScroll) return;
+    if (!api || !useIncrementalScroll || truncateBeforeImport) return;
     const lastVisibleRow = api.getLastDisplayedRowIndex();
     const displayedRowCount = api.getDisplayedRowCount();
     if (displayedRowCount > 0 && lastVisibleRow >= displayedRowCount - 3) {
       void loadNextPage();
     }
-  }, [loadNextPage, useIncrementalScroll]);
+  }, [loadNextPage, truncateBeforeImport, useIncrementalScroll]);
 
   useEffect(() => {
     pagingRef.current = {
       nextOffset: result.rows.length,
-      hasMore: useIncrementalScroll,
+      hasMore: useIncrementalScroll && !truncateBeforeImport,
       loading: false,
     };
-  }, [result.rows, useIncrementalScroll]);
+  }, [result.rows, truncateBeforeImport, useIncrementalScroll]);
 
   const handleGridReady = (event: GridReadyEvent<QueryResultRow>) => {
     apiRef.current = event.api;
@@ -658,6 +681,7 @@ function QueryResultGrid({
     // its recorded anchor, so a row anchored to an *earlier* new row lands in the right spot
     // once that earlier row already has a grid node.
     for (const rowIndex of QueryResultDirtyService.getNewRowIndexes(tabId)) {
+      if (api.getRowNode(String(rowIndex))) continue;
       const row = buildGridRow(
         rowIndex,
         QueryResultDirtyService.getEffectiveRow(tabId, rowIndex) ?? {},
@@ -805,6 +829,129 @@ function QueryResultGrid({
       applyCellSelection(addIndex, 0, addIndex, 0);
       api.startEditingCell({ rowIndex: addIndex, colKey: firstColumn });
     }
+  };
+
+  const openImportFile = async (file: File) => {
+    try {
+      const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+      const source: ParsedImportSource = isExcel
+        ? await parseExcelWorkbook(await file.arrayBuffer())
+        : { kind: "delimited", parsed: parseDelimitedFile(await file.text()) };
+      const hasRows = source.kind === "workbook"
+        ? source.sheets.some((sheet) => sheet.rows.length > 0)
+        : source.parsed.rows.length > 0;
+      if (!hasRows) {
+        flashMessage(t("app.query.importEmptyFile"));
+        return;
+      }
+      setImportPreview({ filename: file.name, source });
+    } catch (error) {
+      console.warn("[query-result] file import preview failed", error);
+      flashMessage(t("app.query.importFailed"));
+    }
+  };
+
+  const handleImportFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (file) await openImportFile(file);
+  };
+
+  const lastRequestedImportFile = useRef<File | null>(null);
+  useEffect(() => {
+    if (!importFile || lastRequestedImportFile.current === importFile) return;
+    lastRequestedImportFile.current = importFile;
+    onImportFileConsumed?.(importFile);
+    void openImportFile(importFile);
+  }, [importFile, onImportFileConsumed]);
+
+  const handleStageImportedRows = (values: Array<Record<string, string | null>>, truncateExisting: boolean) => {
+    const api = apiRef.current;
+    if (!api || values.length === 0) return;
+    const wasTruncating = QueryResultDirtyService.getTruncateBeforeImport(tabId);
+    const selected = api.getSelectedRows();
+    const focused = api.getFocusedCell();
+    const anchorRow = !truncateExisting && selected.length === 1
+      ? selected[0]
+      : !truncateExisting && focused ? api.getDisplayedRowAtIndex(focused.rowIndex)?.data : undefined;
+    const anchor = anchorRow ? getQueryResultRowIndex(anchorRow) : null;
+    QueryResultDirtyService.setTruncateBeforeImport(tabId, truncateExisting);
+    const indexes = QueryResultDirtyService.addImportedRows(tabId, result.columns, values, anchor);
+    const addIndex = anchorRow
+      ? (api.getRowNode(String(getQueryResultRowIndex(anchorRow)))?.rowIndex ?? -1) + 1
+      : 0;
+    const gridRows = indexes.map((rowIndex) => buildGridRow(
+      rowIndex,
+      QueryResultDirtyService.getEffectiveRow(tabId, rowIndex) ?? {},
+    ));
+    if (!truncateExisting) {
+      api.applyTransaction({ add: gridRows, addIndex });
+    } else {
+      pagingRef.current.hasMore = false;
+    }
+    if (gridRows.length) {
+      window.requestAnimationFrame(() => {
+        if (wasTruncating && !truncateExisting) rehydratePendingEdits();
+        const first = api.getRowNode(String(indexes[0]));
+        first?.setSelected(true, true);
+        if (first?.rowIndex != null) api.ensureIndexVisible(first.rowIndex);
+      });
+    }
+    setImportPreview(null);
+    flashMessage(t("app.query.importStaged").replace("{n}", String(gridRows.length)));
+  };
+
+  const handlePasteGridData = (event: ClipboardEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)) return;
+    if (!event.clipboardData) return;
+    const parsed = parseDelimitedFile(event.clipboardData.getData("text/plain"));
+    const matrix = parsed.rows;
+    if (matrix.length === 0) return;
+    if (useIncrementalScroll || saveBlockedReason) {
+      event.preventDefault();
+      flashMessage(t("app.query.importGridUnavailable"));
+      return;
+    }
+    const api = apiRef.current;
+    const focused = api?.getFocusedCell();
+    if (!api || !focused) return;
+    const firstColumn = result.columns.indexOf(focused.column.getColId());
+    if (firstColumn < 0) return;
+    event.preventDefault();
+
+    const inserted: QueryResultRow[] = [];
+    let insertAnchor: number | null = null;
+    for (let rowOffset = 0; rowOffset < matrix.length; rowOffset += 1) {
+      const displayIndex = focused.rowIndex + rowOffset;
+      const node = api.getDisplayedRowAtIndex(displayIndex);
+      const values = matrix[rowOffset];
+      if (node?.data) {
+        const rowIndex = getQueryResultRowIndex(node.data);
+        if (QueryResultDirtyService.isRowDeleted(tabId, rowIndex)) continue;
+        values.forEach((value, columnOffset) => {
+          const column = result.columns[firstColumn + columnOffset];
+          if (!column) return;
+          const nextValue = value === "" ? null : value;
+          QueryResultDirtyService.setCell(tabId, rowIndex, column, nextValue);
+          node.setDataValue(column, nextValue);
+        });
+        insertAnchor = rowIndex;
+      } else if (!useIncrementalScroll) {
+        const rowValues: Record<string, string | null> = {};
+        values.forEach((value, columnOffset) => {
+          const column = result.columns[firstColumn + columnOffset];
+          if (column) rowValues[column] = value === "" ? null : value;
+        });
+        const indexes = QueryResultDirtyService.addImportedRows(tabId, result.columns, [rowValues], insertAnchor);
+        if (indexes.length) {
+          inserted.push(buildGridRow(indexes[0], QueryResultDirtyService.getEffectiveRow(tabId, indexes[0]) ?? {}));
+          insertAnchor = indexes[0];
+        }
+      }
+    }
+    if (inserted.length) api.applyTransaction({ add: inserted });
+    flashMessage(t("app.query.importStaged").replace("{n}", String(matrix.length)));
   };
 
   /** Duplicates exactly one selected row, blanking its PK column(s) — see `duplicateRow`'s doc. */
@@ -1390,7 +1537,7 @@ function QueryResultGrid({
     QueryResultGridService.markColumnLayoutDirty();
   };
 
-  const pendingChangeCount = dirtyCount + deletedRowCount + newRowCount;
+  const pendingChangeCount = dirtyCount + deletedRowCount + newRowCount + (truncateBeforeImport ? 1 : 0);
 
   const saveHint =
     saveBlockedReason ??
@@ -1435,11 +1582,14 @@ function QueryResultGrid({
   const handleConfirmUpdates = async () => {
     if (!preview) return;
     setExecutingUpdates(true);
+    setExecutionProgress({ completed: 0, total: preview.totalWork });
     setPreviewError(null);
-    const outcome = await executeConfirmedUpdates(tabId, preview.statements, {
+    const outcome = await executeConfirmedUpdates(tabId, preview, {
       connectionId,
+      onProgress: (completed, total) => setExecutionProgress({ completed, total }),
     });
     setExecutingUpdates(false);
+    setExecutionProgress(null);
     if (!outcome.ok) {
       setPreviewError(outcome.message);
       return;
@@ -1558,6 +1708,22 @@ function QueryResultGrid({
           ) : null}
         </div>
         <div className="query-result-grid__actions">
+          <button
+            type="button"
+            className="query-result-grid__action"
+            title={t("app.query.importFileTitle")}
+            aria-label={t("app.query.importFileTitle")}
+            onClick={() => importFileInputRef.current?.click()}
+          >
+            <Codicon name="file-add" />
+          </button>
+          <input
+            ref={importFileInputRef}
+            type="file"
+            accept=".xls,.xlsx,.csv,.tsv,.txt,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values,text/plain"
+            hidden
+            onChange={(event) => void handleImportFileChange(event)}
+          />
           <button
             type="button"
             className="query-result-grid__action query-result-grid__action--save"
@@ -1682,6 +1848,7 @@ function QueryResultGrid({
       </div>
       <div
         className="query-result-grid__body"
+        onPasteCapture={handlePasteGridData}
         onKeyDownCapture={(event) => {
           const target = event.target;
           const isEditableTarget =
@@ -1870,11 +2037,25 @@ function QueryResultGrid({
           dirtyCellCount={preview.dirtyCellCount}
           deletedRowCount={preview.deletedRowCount}
           insertedRowCount={preview.insertedRowCount}
+          truncateRequested={preview.truncateRequested}
+          showSqlPreview={preview.showSqlPreview}
           statements={preview.statements}
+          hasExecutableChanges={preview.totalWork > 0}
           errorMessage={previewError}
           executing={executingUpdates}
+          progress={executionProgress}
           onCancel={handleClosePreview}
           onConfirm={() => void handleConfirmUpdates()}
+        />
+      ) : null}
+      {importPreview ? (
+        <QueryResultImportDialog
+          filename={importPreview.filename}
+          targetColumns={result.columns}
+          source={importPreview.source}
+          initialTruncate={truncateBeforeImport}
+          onCancel={() => setImportPreview(null)}
+          onImport={handleStageImportedRows}
         />
       ) : null}
       {valueEditorTarget ? (

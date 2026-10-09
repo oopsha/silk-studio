@@ -10,9 +10,13 @@ type QueryResultUpdateDialogProps = {
   dirtyCellCount: number;
   deletedRowCount: number;
   insertedRowCount: number;
+  truncateRequested: boolean;
+  showSqlPreview: boolean;
   statements: string[];
+  hasExecutableChanges: boolean;
   errorMessage: string | null;
   executing: boolean;
+  progress: { completed: number; total: number } | null;
   onCancel: () => void;
   onConfirm: () => void;
 };
@@ -23,22 +27,29 @@ function QueryResultUpdateDialog({
   dirtyCellCount,
   deletedRowCount,
   insertedRowCount,
+  truncateRequested,
+  showSqlPreview,
   statements,
+  hasExecutableChanges,
   errorMessage,
   executing,
+  progress,
   onCancel,
   onConfirm,
 }: QueryResultUpdateDialogProps) {
   const { t } = useI18n();
-  const sqlText = statements.join("\n\n");
+  const sqlText = showSqlPreview ? statements.join("\n\n") : "";
   const backdropDismiss = useBackdropDismiss(onCancel, !executing);
   const hasInserts = insertedRowCount > 0;
   const hasUpdates = dirtyRowCount > 0;
   const hasDeletes = deletedRowCount > 0;
-  const kindCount = [hasInserts, hasUpdates, hasDeletes].filter(Boolean).length;
+  const hasTruncate = truncateRequested;
+  const kindCount = [hasInserts, hasUpdates, hasDeletes, hasTruncate].filter(Boolean).length;
   const titleKey =
     kindCount > 1
       ? "app.query.confirmChangesTitle"
+      : hasTruncate
+        ? "app.query.confirmTruncateTitle"
       : hasInserts
         ? "app.query.confirmInsertTitle"
         : hasDeletes
@@ -47,6 +58,8 @@ function QueryResultUpdateDialog({
   const confirmKey =
     kindCount > 1
       ? "app.query.executeChanges"
+      : hasTruncate
+        ? "app.query.executeTruncate"
       : hasInserts
         ? "app.query.executeInsert"
         : hasDeletes
@@ -91,6 +104,11 @@ function QueryResultUpdateDialog({
         </header>
 
         <div className="query-result-update-dialog__body">
+          {truncateRequested ? (
+            <p className="query-result-update-dialog__summary query-result-update-dialog__summary--danger">
+              {t("app.query.confirmTruncateSummary").replace("{table}", tableLabel)}
+            </p>
+          ) : null}
           {insertedRowCount > 0 ? (
             <p className="query-result-update-dialog__summary">
               {t("app.query.confirmInsertSummary")
@@ -114,9 +132,33 @@ function QueryResultUpdateDialog({
             </p>
           ) : null}
           <p className="query-result-update-dialog__hint">
-            {t("app.query.confirmUpdateHint")}
+            {t(showSqlPreview ? "app.query.confirmUpdateHint" : "app.query.bulkSqlPreviewHidden")}
           </p>
-          <div className="query-result-update-dialog__sql-toolbar">
+          {executing && progress ? (
+            <div className="query-result-update-dialog__progress-status">
+              <div
+                className="query-result-update-dialog__progress-track"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={progress.total}
+                aria-valuenow={progress.completed}
+                aria-label={t("app.query.executingProgress")
+                  .replace("{current}", String(progress.completed))
+                  .replace("{total}", String(progress.total))}
+              >
+                <div
+                  className="query-result-update-dialog__progress-value"
+                  style={{ width: `${progress.total ? (progress.completed / progress.total) * 100 : 0}%` }}
+                />
+              </div>
+              <span>
+                {t("app.query.executingProgress")
+                  .replace("{current}", String(progress.completed))
+                  .replace("{total}", String(progress.total))}
+              </span>
+            </div>
+          ) : null}
+          {showSqlPreview ? <><div className="query-result-update-dialog__sql-toolbar">
             <button
               type="button"
               className="query-result-update-dialog__copy"
@@ -127,7 +169,7 @@ function QueryResultUpdateDialog({
               {t("app.query.copySql")}
             </button>
           </div>
-          <pre className="query-result-update-dialog__sql">{sqlText}</pre>
+          <pre className="query-result-update-dialog__sql">{sqlText}</pre></> : null}
           {errorMessage ? (
             <p className="query-result-update-dialog__error" role="alert">
               {errorMessage}
@@ -147,7 +189,7 @@ function QueryResultUpdateDialog({
           <button
             type="button"
             className="query-result-update-dialog__button query-result-update-dialog__button--primary"
-            disabled={executing || statements.length === 0}
+            disabled={executing || !hasExecutableChanges}
             onClick={onConfirm}
           >
             {executing ? t("common.executing") : t(confirmKey)}

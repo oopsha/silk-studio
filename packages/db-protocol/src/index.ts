@@ -99,6 +99,7 @@ export type MetadataGroup = {
 };
 
 export type MetadataSchema = {
+  system?: boolean;
   name: string;
   /** Only groups the connected database supports are present here — see `MetadataGroupId`. */
   groups: MetadataGroup[];
@@ -433,9 +434,11 @@ export type ConnectionCompileError = {
 };
 
 export type ConnectionCompileResult = {
-  /** True when `errors` is empty after compile. */
+  /** True when diagnostics are empty and the database reports the object as VALID. */
   success: boolean;
   dialectId: string;
+  /** Database object status after compilation. Oracle reports VALID/INVALID via ALL_OBJECTS. */
+  objectStatus?: "VALID" | "INVALID" | "UNKNOWN";
   errors: ConnectionCompileError[];
 };
 
@@ -618,6 +621,7 @@ function isMetadataSchema(value: unknown): value is MetadataSchema {
   const item = value as Record<string, unknown>;
   return (
     typeof item.name === "string" &&
+    (item.system === undefined || typeof item.system === "boolean") &&
     Array.isArray(item.groups) &&
     item.groups.every(isMetadataGroup)
   );
@@ -939,6 +943,10 @@ export function isConnectionCompileResult(
   return (
     typeof record.success === "boolean" &&
     typeof record.dialectId === "string" &&
+    (record.objectStatus === undefined ||
+      record.objectStatus === "VALID" ||
+      record.objectStatus === "INVALID" ||
+      record.objectStatus === "UNKNOWN") &&
     Array.isArray(record.errors) &&
     record.errors.every(isConnectionCompileError)
   );

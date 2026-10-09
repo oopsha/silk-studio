@@ -5,6 +5,8 @@ export type AppNotification = {
   message: string;
   severity: AppNotificationSeverity;
   createdAt: number;
+  /** 0–100, or null for indeterminate progress. Omitted for ordinary notifications. */
+  progress?: number | null;
 };
 
 type AppNotificationListener = () => void;
@@ -24,6 +26,7 @@ class AppNotificationServiceImpl {
     message: string,
     severity: AppNotificationSeverity = "info",
     ttlMs = DEFAULT_TTL_MS,
+    progress?: number | null,
   ): void {
     if (this.hideTimer) {
       clearTimeout(this.hideTimer);
@@ -35,10 +38,11 @@ class AppNotificationServiceImpl {
       message: message.trim() || "Notification",
       severity,
       createdAt: Date.now(),
+      progress,
     };
     this.fireDidChange();
 
-    this.hideTimer = setTimeout(() => {
+    if (ttlMs > 0) this.hideTimer = setTimeout(() => {
       this.current = null;
       this.hideTimer = null;
       this.fireDidChange();

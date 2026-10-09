@@ -275,7 +275,7 @@ final class SqlServerDialect implements DbDialect {
 
   /** Mirrors the frontend's {@code SQLSERVER_SYSTEM_CATALOGS} ({@code systemNamespaces.ts}). */
   private static final java.util.Set<String> SQLSERVER_SYSTEM_CATALOGS =
-      java.util.Set.of("master", "model", "msdb", "tempdb");
+      java.util.Set.of("master", "model", "msdb", "tempdb", "rdsadmin");
 
   /** Mirrors the frontend's {@code SQLSERVER_SYSTEM_SCHEMAS} ({@code systemNamespaces.ts}). */
   private static final java.util.Set<String> SQLSERVER_SYSTEM_SCHEMAS =

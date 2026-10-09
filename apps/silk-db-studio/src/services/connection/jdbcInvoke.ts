@@ -42,7 +42,7 @@ function isNoActiveConnectionError(error: unknown): boolean {
  * double-executing a write.
  *
  * On a stale-session error: attempts exactly one silent reconnect via
- * `ConnectionService.connect(connectionId, { silent: true, promptForPassword: false })`, then
+ * `ConnectionService.reconnect(connectionId, { silent: true, promptForPassword: false })`, then
  * retries the original invoke exactly once. Any other error (auth failure, SQL error, network
  * error unrelated to session staleness, or a second failure after reconnect) is rethrown as-is —
  * no further retries, no backoff.
@@ -70,7 +70,7 @@ export async function invokeJdbcCommand<T>(
     const { ConnectionService } = await import("./connectionService");
 
     try {
-      await ConnectionService.connect(connectionId, {
+      await ConnectionService.reconnect(connectionId, {
         silent: true,
         promptForPassword: false,
       });

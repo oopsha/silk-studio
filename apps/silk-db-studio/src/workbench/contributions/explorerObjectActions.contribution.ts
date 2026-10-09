@@ -13,6 +13,12 @@ import { openPlsqlObjectSource } from "../../services/connection/plsqlEditorServ
 import { ExplorerSearchQuickPickService } from "../../services/connection/explorerSearchQuickPickService";
 import { ExplorerUiService } from "../../services/connection/explorerUiService";
 import { openObjectEditor } from "../../services/connection/objectEditorService";
+import { buildOpenDataOwnerId } from "../../services/query/queryExecutionService";
+import { selectTableImportFile, TableDataImportService } from "../../services/query/tableDataImportService";
+import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
+import { openTableData } from "../../services/connection/openTableDataService";
+import { QueryResultDirtyService } from "../../services/query/queryResultDirtyService";
+import { QueryExecutionService } from "../../services/query/queryExecutionService";
 import { openCreateTableDraft } from "../../services/connection/createTableDraftService";
 import { openDuplicateTableDraft } from "../../services/connection/duplicateTableDraftService";
 import { openDuplicateSqlObjectDraft } from "../../services/connection/duplicateSqlObjectDraftService";
@@ -147,6 +153,23 @@ CommandsRegistry.registerCommand(
     openObjectEditor(target, "data");
   },
 );
+
+CommandsRegistry.registerCommand(EXPLORER_COMMANDS.importObjectData, async (...args: unknown[]) => {
+  const target = args[0] as ExplorerObjectRef | undefined;
+  if (!target || target.object.kind !== "table" || ConfigurationService.getValue("database.readOnly")) return;
+  const file = await selectTableImportFile();
+  if (!file) return;
+  const ownerId = buildOpenDataOwnerId(
+    target.profileId, target.schemaName, target.object.name, target.catalogName,
+  );
+  const session = QueryExecutionService.getSessionState(ownerId);
+  if (!session.tabs.some((tab) => QueryResultDirtyService.hasPendingChanges(tab.id))) {
+    await openTableData(target);
+    if (QueryExecutionService.getSessionState(ownerId).status !== "success") return;
+  }
+  TableDataImportService.request(ownerId, file);
+  openObjectEditor(target, "data");
+});
 
 CommandsRegistry.registerCommand(
   EXPLORER_COMMANDS.viewDdl,

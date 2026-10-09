@@ -99,6 +99,18 @@ final class OracleDialect implements DbDialect {
     return new ArrayList<>(names);
   }
 
+  @Override
+  public java.util.Set<String> listMaintainedSchemas(Connection connection) throws SQLException {
+    if (connection.getMetaData().getDatabaseMajorVersion() < 12) return java.util.Set.of();
+    java.util.Set<String> names = new java.util.HashSet<>();
+    try (Statement statement = connection.createStatement();
+        ResultSet result = statement.executeQuery(
+            "SELECT USERNAME FROM ALL_USERS WHERE ORACLE_MAINTAINED = 'Y'")) {
+      while (result.next()) names.add(result.getString(1));
+    }
+    return names;
+  }
+
   /**
    * Queries {@code ALL_TAB_COLUMNS}/{@code ALL_COL_COMMENTS} directly instead of JDBC's {@code
    * getColumns} — like {@link #collectRoutineArguments}, the standard JDBC metadata call is
@@ -983,11 +995,52 @@ final class OracleDialect implements DbDialect {
       }
     }
 
+    String objectStatus = resolveCompiledObjectStatus(
+        connection, schemaName, objectName, oracleTypes);
     ObjectNode result = mapper.createObjectNode();
-    result.put("success", errors.size() == 0);
+    result.put("success", errors.size() == 0 && "VALID".equals(objectStatus));
     result.put("dialectId", id());
+    result.put("objectStatus", objectStatus);
     result.set("errors", errors);
     return result;
+  }
+
+  private static String resolveCompiledObjectStatus(
+      Connection connection,
+      String schemaName,
+      String objectName,
+      List<String> oracleTypes)
+      throws SQLException {
+    String placeholders =
+        String.join(", ", java.util.Collections.nCopies(oracleTypes.size(), "?"));
+    String sql =
+        "SELECT OBJECT_TYPE, STATUS FROM ALL_OBJECTS "
+            + "WHERE OWNER = ? AND OBJECT_NAME = ? AND OBJECT_TYPE IN ("
+            + placeholders
+            + ")";
+    for (String schema : distinctCases(schemaName)) {
+      for (String object : distinctCases(objectName)) {
+        java.util.Set<String> foundTypes = new java.util.HashSet<>();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+          int index = 1;
+          statement.setString(index++, schema);
+          statement.setString(index++, object);
+          for (String oracleType : oracleTypes) {
+            statement.setString(index++, oracleType);
+          }
+          try (ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) {
+              foundTypes.add(rs.getString("OBJECT_TYPE"));
+              if (!"VALID".equalsIgnoreCase(rs.getString("STATUS"))) {
+                return "INVALID";
+              }
+            }
+          }
+        }
+        if (foundTypes.containsAll(oracleTypes)) return "VALID";
+      }
+    }
+    return "UNKNOWN";
   }
 
   @Override
@@ -1284,6 +1337,7 @@ final class OracleDialect implements DbDialect {
             type != null && type.toUpperCase(java.util.Locale.ROOT).contains("VIEW")
                 ? "view"
                 : "table");
+        DbDialect.appendObjectRemarks(object, tables);
       }
     }
 
@@ -1389,7 +1443,9 @@ final class OracleDialect implements DbDialect {
           "SYSDG", "SYSKM", "SYSRAC", "SYSTEM", "WMSYS", "XDB", "XS$NULL", "ADBSNMP",
           "ADB_APP_STORE", "APEX_PUBLIC_USER", "APEX_REST_PUBLIC_USER",
           "APEX_INSTANCE_ADMIN_USER", "ORDS_METADATA", "ORDS_PUBLIC_USER", "DBSFWUSER",
-          "GSMROOTUSER", "PDBADMIN");
+          "GSMROOTUSER", "PDBADMIN", "RDSADMIN", "C##RDSADMIN", "C##RDS_DATAGUARD",
+          "C##CLOUD$SERVICE", "C##ADP$SERVICE", "C##OMLIDM", "SYS$UMF", "DVF", "MDDATA",
+          "OPS$RDSDB");
 
   @Override
   public void findObjectsByName(

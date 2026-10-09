@@ -323,6 +323,10 @@ public final class Main {
           response.put("ok", true);
           response.set("result", runtime.listObjectDependents(params));
         }
+        case "query.prepareMybatis" -> {
+          response.put("ok", true);
+          response.set("result", MybatisScript.prepare(params));
+        }
         case "query.execute" -> {
           String sql = params.path("sql").asText("").trim();
           if (sql.isEmpty()) {
@@ -483,6 +487,7 @@ public final class Main {
       Connection connection =
           connProps.isEmpty() ? DriverManager.getConnection(url) : DriverManager.getConnection(url, connProps);
       dialect.afterConnect(connection, params);
+      setNetworkTimeoutQuietly(connection, timeoutSeconds);
 
       Session session = new Session(connectionId);
       session.connection = connection;
@@ -712,10 +717,12 @@ public final class Main {
       }
 
       boolean includeObjects = !schemaFilter.isEmpty();
+      java.util.Set<String> maintainedSchemas = dialect.listMaintainedSchemas(connection);
       ArrayNode schemas = MAPPER.createArrayNode();
       for (String schemaName : schemaNames) {
         ObjectNode schemaNode = MAPPER.createObjectNode();
         schemaNode.put("name", schemaName);
+        schemaNode.put("system", maintainedSchemas.contains(schemaName));
         ArrayNode groups = schemaNode.putArray("groups");
 
         if (includeObjects) {
@@ -834,7 +841,7 @@ public final class Main {
      * the Search sidebar — and additionally matches table/view comments and column comments.
      * {@code params.kinds} (optional array of lowercase kind strings) restricts which kinds are
      * searched — omitted/empty means every kind, unchanged from before this parameter existed.
-     * {@code params.includeSystemObjects} (default {@code true}) — when {@code false}, excludes
+     * {@code params.includeSystemObjects} (default {@code false}) — when {@code false}, excludes
      * that dialect's built-in/system schemas (and, for SQL Server, system catalogs) from the
      * search, mirroring the caller's per-profile "show system objects" Explorer toggle.
      *
@@ -852,7 +859,7 @@ public final class Main {
         throw new RuntimeException("Missing params.name");
       }
       boolean contains = params.path("contains").asBoolean(false);
-      boolean includeSystemObjects = params.path("includeSystemObjects").asBoolean(true);
+      boolean includeSystemObjects = params.path("includeSystemObjects").asBoolean(false);
       java.util.Set<String> kinds = null;
       JsonNode kindsNode = params.path("kinds");
       if (kindsNode.isArray() && kindsNode.size() > 0) {
@@ -1303,6 +1310,9 @@ public final class Main {
       int effectiveTimeout =
           timeoutOverride >= 0 ? timeoutOverride : timeoutSeconds;
 
+      int previousNetworkTimeout = getNetworkTimeoutQuietly(session.connection);
+      setNetworkTimeoutQuietly(session.connection, effectiveTimeout);
+
 
       JsonNode bindsNode = params.path("binds");
       boolean useBinds = bindsNode.isArray() && bindsNode.size() > 0;
@@ -1362,6 +1372,7 @@ public final class Main {
           statement.close();
         } catch (SQLException ignored) {
         }
+        restoreNetworkTimeoutQuietly(session.connection, previousNetworkTimeout);
       }
     }
 
@@ -1393,6 +1404,9 @@ public final class Main {
           ? params.path("queryTimeoutSec").asInt(-1)
           : -1;
       int effectiveTimeout = timeoutOverride >= 0 ? timeoutOverride : timeoutSeconds;
+
+      int previousNetworkTimeout = getNetworkTimeoutQuietly(session.connection);
+      setNetworkTimeoutQuietly(session.connection, effectiveTimeout);
 
       Set<String> knownColumns = new LinkedHashSet<>();
       for (JsonNode column : params.path("knownColumns")) {
@@ -1461,6 +1475,36 @@ public final class Main {
           statement.close();
         } catch (SQLException ignored) {
         }
+        restoreNetworkTimeoutQuietly(session.connection, previousNetworkTimeout);
+      }
+    }
+
+    private static int getNetworkTimeoutQuietly(Connection connection) {
+      try {
+        return connection.getNetworkTimeout();
+      } catch (SQLException | UnsupportedOperationException error) {
+        return -1;
+      }
+    }
+
+    private static void setNetworkTimeoutQuietly(Connection connection, int timeoutSeconds) {
+      int timeoutMillis = timeoutSeconds <= 0
+          ? 0
+          : (int) Math.min((long) timeoutSeconds * 1000L, Integer.MAX_VALUE);
+      try {
+        connection.setNetworkTimeout(MISC_EXECUTOR, timeoutMillis);
+      } catch (SQLException | UnsupportedOperationException ignored) {
+        // JDBC drivers may not implement network timeouts. Statement#setQueryTimeout remains active.
+      }
+    }
+
+    private static void restoreNetworkTimeoutQuietly(Connection connection, int timeoutMillis) {
+      if (timeoutMillis < 0) {
+        return;
+      }
+      try {
+        connection.setNetworkTimeout(MISC_EXECUTOR, timeoutMillis);
+      } catch (SQLException | UnsupportedOperationException ignored) {
       }
     }
 

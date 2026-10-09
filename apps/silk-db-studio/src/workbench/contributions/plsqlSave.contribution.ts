@@ -12,6 +12,12 @@ import {
   shouldUsePlsqlSave,
 } from "../../services/connection/plsqlSaveService";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
+import { parseDdlEditorUri } from "../../services/connection/ddlEditorConstants";
+import { getPackageDdlCommands } from "../../services/editor/packageDdlCommandService";
+
+function isPackageDdlEditor(uri: string | undefined): boolean {
+  return parseDdlEditorUri(uri)?.kind === "package";
+}
 
 async function saveFilesystemEditor(saveAs = false): Promise<void> {
   const active = EditorService.getActiveTab();
@@ -44,6 +50,12 @@ async function saveActiveEditor(): Promise<void> {
   const active = EditorService.getActiveTab();
   if (!active) return;
 
+  const packageCommands = getPackageDdlCommands(active.id);
+  if (isPackageDdlEditor(active.uri) && packageCommands) {
+    packageCommands.save();
+    return;
+  }
+
   if (shouldUsePlsqlSave(active.uri)) {
     try {
       await openPlsqlSaveDialog(active.id);
@@ -64,6 +76,13 @@ async function saveAllEditors(): Promise<void> {
 
   for (const tab of EditorService.getTabs()) {
     if (!tab.isDirty) continue;
+
+    const packageCommands = getPackageDdlCommands(tab.id);
+    if (isPackageDdlEditor(tab.uri) && packageCommands) {
+      EditorService.setActiveTab(tab.id);
+      packageCommands.save();
+      continue;
+    }
 
     if (shouldUsePlsqlSave(tab.uri)) {
       EditorService.setActiveTab(tab.id);
@@ -115,7 +134,7 @@ CommandsRegistry.registerCommand("silk.file.save", async () => {
 
 CommandsRegistry.registerCommand("silk.file.saveAs", async () => {
   const active = EditorService.getActiveTab();
-  if (active && shouldUsePlsqlSave(active.uri)) {
+  if (active && (shouldUsePlsqlSave(active.uri) || isPackageDdlEditor(active.uri))) {
     window.alert(
       "Save As is not supported for PL/SQL database objects. Use Save (Ctrl+S) to apply CREATE OR REPLACE.",
     );

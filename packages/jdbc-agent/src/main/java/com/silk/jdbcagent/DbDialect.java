@@ -2,7 +2,9 @@ package com.silk.jdbcagent;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
@@ -25,6 +27,14 @@ import java.util.List;
  * catalogs post-connect (PostgreSQL) simply ignore the parameter.
  */
 interface DbDialect {
+  /** Adds a JDBC metadata REMARKS value to an explorer object when the driver exposes one. */
+  static void appendObjectRemarks(ObjectNode object, ResultSet metadataRow) throws SQLException {
+    String remarks = metadataRow.getString("REMARKS");
+    if (remarks != null && !remarks.isBlank()) {
+      object.put("comment", remarks);
+    }
+  }
+
   /**
    * Row cap every {@link #findObjectsByName} query applies via {@link Statement#setMaxRows(int)}
    * — a plain JDBC-standard cap rather than dialect-specific {@code ROWNUM}/{@code TOP}/
@@ -99,6 +109,11 @@ interface DbDialect {
    */
   default boolean isSystemCatalog(String catalogName) {
     return false;
+  }
+
+  /** Database-provided classification supplements static system namespace lists. */
+  default java.util.Set<String> listMaintainedSchemas(Connection connection) throws SQLException {
+    return java.util.Set.of();
   }
 
   /**

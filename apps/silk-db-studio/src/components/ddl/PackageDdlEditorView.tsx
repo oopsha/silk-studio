@@ -34,6 +34,7 @@ import {
   getPackageDdlBuffer,
   setPackageDdlBuffer,
 } from "../../services/editor/packageDdlBufferStore";
+import { registerPackageDdlCommands } from "../../services/editor/packageDdlCommandService";
 import DependenciesPreview from "../object-editor/DependenciesPreview";
 import PackageMembersPreview from "../object-editor/PackageMembersPreview";
 import "../object-editor/PropertiesView.css";
@@ -341,10 +342,17 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
       ]);
       const errors = [...specResult.errors, ...bodyResult.errors];
       setCompileErrors(errors);
+      const statusLabel = t("app.plsql.packageCompileStatus")
+        .replace("{spec}", specResult.objectStatus ?? "UNKNOWN")
+        .replace("{body}", bodyResult.objectStatus ?? "UNKNOWN");
       setCompileMessage(
-        errors.length > 0
-          ? t("app.plsql.compileFailedCount").replace("{n}", String(errors.length))
-          : t("app.plsql.compileSucceeded"),
+        `${statusLabel} · ${
+          specResult.success && bodyResult.success
+            ? t("app.plsql.compileSucceeded")
+            : errors.length > 0
+              ? t("app.plsql.compileFailedCount").replace("{n}", String(errors.length))
+              : t("app.plsql.compileInvalidWithoutDiagnostics")
+        }`,
       );
 
       recordPackagePlsqlSnapshot(sectionRef(false), specBuffer.current, bodyBuffer.current, "save");
@@ -428,6 +436,20 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
         });
     }
   };
+
+  const saveCommandRef = useRef(handleSaveClick);
+  const compileCommandRef = useRef(handleSaveImmediate);
+  saveCommandRef.current = handleSaveClick;
+  compileCommandRef.current = handleSaveImmediate;
+
+  useEffect(
+    () =>
+      registerPackageDdlCommands(tabId, {
+        save: () => saveCommandRef.current(),
+        compile: () => compileCommandRef.current(),
+      }),
+    [tabId],
+  );
 
   // History/Snapshot always cover Spec + Body together (matches Save/Compare&Save) — which
   // section happens to be active only decides the diff dialog's initial tab, not the scope.

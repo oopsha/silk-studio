@@ -1,7 +1,7 @@
 {
   "name": "@silk-studio/db-studio",
   "private": true,
-  "version": "0.1.13",
+  "version": "0.1.17",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -27,7 +27,8 @@
     "ag-grid-react": "^36.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "sql-formatter": "^15.8.2"
+    "sql-formatter": "^15.8.2",
+    "xlsx": "file:../../vendor/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

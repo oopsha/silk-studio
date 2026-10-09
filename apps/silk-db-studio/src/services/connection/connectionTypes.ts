@@ -298,6 +298,6 @@ export function driverIconName(driverId: ConnectionDriverId): string {
     case "postgresql":
       return "db-postgresql";
     case "sqlite":
-      return "database";
+      return "db-sqlite";
   }
 }

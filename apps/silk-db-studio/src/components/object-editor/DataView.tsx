@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { QueryResultDirtyService } from "../../services/query/queryResultDirtyService";
+import { TableDataImportService } from "../../services/query/tableDataImportService";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
@@ -34,6 +36,15 @@ function DataView({ objectRef }: DataViewProps) {
     ],
   );
   const session = useQueryExecutionStateByOwnerId(ownerId);
+  const [readyOwnerId, setReadyOwnerId] = useState<string | null>(null);
+  const importFile = useSyncExternalStore(
+    TableDataImportService.subscribe,
+    () => TableDataImportService.getFile(ownerId),
+    () => null,
+  );
+  const handleImportFileConsumed = useCallback((file: File) => {
+    TableDataImportService.consume(ownerId, file);
+  }, [ownerId]);
   const isRunning = session.status === "running";
 
   const explorerRef = useMemo<ExplorerObjectRef>(
@@ -53,7 +64,7 @@ function DataView({ objectRef }: DataViewProps) {
   );
 
   const runFetch = useCallback(() => {
-    void openTableData(explorerRef).catch((error) => {
+    return openTableData(explorerRef).catch((error) => {
       AppNotificationService.show(
         formatErrorMessage(error, t("app.objectEditor.dataLoadFailed")),
         "error",
@@ -61,11 +72,20 @@ function DataView({ objectRef }: DataViewProps) {
     });
   }, [explorerRef, t]);
 
-  // Lazy, once per object: only auto-fetch when this owner has never produced a session.
+  // A table may have been recreated while Properties was open. Re-read its SELECT
+  // metadata on entering Data, while retaining any unsaved grid edits.
   useEffect(() => {
-    if (session.status === "idle" && session.tabs.length === 0) {
-      runFetch();
+    let mounted = true;
+    const hasPendingChanges = session.tabs.some((tab) => QueryResultDirtyService.hasPendingChanges(tab.id));
+    if (hasPendingChanges || importFile) {
+      // Explorer import already fetched fresh metadata before queuing its file.
+      setReadyOwnerId(ownerId);
+    } else {
+      void runFetch().finally(() => {
+        if (mounted) setReadyOwnerId(ownerId);
+      });
     }
+    return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerId]);
 
@@ -74,6 +94,7 @@ function DataView({ objectRef }: DataViewProps) {
   const showErrorOrCancel =
     session.status === "error" || session.status === "cancelled";
   const gridResult =
+    readyOwnerId === ownerId &&
     !showErrorOrCancel &&
     activeResultTab?.result?.kind === "resultSet" &&
     activeResultTab.result.columns.length > 0
@@ -94,7 +115,7 @@ function DataView({ objectRef }: DataViewProps) {
         <button
           type="button"
           className="object-editor-data__refresh"
-          onClick={runFetch}
+          onClick={() => void runFetch()}
           disabled={isRunning}
           title={t("common.refresh")}
           aria-label={t("common.refresh")}
@@ -113,6 +134,8 @@ function DataView({ objectRef }: DataViewProps) {
             result={gridResult}
             relationKind={activeResultTab.relationKind}
             connectionId={activeResultTab.connectionId}
+            importFile={importFile}
+            onImportFileConsumed={handleImportFileConsumed}
           />
         ) : (
           <pre className="object-editor-data__log">{logText}</pre>

@@ -9,12 +9,14 @@ import type { ConnectionDriverId } from "../connection/connectionTypes";
 import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import { formatErrorMessage } from "../formatErrorMessage";
 import { resolveActiveDriverId } from "../sql/sqlDialect";
+import { formatTableReference } from "./sqlLiteral";
 import { QueryExecutionService } from "./queryExecutionService";
 import { QueryResultDirtyService } from "./queryResultDirtyService";
 import type { QueryResultColumnType } from "@silk-studio/db-protocol";
 import {
   buildDeleteStatements,
   buildInsertStatements,
+  iterateInsertBatches,
   buildUpdateStatements,
 } from "./safeUpdateSql";
 import { assertReadOnlyQueryAllowed } from "./sqlGuard";
@@ -48,11 +50,16 @@ export type UpdatePreview = {
   dirtyCellCount: number;
   deletedRowCount: number;
   insertedRowCount: number;
+  truncateRequested: boolean;
+  showSqlPreview: boolean;
+  totalWork: number;
+  createExecutionBatches: () => Iterable<{ sql: string; workCount: number }>;
 };
 
 type UpdateEligibilityOptions = {
   relationKind?: QueryRelationKind;
   connectionId?: string | null;
+  allowNoPrimaryKey?: boolean;
 };
 
 function resolveExplicitSchemaName(
@@ -199,10 +206,12 @@ export async function resolveUpdateEligibility(
   }
 
   if (payload.keys.length === 0) {
-    return {
-      eligible: false,
-      reason: noPrimaryKeyReason(effectiveKind, label),
-    };
+    if (!options?.allowNoPrimaryKey) {
+      return {
+        eligible: false,
+        reason: noPrimaryKeyReason(effectiveKind, label),
+      };
+    }
   }
 
   const resolvedSchema = payload.schema?.trim() || explicitSchema || null;
@@ -211,6 +220,7 @@ export async function resolveUpdateEligibility(
   for (const key of payload.keys) {
     const resolved = resolveResultColumn(resultColumns, key.name);
     if (!resolved) {
+      if (options?.allowNoPrimaryKey) continue;
       return {
         eligible: false,
         reason: tKey("app.query.savePkMissingInResult").replace(
@@ -240,6 +250,7 @@ export async function buildUpdatePreview(
   options?: UpdateEligibilityOptions,
 ): Promise<UpdatePreview | { blocked: true; reason: string }> {
   const newRowIndexes = QueryResultDirtyService.getNewRowIndexes(tabId);
+  const truncateRequested = QueryResultDirtyService.getTruncateBeforeImport(tabId);
   // Cell edits inside a not-yet-saved added/duplicated row still flow through the same
   // dirty-cell tracking as an existing row's edits — excluded here so they contribute to the
   // row's INSERT values (below) instead of leaking into a bogus UPDATE statement.
@@ -250,7 +261,8 @@ export async function buildUpdatePreview(
   if (
     dirtyRows.length === 0 &&
     deletedRowIndexes.length === 0 &&
-    newRowIndexes.length === 0
+    newRowIndexes.length === 0 &&
+    !truncateRequested
   ) {
     return { blocked: true, reason: tKey("app.query.saveNoEditedCells") };
   }
@@ -258,7 +270,7 @@ export async function buildUpdatePreview(
   const eligibility = await resolveUpdateEligibility(
     sql,
     resultColumns,
-    options,
+    { ...options, allowNoPrimaryKey: truncateRequested },
   );
   if (!eligibility.eligible) {
     return { blocked: true, reason: eligibility.reason };
@@ -276,7 +288,17 @@ export async function buildUpdatePreview(
   // row with PK=2); running them in this order avoids a spurious unique-constraint error even
   // though the net result is valid. (Two existing rows swapping PKs with each other still can't
   // be resolved by reordering alone — out of scope here.)
-  const statements = [
+  const tableReference = formatTableReference(
+    eligibility.schema,
+    eligibility.table,
+    eligibility.driverId,
+    eligibility.catalog,
+  );
+  const statements = truncateRequested
+    ? [
+        `${eligibility.driverId === "sqlite" ? "DELETE FROM" : "TRUNCATE TABLE"} ${tableReference}`,
+      ]
+    : [
     ...buildDeleteStatements({
       catalog: eligibility.catalog,
       schema: eligibility.schema,
@@ -297,16 +319,29 @@ export async function buildUpdatePreview(
       dirtyRows,
       columnTypes: columnTypesByName,
     }),
-    ...buildInsertStatements({
-      catalog: eligibility.catalog,
-      schema: eligibility.schema,
-      table: eligibility.table,
-      driverId: eligibility.driverId,
-      columns: resultColumns,
-      rows: newRows,
-      columnTypes: columnTypesByName,
-    }),
   ];
+
+  const insertInput = {
+    catalog: eligibility.catalog, schema: eligibility.schema,
+    table: eligibility.table, driverId: eligibility.driverId,
+    columns: resultColumns, rows: newRows, columnTypes: columnTypesByName,
+  };
+  const showSqlPreview = newRows.length <= ConfigurationService.getValue("database.importSqlPreviewMaxRows");
+  const prefixStatements = statements;
+  const previewStatements = showSqlPreview
+    ? [...prefixStatements, ...buildInsertStatements(insertInput)]
+    : [];
+  const totalWork = showSqlPreview ? previewStatements.length : prefixStatements.length + newRows.length;
+  const createExecutionBatches = function* () {
+    if (showSqlPreview) {
+      for (const sql of previewStatements) yield { sql, workCount: 1 };
+    } else {
+      for (const sql of prefixStatements) yield { sql, workCount: 1 };
+      for (const batch of iterateInsertBatches(insertInput)) {
+        yield { sql: batch.sql, workCount: batch.rowCount };
+      }
+    }
+  };
 
   const dirtyCellCount = dirtyRows.reduce(
     (sum, row) => sum + row.changes.length,
@@ -314,34 +349,45 @@ export async function buildUpdatePreview(
   );
   return {
     eligibility,
-    statements,
-    dirtyRowCount: dirtyRows.length,
-    dirtyCellCount,
-    deletedRowCount: deletedRowIndexes.length,
+    statements: previewStatements,
+    totalWork,
+    createExecutionBatches,
+    dirtyRowCount: truncateRequested ? 0 : dirtyRows.length,
+    dirtyCellCount: truncateRequested ? 0 : dirtyCellCount,
+    deletedRowCount: truncateRequested ? 0 : deletedRowIndexes.length,
     insertedRowCount: newRows.length,
+    truncateRequested,
+    showSqlPreview,
   };
 }
 
 export async function executeConfirmedUpdates(
   tabId: string,
-  statements: string[],
-  options?: { connectionId?: string | null },
+  preview: UpdatePreview,
+  options?: {
+    connectionId?: string | null;
+    onProgress?: (completed: number, total: number) => void;
+  },
 ): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
-  if (statements.length === 0) {
+  if (preview.totalWork === 0) {
     return { ok: false, message: "No statements to execute." };
   }
 
   try {
-    for (const statement of statements) {
+    let completed = 0;
+    let count = 0;
+    for (const { sql: statement, workCount } of preview.createExecutionBatches()) {
       assertReadOnlyQueryAllowed(statement, ConfigurationService.getValue("database.readOnly"));
       await QueryExecutionService.executeWriteStatement(statement, {
         connectionId: options?.connectionId ?? undefined,
       });
+      completed += workCount;
+      count += 1;
+      options?.onProgress?.(completed, preview.totalWork);
     }
 
     await QueryExecutionService.refreshTabResult(tabId);
     QueryResultDirtyService.clearTab(tabId);
-    const count = statements.length;
     return {
       ok: true,
       message: `${count} statement${count === 1 ? "" : "s"} executed.`,

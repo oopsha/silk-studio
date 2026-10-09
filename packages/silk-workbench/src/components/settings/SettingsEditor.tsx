@@ -345,6 +345,11 @@ function DatabaseSettings() {
           <span>{t("settings.database.autoCommitHint")}</span>
         </label>
       </SettingRow>
+      <SettingRow title={t("settings.database.importSqlPreviewMaxRows")} description={t("settings.database.importSqlPreviewMaxRowsDescription")}>
+        <input className="settings-control settings-control--number" type="number" min={0} max={10000}
+          value={configuration["database.importSqlPreviewMaxRows"]}
+          onChange={(event) => ConfigurationService.updateValue("database.importSqlPreviewMaxRows", Number(event.target.value))} />
+      </SettingRow>
       <SettingRow
         title={t("settings.database.readOnly")}
         description={t("settings.database.readOnlyDescription")}

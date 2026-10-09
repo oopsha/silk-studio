@@ -72,10 +72,18 @@ final class SqliteDialect implements DbDialect {
     String sql =
         "SELECT name, type FROM " + quoteIdent(schema) + ".sqlite_schema "
             + "WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name";
+    List<String[]> primaryObjects = new ArrayList<>();
     try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
       while (rs.next()) {
-        appendObject(objects, rs.getString("name"), rs.getString("type"));
+        primaryObjects.add(new String[] {rs.getString("name"), rs.getString("type")});
       }
+    }
+    for (String[] entry : primaryObjects) {
+      ObjectNode object = objects.addObject();
+      object.put("name", entry[0]);
+      object.put("kind", entry[1]);
+      String comment = fetchTableComment(connection, null, schema, entry[0]);
+      if (comment != null && !comment.isBlank()) object.put("comment", comment);
     }
     if (!includeSecondaryKinds) {
       return;
@@ -217,7 +225,10 @@ final class SqliteDialect implements DbDialect {
       ObjectNode primaryKey = constraints.addObject();
       primaryKey.put("name", "pk_" + tableName);
       primaryKey.put("type", "primaryKey");
-      primaryKey.set("columns", keys);
+      ArrayNode names = primaryKey.putArray("columns");
+      for (JsonNode key : keys) {
+        names.add(key.path("name").asText());
+      }
     }
     String sql = "PRAGMA " + quoteIdent(schema) + ".index_list(" + stringLiteral(tableName) + ")";
     try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
@@ -285,6 +296,7 @@ final class SqliteDialect implements DbDialect {
   public String fetchTableComment(
       Connection connection, String catalog, String schemaName, String tableName) throws SQLException {
     String ddl = readSqliteObjectSql(connection, usableSchema(schemaName), tableName, "table");
+    if (ddl == null) ddl = readSqliteObjectSql(connection, usableSchema(schemaName), tableName, "view");
     if (ddl == null) return null;
     // SQLite has no COMMENT ON syntax. Comments directly following the table name are a
     // deliberate convention kept verbatim in sqlite_schema.sql. Support both common SQL

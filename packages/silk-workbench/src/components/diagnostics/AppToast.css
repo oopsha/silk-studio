@@ -30,6 +30,13 @@
   word-break: break-word;
 }
 
+.app-toast__content { flex: 1; min-width: 0; }
+.app-toast__progress { margin-top: 8px; height: 5px; overflow: hidden; border-radius: 3px; background: var(--color-border); }
+.app-toast__progress-value { height: 100%; background: var(--color-accent, #0e639c); transition: width 100ms linear; }
+.app-toast__progress-value--indeterminate { width: 35%; animation: app-toast-progress 1.2s ease-in-out infinite; }
+@keyframes app-toast-progress { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+@media (prefers-reduced-motion: reduce) { .app-toast__progress-value--indeterminate { animation: none; } }
+
 .app-toast__dismiss {
   flex-shrink: 0;
   width: 20px;

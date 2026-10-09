@@ -37,6 +37,7 @@ export type WorkbenchConfiguration = {
   "queryResult.filterEnabled": boolean;
   "database.queryTimeoutSec": number;
   "database.autoCommit": boolean;
+  "database.importSqlPreviewMaxRows": number;
   "database.readOnly": boolean;
   "database.explorer.preloadDefaultSchema": boolean;
   "database.explorer.showObjectDescriptions": boolean;
@@ -93,6 +94,7 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "queryResult.filterEnabled": true,
   "database.queryTimeoutSec": 30,
   "database.autoCommit": false,
+  "database.importSqlPreviewMaxRows": 100,
   "database.readOnly": false,
   "database.explorer.preloadDefaultSchema": true,
   "database.explorer.showObjectDescriptions": true,

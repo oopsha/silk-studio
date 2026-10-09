@@ -38,6 +38,7 @@ import {
 } from "./queryResultTab";
 import { QueryResultDirtyService } from "./queryResultDirtyService";
 import { SqlParameterDialogService } from "./sqlParameterDialogService";
+import { collectMybatisFields, isMybatisScript, mergeMybatisParameters } from "./mybatisScript";
 import {
   bindSqlParameters,
   collectSqlParameterFields,
@@ -446,7 +447,8 @@ class QueryExecutionServiceImpl {
     }> = [];
 
     for (const item of prepared) {
-      const resolved = await this.resolveStatementBinds(item.sql);
+      const resolved = await this.prepareStatementBinds(item.sql, ownerId, viewGroupId);
+      if (resolved === "failed") return;
       if (resolved === "cancelled") {
         this.patchRunStatus(viewGroupId, ownerId, {
           status: "cancelled",
@@ -684,7 +686,8 @@ class QueryExecutionServiceImpl {
     }> = [];
 
     for (const item of prepared) {
-      const resolved = await this.resolveStatementBinds(item.sql);
+      const resolved = await this.prepareStatementBinds(item.sql, ownerId, viewGroupId);
+      if (resolved === "failed") return;
       if (resolved === "cancelled") {
         this.patchRunStatus(viewGroupId, ownerId, {
           status: "cancelled",
@@ -1010,7 +1013,8 @@ class QueryExecutionServiceImpl {
       return;
     }
 
-    const bound = await this.resolveStatementBinds(statement);
+    const bound = await this.prepareStatementBinds(statement, ownerId, viewGroupId);
+    if (bound === "failed") return;
     if (bound === "cancelled") {
       this.patchRunStatus(viewGroupId, ownerId, {
         status: "cancelled",
@@ -1430,6 +1434,20 @@ class QueryExecutionServiceImpl {
     });
   }
 
+  private async prepareStatementBinds(sql: string, ownerId: string, viewGroupId: EditorGroupId): Promise<BoundSql | "cancelled" | "failed"> {
+    this.patchRunStatus(viewGroupId, ownerId, {
+      status: "idle", output: tKey("app.query.parametersPreparing"), lastSql: sql,
+    });
+    try {
+      return await this.resolveStatementBinds(sql);
+    } catch (error) {
+      this.patchRunStatus(viewGroupId, ownerId, {
+        status: "error", output: this.formatQueryFailureMessage(error), lastSql: sql,
+      });
+      return "failed";
+    }
+  }
+
   private async resolveStatementBinds(
     sql: string,
   ): Promise<BoundSql | "cancelled"> {
@@ -1456,6 +1474,15 @@ class QueryExecutionServiceImpl {
       ),
     };
     const occurrences = detectSqlParameterOccurrences(sql, options);
+    if (options.mybatisEnabled && isMybatisScript(sql)) {
+      const fields = collectMybatisFields(sql);
+      for (const field of collectSqlParameterFields(occurrences)) {
+        if (!/^[#$]\{/.test(field.label) && !fields.some(f => f.kind === field.kind && f.key === field.key)) fields.push(field);
+      }
+      const input = await SqlParameterDialogService.open(fields, { sql, mybatis: true });
+      if (!input.confirmed) return "cancelled";
+      return invoke<BoundSql>("query_prepare_mybatis", mergeMybatisParameters(sql, occurrences, input.values));
+    }
     if (occurrences.length === 0) {
       return { sql, binds: [] };
     }

@@ -106,7 +106,12 @@ where
 }
 
 #[tauri::command]
-fn query_execute(
+async fn query_prepare_mybatis(sql: String, parameters: Value, app: tauri::AppHandle) -> Result<Value, String> {
+    run_blocking(move || app.state::<AppState>().jdbc_agent.prepare_mybatis(&sql, parameters)).await
+}
+
+#[tauri::command]
+async fn query_execute(
     connection_id: String,
     sql: String,
     max_rows: Option<u32>,
@@ -114,23 +119,27 @@ fn query_execute(
     auto_commit: Option<bool>,
     read_only: Option<bool>,
     binds: Option<Vec<Option<String>>>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    let statement = sql.trim();
+    require_connection_id(&connection_id)?;
+    let statement = sql.trim().to_string();
     if statement.is_empty() {
         return Err("Query is empty.".into());
     }
 
-    state.jdbc_agent.execute_query(
-        connection_id,
-        statement,
-        max_rows,
-        query_timeout_sec,
-        auto_commit,
-        read_only,
-        binds.as_deref(),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        state.jdbc_agent.execute_query(
+            &connection_id,
+            &statement,
+            max_rows,
+            query_timeout_sec,
+            auto_commit,
+            read_only,
+            binds.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -256,12 +265,16 @@ async fn connection_connect(
 }
 
 #[tauri::command]
-fn connection_disconnect(
+async fn connection_disconnect(
     connection_id: String,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.disconnect(connection_id)
+    require_connection_id(&connection_id)?;
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        state.jdbc_agent.disconnect(&connection_id)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -616,6 +629,7 @@ pub fn run() {
             ensure_title_bar_overlay,
             startup_theme::startup_theme_save,
             query_execute,
+            query_prepare_mybatis,
             query_execute_paged,
             query_cancel,
             connection_commit,

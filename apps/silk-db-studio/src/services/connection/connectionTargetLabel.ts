@@ -82,7 +82,7 @@ export function formatSchemaLabel(
   return schema || noSchemaLabel;
 }
 
-/** Short muted tab suffix — profile name only (truncated). */
+/** Muted tab suffix — profile name only. The tab host trims it only when space is tight. */
 export function formatConnectionTabSuffix(
   binding: EditorConnectionBinding,
 ): string | null {
@@ -90,8 +90,7 @@ export function formatConnectionTabSuffix(
   const profile = ConnectionService.getProfile(binding.profileId);
   const name = profile?.name?.trim() || binding.profileId;
   const connected = ConnectionService.isConnected(binding.profileId);
-  const short = name.length > 16 ? `${name.slice(0, 15)}…` : name;
-  return connected ? short : `!${short}`;
+  return connected ? name : `!${name}`;
 }
 
 export function bindingForProfile(profileId: string): EditorConnectionBinding {

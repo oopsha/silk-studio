@@ -209,6 +209,7 @@ function SqlParameterDialog() {
           <p className="explorer-mutation-dialog__hint">
             {t("app.query.parametersExecuteHint")}
           </p>
+          {request.mybatis && <p className="explorer-mutation-dialog__hint">{t("app.query.parametersMybatisHint")}</p>}
 
           <div className="sql-parameter-dialog__table" role="table">
             <div className="sql-parameter-dialog__row sql-parameter-dialog__row--head" role="row">

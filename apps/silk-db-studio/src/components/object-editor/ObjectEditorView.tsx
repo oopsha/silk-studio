@@ -20,10 +20,14 @@ function ObjectEditorView({ groupId }: ObjectEditorViewProps) {
   const [activeSection, setActiveSectionState] = useState<ObjectEditorSection>(
     () => (activeTab ? (getObjectEditorSection(activeTab.id) ?? "properties") : "properties"),
   );
+  const [dataOpenedTabId, setDataOpenedTabId] = useState<string | null>(() =>
+    activeTab && getObjectEditorSection(activeTab.id) === "data" ? activeTab.id : null,
+  );
 
   const setActiveSection = (section: ObjectEditorSection) => {
     setActiveSectionState(section);
     if (activeTab) {
+      if (section === "data") setDataOpenedTabId(activeTab.id);
       setObjectEditorSection(activeTab.id, section);
     }
   };
@@ -32,11 +36,15 @@ function ObjectEditorView({ groupId }: ObjectEditorViewProps) {
   // component instance, different `activeTab`) — resync from the per-tab map.
   useEffect(() => {
     if (!activeTab) return;
-    setActiveSectionState(getObjectEditorSection(activeTab.id) ?? "properties");
+    const section = getObjectEditorSection(activeTab.id) ?? "properties";
+    setActiveSectionState(section);
+    setDataOpenedTabId(section === "data" ? activeTab.id : null);
   }, [activeTab?.id]);
 
   useEffect(() => onDidChangeObjectEditorSection((tabId, section) => {
-    if (tabId === activeTab?.id) setActiveSectionState(section);
+    if (tabId !== activeTab?.id) return;
+    setActiveSectionState(section);
+    if (section === "data") setDataOpenedTabId(tabId);
   }), [activeTab?.id]);
 
   if (!ref || !activeTab) {
@@ -70,16 +78,26 @@ function ObjectEditorView({ groupId }: ObjectEditorViewProps) {
         </button>
       </div>
       <div className="object-editor-view__body">
-        {activeSection === "properties" ? (
+        <div
+          className={`object-editor-view__section${activeSection === "properties" ? " object-editor-view__section--active" : ""}`}
+          aria-hidden={activeSection !== "properties"}
+        >
           <PropertiesView
+            key={activeTab.id}
             objectRef={ref}
             tabId={activeTab.id}
             tabUri={activeTab.uri}
             bufferedContent={activeTab.content}
           />
-        ) : (
-          <DataView objectRef={ref} />
-        )}
+        </div>
+        {dataOpenedTabId === activeTab.id ? (
+          <div
+            className={`object-editor-view__section${activeSection === "data" ? " object-editor-view__section--active" : ""}`}
+            aria-hidden={activeSection !== "data"}
+          >
+            <DataView objectRef={ref} />
+          </div>
+        ) : null}
       </div>
     </div>
   );

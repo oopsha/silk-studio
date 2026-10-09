@@ -31,6 +31,9 @@ target
 target-release-build/
 **/src-tauri/gen/schemas/
 
+# Tauri generated permission and capability schemas
+**/src-tauri/gen/schemas/
+
 # Bundled runtime (staged by scripts/prepare-runtime-resources.mjs)
 apps/silk-db-studio/src-tauri/resources/jdbc-agent/**
 apps/silk-db-studio/src-tauri/resources/jre/**

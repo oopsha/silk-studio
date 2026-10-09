@@ -7,12 +7,21 @@ import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { compileActivePlsqlObject } from "../../services/connection/plsqlCompileService";
 import { shouldUsePlsqlSave } from "../../services/connection/plsqlSaveService";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
+import { parseDdlEditorUri } from "../../services/connection/ddlEditorConstants";
+import { getPackageDdlCommands } from "../../services/editor/packageDdlCommandService";
+
+function isPackageDdlEditor(uri: string | undefined): boolean {
+  return parseDdlEditorUri(uri)?.kind === "package";
+}
 
 // Shared by every PL/SQL Run-menu command (compile + the 3 snapshot ones in
 // plsqlSnapshot.contribution.ts) — they all gate on the same "active tab is PL/SQL" check.
 function updateIsPlsqlTabContextKey(): void {
   const active = EditorService.getActiveTab();
-  ContextKeyService.set("isPlsqlTab", Boolean(active && shouldUsePlsqlSave(active.uri)));
+  ContextKeyService.set(
+    "isPlsqlTab",
+    Boolean(active && (shouldUsePlsqlSave(active.uri) || isPackageDdlEditor(active.uri))),
+  );
 }
 
 EditorService.onDidChange(updateIsPlsqlTabContextKey);
@@ -20,6 +29,11 @@ updateIsPlsqlTabContextKey();
 
 CommandsRegistry.registerCommand("silk.plsql.compile", async () => {
   const active = EditorService.getActiveTab();
+  const packageCommands = active ? getPackageDdlCommands(active.id) : undefined;
+  if (active && isPackageDdlEditor(active.uri) && packageCommands) {
+    packageCommands.compile();
+    return;
+  }
   if (!active || !shouldUsePlsqlSave(active.uri)) {
     window.alert("Compile is available on PL/SQL source tabs only.");
     return;

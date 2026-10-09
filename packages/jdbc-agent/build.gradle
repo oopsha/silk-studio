@@ -7,6 +7,8 @@ repositories {
 }
 
 dependencies {
+  implementation 'org.mybatis:mybatis:3.5.19'
+  testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
   implementation 'com.oracle.database.jdbc:ojdbc11:23.4.0.24.05'
   // ORA-17056 방지: KO16MSWIN949 등 EUC/MSWIN 계열 문자집합 지원 (orai18n)
   implementation 'com.oracle.database.nls:orai18n:23.4.0.24.05'
@@ -35,6 +37,8 @@ dependencies {
   implementation 'org.xerial:sqlite-jdbc:3.49.1.0'
   implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
 }
+
+tasks.named('test') { useJUnitPlatform() }
 
 application {
   mainClass = 'com.silk.jdbcagent.Main'

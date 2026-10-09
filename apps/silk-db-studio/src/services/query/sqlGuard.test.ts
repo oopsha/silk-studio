@@ -33,6 +33,25 @@ describe("isWriteSql", () => {
     expect(isWriteSql("/* cleanup */\nDELETE FROM t")).toBe(true);
     expect(isWriteSql("/* multi\nline */ INSERT INTO t VALUES (1)")).toBe(true);
   });
+
+  it("detects writes inside procedural blocks across dialects", () => {
+    expect(
+      isWriteSql(`DECLARE
+        L_DATE_TO VARCHAR2(8);
+      BEGIN
+        EXECUTE IMMEDIATE 'CREATE TABLE copy_t AS SELECT * FROM source_t';
+        UPDATE target_t SET date_to = '20261001';
+        INSERT INTO target_t VALUES (1);
+      END;`),
+    ).toBe(true);
+    expect(isWriteSql("DO $$ BEGIN UPDATE t SET value = 1; END $$;")).toBe(true);
+    expect(isWriteSql("BEGIN UPDATE t SET value = 1; END;")).toBe(true);
+  });
+
+  it("does not classify read-only procedural blocks as writes", () => {
+    expect(isWriteSql("BEGIN SELECT 1; END;")).toBe(false);
+    expect(isWriteSql("DO $$ BEGIN PERFORM 1; END $$;")).toBe(false);
+  });
 });
 
 describe("assertReadOnlyQueryAllowed", () => {

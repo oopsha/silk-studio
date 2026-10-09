@@ -75,6 +75,33 @@
   color: var(--color-description);
 }
 
+.query-result-update-dialog__summary--danger {
+  color: var(--color-error-foreground, #f48771);
+}
+
+.query-result-update-dialog__progress-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-foreground);
+  font-size: 12px;
+}
+
+.query-result-update-dialog__progress-track {
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background-color: var(--color-input-background, var(--color-border));
+}
+
+.query-result-update-dialog__progress-value {
+  height: 100%;
+  border-radius: inherit;
+  background-color: var(--color-accent, #0e639c);
+  transition: width 120ms ease-out;
+}
+
 .query-result-update-dialog__sql-toolbar {
   display: flex;
   justify-content: flex-end;
@@ -164,4 +191,105 @@
 .query-result-update-dialog__button--primary:hover:not(:disabled) {
   background-color: #1177bb;
   border-color: #1177bb;
+}
+
+.query-result-import__header-rows {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  color: var(--color-foreground);
+  font-size: 12px;
+}
+
+.query-result-import__header-rows label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.query-result-import__truncate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-error-foreground, #f48771);
+  font-size: 12px;
+}
+
+.query-result-import__mapping {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+}
+
+.query-result-import__mapping label {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) minmax(0, 1.5fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--color-foreground);
+  font-size: 12px;
+}
+
+.query-result-import__sheet-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-foreground);
+  font-size: 12px;
+}
+
+.query-result-import__sheet-select select {
+  flex: 1;
+}
+
+.query-result-import__mapping select,
+.query-result-import__sheet-select select,
+.query-result-import__header-rows select {
+  min-width: 0;
+  height: 26px;
+  color: var(--color-foreground);
+  background: var(--color-input-background, var(--color-surface));
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+}
+
+.query-result-import__preview {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+}
+
+.query-result-import__preview table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.query-result-import__preview th,
+.query-result-import__preview td {
+  max-width: 240px;
+  padding: 4px 8px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.query-result-import__preview th {
+  position: sticky;
+  top: 0;
+  background: var(--color-surface);
+}
+
+@media (max-width: 640px) {
+  .query-result-import__mapping {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .query-result-import__header-rows {
+    align-items: stretch;
+  }
 }

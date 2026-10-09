@@ -109,6 +109,7 @@ abstract class MySqlCompatibleDialect implements DbDialect {
         object.put("name", name);
         object.put(
             "kind", type != null && type.toUpperCase(Locale.ROOT).contains("VIEW") ? "view" : "table");
+        DbDialect.appendObjectRemarks(object, tables);
       }
     }
 
