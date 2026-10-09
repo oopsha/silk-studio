@@ -8,6 +8,7 @@ import { UserKeybindingsService } from "@silk-studio/workbench/platform/keybindi
 import { WindowTitleService } from "@silk-studio/workbench/services/windowTitle/windowTitleService.ts";
 import "@silk-studio/workbench/components/layout/WorkbenchShell/WorkbenchShell.css";
 import "@silk-studio/workbench/workbench/workbench.contribution";
+import "./workbench/contributions/fileActions.contribution";
 import "@silk-studio/ui/global.css";
 import "./app.css";
 import App from "./App";

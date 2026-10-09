@@ -50,10 +50,14 @@ export function bootstrapSqlLanguageBinding(): void {
   // Promote the initial Untitled tab (created as plaintext) to the studio SQL dialect.
   applyDialectToSqlTabs();
 
-  CommandsRegistry.registerCommand("silk.file.newTextFile", () => {
-    const tabId = EditorService.openUntitled(resolveActiveMonacoLanguageId());
-    EditorConnectionBindingService.ensureBinding(tabId);
-  });
+  CommandsRegistry.registerCommand(
+    "silk.file.newTextFile",
+    () => {
+      const tabId = EditorService.openUntitled(resolveActiveMonacoLanguageId());
+      EditorConnectionBindingService.ensureBinding(tabId);
+    },
+    { replace: true, titleKey: "studio.db.commands.newQuery" },
+  );
 
   ConnectionService.onDidChange(() => {
     applyDialectToSqlTabs();

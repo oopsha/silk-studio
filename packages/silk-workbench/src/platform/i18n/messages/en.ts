@@ -296,7 +296,7 @@ export const enMessages = {
       checkFailed: "Update check failed: {message}",
     },
     commands: {
-      newTextFile: "New Query",
+      newTextFile: "New File",
       openFile: "Open File...",
       save: "Save",
       saveAs: "Save As...",
@@ -458,6 +458,10 @@ export const enMessages = {
       bundledJre: "bundled JRE",
       systemPath: "system/PATH",
     },
+  },
+  studio: {
+    db: { commands: { newQuery: "New Query" } },
+    be: { commands: { newFile: "New File" } },
   },
   app: {
     dnd: {

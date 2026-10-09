@@ -1,6 +1,8 @@
 import type { MenuId } from "./menuId";
 import type { IMenuItem, ISubmenuItem } from "./types";
 import { localizeUiLabel } from "../i18n/localizeUiLabel";
+import { CommandsRegistry } from "../commands/commandRegistry";
+import { I18nService } from "../i18n/i18nService";
 
 type MenuEntry = IMenuItem | ISubmenuItem;
 
@@ -45,7 +47,10 @@ class MenuRegistryImpl {
           typeof entry.command.title === "string"
             ? entry.command.title
             : entry.command.title.value;
-        const localized = localizeUiLabel(raw.trim());
+        const titleKey = CommandsRegistry.getCommand(id)?.titleKey;
+        const localized = titleKey
+          ? I18nService.t(titleKey)
+          : localizeUiLabel(raw.trim());
         titles.set(
           id,
           localized.replace(/\u2026$/, "").replace(/\.\.\.$/, "").trim(),

@@ -9,6 +9,8 @@ import {
   type ISubmenuItem,
 } from "./types";
 import { KeybindingsRegistry } from "../keybinding/keybindingRegistry";
+import { CommandsRegistry } from "../commands/commandRegistry";
+import { I18nService } from "../i18n/i18nService";
 
 export type ResolvedMenuAction = {
   type: "command";
@@ -106,7 +108,10 @@ class MenuServiceImpl {
   }
 
   private resolveCommandItem(item: IMenuItem): ResolvedMenuAction {
-    const { label, mnemonic } = resolveMenuLabel(item.command.title);
+    const titleKey = CommandsRegistry.getCommand(item.command.id)?.titleKey;
+    const { label, mnemonic } = titleKey
+      ? { label: I18nService.t(titleKey), mnemonic: undefined }
+      : resolveMenuLabel(item.command.title);
     const precondition = this.getCommandPrecondition(item.command.id);
     return {
       type: "command",

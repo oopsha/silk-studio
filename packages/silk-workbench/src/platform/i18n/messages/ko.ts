@@ -294,7 +294,7 @@ export const koMessages = {
       checkFailed: "업데이트 확인 실패: {message}",
     },
     commands: {
-      newTextFile: "새 쿼리",
+      newTextFile: "새 파일",
       openFile: "파일 열기...",
       save: "저장",
       saveAs: "다른 이름으로 저장...",
@@ -456,6 +456,10 @@ export const koMessages = {
       bundledJre: "번들 JRE",
       systemPath: "시스템/PATH",
     },
+  },
+  studio: {
+    db: { commands: { newQuery: "새 쿼리" } },
+    be: { commands: { newFile: "새 파일" } },
   },
   app: {
     dnd: {

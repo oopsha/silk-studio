@@ -1,4 +1,5 @@
 import type { CommandHandler, ICommand } from "./types";
+import type { MessageKey } from "../i18n/translate";
 
 type CommandChangeListener = (commandId: string) => void;
 
@@ -6,12 +7,16 @@ class CommandRegistryImpl {
   private readonly commands = new Map<string, ICommand>();
   private readonly listeners = new Set<CommandChangeListener>();
 
-  registerCommand(id: string, handler: CommandHandler): () => void {
-    if (this.commands.has(id)) {
+  registerCommand(
+    id: string,
+    handler: CommandHandler,
+    options: { replace?: boolean; titleKey?: MessageKey } = {},
+  ): () => void {
+    if (this.commands.has(id) && !options.replace) {
       console.warn(`Command '${id}' is already registered.`);
     }
 
-    const command: ICommand = { id, handler };
+    const command: ICommand = { id, handler, titleKey: options.titleKey };
     this.commands.set(id, command);
     this.fireDidRegisterCommand(id);
 
