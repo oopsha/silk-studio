@@ -6,6 +6,14 @@ import { createInitialLayout } from "./editorGroupTypes";
 const STORAGE_KEY = "silk-editor.session.v1";
 const FILE_NAME = "editor-session.v1.json";
 
+function storageLocation(scope?: string) {
+  const suffix = scope ? `.${scope}` : "";
+  return {
+    storageKey: scope ? `silk-editor.session${suffix}.v1` : STORAGE_KEY,
+    fileName: scope ? `editor-session${suffix}.v1.json` : FILE_NAME,
+  };
+}
+
 /** Pre-split-editor session shape (flat tabs, single implicit group). */
 type EditorSessionSnapshotV1 = {
   version: 1;
@@ -49,14 +57,17 @@ function parseSnapshot(raw: string): EditorSessionSnapshotV2 | null {
   }
 }
 
-export async function loadEditorSessionSnapshot(): Promise<EditorSessionSnapshotV2 | null> {
+export async function loadEditorSessionSnapshot(
+  scope?: string,
+): Promise<EditorSessionSnapshotV2 | null> {
+  const { storageKey, fileName } = storageLocation(scope);
   if (isTauri()) {
     try {
       const { BaseDirectory, exists, readTextFile } = await import(
         "@tauri-apps/plugin-fs"
       );
-      if (await exists(FILE_NAME, { baseDir: BaseDirectory.AppData })) {
-        const raw = await readTextFile(FILE_NAME, {
+      if (await exists(fileName, { baseDir: BaseDirectory.AppData })) {
+        const raw = await readTextFile(fileName, {
           baseDir: BaseDirectory.AppData,
         });
         const fromFile = parseSnapshot(raw);
@@ -68,7 +79,7 @@ export async function loadEditorSessionSnapshot(): Promise<EditorSessionSnapshot
   }
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return null;
     return parseSnapshot(raw);
   } catch {
@@ -78,11 +89,13 @@ export async function loadEditorSessionSnapshot(): Promise<EditorSessionSnapshot
 
 export async function saveEditorSessionSnapshot(
   snapshot: EditorSessionSnapshotV2,
+  scope?: string,
 ): Promise<void> {
+  const { storageKey, fileName } = storageLocation(scope);
   const raw = JSON.stringify(snapshot);
 
   try {
-    localStorage.setItem(STORAGE_KEY, raw);
+    localStorage.setItem(storageKey, raw);
   } catch {
     // Quota — continue to file when possible.
   }
@@ -91,7 +104,7 @@ export async function saveEditorSessionSnapshot(
 
   try {
     const { BaseDirectory, writeTextFile } = await import("@tauri-apps/plugin-fs");
-    await writeTextFile(FILE_NAME, raw, { baseDir: BaseDirectory.AppData });
+    await writeTextFile(fileName, raw, { baseDir: BaseDirectory.AppData });
   } catch {
     // Ignore; localStorage may still hold a copy.
   }

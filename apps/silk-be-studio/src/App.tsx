@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import ActivityBar from "@silk-studio/workbench/components/layout/ActivityBar/index.ts";
 import EditorGroupsView from "@silk-studio/workbench/components/layout/EditorGroupsView/index.ts";
 import SecondarySidebar from "@silk-studio/workbench/components/layout/SecondarySidebar/index.ts";
@@ -6,7 +6,10 @@ import Sidebar from "@silk-studio/workbench/components/layout/Sidebar/index.ts";
 import StatusBar from "@silk-studio/workbench/components/layout/StatusBar/index.ts";
 import TitleBar from "@silk-studio/workbench/components/layout/TitleBar/index.ts";
 import WorkbenchSash from "@silk-studio/workbench/components/layout/WorkbenchSash/index.ts";
+import ConfirmDialog from "@silk-studio/workbench/components/dialogs/ConfirmDialog.tsx";
 import ViewPaneTitle from "@silk-studio/workbench/components/layout/Sidebar/ViewPaneTitle/ViewPaneTitle.tsx";
+import OpenEditorsSection from "@silk-studio/workbench/components/layout/Sidebar/OpenEditors/OpenEditorsSection.tsx";
+import { startEditorSessionSync } from "@silk-studio/editor/services/editor/editorSessionSync.ts";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
 import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
@@ -32,6 +35,23 @@ function EmptyView({ title, message }: { title: string; message: string }) {
     <div className="be-view">
       <ViewPaneTitle title={title} />
       <div className="be-project-empty">{message}</div>
+    </div>
+  );
+}
+
+function ExplorerView() {
+  const { t } = useI18n();
+  const [openEditorsExpanded, setOpenEditorsExpanded] = useState(true);
+
+  return (
+    <div className="be-view">
+      <ViewPaneTitle title={t("workbench.activityBar.explorer")} />
+      <OpenEditorsSection
+        newFileTitleKey="studio.be.commands.newFile"
+        expanded={openEditorsExpanded}
+        onToggle={() => setOpenEditorsExpanded((expanded) => !expanded)}
+      />
+      <div className="be-project-empty">프로젝트가 열려 있지 않습니다.</div>
     </div>
   );
 }
@@ -74,12 +94,7 @@ function App() {
       id: "explorer",
       icon: "files",
       label: t("workbench.activityBar.explorer"),
-      render: () => (
-        <EmptyView
-          title={t("workbench.activityBar.explorer")}
-          message="프로젝트가 열려 있지 않습니다."
-        />
-      ),
+      render: () => <ExplorerView />,
     },
     {
       id: "search",
@@ -123,6 +138,11 @@ function App() {
   }, []);
 
   useEffect(() => startWindowLayoutSync(), []);
+
+  useEffect(
+    () => startEditorSessionSync({ storageScope: "be-studio" }),
+    [],
+  );
 
   useEffect(() => {
     void saveStartupTheme();
@@ -192,6 +212,7 @@ function App() {
         </div>
         <StatusBar leftExtra={<span className="be-status-project">Silk BE Studio</span>} />
       </div>
+      <ConfirmDialog />
     </div>
   );
 }

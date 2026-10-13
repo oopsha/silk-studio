@@ -6,6 +6,7 @@ import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorG
 import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import { UserKeybindingsService } from "@silk-studio/workbench/platform/keybinding/userKeybindingsService.ts";
 import { WindowTitleService } from "@silk-studio/workbench/services/windowTitle/windowTitleService.ts";
+import { ConfirmDialogService } from "@silk-studio/workbench/services/dialog/confirmDialogService.ts";
 import "@silk-studio/workbench/components/layout/WorkbenchShell/WorkbenchShell.css";
 import "@silk-studio/workbench/workbench/workbench.contribution";
 import "./workbench/contributions/fileActions.contribution";
@@ -18,8 +19,14 @@ configureEditorHost({
   setContextKey: (key, value) => ContextKeyService.set(key, value),
   updateWindowTitle: (activeEditor) =>
     WindowTitleService.updateFromEditor(activeEditor),
-  confirmCloseDirtyTab: async (tab) =>
-    window.confirm(`저장하지 않은 변경 사항이 있습니다: ${tab.label}\n닫을까요?`),
+  confirmCloseDirtyTab: (tab) =>
+    ConfirmDialogService.confirm({
+      title: "변경 사항 닫기",
+      message: `저장하지 않은 변경 사항이 있습니다: ${tab.label}\n닫을까요?`,
+      confirmLabel: "닫기",
+      cancelLabel: "취소",
+      danger: true,
+    }),
 });
 WindowTitleService.setWorkspaceName("silk-be-studio");
 EditorGroupsService.prepareSessionRestore();

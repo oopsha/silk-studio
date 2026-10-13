@@ -138,6 +138,20 @@ function EditorArea({
     scheduleRestoreViewState(instance, () => group.getViewState(tabId));
   }, [activeTab?.id, group]);
 
+  // Opening a tab from the sidebar/toolbar changes the active editor but leaves DOM
+  // focus on the clicked control. Focus Monaco after React has committed the tab change.
+  useEffect(() => {
+    const instance = editorRef.current;
+    if (!instance || !activeTab || !isFocusedGroup) return;
+
+    const frame = requestAnimationFrame(() => {
+      if (editorRef.current === instance && isFocusedGroupRef.current) {
+        instance.focus();
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeTab?.id, isFocusedGroup]);
+
   useEffect(() => {
     const instance = editorRef.current;
     if (!instance) return;

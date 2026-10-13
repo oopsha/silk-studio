@@ -1,0 +1,112 @@
+.workbench-confirm-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 6500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background-color: rgba(0, 0, 0, 0.45);
+}
+
+.workbench-confirm-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(440px, 100%);
+  max-height: min(80vh, 640px);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background-color: var(--color-surface);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.workbench-confirm-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.workbench-confirm-dialog__header h2 {
+  margin: 0;
+  color: var(--color-foreground);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.workbench-confirm-dialog__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--color-foreground);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.workbench-confirm-dialog__close:hover {
+  background-color: var(--color-toolbar-hover-background);
+}
+
+.workbench-confirm-dialog__body {
+  padding: 12px 16px;
+}
+
+.workbench-confirm-dialog__body p {
+  margin: 0;
+  color: var(--color-description);
+  font-size: 12px;
+  white-space: pre-line;
+}
+
+.workbench-confirm-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.workbench-confirm-dialog__button {
+  min-width: 88px;
+  height: 28px;
+  padding: 0 12px;
+  color: var(--color-foreground);
+  background-color: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.workbench-confirm-dialog__button:hover {
+  background-color: var(--color-toolbar-hover-background);
+}
+
+.workbench-confirm-dialog__button--primary {
+  color: #ffffff;
+  background-color: #0e639c;
+  border-color: #0e639c;
+}
+
+.workbench-confirm-dialog__button--primary:hover {
+  background-color: #1177bb;
+  border-color: #1177bb;
+}
+
+.workbench-confirm-dialog__button--danger {
+  color: #ffffff;
+  background-color: #a1260d;
+  border-color: #a1260d;
+}
+
+.workbench-confirm-dialog__button--danger:hover {
+  background-color: #c72e0f;
+  border-color: #c72e0f;
+}

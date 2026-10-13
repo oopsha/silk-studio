@@ -1,24 +1,9 @@
 import { useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
-import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import type { MessageKey } from "@silk-studio/workbench/platform/i18n/translate.ts";
-import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
-import { useEditorGroupsLayout } from "@silk-studio/editor/services/editor/useEditorGroupsLayout.ts";
-import {
-  collectGroupIds,
-  type EditorGroupId,
-} from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
-import { codiconForLanguage } from "@silk-studio/editor/services/editor/languageFromPath.ts";
-import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
-import { useEditorTabs } from "@silk-studio/editor/services/editor/useEditorTabs.ts";
-import TabBarContextMenu from "@silk-studio/editor/components/layout/TabBar/TabBarContextMenu.tsx";
-import type {
-  TabBarCommandAdapter,
-  TabBarLabels,
-} from "@silk-studio/editor/components/layout/TabBar/TabBar.tsx";
 import AccordionPanel from "@silk-studio/workbench/components/layout/Sidebar/AccordionPanel/AccordionPanel.tsx";
+import OpenEditorsSection from "@silk-studio/workbench/components/layout/Sidebar/OpenEditors/OpenEditorsSection.tsx";
 import {
   PaneSash,
   useResizablePanes,
@@ -53,24 +38,6 @@ const SECTION_ORDER: ExplorerSectionId[] = [
   // Outline/Timeline temporarily disabled — see the matching comment on VIEW_MENU_DEFS below.
   // "outline",
   // "timeline",
-];
-
-const OPEN_EDITORS_ACTION_DEFS = [
-  {
-    icon: "new-file",
-    labelKey: "workbench.sidebar.newUntitled" as const,
-    command: "silk.file.newTextFile",
-  },
-  {
-    icon: "save-all",
-    labelKey: "workbench.sidebar.saveAll" as const,
-    command: "silk.file.saveAll",
-  },
-  {
-    icon: "close-all",
-    labelKey: "workbench.sidebar.closeAll" as const,
-    command: "silk.file.closeAll",
-  },
 ];
 
 const VIEW_MENU_DEFS: {
@@ -130,175 +97,6 @@ function buildSegments(
 
   flushRun();
   return segments;
-}
-
-function renderSectionActions(
-  actions: ReadonlyArray<{ icon: string; label: string; command?: string }>,
-) {
-  return (
-    <>
-      {actions.map((action) => (
-        <button
-          key={action.icon}
-          type="button"
-          className="accordion-panel__action"
-          title={action.label}
-          aria-label={action.label}
-          onClick={
-            action.command
-              ? () => void CommandService.executeCommand(action.command!)
-              : undefined
-          }
-        >
-          <Codicon name={action.icon} />
-        </button>
-      ))}
-    </>
-  );
-}
-
-function OpenEditorsGroupSection({
-  groupId,
-  groupIndex,
-  showHeader,
-  isFocused,
-}: {
-  groupId: EditorGroupId;
-  groupIndex: number;
-  showHeader: boolean;
-  isFocused: boolean;
-}) {
-  const { t } = useI18n();
-  const tabs = useEditorTabs(groupId);
-  const activeTab = useActiveEditor(groupId);
-  const [contextMenu, setContextMenu] = useState<
-    { tabId: string; top: number; left: number } | null
-  >(null);
-
-  const tabBarLabels: TabBarLabels = {
-    showOpenedEditors: t("workbench.commands.showAllEditors"),
-    closeAll: t("workbench.commands.closeAllEditors"),
-    closeSaved: t("workbench.commands.closeAllSavedEditors"),
-    enablePreviewEditors: t("workbench.commands.togglePreviewEditors"),
-    lockGroup: t("workbench.commands.lockEditorGroup"),
-    configureEditors: t("workbench.commands.configureEditors"),
-    close: t("workbench.commands.closeActiveEditor"),
-    closeOthers: t("workbench.commands.closeOtherEditors"),
-    closeToTheRight: t("workbench.commands.closeEditorsToTheRight"),
-    keepOpen: t("workbench.commands.pinEditor"),
-    splitEditorRight: t("workbench.commands.splitEditorRight"),
-    closeEditorGroup: t("workbench.commands.closeEditorGroup"),
-    moreActions: t("workbench.tabBar.moreActions"),
-    closeTabAriaLabel: (tabLabel) =>
-      t("workbench.tabBar.closeTabAriaLabel").replace("{name}", tabLabel),
-  };
-  const tabBarCommands: TabBarCommandAdapter = {
-    executeCommand: (commandId) => CommandService.executeCommand(commandId),
-    lookupKeybinding: (commandId) =>
-      KeybindingsRegistry.lookupKeybinding(commandId),
-  };
-
-  return (
-    <>
-      {showHeader ? (
-        <li
-          className={`open-editors-list__group-header${isFocused ? " open-editors-list__group-header--focused" : ""}`}
-        >
-          {t("workbench.sidebar.openEditorsGroup").replace(
-            "{n}",
-            String(groupIndex),
-          )}
-        </li>
-      ) : null}
-      {tabs.length === 0 && !showHeader ? (
-        <li className="accordion-panel__empty">
-          {t("workbench.sidebar.noOpenEditors")}
-        </li>
-      ) : null}
-      {tabs.map((tab) => {
-        const isActive = tab.id === activeTab?.id;
-
-        return (
-          <li
-            key={tab.id}
-            className={`open-editors-list__item${isActive ? " open-editors-list__item--active" : ""}${tab.isDirty ? " open-editors-list__item--dirty" : ""}${tab.isPreview ? " open-editors-list__item--preview" : ""}`}
-            title={tab.tooltip ?? tab.uri ?? tab.label}
-            onClick={() => {
-              // Clicking a tab in an unfocused group's section must focus
-              // that group too, not just activate the tab within it.
-              EditorGroupsService.setFocusedGroup(groupId);
-              EditorGroupsService.getGroup(groupId).setActiveTab(tab.id);
-            }}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              // The close/close-others/etc commands this menu runs always target the active
-              // tab, not an explicit id — so make this row active first, same as TabBar itself.
-              EditorGroupsService.setFocusedGroup(groupId);
-              EditorGroupsService.getGroup(groupId).setActiveTab(tab.id);
-              setContextMenu({
-                tabId: tab.id,
-                top: event.clientY,
-                left: event.clientX,
-              });
-            }}
-          >
-            <span className="open-editors-list__icon" aria-hidden>
-              <Codicon name={codiconForLanguage(tab.languageId)} />
-            </span>
-            <span className="open-editors-list__label">{tab.label}</span>
-            {tab.description ? (
-              <span className="open-editors-list__description">{tab.description}</span>
-            ) : null}
-            <span className="open-editors-list__actions">
-              {tab.isDirty ? (
-                <span className="open-editors-list__dirty" aria-hidden />
-              ) : null}
-              <button
-                type="button"
-                className="open-editors-list__close"
-                aria-label={tabBarLabels.closeTabAriaLabel(tab.label)}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  EditorGroupsService.closeTab(groupId, tab.id);
-                }}
-              >
-                <Codicon name="close" />
-              </button>
-            </span>
-          </li>
-        );
-      })}
-      {contextMenu ? (
-        <TabBarContextMenu
-          tabId={contextMenu.tabId}
-          anchor={{ top: contextMenu.top, left: contextMenu.left }}
-          commands={tabBarCommands}
-          labels={tabBarLabels}
-          onClose={() => setContextMenu(null)}
-        />
-      ) : null}
-    </>
-  );
-}
-
-function OpenEditorsList() {
-  const { layout, focusedGroupId } = useEditorGroupsLayout();
-  const groupIds = useMemo(() => collectGroupIds(layout), [layout]);
-  const showHeaders = groupIds.length > 1;
-
-  return (
-    <ul className="open-editors-list">
-      {groupIds.map((groupId, index) => (
-        <OpenEditorsGroupSection
-          key={groupId}
-          groupId={groupId}
-          groupIndex={index + 1}
-          showHeader={showHeaders}
-          isFocused={groupId === focusedGroupId}
-        />
-      ))}
-    </ul>
-  );
 }
 
 function ExplorerView({
@@ -387,13 +185,6 @@ function ExplorerView({
     }));
   }
 
-  const openEditorsActions = renderSectionActions(
-    OPEN_EDITORS_ACTION_DEFS.map((action) => ({
-      icon: action.icon,
-      label: t(action.labelKey),
-      command: action.command,
-    })),
-  );
   const WORKSPACE_ACTIONS_NODE = connectionsActions;
 
   function sectionTitle(id: ExplorerSectionId) {
@@ -490,17 +281,11 @@ function ExplorerView({
           key="openEditors"
           className="explorer-view__segment explorer-view__segment--fixed"
         >
-          <AccordionPanel
-            title={t("workbench.sidebar.openEditors")}
+          <OpenEditorsSection
+            newFileTitleKey="studio.db.commands.newQuery"
             expanded={segment.expanded}
-            variant="fixed"
             onToggle={() => toggleSection("openEditors")}
-            actions={openEditorsActions}
-          >
-            {segment.expanded ? (
-              <OpenEditorsList />
-            ) : null}
-          </AccordionPanel>
+          />
         </div>
       );
     }
