@@ -24,6 +24,16 @@ import {
 } from "../../services/connection/tableStructureSaveService";
 import { TableStructureRefreshService } from "../../services/connection/tableStructureRefreshService";
 import { ConnectionService } from "../../services/connection/connectionService";
+import {
+  getCachedObjectPreview,
+  setCachedObjectPreview,
+} from "../../services/connection/objectPreviewCache";
+
+type CachedTableStructure = {
+  columns: MetadataColumn[];
+  primaryKeyOrders: Map<string, number>;
+  tableComment: string | null;
+};
 
 type LoadStatus = "loading" | "error" | "ready";
 
@@ -118,33 +128,46 @@ export function useTableStructureEditorState(
   const [editedTableName, setEditedTableName] = useState(objectRef.objectName);
   const [editedTableComment, setEditedTableComment] = useState<string | null>(null);
 
-  const load = useCallback(async (): Promise<void> => {
+  const load = useCallback(async (forceRefresh = false): Promise<void> => {
     setStatus("loading");
     try {
-      const [columnsResult, primaryKeysResult, commentResult] = await Promise.all([
-        bridgeListColumns(
-          objectRef.profileId,
-          objectRef.schemaName,
-          objectRef.objectName,
-          objectRef.catalogName ?? undefined,
-        ),
-        bridgeListPrimaryKeys(
-          objectRef.profileId,
-          objectRef.schemaName,
-          objectRef.objectName,
-          objectRef.catalogName ?? undefined,
-        ),
-        bridgeGetTableComment(
-          objectRef.profileId,
-          objectRef.schemaName,
-          objectRef.objectName,
-          objectRef.catalogName ?? undefined,
-        ).catch(() => ({ comment: undefined })),
-      ]);
+      let metadata = forceRefresh
+        ? undefined
+        : getCachedObjectPreview<CachedTableStructure>("tableStructure", objectRef);
+      if (!metadata) {
+        const [columnsResult, primaryKeysResult, commentResult] = await Promise.all([
+          bridgeListColumns(
+            objectRef.profileId,
+            objectRef.schemaName,
+            objectRef.objectName,
+            objectRef.catalogName ?? undefined,
+          ),
+          bridgeListPrimaryKeys(
+            objectRef.profileId,
+            objectRef.schemaName,
+            objectRef.objectName,
+            objectRef.catalogName ?? undefined,
+          ),
+          bridgeGetTableComment(
+            objectRef.profileId,
+            objectRef.schemaName,
+            objectRef.objectName,
+            objectRef.catalogName ?? undefined,
+          ).catch(() => ({ comment: undefined })),
+        ]);
+        metadata = {
+          columns: columnsResult.columns,
+          primaryKeyOrders: new Map(
+            primaryKeysResult.keys.map((key, index) => [key.name.toLowerCase(), index + 1]),
+          ),
+          tableComment: commentResult.comment ?? null,
+        };
+        setCachedObjectPreview("tableStructure", objectRef, metadata);
+      }
 
       const rows: OriginalColumnRow[] = [];
       const drafts: EditableColumnDraft[] = [];
-      for (const column of columnsResult.columns) {
+      for (const column of metadata.columns) {
         const rowId = crypto.randomUUID();
         rows.push({ rowId, column });
         drafts.push(draftFromColumn(rowId, column));
@@ -153,12 +176,10 @@ export function useTableStructureEditorState(
       setOriginalColumns(rows);
       setEditedColumns(drafts);
       setPendingDeleteRowIds(new Set());
-      setPrimaryKeyOrders(
-        new Map(primaryKeysResult.keys.map((key, index) => [key.name.toLowerCase(), index + 1])),
-      );
-      setOriginalTableComment(commentResult.comment ?? null);
+      setPrimaryKeyOrders(new Map(metadata.primaryKeyOrders));
+      setOriginalTableComment(metadata.tableComment);
       setEditedTableName(objectRef.objectName);
-      setEditedTableComment(commentResult.comment ?? null);
+      setEditedTableComment(metadata.tableComment);
       setStatus("ready");
     } catch (error) {
       setErrorMessage(formatErrorMessage(error, t("app.columns.loadFailed")));
@@ -180,7 +201,7 @@ export function useTableStructureEditorState(
         ref.objectName === objectRef.objectName &&
         ref.catalogName === objectRef.catalogName
       ) {
-        void load();
+        void load(true);
       }
     });
   }, [objectRef, load]);
@@ -293,7 +314,7 @@ export function useTableStructureEditorState(
       });
       if (!confirmed) return;
     }
-    void load();
+    void load(true);
   }, [isDirty, load, t]);
 
   const save = useCallback(async (): Promise<void> => {
