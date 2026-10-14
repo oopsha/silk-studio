@@ -13,3 +13,17 @@
 }
 
 .be-status-project { color: inherit; }
+.silk-editor-split-drop-overlay {
+  position: absolute;
+  z-index: 50;
+  background-color: var(--color-focus-border);
+  opacity: 0.18;
+  border: 2px solid var(--color-focus-border);
+  box-sizing: border-box;
+  pointer-events: none;
+  transition:
+    top 0.08s ease-out,
+    left 0.08s ease-out,
+    width 0.08s ease-out,
+    height 0.08s ease-out;
+}

@@ -15,7 +15,21 @@ import {
 import { AppNotificationService } from "../../services/notifications/appNotificationService";
 import "./AboutDialog.css";
 
-function AboutDialog() {
+type AboutDialogProps = {
+  appName?: string;
+  appVersion?: string;
+  fetchRuntimeInfo?: boolean;
+  showDatabaseRuntimeInfo?: boolean;
+  showLogFolderAction?: boolean;
+};
+
+function AboutDialog({
+  appName = APP_DISPLAY_NAME,
+  appVersion: fallbackAppVersion = APP_VERSION,
+  fetchRuntimeInfo = true,
+  showDatabaseRuntimeInfo = true,
+  showLogFolderAction = true,
+}: AboutDialogProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(() => AboutDialogService.isOpen());
   const [runtime, setRuntime] = useState<AppRuntimeInfo | null>(null);
@@ -32,6 +46,11 @@ function AboutDialog() {
       setRuntime(null);
       return;
     }
+    if (!fetchRuntimeInfo) {
+      setRuntime(null);
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
     setLoading(true);
@@ -44,7 +63,7 @@ function AboutDialog() {
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, fetchRuntimeInfo]);
 
   if (!open) {
     return null;
@@ -67,8 +86,8 @@ function AboutDialog() {
     }
   }
 
-  const appVersion = runtime?.appVersion ?? APP_VERSION;
-  const tauriVersion = runtime?.tauriVersion ?? "…";
+  const appVersion = runtime?.appVersion ?? fallbackAppVersion;
+  const tauriVersion = loading ? "…" : runtime?.tauriVersion ?? t("workbench.about.unknown");
   const agentLabel = loading
     ? "…"
     : runtime
@@ -102,7 +121,7 @@ function AboutDialog() {
       >
         <header className="about-dialog__header">
           <h2 id="about-dialog-title">
-            {t("workbench.about.title").replace("{name}", APP_DISPLAY_NAME)}
+            {t("workbench.about.title").replace("{name}", appName)}
           </h2>
           <button
             type="button"
@@ -115,7 +134,7 @@ function AboutDialog() {
         </header>
 
         <div className="about-dialog__body">
-          <p className="about-dialog__product">{APP_DISPLAY_NAME}</p>
+          <p className="about-dialog__product">{appName}</p>
           <dl className="about-dialog__meta">
             <div>
               <dt>{t("workbench.about.version")}</dt>
@@ -125,14 +144,18 @@ function AboutDialog() {
               <dt>{t("workbench.about.tauri")}</dt>
               <dd>{loading ? "…" : tauriVersion}</dd>
             </div>
-            <div>
-              <dt>{t("workbench.about.jdbcAgent")}</dt>
-              <dd>{agentLabel}</dd>
-            </div>
-            <div>
-              <dt>{t("workbench.about.java")}</dt>
-              <dd className="about-dialog__path">{javaLabel}</dd>
-            </div>
+            {showDatabaseRuntimeInfo ? (
+              <>
+                <div>
+                  <dt>{t("workbench.about.jdbcAgent")}</dt>
+                  <dd>{agentLabel}</dd>
+                </div>
+                <div>
+                  <dt>{t("workbench.about.java")}</dt>
+                  <dd className="about-dialog__path">{javaLabel}</dd>
+                </div>
+              </>
+            ) : null}
             <div>
               <dt>{t("workbench.about.os")}</dt>
               <dd>
@@ -141,25 +164,27 @@ function AboutDialog() {
                   : `${runtime?.os ?? t("workbench.about.unknown")} / ${runtime?.arch ?? t("workbench.about.unknown")}`}
               </dd>
             </div>
-            <div>
-              <dt>{t("workbench.about.logFile")}</dt>
-              <dd className="about-dialog__path">
-                {loading
-                  ? "…"
-                  : (runtime?.logFile ?? t("workbench.about.unavailable"))}
-              </dd>
-            </div>
+            {showDatabaseRuntimeInfo ? (
+              <div>
+                <dt>{t("workbench.about.logFile")}</dt>
+                <dd className="about-dialog__path">
+                  {loading
+                    ? "…"
+                    : (runtime?.logFile ?? t("workbench.about.unavailable"))}
+                </dd>
+              </div>
+            ) : null}
           </dl>
         </div>
 
         <footer className="about-dialog__footer">
-          <button
+          {showLogFolderAction ? <button
             type="button"
             className="about-dialog__button about-dialog__button--secondary"
             onClick={() => void handleOpenLogFolder()}
           >
             {t("workbench.commands.openLogFolder")}
-          </button>
+          </button> : null}
           <button
             type="button"
             className="about-dialog__button about-dialog__button--secondary"

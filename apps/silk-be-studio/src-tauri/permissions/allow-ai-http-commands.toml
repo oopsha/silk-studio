@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-ai-http-commands"
+description = "Allows outbound HTTPS requests to AI provider APIs."
+commands.allow = ["ai_http_fetch"]

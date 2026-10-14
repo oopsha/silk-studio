@@ -4798,6 +4798,7 @@ dependencies = [
 name = "silk-be-studio"
 version = "0.1.0"
 dependencies = [
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "silk-window-state",
@@ -4806,6 +4807,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
  "tauri-plugin-window-controls",
+ "url",
 ]
 
 [[package]]

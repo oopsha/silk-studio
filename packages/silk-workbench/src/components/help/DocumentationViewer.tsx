@@ -1,6 +1,54 @@
 import "./DocumentationViewer.css";
 
-function DocumentationViewer() {
+type DocumentationViewerProps = {
+  studioName?: string;
+  backendStudio?: boolean;
+};
+
+function DocumentationViewer({
+  studioName = "Silk DB Studio",
+  backendStudio = false,
+}: DocumentationViewerProps) {
+  if (backendStudio) {
+    return (
+      <main
+        className="documentation-viewer"
+        data-testid="documentation-viewer"
+        aria-label="Documentation"
+      >
+        <header className="documentation-viewer__header">
+          <h1>{studioName} — User Guide</h1>
+          <p>백엔드 프로젝트와 파일을 다루는 공용 워크벤치 안내입니다.</p>
+        </header>
+
+        <section className="documentation-viewer__section" aria-labelledby="doc-be-scope">
+          <h2 id="doc-be-scope">Backend support</h2>
+          <p>
+            Spring 지원부터 시작해 Node.js, Python, PHP 개발 기능을 순차적으로
+            확장할 예정입니다. 프로젝트 탐색, 실행 및 디버깅 기능은 개발 중입니다.
+          </p>
+        </section>
+
+        <section className="documentation-viewer__section" aria-labelledby="doc-shortcuts">
+          <h2 id="doc-shortcuts">Keyboard shortcuts</h2>
+          <ul>
+            <li><kbd>Ctrl+Shift+P</kbd> — Command Palette</li>
+            <li><kbd>Ctrl+K Ctrl+S</kbd> — Keyboard Shortcuts</li>
+            <li><kbd>Ctrl+,</kbd> — Settings</li>
+          </ul>
+        </section>
+
+        <section className="documentation-viewer__section" aria-labelledby="doc-diag">
+          <h2 id="doc-diag">Diagnostics</h2>
+          <ul>
+            <li>Help → <strong>About</strong> — 앱 버전과 정보</li>
+            <li>Manage → <strong>AI Call Log</strong> — AI 요청 기록</li>
+          </ul>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main
       className="documentation-viewer"
@@ -8,7 +56,7 @@ function DocumentationViewer() {
       aria-label="Documentation"
     >
       <header className="documentation-viewer__header">
-        <h1>Silk DB Studio — User Guide</h1>
+        <h1>{studioName} — User Guide</h1>
         <p>
           Install, update, shortcuts, and diagnostics. Full markdown lives in{" "}
           <code>docs/user-guide.md</code> in the repository.

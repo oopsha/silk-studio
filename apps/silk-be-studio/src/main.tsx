@@ -7,6 +7,7 @@ import { ContextKeyService } from "@silk-studio/workbench/platform/context/conte
 import { UserKeybindingsService } from "@silk-studio/workbench/platform/keybinding/userKeybindingsService.ts";
 import { WindowTitleService } from "@silk-studio/workbench/services/windowTitle/windowTitleService.ts";
 import { ConfirmDialogService } from "@silk-studio/workbench/services/dialog/confirmDialogService.ts";
+import { AppLogService } from "@silk-studio/workbench/services/diagnostics/appLogService.ts";
 import "@silk-studio/workbench/components/layout/WorkbenchShell/WorkbenchShell.css";
 import "@silk-studio/workbench/workbench/workbench.contribution";
 import "./workbench/contributions/fileActions.contribution";
@@ -31,6 +32,8 @@ configureEditorHost({
 WindowTitleService.setWorkspaceName("silk-be-studio");
 EditorGroupsService.prepareSessionRestore();
 applyWorkbenchFonts();
+AppLogService.installGlobalHandlers();
+void AppLogService.info("Frontend bootstrap complete.", "bootstrap");
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

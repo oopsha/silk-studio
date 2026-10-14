@@ -617,7 +617,11 @@ function QueryResultSettings() {
   );
 }
 
-function AiSettings() {
+function AiSettings({
+  showDatabaseOptions = true,
+}: {
+  showDatabaseOptions?: boolean;
+}) {
   const configuration = useConfiguration();
   const { t } = useI18n();
   const provider = configuration["ai.provider"];
@@ -870,21 +874,23 @@ function AiSettings() {
           ) : null}
         </div>
       </SettingRow>
-      <SettingRow title={t("settings.ai.contextSchema")}>
-        <label className="settings-checkbox">
-          <input
-            type="checkbox"
-            checked={configuration["ai.context.includeSchema"]}
-            onChange={(event) =>
-              ConfigurationService.updateValue(
-                "ai.context.includeSchema",
-                event.target.checked,
-              )
-            }
-          />
-          <span>{t("settings.ai.contextSchema")}</span>
-        </label>
-      </SettingRow>
+      {showDatabaseOptions ? (
+        <SettingRow title={t("settings.ai.contextSchema")}>
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={configuration["ai.context.includeSchema"]}
+              onChange={(event) =>
+                ConfigurationService.updateValue(
+                  "ai.context.includeSchema",
+                  event.target.checked,
+                )
+              }
+            />
+            <span>{t("settings.ai.contextSchema")}</span>
+          </label>
+        </SettingRow>
+      ) : null}
       <SettingRow title={t("settings.ai.contextSelection")}>
         <label className="settings-checkbox">
           <input
@@ -900,57 +906,63 @@ function AiSettings() {
           <span>{t("settings.ai.contextSelection")}</span>
         </label>
       </SettingRow>
-      <SettingRow title={t("settings.ai.contextHistory")}>
-        <label className="settings-checkbox">
-          <input
-            type="checkbox"
-            checked={configuration["ai.context.includeQueryHistory"]}
-            onChange={(event) =>
-              ConfigurationService.updateValue(
-                "ai.context.includeQueryHistory",
-                event.target.checked,
-              )
-            }
-          />
-          <span>{t("settings.ai.contextHistory")}</span>
-        </label>
-      </SettingRow>
-      <SettingRow
-        title={t("settings.ai.contextPlsqlDeps")}
-        description={t("settings.ai.contextPlsqlDepsDescription")}
-      >
-        <label className="settings-checkbox">
-          <input
-            type="checkbox"
-            checked={configuration["ai.context.includePlsqlDeps"]}
-            onChange={(event) =>
-              ConfigurationService.updateValue(
-                "ai.context.includePlsqlDeps",
-                event.target.checked,
-              )
-            }
-          />
-          <span>{t("settings.ai.contextPlsqlDeps")}</span>
-        </label>
-      </SettingRow>
-      <SettingRow
-        title={t("settings.ai.allowExecute")}
-        description={t("settings.ai.allowExecuteDescription")}
-      >
-        <label className="settings-checkbox">
-          <input
-            type="checkbox"
-            checked={configuration["ai.allowExecute"]}
-            onChange={(event) =>
-              ConfigurationService.updateValue(
-                "ai.allowExecute",
-                event.target.checked,
-              )
-            }
-          />
-          <span>{t("settings.ai.allowExecuteHint")}</span>
-        </label>
-      </SettingRow>
+      {showDatabaseOptions ? (
+        <SettingRow title={t("settings.ai.contextHistory")}>
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={configuration["ai.context.includeQueryHistory"]}
+              onChange={(event) =>
+                ConfigurationService.updateValue(
+                  "ai.context.includeQueryHistory",
+                  event.target.checked,
+                )
+              }
+            />
+            <span>{t("settings.ai.contextHistory")}</span>
+          </label>
+        </SettingRow>
+      ) : null}
+      {showDatabaseOptions ? (
+        <SettingRow
+          title={t("settings.ai.contextPlsqlDeps")}
+          description={t("settings.ai.contextPlsqlDepsDescription")}
+        >
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={configuration["ai.context.includePlsqlDeps"]}
+              onChange={(event) =>
+                ConfigurationService.updateValue(
+                  "ai.context.includePlsqlDeps",
+                  event.target.checked,
+                )
+              }
+            />
+            <span>{t("settings.ai.contextPlsqlDeps")}</span>
+          </label>
+        </SettingRow>
+      ) : null}
+      {showDatabaseOptions ? (
+        <SettingRow
+          title={t("settings.ai.allowExecute")}
+          description={t("settings.ai.allowExecuteDescription")}
+        >
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={configuration["ai.allowExecute"]}
+              onChange={(event) =>
+                ConfigurationService.updateValue(
+                  "ai.allowExecute",
+                  event.target.checked,
+                )
+              }
+            />
+            <span>{t("settings.ai.allowExecuteHint")}</span>
+          </label>
+        </SettingRow>
+      ) : null}
       {shouldUseDevSecretStore() ? (
         <SettingRow
           title={t("settings.ai.debugDumpHttp")}
@@ -979,14 +991,27 @@ type SettingsEditorProps = {
   /** Absent → the Export/Import buttons are hidden (e.g. host app has no file-I/O support). */
   onExportSettings?: () => Promise<boolean>;
   onImportSettings?: () => Promise<boolean>;
+  /** Restrict the categories shown by hosts that expose only a subset of shared settings. */
+  categories?: SettingsCategory[];
+  /** Hide database and SQL-specific AI context controls in non-database hosts. */
+  showDatabaseAiOptions?: boolean;
 };
 
-function SettingsEditor({ onExportSettings, onImportSettings }: SettingsEditorProps) {
+function SettingsEditor({
+  onExportSettings,
+  onImportSettings,
+  categories,
+  showDatabaseAiOptions = true,
+}: SettingsEditorProps) {
   const category = useSettingsCategory();
   const { t } = useI18n();
   const [ioMessage, setIoMessage] = useState<string | null>(null);
   const [ioTone, setIoTone] = useState<"info" | "error" | "success">("info");
   const [ioBusy, setIoBusy] = useState(false);
+  const visibleCategories = categories ?? SettingsService.getCategories();
+  const activeCategory = visibleCategories.includes(category)
+    ? category
+    : visibleCategories[0];
 
   async function handleExport(): Promise<void> {
     if (!onExportSettings) return;
@@ -1025,14 +1050,14 @@ function SettingsEditor({ onExportSettings, onImportSettings }: SettingsEditorPr
       <aside className="settings-editor__sidebar">
         <div className="settings-editor__sidebar-title">{t("settings.title")}</div>
         <nav className="settings-editor__nav">
-          {SettingsService.getCategories().map((item) => {
+          {visibleCategories.map((item) => {
             const available = SETTINGS_CATEGORY_AVAILABLE[item];
             return (
               <button
                 key={item}
                 type="button"
                 className={`settings-editor__nav-item${
-                  category === item ? " settings-editor__nav-item--active" : ""
+                  activeCategory === item ? " settings-editor__nav-item--active" : ""
                 }${available ? "" : " settings-editor__nav-item--disabled"}${
                   item === "experimental" ? " settings-editor__nav-item--experimental" : ""
                 }`}
@@ -1080,12 +1105,14 @@ function SettingsEditor({ onExportSettings, onImportSettings }: SettingsEditorPr
         ) : null}
       </aside>
       <div className="settings-editor__content">
-        {category === "appearance" ? <AppearanceSettings /> : null}
-        {category === "editor" ? <EditorSettings /> : null}
-        {category === "database" ? <DatabaseSettings /> : null}
-        {category === "queryResult" ? <QueryResultSettings /> : null}
-        {category === "ai" ? <AiSettings /> : null}
-        {category === "experimental" ? <ExperimentalSettings /> : null}
+        {activeCategory === "appearance" ? <AppearanceSettings /> : null}
+        {activeCategory === "editor" ? <EditorSettings /> : null}
+        {activeCategory === "database" ? <DatabaseSettings /> : null}
+        {activeCategory === "queryResult" ? <QueryResultSettings /> : null}
+        {activeCategory === "ai" ? (
+          <AiSettings showDatabaseOptions={showDatabaseAiOptions} />
+        ) : null}
+        {activeCategory === "experimental" ? <ExperimentalSettings /> : null}
       </div>
     </main>
   );
