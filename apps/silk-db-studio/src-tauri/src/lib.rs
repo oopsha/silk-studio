@@ -615,6 +615,27 @@ fn connection_dependents(
     )
 }
 
+fn shutdown_runtime(app: &tauri::AppHandle) {
+    if let Some(state) = app.try_state::<AppState>() {
+        state.jdbc_agent.shutdown();
+    }
+    if let Some(state) = app.try_state::<ssm_tunnel::SsmTunnelState>() {
+        state.tunnels.close_all();
+    }
+    if let Some(state) = app.try_state::<ssh_tunnel::SshTunnelState>() {
+        state.tunnels.close_all();
+    }
+}
+
+/// The Windows updater exits without emitting ExitRequested. Release subprocess file locks
+/// before launching the installer, and await the blocking kill/wait operations off the UI thread.
+#[tauri::command]
+async fn update_prepare_install(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || shutdown_runtime(&app))
+        .await
+        .map_err(|error| format!("Failed to prepare update installation: {error}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -626,6 +647,7 @@ pub fn run() {
         .plugin(tauri_plugin_system_symbols::init())
         .plugin(tauri_plugin_window_controls::init())
         .invoke_handler(tauri::generate_handler![
+            update_prepare_install,
             ensure_title_bar_overlay,
             startup_theme::startup_theme_save,
             query_execute,
@@ -746,15 +768,7 @@ pub fn run() {
             // (confirmed: an orphaned session-manager-plugin.exe holds a lock on its own .exe,
             // which then blocks a later `cargo build` from touching it).
             if let tauri::RunEvent::ExitRequested { .. } = event {
-                if let Some(state) = app_handle.try_state::<AppState>() {
-                    state.jdbc_agent.shutdown();
-                }
-                if let Some(state) = app_handle.try_state::<ssm_tunnel::SsmTunnelState>() {
-                    state.tunnels.close_all();
-                }
-                if let Some(state) = app_handle.try_state::<ssh_tunnel::SshTunnelState>() {
-                    state.tunnels.close_all();
-                }
+                shutdown_runtime(app_handle);
             }
         });
 }

@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-update-commands"
+description = "Allows stopping database agents and tunnels before update installation."
+commands.allow = ["update_prepare_install"]

@@ -60,6 +60,7 @@
     "allow-window-layout-commands",
     "allow-startup-theme-commands",
     "allow-app-log-commands",
+    "allow-update-commands",
     "updater:default",
     "process:default"
   ]
