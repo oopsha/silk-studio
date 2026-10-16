@@ -39,6 +39,7 @@ import {
 import { QueryResultGridService } from "../../../services/query/queryResultGridService";
 import ContextMenu, { type ContextMenuItem } from "../../common/ContextMenu";
 import { fetchQueryResultPage } from "../../../services/query/queryResultPaging";
+import { translateFilterModel, translateSortModel } from "../../../services/query/filterModelTranslator";
 import { QueryResultDirtyService } from "../../../services/query/queryResultDirtyService";
 import { formatErrorMessage } from "../../../services/formatErrorMessage";
 import { ConfirmDialogService } from "../../../services/ui/confirmDialogService";
@@ -200,6 +201,9 @@ function QueryResultGrid({
   const cellSelectionRef = useRef<GridCellSelection | null>(null);
   const draggingCellSelectionRef = useRef(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [exportProgressRows, setExportProgressRows] = useState<number | null>(null);
+  const [exportInProgress, setExportInProgress] = useState(false);
+  const exportingRef = useRef(false);
   const actionTimerRef = useRef<number | null>(null);
   const [saveBlockedReason, setSaveBlockedReason] = useState<string | null>(null);
   const [preview, setPreview] = useState<UpdatePreview | null>(null);
@@ -534,17 +538,6 @@ function QueryResultGrid({
     };
   }, []);
 
-  useEffect(() => {
-    const api = apiRef.current;
-    if (!api) return;
-    QueryResultGridService.attach(api, result.columns, nullDisplay, openValueEditor);
-    // New result while the grid is already mounted — size after paint.
-    const frame = window.requestAnimationFrame(() => {
-      QueryResultGridService.autoSizeToContent();
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [nullDisplay, openValueEditor, result.columns, result.rows]);
-
   const flashMessage = (message: string) => {
     setActionMessage(message);
     if (actionTimerRef.current != null) {
@@ -617,6 +610,80 @@ function QueryResultGrid({
     }
   }, [loadNextPage, truncateBeforeImport, useIncrementalScroll]);
 
+  const fetchAllRowsForExport = useCallback(async (
+    visibleColumns: string[],
+    onProgress?: (rowCount: number | null) => void,
+  ) => {
+    if (!useIncrementalScroll || !connectionId) return null;
+    const api = apiRef.current;
+    if (!api) return null;
+    const filterModel = api.getFilterModel() as Record<string, unknown>;
+    const filterActive = Object.keys(filterModel).length > 0;
+    const sort = translateSortModel(
+      api.getColumnState()
+        .filter((column) => column.sort === "asc" || column.sort === "desc")
+        .sort((left, right) => (left.sortIndex ?? 0) - (right.sortIndex ?? 0))
+        .map((column) => ({ colId: column.colId, sort: column.sort! })),
+      result.columns,
+    );
+    const sortActive = sort.length > 0;
+    const filters = translateFilterModel(filterModel, result.columns);
+    const rows: QueryResultRow[] = [];
+    let offset = 0;
+    while (true) {
+      const payload = await fetchQueryResultPage(
+        connectionId,
+        executedSql ?? sql,
+        result.columns,
+        offset,
+        INCREMENTAL_SCROLL_PAGE_SIZE,
+        { binds, filters, sort },
+      );
+      const page = toQueryResultRows(payload.columns, payload.rows, offset);
+      rows.push(...page);
+      offset += page.length;
+      onProgress?.(offset);
+      if (page.length < INCREMENTAL_SCROLL_PAGE_SIZE) break;
+    }
+    if (!filterActive && !sortActive) {
+      const loadedByIndex = new Map<number, QueryResultRow>();
+      api.forEachNode((node) => {
+        if (node.data) loadedByIndex.set(getQueryResultRowIndex(node.data), node.data);
+      });
+      rows.forEach((row, index) => {
+        const loaded = loadedByIndex.get(index);
+        if (loaded) Object.assign(row, loaded);
+      });
+    }
+    const exported = rows
+      .filter((_, index) => filterActive || sortActive || !QueryResultDirtyService.isRowDeleted(tabId, index))
+      .map((row) => visibleColumns.map((column) => row[column] ?? null));
+    if (!filterActive && !sortActive) {
+      api.forEachNode((node) => {
+        if (node.data && getQueryResultRowIndex(node.data) < 0) {
+          exported.push(visibleColumns.map((column) => node.data?.[column] ?? null));
+        }
+      });
+    }
+    return exported;
+  }, [binds, connectionId, executedSql, result.columns, sql, tabId, useIncrementalScroll]);
+
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    QueryResultGridService.attach(
+      api,
+      result.columns,
+      nullDisplay,
+      openValueEditor,
+      useIncrementalScroll ? async (columns, onProgress) => (await fetchAllRowsForExport(columns, onProgress)) ?? [] : undefined,
+    );
+    const frame = window.requestAnimationFrame(() => {
+      QueryResultGridService.autoSizeToContent();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [fetchAllRowsForExport, nullDisplay, openValueEditor, result.columns, result.rows, useIncrementalScroll]);
+
   useEffect(() => {
     pagingRef.current = {
       nextOffset: result.rows.length,
@@ -627,7 +694,13 @@ function QueryResultGrid({
 
   const handleGridReady = (event: GridReadyEvent<QueryResultRow>) => {
     apiRef.current = event.api;
-    QueryResultGridService.attach(event.api, result.columns, nullDisplay, openValueEditor);
+    QueryResultGridService.attach(
+      event.api,
+      result.columns,
+      nullDisplay,
+      openValueEditor,
+      useIncrementalScroll ? async (columns, onProgress) => (await fetchAllRowsForExport(columns, onProgress)) ?? [] : undefined,
+    );
 
     const savedUiState = gridUiStateByTabId.get(tabId);
     if (savedUiState) {
@@ -1221,12 +1294,22 @@ function QueryResultGrid({
   };
 
   const handleExportCsv = async () => {
+    if (exportingRef.current) return;
+    exportingRef.current = true;
+    setExportInProgress(true);
+    if (useIncrementalScroll) setExportProgressRows(result.rows.length);
     try {
-      const ok = await QueryResultGridService.exportCsv();
+      const ok = await QueryResultGridService.exportCsv((rowCount) => {
+        setExportProgressRows(rowCount);
+      });
       flashMessage(ok ? t("app.query.csvExported") : t("app.query.exportCancelled"));
     } catch (error) {
       console.warn("[query-result] csv export failed", error);
       flashMessage(t("app.query.exportFailed"));
+    } finally {
+      exportingRef.current = false;
+      setExportInProgress(false);
+      setExportProgressRows(null);
     }
   };
 
@@ -1810,6 +1893,7 @@ function QueryResultGrid({
             className="query-result-grid__action"
             title={t("app.query.exportCsvTitle")}
             aria-label={t("app.query.exportCsv")}
+            disabled={exportInProgress}
             onClick={() => void handleExportCsv()}
           >
             <Codicon name="export" />
@@ -2047,6 +2131,24 @@ function QueryResultGrid({
           onCancel={handleClosePreview}
           onConfirm={() => void handleConfirmUpdates()}
         />
+      ) : null}
+      {exportProgressRows !== null ? (
+        <div className="query-result-update-dialog__backdrop" role="presentation">
+          <section className="query-result-update-dialog query-result-export-progress" role="dialog" aria-modal="true" aria-labelledby="query-result-export-progress-title">
+            <header className="query-result-update-dialog__header">
+              <h2 id="query-result-export-progress-title">{t("app.query.csvExportProgressTitle")}</h2>
+            </header>
+            <div className="query-result-update-dialog__body">
+              <p className="query-result-update-dialog__hint">{t("app.query.csvExportProgressHint")}</p>
+              <div className="query-result-update-dialog__progress-status">
+                <div className="query-result-update-dialog__progress-track" role="progressbar" aria-label={t("app.query.csvExportProgressRows").replace("{n}", String(exportProgressRows))} aria-busy="true">
+                  <div className="query-result-update-dialog__progress-value query-result-export-progress__bar" />
+                </div>
+                <span>{t("app.query.csvExportProgressRows").replace("{n}", exportProgressRows.toLocaleString())}</span>
+              </div>
+            </div>
+          </section>
+        </div>
       ) : null}
       {importPreview ? (
         <QueryResultImportDialog

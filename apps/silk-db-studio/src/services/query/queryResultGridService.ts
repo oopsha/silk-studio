@@ -40,6 +40,7 @@ type ActiveGrid = {
     endRowIndex: number;
   } | null;
   openValueEditor: () => void;
+  fetchAllRowsForExport?: (columns: string[], onProgress?: (rowCount: number | null) => void) => Promise<Array<Array<string | null>>>;
 };
 
 type SnapshotListener = () => void;
@@ -72,9 +73,10 @@ class QueryResultGridServiceImpl {
     columns: string[],
     nullDisplay: string,
     openValueEditor: () => void,
+    fetchAllRowsForExport?: (columns: string[], onProgress?: (rowCount: number | null) => void) => Promise<Array<Array<string | null>>>,
   ): void {
     const profileId = resolveLayoutProfileId();
-    this.active = { api, columns, nullDisplay, profileId, cellSelection: null, openValueEditor };
+    this.active = { api, columns, nullDisplay, profileId, cellSelection: null, openValueEditor, fetchAllRowsForExport };
     this.layoutDirty = false;
     this.restoreColumnLayout();
     this.refreshSnapshot();
@@ -266,11 +268,16 @@ class QueryResultGridServiceImpl {
     this.active.cellSelection = null;
   }
 
-  async exportCsv(): Promise<boolean> {
+  async exportCsv(onProgress?: (rowCount: number | null) => void): Promise<boolean> {
     const grid = this.active;
     if (!grid) return false;
 
-    const { columns, rows } = this.collectVisibleMatrix(grid);
+    const visible = this.collectVisibleMatrix(grid);
+    const columns = visible.columns;
+    const rows = grid.fetchAllRowsForExport
+      ? await grid.fetchAllRowsForExport(columns, onProgress)
+      : visible.rows;
+    onProgress?.(null);
     const csv = toCsv(columns, rows, grid.nullDisplay);
     const defaultName = `query-result-${formatTimestamp(new Date())}.csv`;
 

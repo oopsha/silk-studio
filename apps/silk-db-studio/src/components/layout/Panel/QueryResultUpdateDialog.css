@@ -102,6 +102,20 @@
   transition: width 120ms ease-out;
 }
 
+.query-result-export-progress {
+  width: min(420px, 100%);
+}
+
+.query-result-export-progress__bar {
+  width: 28%;
+  animation: query-result-export-progress-slide 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes query-result-export-progress-slide {
+  from { transform: translateX(0); }
+  to { transform: translateX(255%); }
+}
+
 .query-result-update-dialog__sql-toolbar {
   display: flex;
   justify-content: flex-end;
