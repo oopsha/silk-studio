@@ -278,7 +278,8 @@ class QueryResultGridServiceImpl {
       ? await grid.fetchAllRowsForExport(columns, onProgress)
       : visible.rows;
     onProgress?.(null);
-    const csv = toCsv(columns, rows, grid.nullDisplay);
+    // File interchange uses empty fields for SQL NULL, independent of the grid display token.
+    const csv = toCsv(columns, rows);
     const defaultName = `query-result-${formatTimestamp(new Date())}.csv`;
 
     if (isTauri()) {

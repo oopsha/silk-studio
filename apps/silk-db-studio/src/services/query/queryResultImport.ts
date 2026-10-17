@@ -73,9 +73,11 @@ export function parseDelimitedFile(text: string): ParsedDelimitedFile {
   let row: string[] = [];
   let field = "";
   let quoted = false;
+  let recordPresent = false;
 
   for (let index = 0; index < input.length; index += 1) {
     const char = input[index];
+    if (quoted || (char !== "\r" && char !== "\n")) recordPresent = true;
     if (quoted) {
       if (char === '"' && input[index + 1] === '"') {
         field += '"';
@@ -96,7 +98,8 @@ export function parseDelimitedFile(text: string): ParsedDelimitedFile {
     } else if (char === "\r" || char === "\n") {
       row.push(field);
       field = "";
-      if (row.some((value) => value.length > 0)) rows.push(row);
+      if (recordPresent) rows.push(row);
+      recordPresent = false;
       row = [];
       if (char === "\r" && input[index + 1] === "\n") index += 1;
     } else {
@@ -104,9 +107,9 @@ export function parseDelimitedFile(text: string): ParsedDelimitedFile {
     }
   }
 
-  if (field.length > 0 || row.length > 0) {
+  if (recordPresent || field.length > 0 || row.length > 0) {
     row.push(field);
-    if (row.some((value) => value.length > 0)) rows.push(row);
+    if (recordPresent) rows.push(row);
   }
 
   const width = rows.reduce((max, values) => Math.max(max, values.length), 0);

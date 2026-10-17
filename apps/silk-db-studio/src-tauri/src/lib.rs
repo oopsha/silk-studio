@@ -106,6 +106,18 @@ where
 }
 
 #[tauri::command]
+async fn query_import_rows(connection_id: String, params: Value, app: tauri::AppHandle) -> Result<Value, String> {
+    require_connection_id(&connection_id)?;
+    run_blocking(move || app.state::<AppState>().jdbc_agent.import_rows(&connection_id, params)).await
+}
+
+#[tauri::command]
+async fn query_import_status(connection_id: String, operation_id: String, cancel: bool, app: tauri::AppHandle) -> Result<Value, String> {
+    require_connection_id(&connection_id)?;
+    run_blocking(move || app.state::<AppState>().jdbc_agent.import_status(&connection_id, &operation_id, cancel)).await
+}
+
+#[tauri::command]
 async fn query_prepare_mybatis(sql: String, parameters: Value, app: tauri::AppHandle) -> Result<Value, String> {
     run_blocking(move || app.state::<AppState>().jdbc_agent.prepare_mybatis(&sql, parameters)).await
 }
@@ -653,6 +665,8 @@ pub fn run() {
             query_execute,
             query_prepare_mybatis,
             query_execute_paged,
+            query_import_rows,
+            query_import_status,
             query_cancel,
             connection_commit,
             connection_rollback,

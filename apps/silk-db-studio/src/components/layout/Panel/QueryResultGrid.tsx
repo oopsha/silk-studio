@@ -59,7 +59,11 @@ import {
   CURRENT_TIMESTAMP_VALUE,
   isCurrentTimestampValue,
 } from "../../../services/query/queryResultTemporalValue";
-import { parseDelimitedFile, parseExcelWorkbook, type ParsedImportSource } from "../../../services/query/queryResultImport";
+import { parseDelimitedFile, type ParsedImportSource } from "../../../services/query/queryResultImport";
+import { parseImportFile, type ImportTarget } from "../../../services/query/fileImportService";
+import { bridgeListColumns } from "../../../services/connection/connectionBridge";
+import { ConnectionService } from "../../../services/connection/connectionService";
+import { QueryExecutionService } from "../../../services/query/queryExecutionService";
 import "./QueryResultGrid.css";
 import "./QueryResultUpdateDialog.css";
 
@@ -213,7 +217,9 @@ function QueryResultGrid({
   const [openingPreview, setOpeningPreview] = useState(false);
   const [contextMenu, setContextMenu] = useState<GridContextMenuState | null>(null);
   const [valueEditorTarget, setValueEditorTarget] = useState<ValueEditorTarget | null>(null);
-  const [importPreview, setImportPreview] = useState<{ filename: string; source: ParsedImportSource } | null>(null);
+  const [importPreview, setImportPreview] = useState<{ filename: string; source: ParsedImportSource; target: ImportTarget; columns: string[] } | null>(null);
+  const [readingImport, setReadingImport] = useState(false);
+  const readingImportRef = useRef(false);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const filterContextInputRef = useRef<FilterInput | null>(null);
 
@@ -905,11 +911,21 @@ function QueryResultGrid({
   };
 
   const openImportFile = async (file: File) => {
+    if (readingImportRef.current) return;
+    if (QueryResultDirtyService.hasPendingChanges(tabId)) {
+      flashMessage(t("app.query.importResolveEdits"));
+      return;
+    }
+    readingImportRef.current = true;
+    setReadingImport(true);
     try {
-      const isExcel = /\.(xlsx|xls)$/i.test(file.name);
-      const source: ParsedImportSource = isExcel
-        ? await parseExcelWorkbook(await file.arrayBuffer())
-        : { kind: "delimited", parsed: parseDelimitedFile(await file.text()) };
+      const id = connectionId || ConnectionService.getState().connectedProfileId;
+      if (!id) throw new Error(t("app.query.saveNeedConnect"));
+      const eligibility = await resolveUpdateEligibility(sql, result.columns, { relationKind, connectionId: id, allowNoPrimaryKey: true });
+      if (!eligibility.eligible) throw new Error(eligibility.reason);
+      const metadata = await bridgeListColumns(id, eligibility.schema ?? "", eligibility.table, eligibility.catalog ?? undefined);
+      if (!metadata.columns.length) throw new Error(t("app.query.importNoColumns"));
+      const source = await parseImportFile(file);
       const hasRows = source.kind === "workbook"
         ? source.sheets.some((sheet) => sheet.rows.length > 0)
         : source.parsed.rows.length > 0;
@@ -917,10 +933,13 @@ function QueryResultGrid({
         flashMessage(t("app.query.importEmptyFile"));
         return;
       }
-      setImportPreview({ filename: file.name, source });
+      setImportPreview({ filename: file.name, source, target: { ...eligibility, connectionId: id, columns: metadata.columns }, columns: metadata.columns.map((column) => column.name) });
     } catch (error) {
       console.warn("[query-result] file import preview failed", error);
-      flashMessage(t("app.query.importFailed"));
+      flashMessage(formatErrorMessage(error, t("app.query.importFailed")));
+    } finally {
+      readingImportRef.current = false;
+      setReadingImport(false);
     }
   };
 
@@ -938,40 +957,14 @@ function QueryResultGrid({
     void openImportFile(importFile);
   }, [importFile, onImportFileConsumed]);
 
-  const handleStageImportedRows = (values: Array<Record<string, string | null>>, truncateExisting: boolean) => {
-    const api = apiRef.current;
-    if (!api || values.length === 0) return;
-    const wasTruncating = QueryResultDirtyService.getTruncateBeforeImport(tabId);
-    const selected = api.getSelectedRows();
-    const focused = api.getFocusedCell();
-    const anchorRow = !truncateExisting && selected.length === 1
-      ? selected[0]
-      : !truncateExisting && focused ? api.getDisplayedRowAtIndex(focused.rowIndex)?.data : undefined;
-    const anchor = anchorRow ? getQueryResultRowIndex(anchorRow) : null;
-    QueryResultDirtyService.setTruncateBeforeImport(tabId, truncateExisting);
-    const indexes = QueryResultDirtyService.addImportedRows(tabId, result.columns, values, anchor);
-    const addIndex = anchorRow
-      ? (api.getRowNode(String(getQueryResultRowIndex(anchorRow)))?.rowIndex ?? -1) + 1
-      : 0;
-    const gridRows = indexes.map((rowIndex) => buildGridRow(
-      rowIndex,
-      QueryResultDirtyService.getEffectiveRow(tabId, rowIndex) ?? {},
-    ));
-    if (!truncateExisting) {
-      api.applyTransaction({ add: gridRows, addIndex });
-    } else {
-      pagingRef.current.hasMore = false;
-    }
-    if (gridRows.length) {
-      window.requestAnimationFrame(() => {
-        if (wasTruncating && !truncateExisting) rehydratePendingEdits();
-        const first = api.getRowNode(String(indexes[0]));
-        first?.setSelected(true, true);
-        if (first?.rowIndex != null) api.ensureIndexVisible(first.rowIndex);
-      });
-    }
-    setImportPreview(null);
-    flashMessage(t("app.query.importStaged").replace("{n}", String(gridRows.length)));
+  const handleFileImported = () => {
+    apiRef.current?.deselectAll();
+    rowSelectionAnchorRef.current = null;
+    cellSelectionRef.current = null;
+    QueryResultGridService.clearCellSelection();
+    void QueryExecutionService.refreshTabResult(tabId).catch((error) => {
+      flashMessage(formatErrorMessage(error, t("app.query.importRefreshFailed")));
+    });
   };
 
   const handlePasteGridData = (event: ClipboardEvent<HTMLDivElement>) => {
@@ -1796,6 +1789,7 @@ function QueryResultGrid({
             className="query-result-grid__action"
             title={t("app.query.importFileTitle")}
             aria-label={t("app.query.importFileTitle")}
+            disabled={readingImport || importPreview !== null}
             onClick={() => importFileInputRef.current?.click()}
           >
             <Codicon name="file-add" />
@@ -2153,13 +2147,15 @@ function QueryResultGrid({
       {importPreview ? (
         <QueryResultImportDialog
           filename={importPreview.filename}
-          targetColumns={result.columns}
+          targetColumns={importPreview.columns}
+          target={importPreview.target}
           source={importPreview.source}
           initialTruncate={truncateBeforeImport}
           onCancel={() => setImportPreview(null)}
-          onImport={handleStageImportedRows}
+          onImported={handleFileImported}
         />
       ) : null}
+      {readingImport ? <div className="query-result-update-dialog__backdrop"><section className="query-result-update-dialog" role="status" aria-busy="true"><div className="query-result-update-dialog__body">{t("app.query.importReading")}</div></section></div> : null}
       {valueEditorTarget ? (
         <QueryResultValueEditorDialog
           column={valueEditorTarget.column}

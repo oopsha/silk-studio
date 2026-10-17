@@ -35,12 +35,12 @@ export function toTsv(
 
 /**
  * CSV for file export. Filtered/sorted view is the caller's responsibility.
+ * SQL NULL is always an empty field, independent of the grid/clipboard display token.
  * RFC-style quoting: fields with comma, quote, or newline are quoted.
  */
 export function toCsv(
   columns: string[],
   rows: Array<Array<string | null>>,
-  nullDisplay: string,
   options?: { includeHeader?: boolean },
 ): string {
   const includeHeader = options?.includeHeader ?? true;
@@ -52,7 +52,7 @@ export function toCsv(
     lines.push(
       columns
         .map((_, index) =>
-          escapeCsvField(formatExportCell(row[index], nullDisplay)),
+          escapeCsvField(formatExportCell(row[index], "")),
         )
         .join(","),
     );
