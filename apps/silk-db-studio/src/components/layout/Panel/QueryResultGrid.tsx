@@ -507,8 +507,15 @@ function QueryResultGrid({
     ],
   );
 
+  // Keep the original rowData reference stable while local transactions change the new-row
+  // count. Replacing it with the original query result would remove added/duplicated rows
+  // (and appended pages) from AG Grid while leaving their pending INSERT state behind.
+  const originalRowData = useMemo(
+    () => toQueryResultRows(result.columns, result.rows),
+    [result.columns, result.rows],
+  );
   const rowData = useMemo(() => {
-    if (!truncateBeforeImport) return toQueryResultRows(result.columns, result.rows);
+    if (!truncateBeforeImport) return originalRowData;
     return QueryResultDirtyService.getNewRowIndexes(tabId).map((rowIndex) => {
       const values = QueryResultDirtyService.getEffectiveRow(tabId, rowIndex) ?? {};
       const row: QueryResultRow = { [QUERY_RESULT_ROW_INDEX_KEY]: String(rowIndex) };
@@ -517,7 +524,7 @@ function QueryResultGrid({
       });
       return row;
     });
-  }, [result.columns, result.rows, tabId, truncateBeforeImport, newRowCount]);
+  }, [originalRowData, result.columns, tabId, truncateBeforeImport, newRowCount]);
 
   const defaultColDef = useMemo<ColDef>(
     () => ({
@@ -1020,7 +1027,7 @@ function QueryResultGrid({
     flashMessage(t("app.query.importStaged").replace("{n}", String(matrix.length)));
   };
 
-  /** Duplicates exactly one selected row, blanking its PK column(s) — see `duplicateRow`'s doc. */
+  /** Duplicates exactly one selected row, preserving its values — see `duplicateRow`'s doc. */
   const handleDuplicateRow = () => {
     const api = apiRef.current;
     const selectedRows = api?.getSelectedRows() ?? [];
