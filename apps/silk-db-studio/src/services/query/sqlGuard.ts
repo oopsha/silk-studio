@@ -33,6 +33,11 @@ function stripLeadingComments(sql: string): string {
 }
 
 export function isWriteSql(sql: string): boolean {
+  const statements = splitSqlStatementsForWriteDetection(sql);
+  return statements.some(isSingleStatementWriteSql);
+}
+
+function isSingleStatementWriteSql(sql: string): boolean {
   const statement = stripLeadingComments(sql);
   if (WRITE_SQL_PATTERN.test(statement)) return true;
 
@@ -42,6 +47,74 @@ export function isWriteSql(sql: string): boolean {
     PROCEDURAL_SQL_PATTERN.test(statement) &&
     NESTED_WRITE_SQL_PATTERN.test(statement)
   );
+}
+
+/**
+ * SQL Server Execute Script sends a whole GO batch at once. Inspect semicolon-separated
+ * statements in that batch so a leading context command such as `USE database` does not
+ * hide a later write from read-only checks and pending-transaction tracking. Keep strings,
+ * quoted identifiers, and comments intact while finding statement boundaries.
+ */
+function splitSqlStatementsForWriteDetection(sql: string): string[] {
+  const statements: string[] = [];
+  let start = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let inBracketIdentifier = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let index = 0; index < sql.length; index += 1) {
+    const char = sql[index];
+    const next = sql[index + 1];
+
+    if (inLineComment) {
+      if (char === "\n") inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (char === "*" && next === "/") {
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (inSingle) {
+      if (char === "'" && next === "'") index += 1;
+      else if (char === "'") inSingle = false;
+      continue;
+    }
+    if (inDouble) {
+      if (char === '"' && next === '"') index += 1;
+      else if (char === '"') inDouble = false;
+      continue;
+    }
+    if (inBracketIdentifier) {
+      if (char === "]" && next === "]") index += 1;
+      else if (char === "]") inBracketIdentifier = false;
+      continue;
+    }
+
+    if (char === "-" && next === "-") {
+      inLineComment = true;
+      index += 1;
+    } else if (char === "/" && next === "*") {
+      inBlockComment = true;
+      index += 1;
+    } else if (char === "'") {
+      inSingle = true;
+    } else if (char === '"') {
+      inDouble = true;
+    } else if (char === "[") {
+      inBracketIdentifier = true;
+    } else if (char === ";") {
+      statements.push(sql.slice(start, index));
+      start = index + 1;
+    }
+  }
+
+  statements.push(sql.slice(start));
+  return statements;
 }
 
 export function isDdlSql(sql: string): boolean {

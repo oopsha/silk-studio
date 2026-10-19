@@ -289,7 +289,36 @@
 .query-result-file-import__mapping td input { margin-top: 4px; }
 .query-result-file-import__mapping td { white-space: normal; }
 .query-result-file-import__mapping small { color: var(--color-description-foreground); }
-.query-result-file-import progress { width: min(400px, 60%); }
+.query-result-import__progress {
+  position: sticky;
+  top: -12px;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px 12px;
+  margin: -12px -16px 4px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  font-size: 12px;
+}
+.query-result-import__progress p { margin: 0; }
+.query-result-import__progress-track {
+  position: relative;
+  grid-column: 1 / -1;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-input-background, var(--color-border));
+}
+.query-result-import__progress-value {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent, #0e639c);
+  transition: width 120ms ease-out;
+}
 
 .query-result-import__preview {
   max-height: 220px;

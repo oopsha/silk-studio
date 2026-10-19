@@ -51,6 +51,7 @@
     "window-controls:default",
     "allow-ensure-title-bar-overlay",
     "allow-query-execute",
+    "allow-query-import",
     "allow-connection-commands",
     "allow-ssm-tunnel-commands",
     "allow-ssh-tunnel-commands",

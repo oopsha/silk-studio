@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), markDirty: vi.fn() }));
-vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke, isTauri: () => false }));
 vi.mock("@silk-studio/workbench/platform/configuration/configurationService.ts", () => ({
   ConfigurationService: { getValue: (key: string) => key === "database.queryTimeoutSec" ? 30 : false },
 }));

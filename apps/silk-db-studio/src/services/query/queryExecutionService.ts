@@ -9,6 +9,7 @@ import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorG
 import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 import { tKey } from "@silk-studio/workbench/platform/i18n/activeLocale.ts";
+import { AppLogService } from "@silk-studio/workbench/services/diagnostics/appLogService.ts";
 import { formatErrorMessage, reportError } from "../formatErrorMessage";
 import { bridgeRollback } from "../connection/connectionBridge";
 import { invokeJdbcCommand } from "../connection/jdbcInvoke";
@@ -712,6 +713,7 @@ class QueryExecutionServiceImpl {
     };
 
     const total = boundList.length;
+    const scriptRunId = `script-${Date.now()}`;
     const scriptSql = boundList.map((item) => item.sql).join("\nGO\n");
     const historySql =
       options?.historySql ??
@@ -728,6 +730,10 @@ class QueryExecutionServiceImpl {
         : tKey("app.query.executingScriptProgress")
             .replace("{current}", "1")
             .replace("{total}", String(total)),
+    );
+    void AppLogService.info(
+      `Script run started. runId=${scriptRunId} ownerId=${ownerId} groupId=${viewGroupId} batches=${total}`,
+      "query.executeScript",
     );
 
     const logLines: string[] = [];
@@ -825,6 +831,10 @@ class QueryExecutionServiceImpl {
 
       for (let index = 0; index < boundList.length; index += 1) {
         if (!this.isCurrentRun(ownerId, generation)) {
+          void AppLogService.warn(
+            `Script run superseded before batch. runId=${scriptRunId} ownerId=${ownerId} batch=${index + 1}/${total}`,
+            "query.executeScript",
+          );
           return;
         }
         if (runtime.cancelRequested) {
@@ -856,7 +866,16 @@ class QueryExecutionServiceImpl {
             scriptTimeoutSec,
           );
 
+          void AppLogService.info(
+            `Script batch response received. runId=${scriptRunId} batch=${index + 1}/${total} kind=${isQueryResultPayload(payload) ? payload.kind : typeof payload}`,
+            "query.executeScript",
+          );
+
           if (!this.isCurrentRun(ownerId, generation)) {
+            void AppLogService.warn(
+              `Script run superseded after batch response. runId=${scriptRunId} ownerId=${ownerId} batch=${index + 1}/${total}`,
+              "query.executeScript",
+            );
             return;
           }
           if (runtime.cancelRequested) {
@@ -961,6 +980,10 @@ class QueryExecutionServiceImpl {
         connectionId: connectionId ?? undefined,
         status,
       });
+      void AppLogService.info(
+        `Script result tab committed. runId=${scriptRunId} ownerId=${ownerId} groupId=${viewGroupId} successfulBatches=${successCount} failedBatches=${errorCount} resultSets=${resultSetCount}`,
+        "query.executeScript",
+      );
 
       if (errorCount > 0 && lastErrorMessage) {
         applySqlErrorMarkers(lastErrorMessage, lastErrorRange, {
