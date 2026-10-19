@@ -373,6 +373,7 @@ fn connection_columns(
     schema: String,
     table: String,
     catalog: Option<String>,
+    completion_only: Option<bool>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
@@ -381,6 +382,7 @@ fn connection_columns(
         schema.trim(),
         table.trim(),
         catalog.as_deref(),
+        completion_only.unwrap_or(false),
     )
 }
 

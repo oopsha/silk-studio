@@ -242,6 +242,7 @@ impl JdbcAgentClient {
         schema: &str,
         table: &str,
         catalog: Option<&str>,
+        completion_only: bool,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let schema = schema.trim();
@@ -258,6 +259,9 @@ impl JdbcAgentClient {
             "table": table
         });
         set_optional_catalog(&mut params, catalog);
+        if completion_only {
+            params["completionOnly"] = json!(true);
+        }
         self.send_request("connection.columns", params)
     }
 

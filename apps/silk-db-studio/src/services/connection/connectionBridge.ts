@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { invokeJdbcCommand } from "./jdbcInvoke";
+import { logSlowOperation } from "../diagnostics/performanceLog";
 import {
   isConnectionColumnsResult,
   isConnectionConstraintsResult,
@@ -81,12 +82,22 @@ export async function bridgeListMetadata(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invokeJdbcCommand<unknown>("connection_metadata", {
-    connectionId: id,
-    schema: schema?.trim() ? schema.trim() : null,
-    catalog: catalog?.trim() ? catalog.trim() : null,
-    includeSecondaryKinds: includeSecondaryKinds ?? null,
-  }, id);
+  const startedAt = performance.now();
+  let outcome = "ok";
+  let payload: unknown;
+  try {
+    payload = await invokeJdbcCommand<unknown>("connection_metadata", {
+      connectionId: id,
+      schema: schema?.trim() ? schema.trim() : null,
+      catalog: catalog?.trim() ? catalog.trim() : null,
+      includeSecondaryKinds: includeSecondaryKinds ?? null,
+    }, id);
+  } catch (error) {
+    outcome = "error";
+    throw error;
+  } finally {
+    logSlowOperation("sql-completion.performance", "jdbc.connection_metadata", startedAt, `outcome=${outcome}`);
+  }
   if (!isConnectionMetadataResult(payload)) {
     throw new Error("Invalid connection metadata payload from desktop bridge.");
   }
@@ -137,6 +148,7 @@ export async function bridgeListColumns(
   schema: string,
   table: string,
   catalog?: string,
+  options?: { completionOnly?: boolean },
 ): Promise<ConnectionColumnsResult> {
   if (!isTauri()) {
     throw new Error("Database metadata is available in the desktop app only.");
@@ -145,12 +157,23 @@ export async function bridgeListColumns(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invokeJdbcCommand<unknown>("connection_columns", {
-    connectionId: id,
-    schema: schema.trim(),
-    table: table.trim(),
-    catalog: catalog?.trim() ? catalog.trim() : null,
-  }, id);
+  const startedAt = performance.now();
+  let outcome = "ok";
+  let payload: unknown;
+  try {
+    payload = await invokeJdbcCommand<unknown>("connection_columns", {
+      connectionId: id,
+      schema: schema.trim(),
+      table: table.trim(),
+      catalog: catalog?.trim() ? catalog.trim() : null,
+      completionOnly: options?.completionOnly ?? false,
+    }, id);
+  } catch (error) {
+    outcome = "error";
+    throw error;
+  } finally {
+    logSlowOperation("sql-completion.performance", "jdbc.connection_columns", startedAt, `outcome=${outcome}`);
+  }
   if (!isConnectionColumnsResult(payload)) {
     throw new Error("Invalid connection columns payload from desktop bridge.");
   }
@@ -320,12 +343,22 @@ export async function bridgeListPackageMembers(
   if (!id) {
     throw new Error("connectionId is required.");
   }
-  const payload = await invokeJdbcCommand<unknown>("connection_package_members", {
-    connectionId: id,
-    schema: schema.trim(),
-    package: packageName.trim(),
-    catalog: catalog?.trim() ? catalog.trim() : null,
-  }, id);
+  const startedAt = performance.now();
+  let outcome = "ok";
+  let payload: unknown;
+  try {
+    payload = await invokeJdbcCommand<unknown>("connection_package_members", {
+      connectionId: id,
+      schema: schema.trim(),
+      package: packageName.trim(),
+      catalog: catalog?.trim() ? catalog.trim() : null,
+    }, id);
+  } catch (error) {
+    outcome = "error";
+    throw error;
+  } finally {
+    logSlowOperation("sql-completion.performance", "jdbc.connection_package_members", startedAt, `outcome=${outcome}`);
+  }
   if (!isConnectionPackageMembersResult(payload)) {
     throw new Error(
       "Invalid connection package members payload from desktop bridge.",

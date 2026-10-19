@@ -175,14 +175,31 @@ public final class Main {
         // own thread so one profile's slow round trip never blocks another's — see
         // CONNECTION_EXECUTORS's doc comment for the full reasoning.
         String connectionId = request.path("params").path("connectionId").asText("").trim();
+        long agentRequestId = JdbcDiagnostics.nextRequestId();
+        long queuedAtNanos = System.nanoTime();
         // Register before queueing so cancellation also works while earlier work is still running.
         if ("query.importRows".equals(method)) runtime.registerImport(request.path("params"));
         ExecutorService executor =
             connectionId.isEmpty() ? MISC_EXECUTOR : executorFor(connectionId);
         executor.execute(
             () -> {
-              ObjectNode response = handleRequest(runtime, request);
-              writeResponse(writer, response);
+              long startedAtNanos = System.nanoTime();
+              JdbcDiagnostics.setCurrentRequest(agentRequestId);
+              ObjectNode response = null;
+              try {
+                response = handleRequest(runtime, request);
+              } finally {
+                long finishedAtNanos = System.nanoTime();
+                JdbcDiagnostics.logSlowRequest(
+                    agentRequestId,
+                    method,
+                    queuedAtNanos,
+                    startedAtNanos,
+                    finishedAtNanos,
+                    response != null && response.path("ok").asBoolean(false));
+                JdbcDiagnostics.clearCurrentRequest();
+              }
+              if (response != null) writeResponse(writer, response);
             });
       }
     } catch (Throwable error) {
@@ -701,9 +718,12 @@ public final class Main {
           && schemaFilter.isEmpty()
           && catalogFilter == null) {
         ArrayNode catalogs = MAPPER.createArrayNode();
+        long catalogStartedAtNanos = System.nanoTime();
         for (String catalogName : dialect.listCatalogNames(connection)) {
           catalogs.addObject().put("name", catalogName);
         }
+        JdbcDiagnostics.logSlowOperation(
+            "metadata.listCatalogNames", catalogStartedAtNanos, "count=" + catalogs.size());
         ObjectNode result = MAPPER.createObjectNode();
         result.set("schemas", MAPPER.createArrayNode());
         result.set("catalogs", catalogs);
@@ -717,7 +737,10 @@ public final class Main {
       // Never connection.setCatalog(catalogFilter) here — this Connection is shared by every
       // tab bound to this profile, and this RPC is a read. Each dialect scopes its own
       // getSchemas/getTables/raw-SQL calls to `catalogFilter` without touching session state.
+      long phaseStartedAtNanos = System.nanoTime();
       List<String> schemaNames = dialect.listSchemaNames(connection, catalogFilter);
+      JdbcDiagnostics.logSlowOperation(
+          "metadata.listSchemaNames", phaseStartedAtNanos, "count=" + schemaNames.size());
       if (!schemaFilter.isEmpty()) {
         schemaNames = schemaNames.stream()
             .filter((name) -> name.equalsIgnoreCase(schemaFilter))
@@ -728,8 +751,14 @@ public final class Main {
       }
 
       boolean includeObjects = !schemaFilter.isEmpty();
+      phaseStartedAtNanos = System.nanoTime();
       java.util.Set<String> maintainedSchemas = dialect.listMaintainedSchemas(connection);
+      JdbcDiagnostics.logSlowOperation(
+          "metadata.listMaintainedSchemas",
+          phaseStartedAtNanos,
+          "count=" + maintainedSchemas.size());
       ArrayNode schemas = MAPPER.createArrayNode();
+      phaseStartedAtNanos = System.nanoTime();
       for (String schemaName : schemaNames) {
         ObjectNode schemaNode = MAPPER.createObjectNode();
         schemaNode.put("name", schemaName);
@@ -745,6 +774,10 @@ public final class Main {
 
         schemas.add(schemaNode);
       }
+      JdbcDiagnostics.logSlowOperation(
+          "metadata.collectSchemaObjects",
+          phaseStartedAtNanos,
+          "schemas=" + (includeObjects ? schemaNames.size() : 0));
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("schemas", schemas);
@@ -941,8 +974,13 @@ public final class Main {
       }
 
       ArrayNode columns = MAPPER.createArrayNode();
-      session.dialect.collectTableColumns(
-          session.connection, catalog, schemaName, tableName, columns);
+      if (params.path("completionOnly").asBoolean(false)) {
+        session.dialect.collectCompletionColumns(
+            session.connection, catalog, schemaName, tableName, columns);
+      } else {
+        session.dialect.collectTableColumns(
+            session.connection, catalog, schemaName, tableName, columns);
+      }
 
       ObjectNode result = MAPPER.createObjectNode();
       result.set("columns", columns);

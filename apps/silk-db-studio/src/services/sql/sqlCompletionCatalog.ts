@@ -547,7 +547,13 @@ export async function listColumnsCached(
 
   const request = (async (): Promise<MetadataColumn[]> => {
     try {
-      const result = await bridgeListColumns(profileId, schema, table);
+      const result = await bridgeListColumns(
+        profileId,
+        schema,
+        table,
+        undefined,
+        { completionOnly: true },
+      );
       if (result.columns.length === 0) {
         columnMissCache.set(key, now + COLUMN_CACHE_TTL_MS);
         return [];

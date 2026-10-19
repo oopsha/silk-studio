@@ -2,6 +2,7 @@ import type { Monaco } from "@monaco-editor/react";
 import type { languages, Position, editor, IRange } from "monaco-editor";
 import type { MetadataColumn } from "@silk-studio/db-protocol";
 import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
+import { logSlowOperation } from "../diagnostics/performanceLog";
 import { ConnectionService } from "../connection/connectionService";
 import { EditorConnectionBindingService } from "../connection/editorConnectionBindingService";
 import { EXPLORER_COMMANDS } from "../connection/explorerObjectActions";
@@ -77,6 +78,7 @@ let disposables: { dispose(): void }[] = [];
 let lastConnectedProfileId: string | null = null;
 /** Drop stale async completion results when the user types faster than JDBC. */
 let completionEpoch = 0;
+let completionRequestSequence = 0;
 
 export function registerSqlCompletion(monaco: Monaco): void {
   if (registered) return;
@@ -89,8 +91,27 @@ export function registerSqlCompletion(monaco: Monaco): void {
       if (!isSqlLanguageId(model.getLanguageId())) {
         return { suggestions: [] };
       }
+      const requestId = ++completionRequestSequence;
+      const startedAt = performance.now();
       const epoch = ++completionEpoch;
-      const suggestions = await buildSuggestions(monaco, model, position);
+      let suggestions: languages.CompletionItem[];
+      try {
+        suggestions = await buildSuggestions(monaco, model, position, requestId);
+      } catch (error) {
+        logSlowOperation(
+          "sql-completion.performance",
+          `request=${requestId} provider.failed`,
+          startedAt,
+          `language=${model.getLanguageId()} line=${position.lineNumber} column=${position.column}`,
+        );
+        throw error;
+      }
+      logSlowOperation(
+        "sql-completion.performance",
+        `request=${requestId} provider.total`,
+        startedAt,
+        `language=${model.getLanguageId()} line=${position.lineNumber} column=${position.column} suggestions=${suggestions.length} cancelled=${token.isCancellationRequested || epoch !== completionEpoch}`,
+      );
       if (token.isCancellationRequested || epoch !== completionEpoch) {
         return { suggestions: [] };
       }
@@ -174,7 +195,9 @@ async function buildSuggestions(
   monaco: Monaco,
   model: editor.ITextModel,
   position: Position,
+  requestId: number,
 ): Promise<languages.CompletionItem[]> {
+  const parseStartedAt = performance.now();
   const linePrefix = model.getValueInRange({
     startLineNumber: position.lineNumber,
     startColumn: 1,
@@ -205,6 +228,12 @@ async function buildSuggestions(
   );
 
   const { qualifiers, partial } = parseSqlCompletionContext(linePrefix);
+  logSlowOperation(
+    "sql-completion.performance",
+    `request=${requestId} parse-context`,
+    parseStartedAt,
+    `documentChars=${model.getValueLength()} line=${position.lineNumber}`,
+  );
   const range = wordRange(model, position, partial);
   const driverId = resolveActiveDriverId();
   const profileId = getConnectedProfileIdForCompletion();
@@ -228,8 +257,8 @@ async function buildSuggestions(
     if (!profileId) {
       return [];
     }
-    return finalizeSuggestions(
-      await dottedSuggestions(
+    const dottedStartedAt = performance.now();
+    const dotted = await dottedSuggestions(
         monaco,
         range,
         profileId,
@@ -237,8 +266,9 @@ async function buildSuggestions(
         partial,
         relations,
         clause,
-      ),
-    );
+      );
+    logSlowOperation("sql-completion.performance", `request=${requestId} dotted-suggestions`, dottedStartedAt);
+    return finalizeSuggestions(dotted);
   }
 
   const suggestions: languages.CompletionItem[] = [
@@ -266,7 +296,9 @@ async function buildSuggestions(
     return finalizeSuggestions(suggestions);
   }
 
+  const schemasStartedAt = performance.now();
   await ensureSchemasLoaded(profileId);
+  logSlowOperation("sql-completion.performance", `request=${requestId} ensure-schemas`, schemasStartedAt);
   const schemaCandidates = schemaCandidatesForCompletion();
 
   if (bucketsIncludes(buckets, "schemas")) {
@@ -288,7 +320,9 @@ async function buildSuggestions(
       : schemaCandidates.slice(0, 1);
 
     if (preferred) {
+      const objectsStartedAt = performance.now();
       await ensureSchemaObjectsLoaded(profileId, preferred);
+      logSlowOperation("sql-completion.performance", `request=${requestId} ensure-table-objects`, objectsStartedAt);
     }
     for (const schema of schemasToScan) {
       suggestions.push(
@@ -324,7 +358,9 @@ async function buildSuggestions(
       : schemaCandidates.slice(0, 1);
 
     if (preferred) {
+      const objectsStartedAt = performance.now();
       await ensureSchemaObjectsLoaded(profileId, preferred);
+      logSlowOperation("sql-completion.performance", `request=${requestId} ensure-routine-objects`, objectsStartedAt);
     }
     for (const schema of schemasToScan) {
       suggestions.push(
@@ -341,6 +377,7 @@ async function buildSuggestions(
   }
 
   if (bucketsIncludes(buckets, "columns")) {
+    const columnsStartedAt = performance.now();
     suggestions.push(
       ...(await scopedColumnSuggestions(
         monaco,
@@ -351,6 +388,7 @@ async function buildSuggestions(
         clause,
       )),
     );
+    logSlowOperation("sql-completion.performance", `request=${requestId} scoped-columns`, columnsStartedAt, `relations=${relations.length}`);
   }
 
   return finalizeSuggestions(suggestions);
