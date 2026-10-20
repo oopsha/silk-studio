@@ -3,6 +3,8 @@ import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/comma
 
 CommandsRegistry.registerCommand(
   "silk.file.newTextFile",
-  () => EditorService.openUntitled(),
+  () => {
+    EditorService.openUntitled();
+  },
   { replace: true, titleKey: "studio.be.commands.newFile" },
 );
