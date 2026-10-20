@@ -38,6 +38,7 @@ import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import type { ActivityViewContribution } from "@silk-studio/workbench/services/view/viewService.ts";
 import { startWindowLayoutSync } from "@silk-studio/workbench/services/layout/windowLayoutSync.ts";
 import { saveStartupTheme } from "./services/startupTheme";
+import ProjectExplorer from "./components/ProjectExplorer";
 
 const tabBarCommands = {
   executeCommand: (commandId: string) => CommandService.executeCommand(commandId),
@@ -72,7 +73,7 @@ function ExplorerView() {
         expanded={openEditorsExpanded}
         onToggle={() => setOpenEditorsExpanded((expanded) => !expanded)}
       />
-      <div className="be-project-empty">프로젝트가 열려 있지 않습니다.</div>
+      <ProjectExplorer />
     </div>
   );
 }

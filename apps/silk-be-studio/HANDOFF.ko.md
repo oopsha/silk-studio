@@ -1,6 +1,6 @@
 # Silk BE Studio 인수인계
 
-> 마지막 갱신: 2026-09-27
+> 마지막 갱신: 2026-10-20
 
 ## 현재 상태
 
@@ -11,7 +11,9 @@
 - 장기 방향과 지원 단계는 [로드맵](./ROADMAP.ko.md)에 기록되어 있다.
 - `apps/silk-be-studio`는 pnpm workspace 및 Cargo workspace에 등록되어 있다.
 - 0단계의 저장소 구조, 첫 사용자 흐름, 권한·Java 도구 경계 조사를 마쳤다. 결론과 완료 기준은 로드맵에 반영했다.
-- 첫 구현으로 Tauri/React 앱, pnpm 및 Cargo workspace 등록, 공용 워크벤치 레이아웃과 편집기 그룹을 구성했다. Spring Boot 프로젝트 생성 버튼은 아직 연결되지 않았다.
+- 첫 구현으로 Tauri/React 앱, pnpm 및 Cargo workspace 등록, 공용 워크벤치 레이아웃과 편집기 그룹을 구성했다.
+- BE Studio 파일 탐색기에 프로젝트 폴더 열기와 Spring Initializr 생성 흐름을 연결했다. 생성 시 Maven/Gradle, Group, Java 버전, 대표 의존성을 선택할 수 있고, 생성한 프로젝트를 바로 연다. 파일 트리에서 파일을 편집기로 열며 프로젝트 경로를 재실행 후 복원한다.
+- Spring Initializr 요청은 `https://start.spring.io/starter.zip`을 사용한다. 압축 파일의 경로 탈출 항목을 제외하고 프로젝트 폴더로 푼다. Spring Initializr의 기본 Spring Boot 버전을 사용한다.
 
 ## 논의에서 정한 방향
 
@@ -42,11 +44,11 @@
 
 ## 다음 작업
 
-1. pnpm 의존성 링크를 갱신한 뒤 BE Studio를 실행해 공용 워크벤치 연결과 화면을 확인한다.
-2. Spring Initializr 프로젝트 생성 흐름을 구현한다.
-3. 생성된 프로젝트를 워크벤치에 열고 프로젝트 탐색·편집으로 이어지게 한다. 공용 워크벤치에 필요한 기반이 없으면 앱별 우회 구현을 먼저 넣지 않고 공용화 경계를 함께 검토한다.
-5. 서버 프로세스 관리 경계를 설계한 뒤 Maven/Gradle 실행·중지와 로그 확인을 추가한다.
-6. JDT LS의 라이선스·배포·런타임 및 Java 디버거 통합 가능성을 검증하고, 이후 프로파일·API·DB 연계 순서를 정한다.
+1. BE Studio를 실행해 폴더 열기, Spring Initializr 생성, 파일 편집기 열기와 프로젝트 경로 복원을 직접 확인한다.
+2. Maven/Gradle 빌드 파일을 감지해 프로젝트 유형을 표시한다.
+3. 파일 검색과 새 파일 생성 흐름을 프로젝트 폴더에 연결한다.
+4. 서버 프로세스 관리 경계를 설계한 뒤 Maven/Gradle 실행·중지와 로그 확인을 추가한다.
+5. JDT LS의 라이선스·배포·런타임 및 Java 디버거 통합 가능성을 검증하고, 이후 프로파일·API·DB 연계 순서를 정한다.
 
 ## 아직 결정하지 않은 사항
 
@@ -54,6 +56,6 @@
 - JDT LS 채택 여부와 배포 방식, Java 디버거 도구 및 배포 방식
 - API 요청 도구를 내장할지 기존 도구와 연동할지
 - DB Studio를 별도 실행 앱으로 연결할지, 공통 기능을 공유할지
-- Spring Initializr 프로젝트 생성 지원 여부
+- Spring Initializr의 기본 Spring Boot 버전을 사용할지, 버전 선택 UI를 제공할지
 - Node.js, Python, PHP에서 첫 지원 프레임워크
 - 첫 릴리스의 지원 OS와 배포 방식

@@ -1,7 +1,7 @@
 # Silk BE Studio 로드맵
 
-> 상태: 공용 워크벤치 기반 연결 중
-> 마지막 갱신: 2026-09-27
+> 상태: 1단계 공통 BE 워크벤치 구현 중
+> 마지막 갱신: 2026-10-20
 
 현재 논의 상태와 다음 작업은 [인수인계 문서](./HANDOFF.ko.md)를 참고한다.
 
@@ -42,7 +42,7 @@ Spring, Node.js, Python, PHP 백엔드 프로젝트를 개발하고 운영 흐�
 
 **완료 기준:** Spring Boot 프로젝트를 열고 빌드 도구를 감지해 개발 서버를 실행·중지하고 로그와 종료 상태를 확인할 수 있음.
 
-**현재 진행:** Tauri 앱 골격과 공용 TitleBar, ActivityBar, Sidebar, SecondarySidebar, StatusBar, EditorGroupsView를 연결했다. ActivityBar와 Sidebar는 공용 컨테이너이고 각 앱이 뷰와 내용을 등록한다. DB Studio는 DB 연결 탐색기·검색·쿼리 기록을, BE Studio는 파일 탐색기·검색·소스 제어·실행 및 디버그 뷰 골격을 표시한다. 프로젝트 열기·생성, Git 연동, 실행 기능은 구현 전이다.
+**현재 진행:** Tauri 앱 골격과 공용 워크벤치를 연결했다. BE Studio에서 프로젝트 폴더 열기, Spring Initializr 기반 Maven/Gradle 프로젝트 생성, 생성 프로젝트 자동 열기, 파일 트리 표시 및 파일 편집기 열기를 구현했다. 프로젝트 폴더 경로는 재실행 시 복원한다. 빌드 도구 감지, 프로젝트 탐색·편집 이후의 파일 검색, 서버 실행·중지와 로그 표시는 아직 남아 있다. 생성·열기 흐름은 사용자 실행 검증이 필요하다.
 
 ### 2단계: Spring Boot 지원
 

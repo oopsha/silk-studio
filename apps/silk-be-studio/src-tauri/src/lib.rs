@@ -1,4 +1,5 @@
 mod ai_http;
+mod spring_initializr;
 mod startup_theme;
 mod window_layout;
 
@@ -56,6 +57,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_controls::init())
         .invoke_handler(tauri::generate_handler![
             ai_http::ai_http_fetch,
+            spring_initializr::create_spring_project,
             ensure_title_bar_overlay,
             startup_theme::startup_theme_save,
             window_layout::window_layout_save,
