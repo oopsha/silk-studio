@@ -5,9 +5,8 @@ import type { EditorGroupId } from "./editorGroupTypes";
 import type { EditorTab } from "./editorTypes";
 
 function activeTabFor(groupId?: EditorGroupId): EditorTab | undefined {
-  return groupId
-    ? EditorGroupsService.getGroup(groupId).getActiveTab()
-    : EditorService.getActiveTab();
+  if (!groupId) return EditorService.getActiveTab();
+  return EditorGroupsService.getGroupIfExists(groupId)?.getActiveTab();
 }
 
 function snapshotActiveTab(groupId?: EditorGroupId): EditorTab | undefined {
@@ -27,7 +26,9 @@ export function useActiveEditor(groupId?: EditorGroupId): EditorTab | undefined 
   useEffect(() => {
     setActiveTab(snapshotActiveTab(groupId));
     if (groupId) {
-      return EditorGroupsService.getGroup(groupId).onDidChange(() => {
+      const group = EditorGroupsService.getGroupIfExists(groupId);
+      if (!group) return;
+      return group.onDidChange(() => {
         setActiveTab(snapshotActiveTab(groupId));
       });
     }

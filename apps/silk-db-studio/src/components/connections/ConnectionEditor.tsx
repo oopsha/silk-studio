@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import { shouldUseDevSecretStore } from "@silk-studio/workbench/services/secrets/devSecretStore.ts";
@@ -82,9 +83,9 @@ const EMPTY_FORM: ConnectionProfileInput = {
   sshTunnel: EMPTY_SSH_TUNNEL_CONFIG,
 };
 
-function ConnectionEditor() {
+function ConnectionEditor({ groupId }: { groupId: EditorGroupId }) {
   const { t } = useI18n();
-  const activeTab = useActiveEditor();
+  const activeTab = useActiveEditor(groupId);
   const profileId = ConnectionEditorService.getProfileIdFromUri(activeTab?.uri);
   const connection = useConnectionState();
   const isEditingConnectedProfile =

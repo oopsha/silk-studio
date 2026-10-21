@@ -144,6 +144,26 @@ class EditorGroupsServiceImpl {
     return group;
   }
 
+  /** Returns undefined for a group that was removed during a pending UI update. */
+  getGroupIfExists(id: EditorGroupId): EditorServiceImpl | undefined {
+    return this.groups.get(id);
+  }
+
+  /** Finds the owning group for a globally unique editor tab id. */
+  getGroupForTab(tabId: string): EditorServiceImpl | undefined {
+    for (const group of this.groups.values()) {
+      if (group.findTab(tabId)) return group;
+    }
+    return undefined;
+  }
+
+  getGroupIdForTab(tabId: string): EditorGroupId | undefined {
+    for (const [groupId, group] of this.groups) {
+      if (group.findTab(tabId)) return groupId;
+    }
+    return undefined;
+  }
+
   getFocusedGroupId(): EditorGroupId {
     return this.focusedGroupId;
   }
@@ -286,10 +306,12 @@ class EditorGroupsServiceImpl {
     if (!nextLayout) return;
 
     this.layout = nextLayout;
-    this.unregisterGroup(id);
     if (this.focusedGroupId === id) {
       this.focusedGroupId = this.getGroupIds()[0]!;
     }
+    // Update the focused ID before notifying removal listeners. Some of those
+    // listeners derive context from the focused group synchronously.
+    this.unregisterGroup(id);
     this.syncEditorHost();
     this.fireDidChange();
     this.fireAnyGroupDidChange();

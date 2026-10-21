@@ -80,7 +80,7 @@ export function clearAllPackagePlsqlSnapshots(ref: PlsqlEditorRef): void {
 
 export function getPlsqlSnapshotBlockedReason(tabId?: string): string | null {
   const tab = tabId
-    ? EditorService.getTabs().find((item) => item.id === tabId)
+    ? EditorService.getTab(tabId)
     : EditorService.getActiveTab();
   if (!tab) {
     return "Active editor is not a PL/SQL source tab.";
@@ -102,7 +102,7 @@ function requireActivePlsqlTab(tabId?: string): {
   label: string;
 } {
   const tab = tabId
-    ? EditorService.getTabs().find((item) => item.id === tabId)
+    ? EditorService.getTab(tabId)
     : EditorService.getActiveTab();
   if (!tab) {
     throw new Error("No active editor.");
@@ -271,7 +271,7 @@ export function rollbackPlsqlSnapshot(
   tabId: string,
   snapshot: PlsqlSnapshotEntry,
 ): void {
-  const tab = EditorService.getTabs().find((item) => item.id === tabId);
+  const tab = EditorService.getTab(tabId);
   if (!tab || !isEditableSourceTab(tab.uri)) {
     throw new Error("PL/SQL tab not found.");
   }
@@ -280,7 +280,7 @@ export function rollbackPlsqlSnapshot(
 
 /** Re-fetch DDL from DB and replace buffer as clean baseline. */
 export async function reloadPlsqlFromDatabase(tabId: string): Promise<void> {
-  const tab = EditorService.getTabs().find((item) => item.id === tabId);
+  const tab = EditorService.getTab(tabId);
   if (!tab) {
     throw new Error("PL/SQL tab not found.");
   }

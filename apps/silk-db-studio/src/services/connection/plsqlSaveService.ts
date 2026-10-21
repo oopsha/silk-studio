@@ -37,7 +37,7 @@ function assertSaveAllowed(ref: PlsqlEditorRef): void {
 
 export function getPlsqlSaveBlockedReason(tabId?: string): string | null {
   const tab = tabId
-    ? EditorService.getTabs().find((item) => item.id === tabId)
+    ? EditorService.getTab(tabId)
     : EditorService.getActiveTab();
   if (!tab || !isEditableSourceTab(tab.uri)) {
     return "Active editor is not a PL/SQL source tab.";
@@ -67,7 +67,7 @@ export function getPlsqlSaveBlockedReason(tabId?: string): string | null {
  */
 export async function openPlsqlSaveDialog(tabId?: string): Promise<boolean> {
   const tab = tabId
-    ? EditorService.getTabs().find((item) => item.id === tabId)
+    ? EditorService.getTab(tabId)
     : EditorService.getActiveTab();
   if (!tab) return false;
 
@@ -196,7 +196,7 @@ export async function executePlsqlSave(
     ref.catalogName ?? undefined,
   );
 
-  const tab = EditorService.getTabs().find((item) => item.id === tabId);
+  const tab = EditorService.getTab(tabId);
   if (tab) {
     // Capture the buffer state as of *now* — the user may keep editing before an eventual
     // commit/rollback, so don't re-read tab.content later.
@@ -210,7 +210,7 @@ export async function executePlsqlSave(
       // durable.
       registerPendingDdlSave(ref.profileId, {
         onCommit: () => {
-          const stillOpen = EditorService.getTabs().find((item) => item.id === tabId);
+          const stillOpen = EditorService.getTab(tabId);
           recordPlsqlSnapshot(ref, savedContent, "save");
           if (stillOpen) {
             EditorService.markTabSaved(tabId, savedUri, savedLabel);

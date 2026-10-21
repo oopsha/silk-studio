@@ -13,6 +13,7 @@ import {
   scheduleRestoreViewState,
 } from "@silk-studio/editor/services/editor/monacoModelPath.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import {
   defineWorkbenchMonacoThemes,
   monacoThemeForColorTheme,
@@ -47,6 +48,7 @@ import { supportsCompileDiagnostics } from "../../services/sql/sqlDialect";
 import "./ViewDdlEditor.css";
 
 type ViewDdlEditorProps = {
+  groupId: EditorGroupId;
   objectRef: ObjectEditorRef;
   tabId: string;
   tabUri: string | undefined;
@@ -76,9 +78,9 @@ type LoadState =
  * the others have no equivalent — any syntax/reference error there already surfaces as a
  * failed `CREATE OR REPLACE`/`ALTER VIEW` statement.
  */
-function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEditorProps) {
+function ViewDdlEditor({ groupId, objectRef, tabId, tabUri, bufferedContent }: ViewDdlEditorProps) {
   const { t } = useI18n();
-  const activeTab = useActiveEditor();
+  const activeTab = useActiveEditor(groupId);
   const configuration = useConfiguration();
   const readOnly = configuration["database.readOnly"];
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
@@ -190,11 +192,16 @@ function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEdi
   }, [tabId]);
 
   useEffect(() => {
+    const instance = editorRef.current;
+    if (instance) EditorService.setActiveTextEditor(instance, groupId);
+  }, [tabId, groupId]);
+
+  useEffect(() => {
     return () => {
-      EditorService.setActiveTextEditor(null);
+      EditorService.setActiveTextEditor(null, groupId);
       editorRef.current = null;
     };
-  }, [tabId]);
+  }, [groupId]);
 
   const handleBeforeMount = (monaco: Monaco) => {
     defineWorkbenchMonacoThemes(monaco);
@@ -204,12 +211,12 @@ function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEdi
   const handleMount = useCallback(
     (instance: editor.IStandaloneCodeEditor) => {
       editorRef.current = instance;
-      EditorService.setActiveTextEditor(instance);
+      EditorService.setActiveTextEditor(instance, groupId);
       unregisterMonacoRef.current();
       unregisterMonacoRef.current = registerMonacoInstance(instance);
       scheduleRestoreViewState(instance, () => EditorService.getViewState(tabId));
     },
-    [tabId],
+    [tabId, groupId],
   );
 
   const handleChange = useCallback(

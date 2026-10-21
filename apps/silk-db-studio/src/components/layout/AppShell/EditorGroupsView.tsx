@@ -155,8 +155,8 @@ function EditorGroupPane({
   startDrag: StartDrag;
 }) {
   const layout = useLayoutState();
-  const panelVisual = useGroupPanelState(groupId);
   const activeTab = useActiveEditor(groupId);
+  const panelVisual = useGroupPanelState(groupId, activeTab?.id);
   const panelOnBottom = layout.panelPosition === "bottom";
   // The result panel has nothing relevant to show for a non-SQL virtual tab
   // (DDL preview, object editor, settings, …) — keep it hidden there without
@@ -188,7 +188,7 @@ function EditorGroupPane({
           : { width: panelVisual.maximized ? undefined : panelVisual.size }
       }
     >
-      <Panel groupId={groupId} />
+      <Panel groupId={groupId} editorTabId={activeTab?.id} />
     </div>
   ) : null;
 
@@ -205,6 +205,7 @@ function EditorGroupPane({
               GroupPanelStateService.setPanelSize(
                 groupId,
                 startSize - (clientPosition - startPosition),
+                activeTab?.id,
               );
             },
           });

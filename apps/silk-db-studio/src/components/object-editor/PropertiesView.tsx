@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import type { MetadataObjectKind } from "@silk-studio/db-protocol";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import type { MessageKey } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
@@ -22,6 +23,7 @@ import DependenciesPreview from "./DependenciesPreview";
 import "./PropertiesView.css";
 
 type PropertiesRenderCtx = {
+  groupId: EditorGroupId;
   objectRef: ObjectEditorRef;
   tabId: string;
   tabUri: string | undefined;
@@ -108,6 +110,7 @@ const PROPERTIES_SECTIONS: PropertiesSection[] = [
             tabId={ctx.tabId}
             tabUri={ctx.tabUri}
             bufferedContent={ctx.bufferedContent}
+            groupId={ctx.groupId}
           />
         );
       }
@@ -124,6 +127,7 @@ const PROPERTIES_SECTIONS: PropertiesSection[] = [
 ];
 
 type PropertiesViewProps = {
+  groupId: EditorGroupId;
   objectRef: ObjectEditorRef;
   tabId: string;
   tabUri: string | undefined;
@@ -139,7 +143,7 @@ type PropertiesViewProps = {
  */
 const activeSectionIdByTabId = new Map<string, string>();
 
-function PropertiesView({ objectRef, tabId, tabUri, bufferedContent }: PropertiesViewProps) {
+function PropertiesView({ groupId, objectRef, tabId, tabUri, bufferedContent }: PropertiesViewProps) {
   const { t } = useI18n();
   const sections = PROPERTIES_SECTIONS.filter(
     (section) => !section.kinds || section.kinds.includes(objectRef.kind),
@@ -198,7 +202,7 @@ function PropertiesView({ objectRef, tabId, tabUri, bufferedContent }: Propertie
           </nav>
         </aside>
         <div className="object-editor-properties__content">
-          {active.render({ objectRef, tabId, tabUri, bufferedContent, tableEditor })}
+          {active.render({ groupId, objectRef, tabId, tabUri, bufferedContent, tableEditor })}
         </div>
       </div>
     </div>

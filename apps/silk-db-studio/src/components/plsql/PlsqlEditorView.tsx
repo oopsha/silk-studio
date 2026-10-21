@@ -13,6 +13,7 @@ import {
   scheduleRestoreViewState,
 } from "@silk-studio/editor/services/editor/monacoModelPath.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import {
   defineWorkbenchMonacoThemes,
   monacoThemeForColorTheme,
@@ -42,9 +43,9 @@ type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string };
 
-function PlsqlEditorView() {
+function PlsqlEditorView({ groupId }: { groupId: EditorGroupId }) {
   const { t } = useI18n();
-  const activeTab = useActiveEditor();
+  const activeTab = useActiveEditor(groupId);
   const ref = parsePlsqlEditorUri(activeTab?.uri);
   const configuration = useConfiguration();
   const readOnly = configuration["database.readOnly"];
@@ -129,11 +130,16 @@ function PlsqlEditorView() {
   }, [activeTab?.id]);
 
   useEffect(() => {
+    const instance = editorRef.current;
+    if (instance) EditorService.setActiveTextEditor(instance, groupId);
+  }, [activeTab?.id, groupId]);
+
+  useEffect(() => {
     return () => {
-      EditorService.setActiveTextEditor(null);
+      EditorService.setActiveTextEditor(null, groupId);
       editorRef.current = null;
     };
-  }, [activeTab?.id]);
+  }, [groupId]);
 
   const handleBeforeMount = (monaco: Monaco) => {
     defineWorkbenchMonacoThemes(monaco);
@@ -142,14 +148,14 @@ function PlsqlEditorView() {
 
   const handleMount = useCallback((instance: editor.IStandaloneCodeEditor) => {
     editorRef.current = instance;
-    EditorService.setActiveTextEditor(instance);
-    const tabId = EditorService.getActiveTabId();
+    EditorService.setActiveTextEditor(instance, groupId);
+    const tabId = activeTab?.id;
     if (tabId) {
       scheduleRestoreViewState(instance, () =>
         EditorService.getViewState(tabId),
       );
     }
-  }, []);
+  }, [activeTab?.id, groupId]);
 
   const handleChange = useCallback(
     (value: string | undefined) => {

@@ -14,11 +14,17 @@ import { useQueryExecutionState } from "../../../services/query/useQueryExecutio
 import QueryResultGrid from "./QueryResultGrid";
 import QueryResultLog from "./QueryResultLog";
 
-function Panel({ groupId }: { groupId: EditorGroupId }) {
+function Panel({
+  groupId,
+  editorTabId,
+}: {
+  groupId: EditorGroupId;
+  editorTabId?: string;
+}) {
   const { t } = useI18n();
   const queryState = useQueryExecutionState(groupId);
   const layout = useLayoutState();
-  const panelVisual = useGroupPanelState(groupId);
+  const panelVisual = useGroupPanelState(groupId, editorTabId);
   const logPreRef = useRef<HTMLPreElement | null>(null);
   const isRunning = queryState.status === "running";
   const showErrorOrCancel =

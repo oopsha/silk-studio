@@ -5,9 +5,8 @@ import type { EditorGroupId } from "./editorGroupTypes";
 import type { EditorTab } from "./editorTypes";
 
 function tabsFor(groupId?: EditorGroupId): readonly EditorTab[] {
-  return groupId
-    ? EditorGroupsService.getGroup(groupId).getTabs()
-    : EditorService.getTabs();
+  if (!groupId) return EditorService.getTabs();
+  return EditorGroupsService.getGroupIfExists(groupId)?.getTabs() ?? [];
 }
 
 function snapshotTabs(groupId?: EditorGroupId): EditorTab[] {
@@ -21,7 +20,9 @@ export function useEditorTabs(groupId?: EditorGroupId): readonly EditorTab[] {
   useEffect(() => {
     setTabs(snapshotTabs(groupId));
     if (groupId) {
-      return EditorGroupsService.getGroup(groupId).onDidChange(() => {
+      const group = EditorGroupsService.getGroupIfExists(groupId);
+      if (!group) return;
+      return group.onDidChange(() => {
         setTabs(snapshotTabs(groupId));
       });
     }

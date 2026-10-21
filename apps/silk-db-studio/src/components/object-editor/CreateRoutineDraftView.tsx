@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Editor } from "@monaco-editor/react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import { ConnectionService } from "../../services/connection/connectionService";
@@ -19,8 +20,8 @@ import {
   updateCreateRoutineDraft,
 } from "../../services/connection/createRoutineDraftService";
 
-function CreateRoutineDraftView() {
-  const tab = useActiveEditor();
+function CreateRoutineDraftView({ groupId }: { groupId: EditorGroupId }) {
+  const tab = useActiveEditor(groupId);
   const id = parseCreateRoutineDraftUri(tab?.uri);
   const draft = id ? getCreateRoutineDraft(id) : undefined;
   const [revision, setRevision] = useState(0);
@@ -74,7 +75,7 @@ function CreateRoutineDraftView() {
 
       const finalize = () => {
         discardCreateRoutineDraft(id);
-        const stillOpen = EditorService.getTabs().find((item) => item.id === tab.id);
+        const stillOpen = EditorService.getTab(tab.id);
         if (stillOpen) {
           EditorService.markTabSaved(
             tab.id,

@@ -9,12 +9,14 @@ export type GroupPanelVisualState = {
   maximized: boolean;
 };
 
-type InternalPanelState = GroupPanelVisualState & { sizeBeforeMaximize: number | null };
+type InternalPanelState = GroupPanelVisualState & {
+  sizeBeforeMaximize: { size: number; editorTabId?: string } | null;
+};
 type GroupPanelChangeListener = () => void;
 
-/** Last user-resized panel size, shared across groups so a restart (or a new
- * split) keeps the size the user actually chose instead of the built-in default. */
+/** Legacy shared size used as a fallback when an editor has no saved size. */
 const PANEL_SIZE_STORAGE_KEY = "silk-workbench.groupPanelSize";
+const EDITOR_PANEL_SIZES_STORAGE_KEY = "silk-workbench.editorPanelSizes";
 
 function loadPersistedPanelSize(): number | null {
   try {
@@ -27,18 +29,30 @@ function loadPersistedPanelSize(): number | null {
   }
 }
 
-function savePersistedPanelSize(size: number): void {
+function loadPersistedEditorPanelSizes(): Map<string, number> {
   try {
-    localStorage.setItem(PANEL_SIZE_STORAGE_KEY, String(size));
+    const raw = localStorage.getItem(EDITOR_PANEL_SIZES_STORAGE_KEY);
+    if (!raw) return new Map();
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return new Map();
+    }
+    return new Map(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, number] =>
+          typeof entry[1] === "number" && Number.isFinite(entry[1]),
+      ),
+    );
   } catch {
-    // Ignore quota or private-mode errors.
+    return new Map();
   }
 }
 
 class GroupPanelStateServiceImpl {
   private readonly states = new Map<EditorGroupId, InternalPanelState>();
   private readonly listeners = new Set<GroupPanelChangeListener>();
-  private persistedSize = loadPersistedPanelSize();
+  private readonly initialPanelSize = loadPersistedPanelSize() ?? LAYOUT_DEFAULTS.panelSize;
+  private readonly editorPanelSizes = loadPersistedEditorPanelSizes();
 
   constructor() {
     for (const id of EditorGroupsService.getGroupIds()) {
@@ -69,7 +83,7 @@ class GroupPanelStateServiceImpl {
     const source = sourceId ? this.states.get(sourceId) : undefined;
     this.states.set(id, {
       visible: source?.visible ?? LAYOUT_DEFAULTS.panel,
-      size: source?.size ?? this.persistedSize ?? LAYOUT_DEFAULTS.panelSize,
+      size: source?.size ?? this.initialPanelSize,
       maximized: false,
       sizeBeforeMaximize: null,
     });
@@ -84,8 +98,14 @@ class GroupPanelStateServiceImpl {
     return state;
   }
 
-  getState(id: EditorGroupId): GroupPanelVisualState {
-    const { visible, size, maximized } = this.ensure(id);
+  getState(id: EditorGroupId, editorTabId?: string): GroupPanelVisualState {
+    const state = this.ensure(id);
+    const resolvedEditorTabId =
+      editorTabId ?? EditorGroupsService.getGroupIfExists(id)?.getActiveTabId() ?? undefined;
+    const size = resolvedEditorTabId
+      ? (this.editorPanelSizes.get(resolvedEditorTabId) ?? this.initialPanelSize)
+      : state.size;
+    const { visible, maximized } = state;
     return { visible, size, maximized };
   }
 
@@ -106,37 +126,70 @@ class GroupPanelStateServiceImpl {
     this.commit(id);
   }
 
-  setPanelSize(id: EditorGroupId, size: number): void {
+  setPanelSize(id: EditorGroupId, size: number, editorTabId?: string): void {
     const state = this.ensure(id);
     const min =
       LayoutService.getPanelPosition() === "bottom"
         ? LAYOUT_MIN.panelSizeBottom
         : LAYOUT_MIN.panelSizeRight;
     const next = Math.max(min, Math.round(size));
-    if (next === state.size) return;
-    state.size = next;
+    const resolvedEditorTabId =
+      editorTabId ?? EditorGroupsService.getGroupIfExists(id)?.getActiveTabId() ?? undefined;
+    const currentSize = resolvedEditorTabId
+      ? (this.editorPanelSizes.get(resolvedEditorTabId) ?? this.initialPanelSize)
+      : state.size;
+    if (next === currentSize) return;
+    if (resolvedEditorTabId) {
+      this.editorPanelSizes.set(resolvedEditorTabId, next);
+      try {
+        localStorage.setItem(
+          EDITOR_PANEL_SIZES_STORAGE_KEY,
+          JSON.stringify(Object.fromEntries(this.editorPanelSizes)),
+        );
+      } catch {
+        // Keep the in-memory size when storage is unavailable.
+      }
+    } else {
+      state.size = next;
+    }
     if (state.maximized) {
       state.maximized = false;
       state.sizeBeforeMaximize = null;
     }
-    this.persistedSize = next;
-    savePersistedPanelSize(next);
     this.commit(id);
   }
 
-  toggleMaximized(id: EditorGroupId): void {
+  toggleMaximized(id: EditorGroupId, editorTabId?: string): void {
     const state = this.ensure(id);
+    const resolvedEditorTabId =
+      editorTabId ?? EditorGroupsService.getGroupIfExists(id)?.getActiveTabId() ?? undefined;
     if (!state.visible) {
       state.visible = true;
     }
     if (state.maximized) {
       state.maximized = false;
       if (state.sizeBeforeMaximize !== null) {
-        state.size = state.sizeBeforeMaximize;
+        const { size, editorTabId: restoreEditorTabId } = state.sizeBeforeMaximize;
+        if (restoreEditorTabId) {
+          this.editorPanelSizes.set(restoreEditorTabId, size);
+          try {
+            localStorage.setItem(
+              EDITOR_PANEL_SIZES_STORAGE_KEY,
+              JSON.stringify(Object.fromEntries(this.editorPanelSizes)),
+            );
+          } catch {
+            // Keep the in-memory size when storage is unavailable.
+          }
+        } else {
+          state.size = size;
+        }
         state.sizeBeforeMaximize = null;
       }
     } else {
-      state.sizeBeforeMaximize = state.size;
+      state.sizeBeforeMaximize = {
+        size: this.getState(id, resolvedEditorTabId).size,
+        editorTabId: resolvedEditorTabId,
+      };
       state.maximized = true;
     }
     this.commit(id);

@@ -95,7 +95,7 @@ type PointerDragSession = {
  * Tauri keeps native OS file-drop; HTML5 DnD cannot coexist on Windows WebView2.
  */
 function TabBar({ groupId, commands, labels, crossGroupDnd }: TabBarProps) {
-  const group = EditorGroupsService.getGroup(groupId);
+  const group = EditorGroupsService.getGroupIfExists(groupId);
   const tabs = useEditorTabs(groupId);
   const activeTab = useActiveEditor(groupId);
   const { layout: groupsLayout } = useEditorGroupsLayout();
@@ -110,7 +110,7 @@ function TabBar({ groupId, commands, labels, crossGroupDnd }: TabBarProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [locked, setLocked] = useState(() =>
-    EditorGroupsService.isGroupLocked(groupId),
+    EditorGroupsService.getGroupIfExists(groupId)?.isLocked() ?? false,
   );
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dropIndicator, setDropIndicator] = useState<DropIndicator | null>(
@@ -139,9 +139,9 @@ function TabBar({ groupId, commands, labels, crossGroupDnd }: TabBarProps) {
   }, [activeTab?.id]);
 
   useEffect(() => {
-    setLocked(EditorGroupsService.isGroupLocked(groupId));
+    setLocked(EditorGroupsService.getGroupIfExists(groupId)?.isLocked() ?? false);
     return EditorGroupsService.onDidChangeAnyGroup(() => {
-      setLocked(EditorGroupsService.isGroupLocked(groupId));
+      setLocked(EditorGroupsService.getGroupIfExists(groupId)?.isLocked() ?? false);
     });
   }, [groupId]);
 
@@ -207,8 +207,8 @@ function TabBar({ groupId, commands, labels, crossGroupDnd }: TabBarProps) {
         toIndex -= 1;
       }
 
-      group.moveTab(sourceId, toIndex);
-      group.setActiveTab(sourceId);
+      group?.moveTab(sourceId, toIndex);
+      group?.setActiveTab(sourceId);
     },
     [group],
   );
@@ -333,8 +333,12 @@ function TabBar({ groupId, commands, labels, crossGroupDnd }: TabBarProps) {
       suppressClickRef.current = false;
       return;
     }
-    group.setActiveTab(tabId);
+    group?.setActiveTab(tabId);
   }
+
+  // A group can be removed while React is processing its final notifications.
+  // Its pane is about to unmount; never let that transient stale ID crash render.
+  if (!group) return null;
 
   return (
     <header className="tab-bar">
@@ -372,12 +376,12 @@ function TabBar({ groupId, commands, labels, crossGroupDnd }: TabBarProps) {
                 onAuxClick={(event) => handleAuxClick(event, tab.id)}
                 onDoubleClick={() => {
                   if (tab.isPreview) {
-                    group.pinTab(tab.id);
+                    group?.pinTab(tab.id);
                   }
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  group.setActiveTab(tab.id);
+                  group?.setActiveTab(tab.id);
                   setMoreMenuOpen(false);
                   setContextMenu({
                     tabId: tab.id,

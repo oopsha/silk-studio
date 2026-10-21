@@ -84,6 +84,7 @@ function ObjectEditorView({ groupId }: ObjectEditorViewProps) {
         >
           <PropertiesView
             key={activeTab.id}
+            groupId={groupId}
             objectRef={ref}
             tabId={activeTab.id}
             tabUri={activeTab.uri}
