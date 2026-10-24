@@ -31,6 +31,7 @@ function CommandPalette() {
   const [placed, setPlaced] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const focusedOptionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     return CommandPaletteService.onDidChange(() => {
@@ -54,6 +55,10 @@ function CommandPalette() {
       items.length === 0 ? 0 : Math.min(current, items.length - 1),
     );
   }, [items]);
+
+  useLayoutEffect(() => {
+    focusedOptionRef.current?.scrollIntoView({ block: "nearest" });
+  }, [focusedIndex, items.length]);
 
   const close = useCallback(() => {
     CommandPaletteService.hide();
@@ -199,6 +204,7 @@ function CommandPalette() {
             return (
               <div
                 key={item.id}
+                ref={isFocused ? focusedOptionRef : null}
                 className={`quick-input-list-row${isFocused ? " quick-input-list-row--focused" : ""}`}
                 role="option"
                 aria-selected={isFocused}

@@ -47,6 +47,19 @@ export function isDdlEditorTab(uri: string | undefined): boolean {
   return parseDdlEditorUri(uri) !== null;
 }
 
+/** Only a newly opened editor's loading marker should trigger the initial DDL fetch.
+ * An empty string is a valid user edit (for example, after selecting all and deleting). */
+export function isDdlSourceAwaitingInitialLoad(
+  content: string | undefined,
+  localizedLoadingMessage: string,
+): boolean {
+  if (content === undefined) return true;
+  return (
+    content.startsWith("-- Loading DDL") ||
+    content.startsWith(`-- ${localizedLoadingMessage}`)
+  );
+}
+
 export function buildDdlTabLabel(schemaName: string, objectName: string): string {
   return `DDL — ${schemaName}.${objectName}`;
 }

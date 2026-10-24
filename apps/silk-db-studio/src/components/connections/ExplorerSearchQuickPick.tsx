@@ -60,6 +60,7 @@ function ExplorerSearchQuickPick() {
   const [liveResults, setLiveResults] = useState<ExplorerSearchPick[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const focusedOptionRef = useRef<HTMLDivElement>(null);
   // Monotonic "search generation" — bumped on every new live search (explicit re-click, or the
   // filter changing while one is in flight) so a slow, superseded response is silently discarded
   // instead of clobbering a newer search's results. Mirrors AG Grid's infinite-row-model
@@ -213,6 +214,10 @@ function ExplorerSearchQuickPick() {
     const cachePicks = buildExplorerSearchPicksAcrossProfiles(profiles, filter);
     return liveSearchActionPick ? [...cachePicks, liveSearchActionPick] : cachePicks;
   }, [profiles, filter, open, liveResults, liveSearchActionPick]);
+
+  useLayoutEffect(() => {
+    focusedOptionRef.current?.scrollIntoView({ block: "nearest" });
+  }, [focusedIndex, picks.length]);
 
   useEffect(() => {
     setFocusedIndex((current) =>
@@ -492,6 +497,7 @@ function ExplorerSearchQuickPick() {
             return (
               <div
                 key={pick.id}
+                ref={isFocused ? focusedOptionRef : null}
                 className={`quick-input-list-row${isFocused ? " quick-input-list-row--focused" : ""}`}
                 role="option"
                 aria-selected={isFocused}

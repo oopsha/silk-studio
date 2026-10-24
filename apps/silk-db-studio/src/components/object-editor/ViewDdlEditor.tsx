@@ -20,6 +20,7 @@ import {
 } from "@silk-studio/editor/themes/dark-monaco.ts";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
 import { bridgeFetchObjectDdl } from "../../services/connection/connectionDdlBridge";
+import { isDdlSourceAwaitingInitialLoad } from "../../services/connection/ddlEditorConstants";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { ConnectionService } from "../../services/connection/connectionService";
 import type { PlsqlEditorRef } from "../../services/connection/plsqlEditorConstants";
@@ -119,19 +120,15 @@ function ViewDdlEditor({ groupId, objectRef, tabId, tabUri, bufferedContent }: V
   }, []);
 
   useEffect(() => {
-    const buffered = bufferedContent ?? "";
-    // "-- Loading DDL..." is the hardcoded (non-localized) placeholder ddlEditorService.ts
-    // seeds a freshly-opened silk://ddl/... tab with, before this component (now also used for
-    // that tab's editable Declaration section — see this component's doc comment) ever runs —
-    // matches DdlPreview.tsx's identical check. Without it, that placeholder text was mistaken
-    // for real loaded DDL on first mount and the real fetch below never ran.
-    const looksLoaded =
-      buffered.trim().length > 0 &&
-      !buffered.startsWith("-- Loading DDL") &&
-      !buffered.startsWith(`-- ${t("app.ddl.loading")}`) &&
-      !buffered.startsWith(`-- ${t("app.ddl.loadFailed")}`);
-
-    if (looksLoaded) {
+    // A blank buffer is a valid edit, not evidence that the editor has never loaded.
+    // Only the initial loading marker (or a missing buffer during tab activation) fetches.
+    // Load failures are also terminal until the user explicitly requests Reload.
+    if (
+      !isDdlSourceAwaitingInitialLoad(
+        bufferedContent,
+        t("app.ddl.loading"),
+      )
+    ) {
       setLoadState({ status: "ready" });
       return;
     }
