@@ -123,7 +123,7 @@ export default function ColumnGrid<Row extends ColumnGridRow>({ rows, columns, f
   };
   const exportCsv = async () => {
     const data = matrix(visibleColumns(), displayRows());
-    const csv = toCsv(data.headers, data.cells, "");
+    const csv = toCsv(data.headers, data.cells);
     const name = `${filename}.csv`;
     if (isTauri()) {
       const path = await save({ title: "Export CSV", defaultPath: name, filters: [{ name: "CSV", extensions: ["csv"] }] });

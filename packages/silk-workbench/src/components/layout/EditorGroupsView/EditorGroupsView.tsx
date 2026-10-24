@@ -34,7 +34,10 @@ export type EditorGroupsViewProps = {
   commands: TabBarCommandAdapter;
   editorProps: EditorAreaSharedProps;
   /** App-owned panel rendered below or beside each editor group. */
-  renderPanel?: (groupId: EditorGroupId) => ReactNode;
+  renderPanel?: (
+    groupId: EditorGroupId,
+    activeTab: EditorTab | undefined,
+  ) => ReactNode;
   /** Apps can hide their panel for editor tabs that do not use it. */
   shouldShowPanelForTab?: (tab: EditorTab | undefined) => boolean;
   /** Optional app-owned cross-group drag behavior. */
@@ -176,8 +179,8 @@ function EditorGroupPane({
   getPaneProps: EditorGroupsViewProps["getPaneProps"];
 }) {
   const layout = useLayoutState();
-  const panelVisual = useGroupPanelState(groupId);
   const activeTab = useActiveEditor(groupId);
+  const panelVisual = useGroupPanelState(groupId, activeTab?.id);
   const panelOnBottom = layout.panelPosition === "bottom";
   // The result panel has nothing relevant to show for a non-SQL virtual tab
   // (DDL preview, object editor, settings, …) — keep it hidden there without
@@ -213,7 +216,7 @@ function EditorGroupPane({
           : { width: panelVisual.maximized ? undefined : panelVisual.size }
       }
     >
-      {renderPanel?.(groupId)}
+      {renderPanel?.(groupId, activeTab)}
     </div>
   ) : null;
 
@@ -230,6 +233,7 @@ function EditorGroupPane({
               GroupPanelStateService.setPanelSize(
                 groupId,
                 startSize - (clientPosition - startPosition),
+                activeTab?.id,
               );
             },
           });

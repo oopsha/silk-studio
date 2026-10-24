@@ -106,6 +106,18 @@ where
 }
 
 #[tauri::command]
+async fn query_import_rows(connection_id: String, params: Value, app: tauri::AppHandle) -> Result<Value, String> {
+    require_connection_id(&connection_id)?;
+    run_blocking(move || app.state::<AppState>().jdbc_agent.import_rows(&connection_id, params)).await
+}
+
+#[tauri::command]
+async fn query_import_status(connection_id: String, operation_id: String, cancel: bool, app: tauri::AppHandle) -> Result<Value, String> {
+    require_connection_id(&connection_id)?;
+    run_blocking(move || app.state::<AppState>().jdbc_agent.import_status(&connection_id, &operation_id, cancel)).await
+}
+
+#[tauri::command]
 async fn query_prepare_mybatis(sql: String, parameters: Value, app: tauri::AppHandle) -> Result<Value, String> {
     run_blocking(move || app.state::<AppState>().jdbc_agent.prepare_mybatis(&sql, parameters)).await
 }
@@ -361,6 +373,7 @@ fn connection_columns(
     schema: String,
     table: String,
     catalog: Option<String>,
+    completion_only: Option<bool>,
     state: tauri::State<'_, AppState>,
 ) -> Result<Value, String> {
     let connection_id = require_connection_id(&connection_id)?;
@@ -369,6 +382,7 @@ fn connection_columns(
         schema.trim(),
         table.trim(),
         catalog.as_deref(),
+        completion_only.unwrap_or(false),
     )
 }
 
@@ -615,6 +629,27 @@ fn connection_dependents(
     )
 }
 
+fn shutdown_runtime(app: &tauri::AppHandle) {
+    if let Some(state) = app.try_state::<AppState>() {
+        state.jdbc_agent.shutdown();
+    }
+    if let Some(state) = app.try_state::<ssm_tunnel::SsmTunnelState>() {
+        state.tunnels.close_all();
+    }
+    if let Some(state) = app.try_state::<ssh_tunnel::SshTunnelState>() {
+        state.tunnels.close_all();
+    }
+}
+
+/// The Windows updater exits without emitting ExitRequested. Release subprocess file locks
+/// before launching the installer, and await the blocking kill/wait operations off the UI thread.
+#[tauri::command]
+async fn update_prepare_install(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || shutdown_runtime(&app))
+        .await
+        .map_err(|error| format!("Failed to prepare update installation: {error}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -626,11 +661,14 @@ pub fn run() {
         .plugin(tauri_plugin_system_symbols::init())
         .plugin(tauri_plugin_window_controls::init())
         .invoke_handler(tauri::generate_handler![
+            update_prepare_install,
             ensure_title_bar_overlay,
             startup_theme::startup_theme_save,
             query_execute,
             query_prepare_mybatis,
             query_execute_paged,
+            query_import_rows,
+            query_import_status,
             query_cancel,
             connection_commit,
             connection_rollback,
@@ -746,15 +784,7 @@ pub fn run() {
             // (confirmed: an orphaned session-manager-plugin.exe holds a lock on its own .exe,
             // which then blocks a later `cargo build` from touching it).
             if let tauri::RunEvent::ExitRequested { .. } = event {
-                if let Some(state) = app_handle.try_state::<AppState>() {
-                    state.jdbc_agent.shutdown();
-                }
-                if let Some(state) = app_handle.try_state::<ssm_tunnel::SsmTunnelState>() {
-                    state.tunnels.close_all();
-                }
-                if let Some(state) = app_handle.try_state::<ssh_tunnel::SshTunnelState>() {
-                    state.tunnels.close_all();
-                }
+                shutdown_runtime(app_handle);
             }
         });
 }

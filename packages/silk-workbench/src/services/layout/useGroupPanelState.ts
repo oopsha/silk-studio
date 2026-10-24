@@ -2,15 +2,17 @@ import { useEffect, useState } from "react";
 import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { GroupPanelStateService, type GroupPanelVisualState } from "./groupPanelStateService";
 
-export function useGroupPanelState(groupId: EditorGroupId): GroupPanelVisualState {
-  const [state, setState] = useState(() => GroupPanelStateService.getState(groupId));
+export function useGroupPanelState(
+  groupId: EditorGroupId,
+  editorTabId?: string,
+): GroupPanelVisualState {
+  const [, setRevision] = useState(0);
 
   useEffect(() => {
-    setState(GroupPanelStateService.getState(groupId));
     return GroupPanelStateService.onDidChange(() => {
-      setState(GroupPanelStateService.getState(groupId));
+      setRevision((revision) => revision + 1);
     });
-  }, [groupId]);
+  }, []);
 
-  return state;
+  return GroupPanelStateService.getState(groupId, editorTabId);
 }

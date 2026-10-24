@@ -144,7 +144,7 @@ export async function executeTableStructureSave(
   const finalize = () => {
     if (!newTableName) return;
     const newRef: ObjectEditorRef = { ...ref, objectName: newTableName };
-    const stillOpen = EditorService.getTabs().find((item) => item.id === tabId);
+    const stillOpen = EditorService.getTab(tabId);
     if (stillOpen) {
       EditorService.markTabSaved(
         tabId,

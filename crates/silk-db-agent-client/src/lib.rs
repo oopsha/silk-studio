@@ -242,6 +242,7 @@ impl JdbcAgentClient {
         schema: &str,
         table: &str,
         catalog: Option<&str>,
+        completion_only: bool,
     ) -> Result<Value, String> {
         self.ensure_connection(connection_id)?;
         let schema = schema.trim();
@@ -258,6 +259,9 @@ impl JdbcAgentClient {
             "table": table
         });
         set_optional_catalog(&mut params, catalog);
+        if completion_only {
+            params["completionOnly"] = json!(true);
+        }
         self.send_request("connection.columns", params)
     }
 
@@ -628,6 +632,18 @@ impl JdbcAgentClient {
         }
         set_optional_catalog(&mut params, catalog);
         self.send_request("connection.dependents", params)
+    }
+
+    pub fn import_rows(&self, connection_id: &str, mut params: Value) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        params["connectionId"] = json!(connection_id);
+        self.send_request("query.importRows", params)
+    }
+
+    pub fn import_status(&self, connection_id: &str, operation_id: &str, cancel: bool) -> Result<Value, String> {
+        self.send_request("query.importStatus", json!({
+            "connectionId": connection_id, "operationId": operation_id, "cancel": cancel
+        }))
     }
 
     pub fn prepare_mybatis(&self, sql: &str, parameters: Value) -> Result<Value, String> {

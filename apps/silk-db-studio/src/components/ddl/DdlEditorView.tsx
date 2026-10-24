@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import type { MessageKey } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { parseDdlEditorUri } from "../../services/connection/ddlEditorConstants";
 import { ConnectionService } from "../../services/connection/connectionService";
 import { supportsPlsqlSourceEdit } from "../../services/connection/plsqlEditorService";
@@ -25,9 +26,9 @@ const ROUTINE_SECTIONS: { id: SectionId; labelKey: MessageKey }[] = [
  * editor tab and back unmounts/remounts this component (EditorArea's `renderAlternative`). */
 const activeSectionIdByTabId = new Map<string, SectionId>();
 
-function DdlEditorView() {
+function DdlEditorView({ groupId }: { groupId: EditorGroupId }) {
   const { t } = useI18n();
-  const activeTab = useActiveEditor();
+  const activeTab = useActiveEditor(groupId);
   const ref = parseDdlEditorUri(activeTab?.uri);
   const tabId = activeTab?.id;
 
@@ -85,6 +86,7 @@ function DdlEditorView() {
             tabId={tabId}
             tabUri={activeTab?.uri}
             bufferedContent={activeTab?.content}
+            groupId={groupId}
           />
         </div>
       );
@@ -149,6 +151,7 @@ function DdlEditorView() {
                 tabId={tabId}
                 tabUri={activeTab?.uri}
                 bufferedContent={activeTab?.content}
+                groupId={groupId}
               />
             ) : (
               <DdlPreview

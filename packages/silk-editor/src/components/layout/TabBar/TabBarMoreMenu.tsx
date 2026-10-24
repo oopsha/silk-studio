@@ -42,13 +42,13 @@ function TabBarMoreMenu({
   const [position, setPosition] = useState<MenuPosition | null>(null);
   const enablePreviewEditors = useEnablePreviewEditors();
   const [locked, setLocked] = useState(() =>
-    EditorGroupsService.isGroupLocked(groupId),
+    EditorGroupsService.getGroupIfExists(groupId)?.isLocked() ?? false,
   );
 
   useEffect(() => {
-    setLocked(EditorGroupsService.isGroupLocked(groupId));
+    setLocked(EditorGroupsService.getGroupIfExists(groupId)?.isLocked() ?? false);
     return EditorGroupsService.onDidChangeAnyGroup(() => {
-      setLocked(EditorGroupsService.isGroupLocked(groupId));
+      setLocked(EditorGroupsService.getGroupIfExists(groupId)?.isLocked() ?? false);
     });
   }, [groupId]);
 

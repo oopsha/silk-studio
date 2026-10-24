@@ -55,7 +55,7 @@ function EditorArea({
   configuration,
   beforeMount,
 }: EditorAreaProps) {
-  const group = EditorGroupsService.getGroup(groupId);
+  const group = EditorGroupsService.getGroupIfExists(groupId);
   const activeTab = useActiveEditor(groupId);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const cursorListenerRef = useRef<IDisposable | null>(null);
@@ -73,11 +73,11 @@ function EditorArea({
   const handleMount = useCallback(
     (instance: editor.IStandaloneCodeEditor, monaco: Monaco) => {
       editorRef.current = instance;
-      group.setActiveTextEditor(instance);
+      group?.setActiveTextEditor(instance);
 
-      const tabId = group.getActiveTabId();
+      const tabId = group?.getActiveTabId();
       if (tabId) {
-        scheduleRestoreViewState(instance, () => group.getViewState(tabId));
+        scheduleRestoreViewState(instance, () => group?.getViewState(tabId) ?? null);
       }
 
       cursorListenerRef.current?.dispose();
@@ -124,7 +124,7 @@ function EditorArea({
     const tabId = activeTab?.id;
     return () => {
       const instance = editorRef.current;
-      if (instance && tabId) {
+      if (instance && tabId && group) {
         group.saveViewState(tabId, instance.saveViewState());
       }
     };
@@ -134,7 +134,7 @@ function EditorArea({
   useEffect(() => {
     const instance = editorRef.current;
     const tabId = activeTab?.id;
-    if (!instance || !tabId) return;
+    if (!instance || !tabId || !group) return;
     scheduleRestoreViewState(instance, () => group.getViewState(tabId));
   }, [activeTab?.id, group]);
 
@@ -179,7 +179,7 @@ function EditorArea({
       cursorListenerRef.current?.dispose();
       cursorListenerRef.current = null;
       if (editorRef.current) {
-        group.setActiveTextEditor(null);
+        group?.setActiveTextEditor(null);
         editorRef.current = null;
       }
       if (isFocusedGroupRef.current) {
@@ -191,12 +191,12 @@ function EditorArea({
   const handleChange = useCallback(
     (value: string | undefined) => {
       if (!activeTab || value === undefined) return;
-      group.updateTabContent(activeTab.id, value);
+      group?.updateTabContent(activeTab.id, value);
     },
     [activeTab, group],
   );
 
-  if (!activeTab) {
+  if (!group || !activeTab) {
     return <main className="editor-area editor-area--empty" />;
   }
 

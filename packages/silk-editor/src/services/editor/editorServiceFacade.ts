@@ -2,37 +2,50 @@ import type { editor } from "monaco-editor";
 import type { EditorTab, OpenEditorInput } from "./editorTypes";
 import type { ActiveEditorSnapshot, EditorGroupContentSnapshot } from "./editorService";
 import { EditorGroupsService } from "./editorGroupsService";
+import type { EditorGroupId } from "./editorGroupTypes";
 
 function focused() {
   return EditorGroupsService.getFocusedGroup();
 }
 
+function owner(tabId: string) {
+  return EditorGroupsService.getGroupForTab(tabId) ?? focused();
+}
+
 /**
- * Delegates every call to whichever editor group currently has focus — the
- * single-editor API surface every existing call site was written against.
- * `openFile`/`openEditor` and `onDidChange` route through
- * `EditorGroupsService` instead of the focused group directly: opening
- * reveals an already-open uri in its own group rather than duplicating it,
- * and `onDidChange` must keep firing correctly as focus moves between groups.
+ * Keeps active-tab operations focused-group based for existing callers while
+ * routing tab-id operations to the group that owns the tab. This lets
+ * alternative editors render independently in split panes without changing
+ * the single-editor API used by workbench commands.
  */
 export const EditorService = {
   prepareSessionRestore: (): void => EditorGroupsService.prepareSessionRestore(),
   ensureInitialTab: (): void => focused().ensureInitialTab(),
 
-  getTabs: (): readonly EditorTab[] => focused().getTabs(),
+  getTabs: (groupId?: EditorGroupId): readonly EditorTab[] =>
+    groupId
+      ? (EditorGroupsService.getGroupIfExists(groupId)?.getTabs() ?? [])
+      : focused().getTabs(),
+  getTab: (id: string): EditorTab | undefined =>
+    EditorGroupsService.getGroupForTab(id)?.findTab(id),
   getActiveTabId: (): string | null => focused().getActiveTabId(),
   getActiveTab: (): EditorTab | undefined => focused().getActiveTab(),
   getFilesystemTabs: (): readonly EditorTab[] => focused().getFilesystemTabs(),
 
-  setActiveTextEditor: (instance: editor.IStandaloneCodeEditor | null): void =>
-    focused().setActiveTextEditor(instance),
-  getActiveTextEditor: (): editor.IStandaloneCodeEditor | null =>
-    focused().getActiveTextEditor(),
+  setActiveTextEditor: (
+    instance: editor.IStandaloneCodeEditor | null,
+    groupId?: EditorGroupId,
+  ): void =>
+    (groupId ? EditorGroupsService.getGroupIfExists(groupId) : focused())
+      ?.setActiveTextEditor(instance),
+  getActiveTextEditor: (groupId?: EditorGroupId): editor.IStandaloneCodeEditor | null =>
+    (groupId ? EditorGroupsService.getGroupIfExists(groupId) : focused())
+      ?.getActiveTextEditor() ?? null,
 
   saveViewState: (tabId: string, state: editor.ICodeEditorViewState | null): void =>
-    focused().saveViewState(tabId, state),
+    owner(tabId).saveViewState(tabId, state),
   getViewState: (tabId: string): editor.ICodeEditorViewState | null =>
-    focused().getViewState(tabId),
+    owner(tabId).getViewState(tabId),
 
   setDefaultUntitledLanguageId: (languageId: string): void =>
     focused().setDefaultUntitledLanguageId(languageId),
@@ -41,19 +54,19 @@ export const EditorService = {
   ): void => focused().configureLanguageIdResolver(resolver),
 
   setTabLanguageId: (id: string, languageId: string): void =>
-    focused().setTabLanguageId(id, languageId),
+    owner(id).setTabLanguageId(id, languageId),
   setTabDecoration: (
     id: string,
     decoration: { description?: string | null; tooltip?: string | null },
-  ): void => focused().setTabDecoration(id, decoration),
+  ): void => owner(id).setTabDecoration(id, decoration),
   setTabDirtyOverride: (id: string, dirty: boolean): void =>
-    focused().setTabDirtyOverride(id, dirty),
+    owner(id).setTabDirtyOverride(id, dirty),
 
   getActiveEditorSnapshot: (): ActiveEditorSnapshot | null =>
     focused().getActiveEditorSnapshot(),
 
   openUntitled: (languageId?: string): string => focused().openUntitled(languageId),
-  getSavedContent: (tabId: string): string => focused().getSavedContent(tabId),
+  getSavedContent: (tabId: string): string => owner(tabId).getSavedContent(tabId),
 
   captureSessionSnapshot: (): EditorGroupContentSnapshot =>
     focused().captureSessionSnapshot(),
@@ -61,7 +74,7 @@ export const EditorService = {
     focused().applySessionSnapshot(snapshot),
 
   setTabContentSnapshot: (id: string, content: string): void =>
-    focused().setTabContentSnapshot(id, content),
+    owner(id).setTabContentSnapshot(id, content),
 
   openEditor: (input: OpenEditorInput): string => EditorGroupsService.openEditor(input),
   openFile: (path: string, content: string, preview?: boolean): string =>
@@ -76,7 +89,10 @@ export const EditorService = {
   closeSavedTabs: (): void => focused().closeSavedTabs(),
   setActiveTab: (id: string): void => focused().setActiveTab(id),
   closeTab: (id: string): void =>
-    EditorGroupsService.closeTab(EditorGroupsService.getFocusedGroupId(), id),
+    EditorGroupsService.closeTab(
+      EditorGroupsService.getGroupIdForTab(id) ?? EditorGroupsService.getFocusedGroupId(),
+      id,
+    ),
   closeActiveTab: (): void =>
     EditorGroupsService.closeActiveTab(EditorGroupsService.getFocusedGroupId()),
   closeAllTabs: (): void =>
@@ -87,13 +103,13 @@ export const EditorService = {
   pinTab: (id: string): void => focused().pinTab(id),
 
   updateTabContent: (id: string, content: string): void =>
-    focused().updateTabContent(id, content),
+    owner(id).updateTabContent(id, content),
   setTabContentBaseline: (id: string, content: string): void =>
-    focused().setTabContentBaseline(id, content),
+    owner(id).setTabContentBaseline(id, content),
   reloadTabFromDisk: (id: string, content: string): void =>
-    focused().reloadTabFromDisk(id, content),
+    owner(id).reloadTabFromDisk(id, content),
   markTabSaved: (id: string, uri?: string, label?: string): void =>
-    focused().markTabSaved(id, uri, label),
+    owner(id).markTabSaved(id, uri, label),
 
   focusNextTab: (): void => focused().focusNextTab(),
   focusPreviousTab: (): void => focused().focusPreviousTab(),

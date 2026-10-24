@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Editor } from "@monaco-editor/react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import { ConnectionService } from "../../services/connection/connectionService";
@@ -19,8 +20,8 @@ import {
 import "../ddl/DdlEditorView.css";
 import "./PropertiesView.css";
 import "./ViewDdlEditor.css";
-export default function CreatePackageDraftView() {
-  const tab = useActiveEditor();
+export default function CreatePackageDraftView({ groupId }: { groupId: EditorGroupId }) {
+  const tab = useActiveEditor(groupId);
   const id = parseCreatePackageDraftUri(tab?.uri);
   const draft = id ? getCreatePackageDraft(id) : undefined;
   const [section, setSection] = useState<"spec" | "body">("spec");

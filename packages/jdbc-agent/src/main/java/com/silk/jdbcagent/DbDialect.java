@@ -218,6 +218,17 @@ interface DbDialect {
       ArrayNode columns)
       throws SQLException;
 
+  /** Populates the smaller column shape used by SQL completion when supported by the dialect. */
+  default void collectCompletionColumns(
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode columns)
+      throws SQLException {
+    collectTableColumns(connection, catalog, schemaName, tableName, columns);
+  }
+
   /**
    * Populates {@code indexes} with index descriptors ({@code name}, {@code unique}, {@code
    * columns}) for {@code tableName}. Object Editor "Indexes" section.

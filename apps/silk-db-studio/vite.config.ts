@@ -7,6 +7,7 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
+  worker: { format: "es" },
 
   // Pre-bundle Monaco so optimizer doesn't chase stale pnpm peer-hash paths
   // after dependency updates (common ENOENT on @monaco-editor/react/dist/index.mjs).

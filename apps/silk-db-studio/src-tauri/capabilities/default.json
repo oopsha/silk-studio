@@ -51,6 +51,7 @@
     "window-controls:default",
     "allow-ensure-title-bar-overlay",
     "allow-query-execute",
+    "allow-query-import",
     "allow-connection-commands",
     "allow-ssm-tunnel-commands",
     "allow-ssh-tunnel-commands",
@@ -60,6 +61,7 @@
     "allow-window-layout-commands",
     "allow-startup-theme-commands",
     "allow-app-log-commands",
+    "allow-update-commands",
     "updater:default",
     "process:default"
   ]

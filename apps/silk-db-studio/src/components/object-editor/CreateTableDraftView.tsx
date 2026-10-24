@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
@@ -27,9 +28,9 @@ function newColumn(): CreateTableColumnDraft {
   return { id: crypto.randomUUID(), name: "", typeName: "", nullable: true };
 }
 
-function CreateTableDraftView() {
+function CreateTableDraftView({ groupId }: { groupId: EditorGroupId }) {
   const configuration = useConfiguration();
-  const activeTab = useActiveEditor();
+  const activeTab = useActiveEditor(groupId);
   const draftId = parseCreateTableDraftUri(activeTab?.uri);
   const initial = draftId ? getCreateTableDraft(draftId) : undefined;
   const [revision, setRevision] = useState(0);

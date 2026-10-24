@@ -39,7 +39,8 @@ function ProjectTree({ root, path, depth = 0 }: { root: string; path: string; de
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [expanded, setExpanded] = useState(depth === 0);
   const [error, setError] = useState("");
-  const name = path.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || path;
+  const pathSegments = path.replace(/[\\/]+$/, "").split(/[\\/]/);
+  const name = pathSegments[pathSegments.length - 1] || path;
 
   async function loadDirectory() {
     try {
@@ -69,7 +70,8 @@ function ProjectTree({ root, path, depth = 0 }: { root: string; path: string; de
   async function openFile(filePath = path, fileName = name) {
     try {
       const content = await readTextFile(filePath);
-      const extension = fileName.split(".").at(-1)?.toLowerCase();
+      const fileNameSegments = fileName.split(".");
+      const extension = fileNameSegments[fileNameSegments.length - 1]?.toLowerCase();
       EditorService.openEditor({
         uri: filePath,
         label: fileName,

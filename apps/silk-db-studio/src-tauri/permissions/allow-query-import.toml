@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-query-import"
+description = "Allows importing file rows through jdbc-agent."
+commands.allow = ["query_import_rows", "query_import_status"]

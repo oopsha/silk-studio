@@ -34,6 +34,18 @@ describe("isWriteSql", () => {
     expect(isWriteSql("/* multi\nline */ INSERT INTO t VALUES (1)")).toBe(true);
   });
 
+  it("detects writes later in a multi-statement SQL Server batch", () => {
+    const batch = "USE sandbox_db;\nCREATE TABLE dbo.test_table (id int);";
+    expect(isWriteSql(batch)).toBe(true);
+    expect(() => assertReadOnlyQueryAllowed(batch, true)).toThrow(
+      /Read-only mode|읽기 전용/,
+    );
+  });
+
+  it("does not treat semicolons or write keywords inside literals and comments as statements", () => {
+    expect(isWriteSql("USE sandbox_db; SELECT 'CREATE TABLE x;'; -- INSERT INTO t;\n")).toBe(false);
+  });
+
   it("detects writes inside procedural blocks across dialects", () => {
     expect(
       isWriteSql(`DECLARE

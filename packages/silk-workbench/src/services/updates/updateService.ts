@@ -1,7 +1,7 @@
 import { ask } from "@tauri-apps/plugin-dialog";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { AppNotificationService } from "../notifications/appNotificationService";
 import { AppLogService } from "../diagnostics/appLogService";
 import { tKey } from "../../platform/i18n/activeLocale";
@@ -92,7 +92,7 @@ export async function checkForUpdates(options?: {
     let total: number | undefined;
     let lastShown = 0;
     const formatBytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    await update.downloadAndInstall((event) => {
+    await update.download((event) => {
       if (event.event === "Finished") {
         AppNotificationService.show(tKey("workbench.update.installing").replace("{version}", update.version), "info", 0, null);
         return;
@@ -111,6 +111,10 @@ export async function checkForUpdates(options?: {
         : `${Math.floor(percent)}% · ${formatBytes(downloaded)} / ${formatBytes(total!)}`;
       AppNotificationService.show(`${tKey("workbench.update.downloading").replace("{version}", update.version)} ${detail}`, "info", 0, percent);
     });
+    // Downloads can fail without interrupting active connections. Only stop the runtime
+    // once the signed download is ready; Windows installation exits the process directly.
+    await invoke("update_prepare_install");
+    await update.install();
     AppNotificationService.show(tKey("workbench.update.installed"), "success");
     await relaunch();
   } catch (error) {

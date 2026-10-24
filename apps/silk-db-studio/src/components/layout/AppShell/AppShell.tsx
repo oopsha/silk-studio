@@ -343,7 +343,9 @@ function AppShell() {
       <EditorGroupsView
         commands={tabBarCommands}
         crossGroupDnd={crossGroupEditorDnd}
-        renderPanel={(groupId) => <Panel groupId={groupId} />}
+        renderPanel={(groupId, activeTab) => (
+          <Panel groupId={groupId} editorTabId={activeTab?.id} />
+        )}
         shouldShowPanelForTab={(tab) => !isVirtualEditorTab(tab?.uri)}
         getPaneProps={(groupId) => ({
           [SILK_EDITOR_DROP_ATTR]: "",
@@ -379,23 +381,23 @@ function AppShell() {
               return <DocumentationViewer />;
             }
             if (ConnectionEditorService.isConnectionEditorTab(tab.uri)) {
-              return <ConnectionEditor />;
+              return <ConnectionEditor groupId={groupId} />;
             }
             if (isDdlEditorTab(tab.uri)) {
-              return <DdlEditorView />;
+              return <DdlEditorView groupId={groupId} />;
             }
             if (isPlsqlEditorTab(tab.uri)) {
-              return <PlsqlEditorView />;
+              return <PlsqlEditorView groupId={groupId} />;
             }
             if (isObjectEditorTab(tab.uri)) {
               return <ObjectEditorView groupId={groupId} />;
             }
             if (isCreateTableDraftTab(tab.uri)) {
-              return <CreateTableDraftView />;
+              return <CreateTableDraftView groupId={groupId} />;
             }
-            if (isCreateViewDraftTab(tab.uri)) return <CreateViewDraftView />;
-            if (isCreateRoutineDraftTab(tab.uri)) return <CreateRoutineDraftView />;
-            if (isCreatePackageDraftTab(tab.uri)) return <CreatePackageDraftView />;
+            if (isCreateViewDraftTab(tab.uri)) return <CreateViewDraftView groupId={groupId} />;
+            if (isCreateRoutineDraftTab(tab.uri)) return <CreateRoutineDraftView groupId={groupId} />;
+            if (isCreatePackageDraftTab(tab.uri)) return <CreatePackageDraftView groupId={groupId} />;
             return null;
           },
           onRunQuery: () =>

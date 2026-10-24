@@ -7,6 +7,15 @@ import org.junit.jupiter.api.Test;
 class MybatisScriptTest {
   private static final ObjectMapper JSON = new ObjectMapper();
 
+  @Test void cdataBindsNestedPropertiesWithoutLeakingXmlIntoSql() throws Exception {
+    var request = JSON.readTree("{\"parameters\":{\"reqData\":{\"cmp_cd\":\"001\",\"menu_btn_grp_cd\":\"02\",\"menu_btn_hdr_cd\":null}}}");
+    ((com.fasterxml.jackson.databind.node.ObjectNode) request).put("sql",
+        "<script><![CDATA[SELECT * FROM T WHERE X <= #{reqData.cmp_cd} AND Y = #{reqData.menu_btn_grp_cd} AND Z = #{reqData.menu_btn_hdr_cd}]]></script>");
+    var result = MybatisScript.prepare(request);
+    assertEquals("SELECT * FROM T WHERE X <= ? AND Y = ? AND Z = ?", result.path("sql").asText());
+    assertEquals(JSON.readTree("[\"001\",\"02\",null]"), result.path("binds"));
+  }
+
   @Test void excludedConditionDoesNotBindUnusedParameters() throws Exception {
     var request = JSON.readTree("{\"parameters\":{\"pmsNo\":\"\",\"bizCode\":\"51\"}}");
     ((com.fasterxml.jackson.databind.node.ObjectNode) request).put("sql",

@@ -1,3 +1,4 @@
+import "./services/editor/configureMonaco";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { applyWorkbenchFonts } from "@silk-studio/ui/platform/fonts.ts";

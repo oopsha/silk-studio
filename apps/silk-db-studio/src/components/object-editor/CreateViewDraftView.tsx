@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Editor } from "@monaco-editor/react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { AppNotificationService } from "@silk-studio/workbench/services/notifications/appNotificationService.ts";
@@ -17,8 +18,8 @@ import { objectEditorUri, buildObjectEditorTabLabel } from "../../services/conne
 import { discardCreateViewDraft, getCreateViewDraft, parseCreateViewDraftUri, updateCreateViewDraft } from "../../services/connection/createViewDraftService";
 import { monacoLanguageIdForDriver } from "../../services/sql/sqlDialect";
 
-function CreateViewDraftView() {
-  const activeTab = useActiveEditor();
+function CreateViewDraftView({ groupId }: { groupId: EditorGroupId }) {
+  const activeTab = useActiveEditor(groupId);
   const configuration = useConfiguration();
   const id = parseCreateViewDraftUri(activeTab?.uri);
   const draft = id ? getCreateViewDraft(id) : undefined;

@@ -116,6 +116,11 @@ export class EditorServiceImpl {
     return this.tabs;
   }
 
+  /** Looks up an already-open tab without initializing an empty editor group. */
+  findTab(id: string): EditorTab | undefined {
+    return this.tabs.find((tab) => tab.id === id);
+  }
+
   getActiveTabId(): string | null {
     this.ensureInitialTab();
     return this.activeTabId;

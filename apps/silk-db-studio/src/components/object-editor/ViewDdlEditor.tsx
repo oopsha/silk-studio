@@ -13,12 +13,14 @@ import {
   scheduleRestoreViewState,
 } from "@silk-studio/editor/services/editor/monacoModelPath.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import {
   defineWorkbenchMonacoThemes,
   monacoThemeForColorTheme,
 } from "@silk-studio/editor/themes/dark-monaco.ts";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
 import { bridgeFetchObjectDdl } from "../../services/connection/connectionDdlBridge";
+import { isDdlSourceAwaitingInitialLoad } from "../../services/connection/ddlEditorConstants";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { ConnectionService } from "../../services/connection/connectionService";
 import type { PlsqlEditorRef } from "../../services/connection/plsqlEditorConstants";
@@ -47,6 +49,7 @@ import { supportsCompileDiagnostics } from "../../services/sql/sqlDialect";
 import "./ViewDdlEditor.css";
 
 type ViewDdlEditorProps = {
+  groupId: EditorGroupId;
   objectRef: ObjectEditorRef;
   tabId: string;
   tabUri: string | undefined;
@@ -76,9 +79,9 @@ type LoadState =
  * the others have no equivalent — any syntax/reference error there already surfaces as a
  * failed `CREATE OR REPLACE`/`ALTER VIEW` statement.
  */
-function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEditorProps) {
+function ViewDdlEditor({ groupId, objectRef, tabId, tabUri, bufferedContent }: ViewDdlEditorProps) {
   const { t } = useI18n();
-  const activeTab = useActiveEditor();
+  const activeTab = useActiveEditor(groupId);
   const configuration = useConfiguration();
   const readOnly = configuration["database.readOnly"];
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
@@ -117,19 +120,15 @@ function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEdi
   }, []);
 
   useEffect(() => {
-    const buffered = bufferedContent ?? "";
-    // "-- Loading DDL..." is the hardcoded (non-localized) placeholder ddlEditorService.ts
-    // seeds a freshly-opened silk://ddl/... tab with, before this component (now also used for
-    // that tab's editable Declaration section — see this component's doc comment) ever runs —
-    // matches DdlPreview.tsx's identical check. Without it, that placeholder text was mistaken
-    // for real loaded DDL on first mount and the real fetch below never ran.
-    const looksLoaded =
-      buffered.trim().length > 0 &&
-      !buffered.startsWith("-- Loading DDL") &&
-      !buffered.startsWith(`-- ${t("app.ddl.loading")}`) &&
-      !buffered.startsWith(`-- ${t("app.ddl.loadFailed")}`);
-
-    if (looksLoaded) {
+    // A blank buffer is a valid edit, not evidence that the editor has never loaded.
+    // Only the initial loading marker (or a missing buffer during tab activation) fetches.
+    // Load failures are also terminal until the user explicitly requests Reload.
+    if (
+      !isDdlSourceAwaitingInitialLoad(
+        bufferedContent,
+        t("app.ddl.loading"),
+      )
+    ) {
       setLoadState({ status: "ready" });
       return;
     }
@@ -190,11 +189,16 @@ function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEdi
   }, [tabId]);
 
   useEffect(() => {
+    const instance = editorRef.current;
+    if (instance) EditorService.setActiveTextEditor(instance, groupId);
+  }, [tabId, groupId]);
+
+  useEffect(() => {
     return () => {
-      EditorService.setActiveTextEditor(null);
+      EditorService.setActiveTextEditor(null, groupId);
       editorRef.current = null;
     };
-  }, [tabId]);
+  }, [groupId]);
 
   const handleBeforeMount = (monaco: Monaco) => {
     defineWorkbenchMonacoThemes(monaco);
@@ -204,12 +208,12 @@ function ViewDdlEditor({ objectRef, tabId, tabUri, bufferedContent }: ViewDdlEdi
   const handleMount = useCallback(
     (instance: editor.IStandaloneCodeEditor) => {
       editorRef.current = instance;
-      EditorService.setActiveTextEditor(instance);
+      EditorService.setActiveTextEditor(instance, groupId);
       unregisterMonacoRef.current();
       unregisterMonacoRef.current = registerMonacoInstance(instance);
       scheduleRestoreViewState(instance, () => EditorService.getViewState(tabId));
     },
-    [tabId],
+    [tabId, groupId],
   );
 
   const handleChange = useCallback(

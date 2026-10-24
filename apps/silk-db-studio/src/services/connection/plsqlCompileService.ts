@@ -28,7 +28,7 @@ import { driverAutoCommitsDdl, supportsCompileDiagnostics } from "../sql/sqlDial
 
 export function getPlsqlCompileBlockedReason(tabId?: string): string | null {
   const tab = tabId
-    ? EditorService.getTabs().find((item) => item.id === tabId)
+    ? EditorService.getTab(tabId)
     : EditorService.getActiveTab();
   if (!tab || !isEditableSourceTab(tab.uri)) {
     return "Active editor is not a PL/SQL source tab.";
@@ -121,7 +121,7 @@ export async function reportPlsqlCompileDiagnostics(
  */
 export async function compileActivePlsqlObject(tabId?: string): Promise<void> {
   const tab = tabId
-    ? EditorService.getTabs().find((item) => item.id === tabId)
+    ? EditorService.getTab(tabId)
     : EditorService.getActiveTab();
   if (!tab) return;
 
@@ -192,7 +192,7 @@ export async function compileActivePlsqlObject(tabId?: string): Promise<void> {
     // is now pending — defer the local snapshot/clean-mark until we know the write is durable.
     registerPendingDdlSave(ref.profileId, {
       onCommit: () => {
-        const stillOpen = EditorService.getTabs().find((item) => item.id === tab.id);
+        const stillOpen = EditorService.getTab(tab.id);
         recordPlsqlSnapshot(ref, savedContent, "compile");
         if (stillOpen) {
           EditorService.markTabSaved(tab.id, savedUri, savedLabel);

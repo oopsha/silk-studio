@@ -128,6 +128,16 @@ final class OracleDialect implements DbDialect {
           + "WHERE c.OWNER = ? AND c.TABLE_NAME = ? "
           + "ORDER BY c.COLUMN_ID";
 
+  private static final String ORACLE_COMPLETION_COLUMNS_SQL_BASE =
+      "SELECT c.COLUMN_NAME, c.DATA_TYPE, c.DATA_LENGTH, c.DATA_PRECISION, c.DATA_SCALE, "
+          + "c.CHAR_LENGTH, c.NULLABLE, c.COLUMN_ID%s, cm.COMMENTS "
+          + "FROM ALL_TAB_COLUMNS c "
+          + "LEFT JOIN ALL_COL_COMMENTS cm "
+          + "  ON cm.OWNER = c.OWNER AND cm.TABLE_NAME = c.TABLE_NAME "
+          + "  AND cm.COLUMN_NAME = c.COLUMN_NAME "
+          + "WHERE c.OWNER = ? AND c.TABLE_NAME = ? "
+          + "ORDER BY c.COLUMN_ID";
+
   /**
    * {@code IDENTITY_COLUMN}/{@code VIRTUAL_COLUMN} were added to {@code ALL_TAB_COLUMNS} in
    * Oracle 12c/11g respectively — old enough that every real Oracle instance should have them,
@@ -165,6 +175,33 @@ final class OracleDialect implements DbDialect {
     }
   }
 
+  @Override
+  public void collectCompletionColumns(
+      Connection connection,
+      String catalog,
+      String schemaName,
+      String tableName,
+      ArrayNode columns)
+      throws SQLException {
+    for (String schema : distinctCases(schemaName)) {
+      for (String table : distinctCases(tableName)) {
+        try {
+          executeOracleColumnsQuery(
+              connection, schema, table, columns, true, true, false);
+        } catch (SQLException error) {
+          if (error.getErrorCode() != 904) {
+            throw error;
+          }
+          executeOracleColumnsQuery(
+              connection, schema, table, columns, false, true, false);
+        }
+        if (columns.size() > 0) {
+          return;
+        }
+      }
+    }
+  }
+
   private static void executeOracleColumnsQuery(
       Connection connection,
       String schema,
@@ -172,22 +209,71 @@ final class OracleDialect implements DbDialect {
       ArrayNode columns,
       boolean withIdentityVirtual)
       throws SQLException {
+    executeOracleColumnsQuery(
+        connection, schema, table, columns, withIdentityVirtual, false, true);
+  }
+
+  private static void executeOracleColumnsQuery(
+      Connection connection,
+      String schema,
+      String table,
+      ArrayNode columns,
+      boolean withIdentityVirtual,
+      boolean completionOnly,
+      boolean includeDefaultValue)
+      throws SQLException {
     String sql =
         String.format(
-            ORACLE_COLUMNS_SQL_BASE, withIdentityVirtual ? ", c.IDENTITY_COLUMN, c.VIRTUAL_COLUMN" : "");
-    try (PreparedStatement statement = connection.prepareStatement(sql)) {
-      statement.setString(1, schema);
-      statement.setString(2, table);
-      try (ResultSet rs = statement.executeQuery()) {
-        while (rs.next()) {
-          appendOracleColumn(rs, columns, withIdentityVirtual);
+            completionOnly ? ORACLE_COMPLETION_COLUMNS_SQL_BASE : ORACLE_COLUMNS_SQL_BASE,
+            withIdentityVirtual ? ", c.IDENTITY_COLUMN, c.VIRTUAL_COLUMN" : "");
+    long operationStartedAtNanos = System.nanoTime();
+    long prepareMs = 0;
+    long executeMs = 0;
+    long fetchMs = 0;
+    int initialColumnCount = columns.size();
+    String outcome = "ok";
+    try {
+      long prepareStartedAtNanos = System.nanoTime();
+      try (PreparedStatement statement = connection.prepareStatement(sql)) {
+        prepareMs = JdbcDiagnostics.millis(System.nanoTime() - prepareStartedAtNanos);
+        statement.setString(1, schema);
+        statement.setString(2, table);
+        long executeStartedAtNanos = System.nanoTime();
+        ResultSet resultSet;
+        try {
+          resultSet = statement.executeQuery();
+        } finally {
+          executeMs = JdbcDiagnostics.millis(System.nanoTime() - executeStartedAtNanos);
         }
+        long fetchStartedAtNanos = System.nanoTime();
+        try (ResultSet rs = resultSet) {
+          while (rs.next()) {
+            appendOracleColumn(rs, columns, withIdentityVirtual, includeDefaultValue);
+          }
+        }
+        fetchMs = JdbcDiagnostics.millis(System.nanoTime() - fetchStartedAtNanos);
       }
+    } catch (SQLException error) {
+      outcome = "error_" + error.getErrorCode();
+      throw error;
+    } finally {
+      JdbcDiagnostics.logSlowOperation(
+          "oracle.columns.sql",
+          operationStartedAtNanos,
+          "prepareMs=" + prepareMs
+              + " executeMs=" + executeMs
+              + " fetchMs=" + fetchMs
+              + " rows=" + (columns.size() - initialColumnCount)
+              + " outcome=" + outcome);
     }
   }
 
   private static void appendOracleColumn(
-      ResultSet rs, ArrayNode columns, boolean withIdentityVirtual) throws SQLException {
+      ResultSet rs,
+      ArrayNode columns,
+      boolean withIdentityVirtual,
+      boolean includeDefaultValue)
+      throws SQLException {
     String name = rs.getString("COLUMN_NAME");
     if (name == null || name.isBlank()) {
       return;
@@ -224,12 +310,14 @@ final class OracleDialect implements DbDialect {
       column.put("nullable", false);
     }
 
-    String defaultValue = rs.getString("DATA_DEFAULT");
-    if (defaultValue != null) {
-      // Oracle pads DATA_DEFAULT with a trailing newline/space for most literal defaults.
-      String trimmed = defaultValue.strip();
-      if (!trimmed.isEmpty()) {
-        column.put("defaultValue", trimmed);
+    if (includeDefaultValue) {
+      String defaultValue = rs.getString("DATA_DEFAULT");
+      if (defaultValue != null) {
+        // Oracle pads DATA_DEFAULT with a trailing newline/space for most literal defaults.
+        String trimmed = defaultValue.strip();
+        if (!trimmed.isEmpty()) {
+          column.put("defaultValue", trimmed);
+        }
       }
     }
 

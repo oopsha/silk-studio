@@ -12,6 +12,7 @@ import type { ObjectEditorRef } from "./objectEditorConstants";
  */
 export type ObjectPreviewCacheKind =
   | "columns"
+  | "tableStructure"
   | "indexes"
   | "foreignKeys"
   | "references"
