@@ -16,6 +16,7 @@ import AppToast from "@silk-studio/workbench/components/diagnostics/AppToast.tsx
 import ViewPaneTitle from "@silk-studio/workbench/components/layout/Sidebar/ViewPaneTitle/ViewPaneTitle.tsx";
 import OpenEditorsSection from "@silk-studio/workbench/components/layout/Sidebar/OpenEditors/OpenEditorsSection.tsx";
 import SettingsEditor from "@silk-studio/workbench/components/settings/index.ts";
+import SpringProjectSettings from "./components/settings/SpringProjectSettings.tsx";
 import { startEditorSessionSync } from "@silk-studio/editor/services/editor/editorSessionSync.ts";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
@@ -107,7 +108,8 @@ function EditorWorkspace() {
             if (SettingsService.isSettingsTab(tab.uri)) {
               return (
                 <SettingsEditor
-                  categories={["appearance", "editor", "ai"]}
+                  categories={["appearance", "editor", "springProject", "ai"]}
+                  extensions={[{ id: "springProject", label: "Spring 프로젝트", content: <SpringProjectSettings /> }]}
                   showDatabaseAiOptions={false}
                 />
               );

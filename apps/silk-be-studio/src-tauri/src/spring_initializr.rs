@@ -1,17 +1,18 @@
 use std::{
     fs,
-    io::{Cursor, Read},
+    io::{Cursor, Read, Write},
     path::{Component, Path, PathBuf},
     time::Duration,
 };
 
 use serde::Deserialize;
-use zip::ZipArchive;
+use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpringProjectRequest {
     pub source: String,
+    pub indent_size: usize,
     pub parent_path: String,
     pub project_name: String,
     pub build_tool: String,
@@ -28,68 +29,100 @@ pub struct SpringProjectRequest {
 }
 
 #[tauri::command]
-pub async fn get_spring_initializr_metadata(source: String, boot_version: Option<String>) -> Result<serde_json::Value, String> {
-    let (snapshot, fetched_at) = if source == "online" {
-        let client = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().map_err(|error| error.to_string())?;
-        let response = client.get("https://start.spring.io/metadata/client")
-            .header("Accept", "application/vnd.initializr.v2.3+json")
-            .send().await.map_err(|error| format!("Spring Initializr 메타데이터를 가져오지 못했습니다: {error}"))?;
-        if !response.status().is_success() { return Err(format!("Spring Initializr 메타데이터 요청 오류: {}", response.status())); }
-        let capabilities: serde_json::Value = response.json().await.map_err(|error| format!("Spring Initializr 메타데이터를 해석하지 못했습니다: {error}"))?;
-        let version = boot_version.clone().filter(|value| !value.is_empty()).or_else(|| capabilities.pointer("/bootVersion/default").and_then(serde_json::Value::as_str).map(str::to_string)).ok_or_else(|| "Spring Initializr 기본 Boot 버전이 없습니다.".to_string())?;
-        let deps_response = client.get("https://start.spring.io/dependencies").query(&[("bootVersion", version.as_str())])
-            .header("Accept", "application/vnd.initializr.v2.3+json")
-            .send().await.map_err(|error| format!("Spring Initializr 의존성 목록을 가져오지 못했습니다: {error}"))?;
-        if !deps_response.status().is_success() { return Err(format!("Spring Initializr 의존성 요청 오류: {}", deps_response.status())); }
-        let deps: serde_json::Value = deps_response.json().await.map_err(|error| format!("Spring Initializr 의존성 목록을 해석하지 못했습니다: {error}"))?;
-        let result = filter_capabilities(capabilities, deps.get("dependencies").cloned().unwrap_or(serde_json::Value::Null))?;
-        return Ok(serde_json::json!({ "capabilities": result, "fetchedAt": null }));
-    } else if source == "offline" {
-        let snapshot: serde_json::Value = serde_json::from_str(include_str!("../resources/spring-initializr-metadata.json"))
-        .map_err(|error| format!("내장 Spring Initializr 메타데이터를 읽지 못했습니다: {error}"))?;
-        (snapshot.clone(), snapshot.get("fetchedAt").cloned().unwrap_or(serde_json::Value::Null))
-    } else { return Err("알 수 없는 Spring Initializr 모드입니다.".into()); };
-    let capabilities = snapshot.get("capabilities")
+pub async fn get_spring_initializr_metadata(
+    source: String,
+    boot_version: Option<String>,
+) -> Result<serde_json::Value, String> {
+    if !matches!(source.as_str(), "online" | "offline") {
+        return Err("알 수 없는 Spring Initializr 모드입니다.".into());
+    }
+    let snapshot: serde_json::Value =
+        serde_json::from_str(include_str!("../resources/spring-initializr-metadata.json"))
+            .map_err(|error| {
+                format!("내장 Spring Initializr 메타데이터를 읽지 못했습니다: {error}")
+            })?;
+    let fetched_at = snapshot
+        .get("fetchedAt")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let capabilities = snapshot
+        .get("capabilities")
         .and_then(serde_json::Value::as_object)
         .ok_or_else(|| "내장 메타데이터에 capabilities가 없습니다.".to_string())?;
-    let default_version = capabilities.get("bootVersion")
+    let default_version = capabilities
+        .get("bootVersion")
         .and_then(|value| value.get("default"))
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| "내장 메타데이터에 기본 Spring Boot 버전이 없습니다.".to_string())?;
-    let version = boot_version.filter(|value| !value.is_empty()).unwrap_or_else(|| default_version.to_string());
-    let dependencies_by_version = snapshot.get("dependenciesByBootVersion")
+    let version = boot_version
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| default_version.to_string());
+    let dependencies_by_version = snapshot
+        .get("dependenciesByBootVersion")
         .and_then(serde_json::Value::as_object)
         .ok_or_else(|| "내장 메타데이터에 버전별 의존성 목록이 없습니다.".to_string())?;
-    let available_dependencies = dependencies_by_version.get(&version)
+    let available_dependencies = dependencies_by_version
+        .get(&version)
         .and_then(serde_json::Value::as_object)
-        .ok_or_else(|| format!("내장 메타데이터에 Spring Boot {version} 의존성 목록이 없습니다."))?;
+        .ok_or_else(|| {
+            format!("내장 메타데이터에 Spring Boot {version} 의존성 목록이 없습니다.")
+        })?;
 
     let mut metadata = serde_json::Value::Object(capabilities.clone());
-    let groups = metadata.get_mut("dependencies")
+    if source == "offline" {
+        retain_option_ids(&mut metadata, "type", &["maven-project", "gradle-project"]);
+        retain_option_ids(&mut metadata, "language", &["java"]);
+        retain_option_ids(&mut metadata, "packaging", &["jar"]);
+        retain_option_ids(&mut metadata, "configurationFileFormat", &["properties"]);
+    }
+    let groups = metadata
+        .get_mut("dependencies")
         .and_then(|value| value.get_mut("values"))
         .and_then(serde_json::Value::as_array_mut)
         .ok_or_else(|| "내장 메타데이터의 의존성 그룹 형식이 올바르지 않습니다.".to_string())?;
     groups.retain_mut(|group| {
-        let Some(values) = group.get_mut("values").and_then(serde_json::Value::as_array_mut) else {
+        let Some(values) = group
+            .get_mut("values")
+            .and_then(serde_json::Value::as_array_mut)
+        else {
             return false;
         };
-        values.retain(|dependency| dependency.get("id")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|id| available_dependencies.contains_key(id)));
+        values.retain(|dependency| {
+            dependency
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|id| available_dependencies.get(id))
+                .is_some_and(|dependency| {
+                    source == "online" || is_offline_dependency_supported(dependency)
+                })
+        });
         !values.is_empty()
     });
     Ok(serde_json::json!({ "capabilities": metadata, "fetchedAt": fetched_at }))
 }
 
-fn filter_capabilities(mut capabilities: serde_json::Value, dependencies: serde_json::Value) -> Result<serde_json::Value, String> {
-    let available = dependencies.as_object().ok_or_else(|| "Spring Initializr 의존성 응답 형식이 올바르지 않습니다.".to_string())?;
-    let groups = capabilities.get_mut("dependencies").and_then(|value| value.get_mut("values")).and_then(serde_json::Value::as_array_mut).ok_or_else(|| "Spring Initializr 의존성 그룹 형식이 올바르지 않습니다.".to_string())?;
-    groups.retain_mut(|group| {
-        let Some(values) = group.get_mut("values").and_then(serde_json::Value::as_array_mut) else { return false; };
-        values.retain(|dependency| dependency.get("id").and_then(serde_json::Value::as_str).is_some_and(|id| available.contains_key(id)));
-        !values.is_empty()
-    });
-    Ok(capabilities)
+fn retain_option_ids(metadata: &mut serde_json::Value, key: &str, allowed: &[&str]) {
+    if let Some(values) = metadata
+        .get_mut(key)
+        .and_then(|value| value.get_mut("values"))
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        values.retain(|option| {
+            option
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|id| allowed.contains(&id))
+        });
+    }
+}
+
+fn is_offline_dependency_supported(dependency: &serde_json::Value) -> bool {
+    let supported_scope = matches!(
+        dependency.get("scope").and_then(serde_json::Value::as_str),
+        Some("compile" | "runtime" | "test" | "annotationProcessor")
+    );
+    let has_external_bom = dependency.get("bom").is_some_and(|bom| !bom.is_null());
+    supported_scope && !has_external_bom
 }
 
 #[derive(serde::Serialize)]
@@ -100,7 +133,9 @@ pub struct SpringProjectResult {
 }
 
 #[tauri::command]
-pub async fn create_spring_project(request: SpringProjectRequest) -> Result<SpringProjectResult, String> {
+pub async fn create_spring_project(
+    request: SpringProjectRequest,
+) -> Result<SpringProjectResult, String> {
     let project_name = request.project_name.trim();
     if project_name.is_empty()
         || project_name == "."
@@ -111,7 +146,10 @@ pub async fn create_spring_project(request: SpringProjectRequest) -> Result<Spri
     {
         return Err("프로젝트 이름은 영문, 숫자, 하이픈, 밑줄만 사용할 수 있습니다.".into());
     }
-    if !valid_coordinate(&request.group_id) || !valid_coordinate(&request.artifact_id) || !valid_package_name(&request.package_name) {
+    if !valid_coordinate(&request.group_id)
+        || !valid_coordinate(&request.artifact_id)
+        || !valid_package_name(&request.package_name)
+    {
         return Err("Group, Artifact, Package name 형식을 확인해 주세요.".into());
     }
     if !matches!(request.build_tool.as_str(), "maven" | "gradle") {
@@ -138,24 +176,42 @@ pub async fn create_spring_project(request: SpringProjectRequest) -> Result<Spri
         ("packaging", request.packaging.as_str()),
         ("javaVersion", request.java_version.as_str()),
         ("bootVersion", request.boot_version.as_str()),
-        ("configurationFileFormat", request.configuration_file_format.as_str()),
+        (
+            "configurationFileFormat",
+            request.configuration_file_format.as_str(),
+        ),
         ("dependencies", dependencies.as_str()),
     ];
 
     if request.source == "offline" {
-        if request.language != "java" || request.packaging != "jar" || request.configuration_file_format != "properties"
-            || !matches!(request.type_id.as_str(), "maven-project" | "gradle-project") {
-            return Err("현재 오프라인 생성기는 Java, Jar, Properties와 기본 Maven/Gradle 형식만 지원합니다.".into());
+        if request.language != "java"
+            || request.packaging != "jar"
+            || request.configuration_file_format != "properties"
+            || !matches!(request.type_id.as_str(), "maven-project" | "gradle-project")
+        {
+            return Err("오프라인 생성은 Java, Jar, Properties와 Maven 또는 Gradle Groovy 형식만 지원합니다.".into());
         }
-        if !matches!(request.java_version.as_str(), "17" | "21" | "25") { return Err("현재 선택한 Java 버전은 오프라인 템플릿에서 지원하지 않습니다.".into()); }
-        create_offline_project(&request, &destination)?;
-        return Ok(SpringProjectResult { path: destination.to_string_lossy().into_owned(), source: "offline".into() });
+        if !(1..=8).contains(&request.indent_size) {
+            return Err("오프라인 들여쓰기는 1~8칸으로 설정해 주세요.".into());
+        }
+        let archive = create_offline_archive(&request)?;
+        if let Err(error) = extract_project(archive, &destination) {
+            let _ = fs::remove_dir_all(&destination);
+            return Err(error);
+        }
+        return Ok(SpringProjectResult {
+            path: destination.to_string_lossy().into_owned(),
+            source: "offline".into(),
+        });
     }
-    if request.source != "online" { return Err("알 수 없는 Spring Initializr 모드입니다.".into()); }
+    if request.source != "online" {
+        return Err("알 수 없는 Spring Initializr 모드입니다.".into());
+    }
 
     let response = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
-        .build().map_err(|error| error.to_string())?
+        .build()
+        .map_err(|error| error.to_string())?
         .post("https://start.spring.io/starter.zip")
         .form(&form)
         .send()
@@ -179,73 +235,183 @@ pub async fn create_spring_project(request: SpringProjectRequest) -> Result<Spri
         let _ = fs::remove_dir_all(&destination);
         return Err(error);
     }
-    Ok(SpringProjectResult { path: destination.to_string_lossy().into_owned(), source: "initializr".into() })
-}
-
-fn create_offline_project(request: &SpringProjectRequest, destination: &Path) -> Result<(), String> {
-    fs::create_dir(destination)
-        .map_err(|error| format!("프로젝트 폴더를 만들지 못했습니다: {error}"))?;
-    let result = (|| {
-        let deps = offline_dependencies(&request.dependencies)?;
-        let main_dir = destination.join("src/main/java").join(request.package_name.replace('.', "/"));
-        fs::create_dir_all(&main_dir).map_err(|error| error.to_string())?;
-        let class_prefix = request.project_name.split(|c: char| !c.is_ascii_alphanumeric())
-            .filter(|part| !part.is_empty())
-            .map(|part| { let mut chars = part.chars(); chars.next().map(|first| first.to_ascii_uppercase().to_string() + chars.as_str()).unwrap_or_default() })
-            .collect::<String>();
-        let class_prefix = if class_prefix.is_empty() { "" } else { &class_prefix };
-        let java = format!("package {};\n\nimport org.springframework.boot.SpringApplication;\nimport org.springframework.boot.autoconfigure.SpringBootApplication;\n\n@SpringBootApplication\npublic class {}Application {{\n    public static void main(String[] args) {{\n        SpringApplication.run({}Application.class, args);\n    }}\n}}\n", request.package_name, class_prefix, class_prefix);
-        fs::write(main_dir.join(format!("{}Application.java", class_prefix)), java).map_err(|error| error.to_string())?;
-        fs::create_dir_all(destination.join("src/main/resources")).map_err(|error| error.to_string())?;
-        fs::write(destination.join("src/main/resources/application.properties"), "\n").map_err(|error| error.to_string())?;
-        if request.build_tool == "maven" {
-            let dependencies = deps.iter().map(|(group, artifact, scope)| format!("        <dependency><groupId>{group}</groupId><artifactId>{artifact}</artifactId>{scope}</dependency>\n")).collect::<String>();
-            let xml = format!("<project xmlns=\"http://maven.apache.org/POM/4.0.0\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd\"><modelVersion>4.0.0</modelVersion><parent><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-parent</artifactId><version>{}</version><relativePath/></parent><groupId>{}</groupId><artifactId>{}</artifactId><version>0.0.1-SNAPSHOT</version><name>{}</name><properties><java.version>{}</java.version></properties><dependencies>\n{}    </dependencies><build><plugins><plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin></plugins></build></project>\n", request.boot_version, request.group_id, request.artifact_id, request.project_name, request.java_version, dependencies);
-            fs::write(destination.join("pom.xml"), xml).map_err(|error| error.to_string())?;
-        } else {
-            let dependencies = deps.iter().map(|(group, artifact, _)| format!("    implementation '{group}:{artifact}'\n")).collect::<String>();
-            let gradle = format!("plugins {{\n    id 'java'\n    id 'org.springframework.boot' version '{}'\n    id 'io.spring.dependency-management' version '1.1.7'\n}}\ngroup = '{}'\nversion = '0.0.1-SNAPSHOT'\n\njava {{ toolchain {{ languageVersion = JavaLanguageVersion.of({}) }} }}\nrepositories {{ mavenCentral() }}\ndependencies {{\n{}    testImplementation 'org.springframework.boot:spring-boot-starter-test'\n    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'\n}}\n", request.boot_version, request.group_id, request.java_version, dependencies);
-            fs::write(destination.join("build.gradle"), gradle).map_err(|error| error.to_string())?;
-            fs::write(destination.join("settings.gradle"), format!("rootProject.name = '{}'\n", request.project_name)).map_err(|error| error.to_string())?;
-        }
-        fs::write(destination.join(".gitignore"), "/target/\n/build/\n/.gradle/\n*.class\n").map_err(|error| error.to_string())?;
-        Ok::<(), String>(())
-    })();
-    if let Err(error) = result {
-        let _ = fs::remove_dir_all(destination);
-        return Err(format!("오프라인 프로젝트 생성에 실패했습니다: {error}"));
-    }
-    Ok(())
-}
-
-fn valid_coordinate(value: &str) -> bool {
-    !value.is_empty() && value.chars().all(|c| c.is_ascii_alphanumeric() || ".-_".contains(c))
-}
-
-fn valid_package_name(value: &str) -> bool {
-    !value.is_empty() && value.split('.').all(|part| {
-        let mut chars = part.chars();
-        matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_' || c == '$')
-            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+    Ok(SpringProjectResult {
+        path: destination.to_string_lossy().into_owned(),
+        source: "initializr".into(),
     })
 }
 
-fn offline_dependencies(ids: &[String]) -> Result<Vec<(&'static str, &'static str, &'static str)>, String> {
+fn create_offline_archive(request: &SpringProjectRequest) -> Result<Vec<u8>, String> {
+    let deps = offline_dependencies(&request.boot_version, &request.dependencies)?;
+    let class_name = application_class_name(&request.project_name);
+    let indent_1 = " ".repeat(request.indent_size);
+    let indent_2 = " ".repeat(request.indent_size * 2);
+    let indent_3 = " ".repeat(request.indent_size * 3);
+    let indent_4 = " ".repeat(request.indent_size * 4);
+    let source_path = format!(
+        "src/main/java/{}/{}Application.java",
+        request.package_name.replace('.', "/"),
+        class_name
+    );
+    let source = format!(
+        "package {package};\n\nimport org.springframework.boot.SpringApplication;\nimport org.springframework.boot.autoconfigure.SpringBootApplication;\n\n@SpringBootApplication\npublic class {class_name}Application {{\n{indent_1}public static void main(String[] args) {{\n{indent_2}SpringApplication.run({class_name}Application.class, args);\n{indent_1}}}\n}}\n",
+        package = request.package_name,
+        class_name = class_name,
+        indent_1 = indent_1,
+        indent_2 = indent_2,
+    );
+    let build_files = if request.build_tool == "maven" {
+        let dependencies = deps.iter().map(|(group, artifact, scope)| {
+            let scope = maven_dependency_scope(scope, &indent_3);
+            format!("{indent_2}<dependency>\n{indent_3}<groupId>{group}</groupId>\n{indent_3}<artifactId>{artifact}</artifactId>{scope}\n{indent_2}</dependency>\n")
+        }).collect::<String>();
+        let pom = format!("<project xmlns=\"http://maven.apache.org/POM/4.0.0\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd\">\n{indent_1}<modelVersion>4.0.0</modelVersion>\n{indent_1}<parent>\n{indent_2}<groupId>org.springframework.boot</groupId>\n{indent_2}<artifactId>spring-boot-starter-parent</artifactId>\n{indent_2}<version>{boot_version}</version>\n{indent_2}<relativePath/>\n{indent_1}</parent>\n{indent_1}<groupId>{group_id}</groupId>\n{indent_1}<artifactId>{artifact_id}</artifactId>\n{indent_1}<version>0.0.1-SNAPSHOT</version>\n{indent_1}<name>{project_name}</name>\n{indent_1}<properties>\n{indent_2}<java.version>{java_version}</java.version>\n{indent_1}</properties>\n{indent_1}<dependencies>\n{dependencies}{indent_1}</dependencies>\n{indent_1}<build>\n{indent_2}<plugins>\n{indent_3}<plugin>\n{indent_4}<groupId>org.springframework.boot</groupId>\n{indent_4}<artifactId>spring-boot-maven-plugin</artifactId>\n{indent_3}</plugin>\n{indent_2}</plugins>\n{indent_1}</build>\n</project>\n", boot_version=request.boot_version, group_id=request.group_id, artifact_id=request.artifact_id, project_name=request.project_name, java_version=request.java_version, dependencies=dependencies, indent_1=indent_1, indent_2=indent_2, indent_3=indent_3, indent_4=indent_4);
+        vec![("pom.xml".to_string(), pom)]
+    } else {
+        let dependencies = deps
+            .iter()
+            .map(|(group, artifact, scope)| {
+                format!(
+                    "{indent_1}{} '{}:{}'\n",
+                    gradle_dependency_scope(scope),
+                    group,
+                    artifact
+                )
+            })
+            .collect::<String>();
+        let build = format!("plugins {{\n{indent_1}id 'java'\n{indent_1}id 'org.springframework.boot' version '{boot_version}'\n{indent_1}id 'io.spring.dependency-management' version '1.1.7'\n}}\ngroup = '{group_id}'\nversion = '0.0.1-SNAPSHOT'\n\njava {{\n{indent_1}toolchain {{\n{indent_2}languageVersion = JavaLanguageVersion.of({java_version})\n{indent_1}}}\n}}\n\nrepositories {{\n{indent_1}mavenCentral()\n}}\n\ndependencies {{\n{dependencies}{indent_1}testImplementation 'org.springframework.boot:spring-boot-starter-test'\n{indent_1}testRuntimeOnly 'org.junit.platform:junit-platform-launcher'\n}}\n", boot_version=request.boot_version, group_id=request.group_id, java_version=request.java_version, dependencies=dependencies, indent_1=indent_1, indent_2=indent_2);
+        vec![
+            ("build.gradle".to_string(), build),
+            (
+                "settings.gradle".to_string(),
+                format!("rootProject.name = '{}'\n", request.project_name),
+            ),
+        ]
+    };
+
+    let mut files = vec![
+        (source_path, source),
+        ("src/main/resources/application.properties".to_string(), String::new()),
+            (".editorconfig".to_string(), format!("root = true\n\n[*]\ncharset = utf-8\nend_of_line = lf\ninsert_final_newline = true\nindent_style = space\nindent_size = {}\n", request.indent_size)),
+        (".gitignore".to_string(), "/target/\n/build/\n/.gradle/\n*.class\n".to_string()),
+        ("README.md".to_string(), format!("# {}\n\nSpring Boot {} project.\n", request.project_name, request.boot_version)),
+    ];
+    files.extend(build_files);
+
+    let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    for (path, contents) in files {
+        writer
+            .start_file(path, options)
+            .map_err(|error| format!("오프라인 ZIP 항목을 만들지 못했습니다: {error}"))?;
+        writer
+            .write_all(contents.as_bytes())
+            .map_err(|error| format!("오프라인 ZIP 파일을 기록하지 못했습니다: {error}"))?;
+    }
+    writer
+        .finish()
+        .map(|cursor| cursor.into_inner())
+        .map_err(|error| format!("오프라인 ZIP을 마무리하지 못했습니다: {error}"))
+}
+
+fn application_class_name(project_name: &str) -> String {
+    let mut name = project_name
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            chars
+                .next()
+                .map(|first| first.to_ascii_uppercase().to_string() + chars.as_str())
+                .unwrap_or_default()
+        })
+        .collect::<String>();
+    if name.is_empty() {
+        name.push_str("Application");
+    }
+    if name
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_ascii_digit())
+    {
+        name.insert_str(0, "App");
+    }
+    name
+}
+
+fn maven_dependency_scope(scope: &str, indentation: &str) -> String {
+    match scope {
+        "runtime" => format!("\n{indentation}<scope>runtime</scope>"),
+        "test" => format!("\n{indentation}<scope>test</scope>"),
+        "annotationProcessor" => format!("\n{indentation}<scope>provided</scope>"),
+        _ => String::new(),
+    }
+}
+
+fn gradle_dependency_scope(scope: &str) -> &'static str {
+    match scope {
+        "runtime" => "runtimeOnly",
+        "test" => "testImplementation",
+        "annotationProcessor" => "annotationProcessor",
+        _ => "implementation",
+    }
+}
+
+fn valid_coordinate(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || ".-_".contains(c))
+}
+
+fn valid_package_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.split('.').all(|part| {
+            let mut chars = part.chars();
+            matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_' || c == '$')
+                && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+        })
+}
+
+fn offline_dependencies(
+    boot_version: &str,
+    ids: &[String],
+) -> Result<Vec<(String, String, String)>, String> {
+    let snapshot: serde_json::Value =
+        serde_json::from_str(include_str!("../resources/spring-initializr-metadata.json"))
+            .map_err(|error| {
+                format!("내장 Spring Initializr 메타데이터를 읽지 못했습니다: {error}")
+            })?;
+    let available = snapshot
+        .pointer("/dependenciesByBootVersion")
+        .and_then(|versions| versions.get(boot_version))
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| {
+            format!("내장 메타데이터에 Spring Boot {boot_version} 의존성 목록이 없습니다.")
+        })?;
     let mut result = Vec::new();
     for id in ids {
-        let entry = match id.as_str() {
-            "web" => ("org.springframework.boot", "spring-boot-starter-web", ""),
-            "data-jpa" => ("org.springframework.boot", "spring-boot-starter-data-jpa", ""),
-            "security" => ("org.springframework.boot", "spring-boot-starter-security", ""),
-            "validation" => ("org.springframework.boot", "spring-boot-starter-validation", ""),
-            "lombok" => ("org.projectlombok", "lombok", "<optional>true</optional>"),
-            "devtools" => ("org.springframework.boot", "spring-boot-devtools", "<optional>true</optional>"),
-            "h2" => ("com.h2database", "h2", "<scope>runtime</scope>"),
-            "mysql" => ("com.mysql", "mysql-connector-j", "<scope>runtime</scope>"),
-            "postgresql" => ("org.postgresql", "postgresql", "<scope>runtime</scope>"),
-            _ => return Err(format!("오프라인 모드에서 지원하지 않는 의존성입니다: {id}")),
-        };
-        result.push(entry);
+        let entry = available.get(id).ok_or_else(|| {
+            format!("Spring Boot {boot_version}에서 사용할 수 없는 의존성입니다: {id}")
+        })?;
+        if !is_offline_dependency_supported(entry) {
+            return Err(format!(
+                "현재 오프라인 템플릿에서 지원하지 않는 의존성입니다: {id}"
+            ));
+        }
+        let group = entry
+            .get("groupId")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("의존성 groupId가 없습니다: {id}"))?;
+        let artifact = entry
+            .get("artifactId")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("의존성 artifactId가 없습니다: {id}"))?;
+        let scope = entry
+            .get("scope")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("의존성 scope가 없습니다: {id}"))?;
+        result.push((group.to_string(), artifact.to_string(), scope.to_string()));
     }
     Ok(result)
 }

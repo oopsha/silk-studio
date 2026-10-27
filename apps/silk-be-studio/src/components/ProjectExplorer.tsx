@@ -4,10 +4,12 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { readDir, readTextFile } from "@tauri-apps/plugin-fs";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { languageIdFromPath } from "@silk-studio/editor/services/editor/languageFromPath.ts";
+import { getOfflineIndentSize } from "../services/springProjectGenerationSettings.ts";
 
 type Entry = { name: string; isDirectory: boolean; isFile: boolean; isSymlink: boolean };
 type CreateRequest = {
   source: "online" | "offline";
+  indentSize: number;
   parentPath: string;
   projectName: string;
   buildTool: "maven" | "gradle";
@@ -193,7 +195,7 @@ function SpringProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
       setConfigurationFileFormat(parsed.defaults.configurationFileFormat ?? "properties");
       setDependencies([]);
     }).catch((cause) => {
-      if (active) setError(`${source === "online" ? "온라인 Spring Initializr" : "저장소의 오프라인"} 메타데이터를 읽지 못했습니다: ${String(cause)}`);
+      if (active) setError(`저장소에 포함된 Spring Initializr 메타데이터를 읽지 못했습니다: ${String(cause)}`);
     }).finally(() => { if (active) setMetadataLoading(false); });
     return () => { active = false; };
   }, [source]);
@@ -206,7 +208,7 @@ function SpringProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
       const parsed = readInitializrOptionSet(asRecord(raw.capabilities));
       setMetadata((current) => ({ ...current, dependencies: parsed.dependencies }));
       setDependencies((current) => current.filter((id) => parsed.dependencies.some((group) => group.values.some((dependency) => dependency.id === id))));
-    }).catch((cause) => { if (active) setError(`${source === "online" ? "온라인" : "오프라인"} 의존성 목록을 읽지 못했습니다: ${String(cause)}`); });
+    }).catch((cause) => { if (active) setError(`내장 의존성 목록을 읽지 못했습니다: ${String(cause)}`); });
     return () => { active = false; };
   }, [source, bootVersion, metadataLoading]);
 
@@ -220,7 +222,7 @@ function SpringProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
     setBusy(true);
     setError("");
     try {
-      const request: CreateRequest = { source, parentPath, projectName: name.trim(), buildTool, typeId, groupId: groupId.trim(), artifactId: cleanArtifactId, packageName: packageName.trim(), javaVersion, bootVersion, language, packaging, configurationFileFormat, dependencies };
+      const request: CreateRequest = { source, indentSize: getOfflineIndentSize(), parentPath, projectName: name.trim(), buildTool, typeId, groupId: groupId.trim(), artifactId: cleanArtifactId, packageName: packageName.trim(), javaVersion, bootVersion, language, packaging, configurationFileFormat, dependencies };
       const result = await invoke<CreateResult>("create_spring_project", { request });
       onCreated(result);
     } catch (cause) {
@@ -275,7 +277,7 @@ function SpringProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
           </details> : null;
         })}
       </div></fieldset>
-      <div className="be-project-dialog__metadata-status">{metadataLoading ? `${source === "online" ? "Spring Initializr" : "저장된 Spring Initializr 선택지"} 불러오는 중…` : source === "online" ? "온라인 Spring Initializr 메타데이터" : `릴리즈 포함 오프라인 메타데이터 · ${metadata.updatedAt} 기준`}</div>
+      <div className="be-project-dialog__metadata-status">{metadataLoading ? "내장 Spring Initializr 선택지를 불러오는 중…" : source === "online" ? `내장 메타데이터 · ${metadata.updatedAt} 기준 · ZIP 생성 시 온라인 요청` : `오프라인 템플릿 · 내장 메타데이터 ${metadata.updatedAt} 기준`}</div>
       {error ? <div className="be-project-dialog__error">{error}</div> : null}
       <footer><button onClick={onClose} disabled={busy}>취소</button><button className="primary" onClick={() => void create()} disabled={busy || !name.trim() || !groupId.trim() || !artifactId.trim() || !packageName.trim() || metadataLoading || !metadata.types.length}>{busy ? "생성 중…" : "생성"}</button></footer>
     </section>

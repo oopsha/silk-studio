@@ -27,7 +27,7 @@ import {
 import {
   SETTINGS_CATEGORY_AVAILABLE,
 } from "../../services/settings/settingsConstants";
-import type { SettingsCategory } from "../../services/settings/settingsConstants";
+import type { BuiltInSettingsCategory, SettingsCategory } from "../../services/settings/settingsConstants";
 import { SettingsService } from "../../services/settings/settingsService";
 import { useSettingsCategory } from "../../services/settings/useSettingsCategory";
 import "./SettingsEditor.css";
@@ -40,7 +40,7 @@ const SETTINGS_CATEGORY_MESSAGE_KEYS = {
   ai: "settings.category.ai",
   experimental: "settings.category.experimental",
 } as const satisfies Record<
-  SettingsCategory,
+  BuiltInSettingsCategory,
   | "settings.category.appearance"
   | "settings.category.editor"
   | "settings.category.database"
@@ -993,6 +993,8 @@ type SettingsEditorProps = {
   onImportSettings?: () => Promise<boolean>;
   /** Restrict the categories shown by hosts that expose only a subset of shared settings. */
   categories?: SettingsCategory[];
+  /** App-owned settings pages that should appear in the shared settings editor. */
+  extensions?: Array<{ id: string; label: string; content: ReactNode }>;
   /** Hide database and SQL-specific AI context controls in non-database hosts. */
   showDatabaseAiOptions?: boolean;
 };
@@ -1001,6 +1003,7 @@ function SettingsEditor({
   onExportSettings,
   onImportSettings,
   categories,
+  extensions = [],
   showDatabaseAiOptions = true,
 }: SettingsEditorProps) {
   const category = useSettingsCategory();
@@ -1008,7 +1011,10 @@ function SettingsEditor({
   const [ioMessage, setIoMessage] = useState<string | null>(null);
   const [ioTone, setIoTone] = useState<"info" | "error" | "success">("info");
   const [ioBusy, setIoBusy] = useState(false);
-  const visibleCategories = categories ?? SettingsService.getCategories();
+  const visibleCategories = categories ?? [
+    ...SettingsService.getCategories(),
+    ...extensions.map(({ id }) => id),
+  ];
   const activeCategory = visibleCategories.includes(category)
     ? category
     : visibleCategories[0];
@@ -1051,7 +1057,9 @@ function SettingsEditor({
         <div className="settings-editor__sidebar-title">{t("settings.title")}</div>
         <nav className="settings-editor__nav">
           {visibleCategories.map((item) => {
-            const available = SETTINGS_CATEGORY_AVAILABLE[item];
+            const extension = extensions.find(({ id }) => id === item);
+            const messageKey = SETTINGS_CATEGORY_MESSAGE_KEYS[item as BuiltInSettingsCategory];
+            const available = extension ? true : SETTINGS_CATEGORY_AVAILABLE[item as BuiltInSettingsCategory] ?? true;
             return (
               <button
                 key={item}
@@ -1064,7 +1072,7 @@ function SettingsEditor({
                 disabled={!available}
                 onClick={() => SettingsService.setActiveCategory(item)}
               >
-                {t(SETTINGS_CATEGORY_MESSAGE_KEYS[item])}
+                {extension?.label ?? (messageKey ? t(messageKey) : item)}
                 {!available ? (
                   <span className="settings-editor__nav-badge">
                     {t("settings.soon")}
@@ -1113,6 +1121,9 @@ function SettingsEditor({
           <AiSettings showDatabaseOptions={showDatabaseAiOptions} />
         ) : null}
         {activeCategory === "experimental" ? <ExperimentalSettings /> : null}
+        {extensions.map((extension) => activeCategory === extension.id
+          ? <div key={extension.id}>{extension.content}</div>
+          : null)}
       </div>
     </main>
   );

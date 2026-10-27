@@ -1,6 +1,6 @@
 export const SETTINGS_EDITOR_URI = "silk://settings";
 
-export type SettingsCategory =
+export type BuiltInSettingsCategory =
   | "appearance"
   | "editor"
   | "database"
@@ -8,7 +8,10 @@ export type SettingsCategory =
   | "ai"
   | "experimental";
 
-export const SETTINGS_CATEGORY_LABELS: Record<SettingsCategory, string> = {
+/** App-contributed settings categories share the editor while keeping app-only settings out of other studios. */
+export type SettingsCategory = BuiltInSettingsCategory | (string & {});
+
+export const SETTINGS_CATEGORY_LABELS: Record<BuiltInSettingsCategory, string> = {
   appearance: "Appearance",
   editor: "Editor",
   database: "Database",
@@ -26,7 +29,7 @@ export const SETTINGS_CATEGORY_ORDER: SettingsCategory[] = [
   "experimental",
 ];
 
-export const SETTINGS_CATEGORY_AVAILABLE: Record<SettingsCategory, boolean> = {
+export const SETTINGS_CATEGORY_AVAILABLE: Record<BuiltInSettingsCategory, boolean> = {
   appearance: true,
   editor: true,
   database: true,
