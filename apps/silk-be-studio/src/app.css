@@ -31,7 +31,17 @@
 .be-project-dialog > label, .be-project-dialog__split label { display: flex; flex: 1; flex-direction: column; gap: 5px; margin: 10px 0; }
 .be-project-dialog input:not([type=checkbox]), .be-project-dialog select { min-height: 30px; padding: 5px 8px; }
 .be-project-dialog fieldset { margin: 12px 0; border: 1px solid var(--color-border); }
-.be-project-dialog__dependencies { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 4px 0 8px; }
+.be-project-dialog__dependency-toolbar { display: flex; align-items: center; gap: 10px; }
+.be-project-dialog__dependency-toolbar input { width: min(220px, 70%); }
+.be-project-dialog__dependency-toolbar span { color: var(--color-description); white-space: nowrap; }
+.be-project-dialog__selected-dependencies { display: flex; flex-wrap: wrap; gap: 4px; max-height: 58px; overflow: auto; padding: 6px 0 2px; }
+.be-project-dialog__selected-dependencies button { padding: 2px 6px; color: var(--color-foreground); background: var(--color-list-hover-background); border: 1px solid var(--color-border); border-radius: 10px; font-size: 11px; cursor: pointer; }
+.be-project-dialog__dependencies { display: flex; flex-direction: column; gap: 2px; max-height: 230px; overflow: auto; padding: 5px 0; }
+.be-project-dialog__dependencies details { border-bottom: 1px solid var(--color-border); }
+.be-project-dialog__dependencies summary { display: flex; justify-content: space-between; padding: 5px 4px; color: var(--color-description); font-weight: 600; cursor: pointer; }
+.be-project-dialog__dependencies summary span { padding-left: 8px; color: var(--color-description); font-weight: 400; }
+.be-project-dialog__dependency-options { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; padding: 4px 6px 8px; }
+.be-project-dialog__metadata-status { padding: 4px 0 8px; color: var(--color-description); font-size: 11px; }
 .be-project-dialog__dependencies label { display: flex; align-items: center; gap: 6px; }
 .be-project-dialog__error { padding: 8px; color: var(--color-error-foreground, #f48771); overflow-wrap: anywhere; }
 .be-project-dialog footer { justify-content: flex-end; padding-top: 8px; }

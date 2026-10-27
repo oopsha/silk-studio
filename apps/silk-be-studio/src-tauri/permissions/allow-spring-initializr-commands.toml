@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-spring-initializr-commands"
+description = "Allows retrieving Spring Initializr metadata and creating Spring projects."
+commands.allow = ["get_spring_initializr_metadata", "create_spring_project"]

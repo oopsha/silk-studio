@@ -16,6 +16,7 @@
     "window-controls:default",
     "allow-ensure-title-bar-overlay",
     "allow-ai-http-commands",
+    "allow-spring-initializr-commands",
     "allow-startup-theme-commands",
     "allow-window-layout-commands"
   ]
