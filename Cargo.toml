@@ -2,6 +2,7 @@
 members = [
   "apps/silk-db-studio/src-tauri",
   "apps/silk-be-studio/src-tauri",
+  "apps/silk-zip/src-tauri",
   "crates/silk-db-agent-client",
   "crates/ssm-tunnel-client",
   "crates/ssh-tunnel-client",
