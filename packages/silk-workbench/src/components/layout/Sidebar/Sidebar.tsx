@@ -31,7 +31,13 @@ function Sidebar({
   return (
     <aside className="sidebar" aria-label={t("workbench.sidebar.primaryAria")}>
       <div className="sidebar__content">
-        {activeViewId === "explorer" ? (
+        {/* Keep Explorer mounted while another activity view is active. Its connection
+            filter and per-profile tree expansion live in component state and should survive
+            switching to Search/History and back. */}
+        <div
+          className="sidebar__view-host"
+          style={{ display: activeViewId === "explorer" ? "flex" : "none" }}
+        >
           <ExplorerView
             renderConnections={renderConnections}
             connectionsTitle={connectionsTitle}
@@ -40,7 +46,7 @@ function Sidebar({
             renderOutline={renderOutline}
             renderTimeline={renderTimeline}
           />
-        ) : null}
+        </div>
         {activeViewId === "search" ? (
           renderSearch ? (
             renderSearch()

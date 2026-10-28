@@ -19,6 +19,12 @@
   overflow: visible;
 }
 
+.sidebar__view-host {
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .sidebar-view-placeholder {
   padding: 12px 20px;
   color: var(--color-description);
