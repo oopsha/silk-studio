@@ -4821,7 +4821,7 @@ dependencies = [
 
 [[package]]
 name = "silk-db-studio"
-version = "0.1.25"
+version = "0.1.28"
 dependencies = [
  "dunce",
  "keyring",

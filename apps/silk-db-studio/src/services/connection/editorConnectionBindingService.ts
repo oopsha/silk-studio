@@ -1,4 +1,5 @@
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
+import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import { ConnectionService } from "./connectionService";
 import { effectiveDefaultSchema } from "./connectionTypes";
 import { isSqlLanguageId } from "../sql/sqlDialect";
@@ -270,7 +271,12 @@ class EditorConnectionBindingServiceImpl {
   }
 
   private syncWithEditorTabs(): void {
-    const tabs = EditorService.getTabs();
+    // Bindings are stored across all editor groups. `EditorService.getTabs()` only
+    // returns tabs from the focused group, so using it here would mistake tabs in
+    // other groups for closed tabs whenever focus moves between groups.
+    const tabs = EditorGroupsService.getGroupIds().flatMap((groupId) =>
+      EditorGroupsService.getGroup(groupId).getTabs(),
+    );
     const liveIds = new Set(tabs.map((tab) => tab.id));
     let changed = false;
 
