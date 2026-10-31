@@ -14,7 +14,17 @@ function Sidebar({ views }: SidebarProps) {
 
   return (
     <aside className="sidebar" aria-label={t("workbench.sidebar.primaryAria")}>
-      <div className="sidebar__content">{activeView?.render() ?? null}</div>
+      <div className="sidebar__content">
+        {views.map((view) => (
+          <div
+            className="sidebar__view-host"
+            key={view.id}
+            style={{ display: view.id === activeViewId ? "flex" : "none" }}
+          >
+            {view.render()}
+          </div>
+        ))}
+      </div>
     </aside>
   );
 }

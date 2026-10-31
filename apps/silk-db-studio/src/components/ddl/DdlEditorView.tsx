@@ -71,7 +71,10 @@ function DdlEditorView({ groupId }: { groupId: EditorGroupId }) {
   };
 
   if (isEditablePackage && ref && tabId) {
-    return <PackageDdlEditorView objectRef={ref} tabId={tabId} />;
+    // The editor area reuses DdlEditorView when switching between DDL tabs. Package buffers
+    // are local React state restored from the per-tab store, so force a fresh package view for
+    // each tab instead of briefly pairing the previous tab's source with the new object's ref.
+    return <PackageDdlEditorView key={tabId} objectRef={ref} tabId={tabId} />;
   }
 
   if (!isRoutine || !ref) {
