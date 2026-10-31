@@ -10,7 +10,7 @@ function App() {
 
   return (
     <main className="zip-app">
-      <header className="zip-header"><div className="zip-brand"><span className="zip-mark">Z</span><strong>Silk Zip</strong><span className="zip-subtitle">파일 압축 유틸리티</span></div><button className="zip-button" onClick={addFiles}>파일 추가</button></header>
+      <header className="zip-header"><div className="zip-brand"><img className="zip-mark" src="/silk-zip-mark.svg" alt="" /><strong>Silk Zip</strong><span className="zip-subtitle">파일 압축 유틸리티</span></div><button className="zip-button" onClick={addFiles}>파일 추가</button></header>
       <section className="zip-content">
         <div className="zip-toolbar"><div><h1>새 압축 파일</h1><p>파일을 선택하고 ZIP 또는 7z 파일로 압축하세요.</p></div><select aria-label="압축 형식"><option>7z</option><option>zip</option></select></div>
         <div className="zip-drop" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setFiles((current) => [...current, ...Array.from(event.dataTransfer.files, (file) => file.name)]); }}>
