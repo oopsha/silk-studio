@@ -19,6 +19,7 @@ import {
   listPackagePlsqlSnapshots,
 } from "../../services/connection/plsqlSnapshotService";
 import type { PackagePlsqlSnapshotEntry } from "../../services/connection/plsqlSnapshotStorage";
+import type { PlsqlEditorRef } from "../../services/connection/plsqlEditorConstants";
 import { registerSqlLanguages } from "../../services/sql/registerSqlLanguages";
 import "../connections/ExplorerObjectMutationDialog.css";
 import "./PlsqlSnapshotDialog.css";
@@ -81,9 +82,20 @@ function PackagePlsqlHistoryDialog() {
       setView({ mode: "history" });
       setErrorMessage(null);
       setBusy(false);
-      setEntries(next ? listPackagePlsqlSnapshots(next.ref) : []);
+      if (!next) setEntries([]);
     });
   }, []);
+
+  useEffect(() => {
+    if (!request) return;
+    let cancelled = false;
+    void listPackagePlsqlSnapshots(request.ref)
+      .then((loaded) => { if (!cancelled) setEntries(loaded); })
+      .catch((error: unknown) => {
+        if (!cancelled) setErrorMessage(formatPlsqlSnapshotError(error, t("app.plsql.snapshotApplyFailed")));
+      });
+    return () => { cancelled = true; };
+  }, [request?.ref, t]);
 
   const theme = monacoThemeForColorTheme(configuration["workbench.colorTheme"]);
 
@@ -101,9 +113,12 @@ function PackagePlsqlHistoryDialog() {
     return null;
   }
 
-  function refreshEntries() {
-    if (!request) return;
-    setEntries(listPackagePlsqlSnapshots(request.ref));
+  async function refreshEntries(ref: PlsqlEditorRef) {
+    try {
+      setEntries(await listPackagePlsqlSnapshots(ref));
+    } catch (error) {
+      setErrorMessage(formatPlsqlSnapshotError(error, t("app.plsql.snapshotApplyFailed")));
+    }
   }
 
   async function handleConfirm() {
@@ -117,15 +132,15 @@ function PackagePlsqlHistoryDialog() {
         return;
       }
       if (view.kind === "delete" && view.entry) {
-        deletePackagePlsqlSnapshotEntry(request.ref, view.entry.id);
-        refreshEntries();
+        await deletePackagePlsqlSnapshotEntry(request.ref, view.entry.id);
+        await refreshEntries(request.ref);
         setView({ mode: "history" });
         setBusy(false);
         return;
       }
       if (view.kind === "clearAll") {
-        clearAllPackagePlsqlSnapshots(request.ref);
-        refreshEntries();
+        await clearAllPackagePlsqlSnapshots(request.ref);
+        await refreshEntries(request.ref);
         setView({ mode: "history" });
         setBusy(false);
         return;

@@ -25,6 +25,7 @@ import {
   rollbackPlsqlSnapshot,
 } from "../../services/connection/plsqlSnapshotService";
 import type { PlsqlSnapshotEntry } from "../../services/connection/plsqlSnapshotStorage";
+import type { PlsqlEditorRef } from "../../services/connection/plsqlEditorConstants";
 import { registerSqlLanguages } from "../../services/sql/registerSqlLanguages";
 import "../connections/ExplorerObjectMutationDialog.css";
 import "./PlsqlSnapshotDialog.css";
@@ -70,19 +71,20 @@ function PlsqlSnapshotDialog() {
       setRequest(next);
       setErrorMessage(null);
       setBusy(false);
-      if (next) {
-        setEntries(listPlsqlSnapshots(next.ref));
-      } else {
-        setEntries([]);
-      }
+      if (!next) setEntries([]);
     });
   }, []);
 
   useEffect(() => {
-    if (request?.mode === "history") {
-      setEntries(listPlsqlSnapshots(request.ref));
-    }
-  }, [request?.mode, request?.ref]);
+    if (request?.mode !== "history") return;
+    let cancelled = false;
+    void listPlsqlSnapshots(request.ref)
+      .then((loaded) => { if (!cancelled) setEntries(loaded); })
+      .catch((error: unknown) => {
+        if (!cancelled) setErrorMessage(formatPlsqlSnapshotError(error, t("app.plsql.snapshotApplyFailed")));
+      });
+    return () => { cancelled = true; };
+  }, [request?.mode, request?.ref, t]);
 
   const theme = monacoThemeForColorTheme(configuration["workbench.colorTheme"]);
 
@@ -117,9 +119,12 @@ function PlsqlSnapshotDialog() {
     });
   }
 
-  function refreshEntries() {
-    if (!request) return;
-    setEntries(listPlsqlSnapshots(request.ref));
+  async function refreshEntries(ref: PlsqlEditorRef) {
+    try {
+      setEntries(await listPlsqlSnapshots(ref));
+    } catch (error) {
+      setErrorMessage(formatPlsqlSnapshotError(error, t("app.plsql.snapshotApplyFailed")));
+    }
   }
 
   async function handleConfirm() {
@@ -138,14 +143,14 @@ function PlsqlSnapshotDialog() {
         return;
       }
       if (request.confirmKind === "delete" && request.snapshot) {
-        deletePlsqlSnapshotEntry(request.ref, request.snapshot.id);
-        refreshEntries();
+        await deletePlsqlSnapshotEntry(request.ref, request.snapshot.id);
+        await refreshEntries(request.ref);
         backToHistory();
         return;
       }
       if (request.confirmKind === "clearAll") {
-        clearAllPlsqlSnapshots(request.ref);
-        refreshEntries();
+        await clearAllPlsqlSnapshots(request.ref);
+        await refreshEntries(request.ref);
         backToHistory();
         return;
       }

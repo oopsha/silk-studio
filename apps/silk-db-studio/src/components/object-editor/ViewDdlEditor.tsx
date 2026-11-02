@@ -257,9 +257,9 @@ function ViewDdlEditor({ groupId, objectRef, tabId, tabUri, bufferedContent }: V
     }
   };
 
-  const handleSnapshot = () => {
+  const handleSnapshot = async () => {
     try {
-      takeManualPlsqlSnapshot(tabId);
+      await takeManualPlsqlSnapshot(tabId);
       AppNotificationService.show("Snapshot saved locally.", "success");
     } catch (error) {
       AppNotificationService.show(

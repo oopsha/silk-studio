@@ -27,6 +27,7 @@ function PackagePlsqlSaveDialog() {
   const [activeSectionId, setActiveSectionId] = useState<"spec" | "body" | null>(
     null,
   );
+  const requestNonceRef = useRef(PackagePlsqlSaveDialogService.getRequestNonce());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
   const configuration = useConfiguration();
@@ -43,8 +44,13 @@ function PackagePlsqlSaveDialog() {
   useEffect(() => {
     return PackagePlsqlSaveDialogService.onDidChange(() => {
       const next = PackagePlsqlSaveDialogService.getRequest();
+      const nextNonce = PackagePlsqlSaveDialogService.getRequestNonce();
+      const isNewRequest = requestNonceRef.current !== nextNonce;
+      requestNonceRef.current = nextNonce;
       setRequest(next);
-      setActiveSectionId(next?.sections[0]?.id ?? null);
+      // Source-loading patches update sections on the current request. Keep the user's
+      // selected Spec/Body tab when those async results arrive.
+      if (isNewRequest) setActiveSectionId(next?.sections[0]?.id ?? null);
       setErrorMessage(null);
       setExecuting(false);
     });

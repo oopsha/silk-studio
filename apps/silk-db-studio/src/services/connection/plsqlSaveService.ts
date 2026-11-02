@@ -18,7 +18,7 @@ import {
 import { PlsqlSaveDialogService } from "./plsqlSaveDialogService";
 import { registerPendingDdlSave } from "./pendingDdlSaveService";
 import { buildPlsqlSaveSql } from "./plsqlSaveSql";
-import { recordPlsqlSnapshot } from "./plsqlSnapshotService";
+import { recordPlsqlSnapshotBestEffort } from "./plsqlSnapshotService";
 import { bridgeFetchObjectDdl } from "./connectionDdlBridge";
 import { reportPlsqlCompileDiagnostics } from "./plsqlCompileService";
 import { driverAutoCommitsDdl, supportsCompileDiagnostics } from "../sql/sqlDialect";
@@ -211,7 +211,7 @@ export async function executePlsqlSave(
       registerPendingDdlSave(ref.profileId, {
         onCommit: () => {
           const stillOpen = EditorService.getTab(tabId);
-          recordPlsqlSnapshot(ref, savedContent, "save");
+          recordPlsqlSnapshotBestEffort(ref, savedContent, "save");
           if (stillOpen) {
             EditorService.markTabSaved(tabId, savedUri, savedLabel);
           }
@@ -222,7 +222,7 @@ export async function executePlsqlSave(
       });
       AppNotificationService.show(tKey("app.plsql.savePendingCommit"), "info");
     } else {
-      recordPlsqlSnapshot(ref, savedContent, "save");
+      await recordPlsqlSnapshotBestEffort(ref, savedContent, "save");
       EditorService.markTabSaved(tabId, savedUri, savedLabel);
       AppNotificationService.show(tKey("app.plsql.saveSucceeded"), "success");
     }

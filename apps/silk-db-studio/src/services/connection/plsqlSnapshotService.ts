@@ -23,15 +23,15 @@ import {
   type PlsqlSnapshotReason,
 } from "./plsqlSnapshotStorage";
 
-export function listPlsqlSnapshots(ref: PlsqlEditorRef): PlsqlSnapshotEntry[] {
+export async function listPlsqlSnapshots(ref: PlsqlEditorRef): Promise<PlsqlSnapshotEntry[]> {
   return loadPlsqlSnapshots(ref);
 }
 
-export function recordPlsqlSnapshot(
+export async function recordPlsqlSnapshot(
   ref: PlsqlEditorRef,
   content: string,
   reason: PlsqlSnapshotReason,
-): PlsqlSnapshotEntry | null {
+): Promise<PlsqlSnapshotEntry | null> {
   const trimmed = content.replace(/^\uFEFF/, "");
   if (!trimmed.trim()) return null;
   if (
@@ -43,13 +43,26 @@ export function recordPlsqlSnapshot(
   return appendPlsqlSnapshot(ref, trimmed.endsWith("\n") ? trimmed : `${trimmed}\n`, reason);
 }
 
+/** Best-effort history write after a database save; snapshot storage must not undo save success. */
+export async function recordPlsqlSnapshotBestEffort(
+  ref: PlsqlEditorRef,
+  content: string,
+  reason: PlsqlSnapshotReason,
+): Promise<void> {
+  try {
+    await recordPlsqlSnapshot(ref, content, reason);
+  } catch (error) {
+    console.error("[silk.plsql.snapshot] Database save succeeded, but local history write failed", error);
+  }
+}
+
 /** Records Spec + Body together as one snapshot entry — see PackagePlsqlSnapshotEntry's doc comment. */
-export function recordPackagePlsqlSnapshot(
+export async function recordPackagePlsqlSnapshot(
   ref: PlsqlEditorRef,
   spec: string,
   body: string,
   reason: PlsqlSnapshotReason,
-): PackagePlsqlSnapshotEntry | null {
+): Promise<PackagePlsqlSnapshotEntry | null> {
   const cleanSpec = spec.replace(/^\uFEFF/, "");
   const cleanBody = body.replace(/^\uFEFF/, "");
   if (!cleanSpec.trim() && !cleanBody.trim()) return null;
@@ -64,18 +77,32 @@ export function recordPackagePlsqlSnapshot(
   );
 }
 
-export function listPackagePlsqlSnapshots(ref: PlsqlEditorRef): PackagePlsqlSnapshotEntry[] {
+/** Best-effort package history write after both package DDL sections have been applied. */
+export async function recordPackagePlsqlSnapshotBestEffort(
+  ref: PlsqlEditorRef,
+  spec: string,
+  body: string,
+  reason: PlsqlSnapshotReason,
+): Promise<void> {
+  try {
+    await recordPackagePlsqlSnapshot(ref, spec, body, reason);
+  } catch (error) {
+    console.error("[silk.plsql.snapshot] Package database save succeeded, but local history write failed", error);
+  }
+}
+
+export async function listPackagePlsqlSnapshots(ref: PlsqlEditorRef): Promise<PackagePlsqlSnapshotEntry[]> {
   return loadPackagePlsqlSnapshots(ref);
 }
 
-export function deletePackagePlsqlSnapshotEntry(ref: PlsqlEditorRef, snapshotId: string): void {
-  if (!removePackagePlsqlSnapshot(ref, snapshotId)) {
+export async function deletePackagePlsqlSnapshotEntry(ref: PlsqlEditorRef, snapshotId: string): Promise<void> {
+  if (!(await removePackagePlsqlSnapshot(ref, snapshotId))) {
     throw new Error("Snapshot not found.");
   }
 }
 
-export function clearAllPackagePlsqlSnapshots(ref: PlsqlEditorRef): void {
-  clearPackagePlsqlSnapshots(ref);
+export async function clearAllPackagePlsqlSnapshots(ref: PlsqlEditorRef): Promise<void> {
+  await clearPackagePlsqlSnapshots(ref);
 }
 
 export function getPlsqlSnapshotBlockedReason(tabId?: string): string | null {
@@ -138,9 +165,9 @@ export function openPlsqlSnapshotHistory(tabId?: string): void {
   });
 }
 
-export function takeManualPlsqlSnapshot(tabId?: string): PlsqlSnapshotEntry {
+export async function takeManualPlsqlSnapshot(tabId?: string): Promise<PlsqlSnapshotEntry> {
   const current = requireActivePlsqlTab(tabId);
-  const entry = recordPlsqlSnapshot(current.ref, current.content, "manual");
+  const entry = await recordPlsqlSnapshot(current.ref, current.content, "manual");
   if (!entry) {
     throw new Error("Nothing to snapshot.");
   }
@@ -241,17 +268,17 @@ export function openPlsqlClearAllConfirm(tabId?: string): void {
   });
 }
 
-export function deletePlsqlSnapshotEntry(
+export async function deletePlsqlSnapshotEntry(
   ref: PlsqlEditorRef,
   snapshotId: string,
-): void {
-  if (!removePlsqlSnapshot(ref, snapshotId)) {
-    throw new Error("Snapshot not found.");
-  }
+): Promise<void> {
+  return removePlsqlSnapshot(ref, snapshotId).then((removed) => {
+    if (!removed) throw new Error("Snapshot not found.");
+  });
 }
 
-export function clearAllPlsqlSnapshots(ref: PlsqlEditorRef): void {
-  clearPlsqlSnapshots(ref);
+export async function clearAllPlsqlSnapshots(ref: PlsqlEditorRef): Promise<void> {
+  await clearPlsqlSnapshots(ref);
 }
 
 export function openPlsqlReloadConfirm(tabId?: string): void {

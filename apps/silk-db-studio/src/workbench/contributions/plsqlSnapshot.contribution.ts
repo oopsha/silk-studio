@@ -29,11 +29,11 @@ CommandsRegistry.registerCommand("silk.plsql.snapshot.history", () => {
   }
 });
 
-CommandsRegistry.registerCommand("silk.plsql.snapshot.take", () => {
+CommandsRegistry.registerCommand("silk.plsql.snapshot.take", async () => {
   const tabId = requirePlsqlTab();
   if (!tabId) return;
   try {
-    takeManualPlsqlSnapshot(tabId);
+    await takeManualPlsqlSnapshot(tabId);
     window.alert("Snapshot saved locally.");
   } catch (error) {
     window.alert(formatErrorMessage(error, "Failed to take snapshot."));

@@ -1,6 +1,8 @@
+import { isTauri } from "@tauri-apps/api/core";
 import type { PlsqlEditorRef } from "./plsqlEditorConstants";
 
 export const MAX_PLSQL_SNAPSHOTS = 20;
+const SNAPSHOT_DIRECTORY = "plsql-snapshots/v1";
 
 export type PlsqlSnapshotReason = "save" | "compile" | "manual";
 
@@ -45,77 +47,127 @@ function normalizeEntry(value: unknown): PlsqlSnapshotEntry | null {
   };
 }
 
-export function loadPlsqlSnapshots(ref: PlsqlEditorRef): PlsqlSnapshotEntry[] {
+function parseEntries<T>(raw: string | null, normalize: (value: unknown) => T | null): T[] {
+  if (!raw) return [];
   try {
-    const raw = localStorage.getItem(storageKey(ref));
-    if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed
-      .map(normalizeEntry)
-      .filter((entry): entry is PlsqlSnapshotEntry => entry !== null)
+      .map(normalize)
+      .filter((entry): entry is T => entry !== null)
       .slice(0, MAX_PLSQL_SNAPSHOTS);
   } catch {
     return [];
   }
 }
 
-export function savePlsqlSnapshots(
-  ref: PlsqlEditorRef,
-  entries: PlsqlSnapshotEntry[],
-): void {
-  localStorage.setItem(
-    storageKey(ref),
-    JSON.stringify(entries.slice(0, MAX_PLSQL_SNAPSHOTS)),
-  );
+function readLegacyEntries<T>(key: string, normalize: (value: unknown) => T | null): T[] {
+  try {
+    return parseEntries(localStorage.getItem(key), normalize);
+  } catch {
+    // Desktop file storage remains usable when WebView storage is unavailable or full.
+    return [];
+  }
 }
 
-export function appendPlsqlSnapshot(
+function removeLegacyEntry(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // The AppData copy is authoritative after migration; cleanup is best effort.
+  }
+}
+
+async function fileNameForKey(key: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
+  const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${SNAPSHOT_DIRECTORY}/${hash}.json`;
+}
+
+async function readSnapshotEntries<T>(
+  key: string,
+  normalize: (value: unknown) => T | null,
+): Promise<T[]> {
+  if (!isTauri()) return parseEntries(localStorage.getItem(key), normalize);
+
+  const { BaseDirectory, exists, readTextFile } = await import("@tauri-apps/plugin-fs");
+  const fileName = await fileNameForKey(key);
+  if (await exists(fileName, { baseDir: BaseDirectory.AppData })) {
+    return parseEntries(await readTextFile(fileName, { baseDir: BaseDirectory.AppData }), normalize);
+  }
+
+  // Migrate the legacy browser entry lazily and retain it unless the disk write succeeds.
+  const legacy = readLegacyEntries(key, normalize);
+  if (legacy.length > 0) {
+    await writeSnapshotEntries(key, legacy);
+    removeLegacyEntry(key);
+  }
+  return legacy;
+}
+
+async function writeSnapshotEntries<T>(key: string, entries: T[]): Promise<void> {
+  const raw = JSON.stringify(entries.slice(0, MAX_PLSQL_SNAPSHOTS));
+  if (!isTauri()) {
+    localStorage.setItem(key, raw);
+    return;
+  }
+
+  const { BaseDirectory, mkdir, writeTextFile } = await import("@tauri-apps/plugin-fs");
+  await mkdir(SNAPSHOT_DIRECTORY, { baseDir: BaseDirectory.AppData, recursive: true });
+  await writeTextFile(await fileNameForKey(key), raw, { baseDir: BaseDirectory.AppData });
+}
+
+async function clearSnapshotEntries(key: string): Promise<void> {
+  if (!isTauri()) {
+    localStorage.removeItem(key);
+    return;
+  }
+  await writeSnapshotEntries(key, []);
+  removeLegacyEntry(key);
+}
+
+function createSnapshotId(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `snap-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+export async function loadPlsqlSnapshots(ref: PlsqlEditorRef): Promise<PlsqlSnapshotEntry[]> {
+  return readSnapshotEntries(storageKey(ref), normalizeEntry);
+}
+
+export async function savePlsqlSnapshots(
+  ref: PlsqlEditorRef,
+  entries: PlsqlSnapshotEntry[],
+): Promise<void> {
+  await writeSnapshotEntries(storageKey(ref), entries);
+}
+
+export async function appendPlsqlSnapshot(
   ref: PlsqlEditorRef,
   content: string,
   reason: PlsqlSnapshotReason,
-): PlsqlSnapshotEntry {
-  const entry: PlsqlSnapshotEntry = {
-    id:
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `snap-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    createdAt: Date.now(),
-    reason,
-    content,
-  };
-  const next = [entry, ...loadPlsqlSnapshots(ref)].slice(0, MAX_PLSQL_SNAPSHOTS);
-  savePlsqlSnapshots(ref, next);
+): Promise<PlsqlSnapshotEntry> {
+  const entry: PlsqlSnapshotEntry = { id: createSnapshotId(), createdAt: Date.now(), reason, content };
+  const next = [entry, ...await loadPlsqlSnapshots(ref)].slice(0, MAX_PLSQL_SNAPSHOTS);
+  await savePlsqlSnapshots(ref, next);
   return entry;
 }
 
-export function removePlsqlSnapshot(
+export async function removePlsqlSnapshot(
   ref: PlsqlEditorRef,
   snapshotId: string,
-): boolean {
-  const current = loadPlsqlSnapshots(ref);
+): Promise<boolean> {
+  const current = await loadPlsqlSnapshots(ref);
   const next = current.filter((entry) => entry.id !== snapshotId);
-  if (next.length === current.length) {
-    return false;
-  }
-  if (next.length === 0) {
-    try {
-      localStorage.removeItem(storageKey(ref));
-    } catch {
-      savePlsqlSnapshots(ref, []);
-    }
-  } else {
-    savePlsqlSnapshots(ref, next);
-  }
+  if (next.length === current.length) return false;
+  if (next.length === 0) await clearSnapshotEntries(storageKey(ref));
+  else await savePlsqlSnapshots(ref, next);
   return true;
 }
 
-export function clearPlsqlSnapshots(ref: PlsqlEditorRef): void {
-  try {
-    localStorage.removeItem(storageKey(ref));
-  } catch {
-    savePlsqlSnapshots(ref, []);
-  }
+export async function clearPlsqlSnapshots(ref: PlsqlEditorRef): Promise<void> {
+  await clearSnapshotEntries(storageKey(ref));
 }
 
 /**
@@ -167,29 +219,15 @@ function normalizePackageEntry(value: unknown): PackagePlsqlSnapshotEntry | null
   };
 }
 
-export function loadPackagePlsqlSnapshots(ref: PlsqlEditorRef): PackagePlsqlSnapshotEntry[] {
-  try {
-    const raw = localStorage.getItem(packageStorageKey(ref));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map(normalizePackageEntry)
-      .filter((entry): entry is PackagePlsqlSnapshotEntry => entry !== null)
-      .slice(0, MAX_PLSQL_SNAPSHOTS);
-  } catch {
-    return [];
-  }
+export async function loadPackagePlsqlSnapshots(ref: PlsqlEditorRef): Promise<PackagePlsqlSnapshotEntry[]> {
+  return readSnapshotEntries(packageStorageKey(ref), normalizePackageEntry);
 }
 
 export function savePackagePlsqlSnapshots(
   ref: PlsqlEditorRef,
   entries: PackagePlsqlSnapshotEntry[],
-): void {
-  localStorage.setItem(
-    packageStorageKey(ref),
-    JSON.stringify(entries.slice(0, MAX_PLSQL_SNAPSHOTS)),
-  );
+): Promise<void> {
+  return writeSnapshotEntries(packageStorageKey(ref), entries);
 }
 
 export function appendPackagePlsqlSnapshot(
@@ -197,44 +235,35 @@ export function appendPackagePlsqlSnapshot(
   spec: string,
   body: string,
   reason: PlsqlSnapshotReason,
-): PackagePlsqlSnapshotEntry {
+): Promise<PackagePlsqlSnapshotEntry> {
   const entry: PackagePlsqlSnapshotEntry = {
-    id:
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `snap-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    id: createSnapshotId(),
     createdAt: Date.now(),
     reason,
     spec,
     body,
   };
-  const next = [entry, ...loadPackagePlsqlSnapshots(ref)].slice(0, MAX_PLSQL_SNAPSHOTS);
-  savePackagePlsqlSnapshots(ref, next);
-  return entry;
+  return loadPackagePlsqlSnapshots(ref).then(async (existing) => {
+    const next = [entry, ...existing].slice(0, MAX_PLSQL_SNAPSHOTS);
+    await savePackagePlsqlSnapshots(ref, next);
+    return entry;
+  });
 }
 
-export function removePackagePlsqlSnapshot(ref: PlsqlEditorRef, snapshotId: string): boolean {
-  const current = loadPackagePlsqlSnapshots(ref);
+export async function removePackagePlsqlSnapshot(ref: PlsqlEditorRef, snapshotId: string): Promise<boolean> {
+  const current = await loadPackagePlsqlSnapshots(ref);
   const next = current.filter((entry) => entry.id !== snapshotId);
   if (next.length === current.length) {
     return false;
   }
   if (next.length === 0) {
-    try {
-      localStorage.removeItem(packageStorageKey(ref));
-    } catch {
-      savePackagePlsqlSnapshots(ref, []);
-    }
+    await clearSnapshotEntries(packageStorageKey(ref));
   } else {
-    savePackagePlsqlSnapshots(ref, next);
+    await savePackagePlsqlSnapshots(ref, next);
   }
   return true;
 }
 
-export function clearPackagePlsqlSnapshots(ref: PlsqlEditorRef): void {
-  try {
-    localStorage.removeItem(packageStorageKey(ref));
-  } catch {
-    savePackagePlsqlSnapshots(ref, []);
-  }
+export async function clearPackagePlsqlSnapshots(ref: PlsqlEditorRef): Promise<void> {
+  await clearSnapshotEntries(packageStorageKey(ref));
 }
