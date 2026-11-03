@@ -32,6 +32,10 @@ const NATIVE_CLIPBOARD_COMMANDS = new Set([
  * like Copy/Move Line or Add Cursor Above/Below.
  */
 const NATIVE_EDITOR_ACTION_COMMANDS = new Set([
+  // Query execution is registered both as a Monaco editor command (EditorArea) and as a
+  // workbench keybinding. When focus is inside Monaco, let the editor command handle it once.
+  "silk.query.execute",
+  "silk.query.executeScript",
   "silk.edit.find",
   "silk.edit.replace",
   "silk.edit.toggleLineComment",

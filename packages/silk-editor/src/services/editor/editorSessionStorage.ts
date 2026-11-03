@@ -3,8 +3,12 @@ import type { EditorSessionSnapshotV2 } from "./editorSessionTypes";
 import type { EditorSessionTabSnapshot } from "./editorService";
 import { createInitialLayout } from "./editorGroupTypes";
 
-const STORAGE_KEY = "silk-editor.session.v1";
-const FILE_NAME = "editor-session.v1.json";
+const IS_DEV = import.meta.env.DEV;
+const ENVIRONMENT_SUFFIX = IS_DEV ? ".dev" : "";
+const STORAGE_KEY = `silk-editor.session${ENVIRONMENT_SUFFIX}.v1`;
+const FILE_NAME = `editor-session${ENVIRONMENT_SUFFIX}.v1.json`;
+const LEGACY_STORAGE_KEY = "silk-editor.session.v1";
+const LEGACY_FILE_NAME = "editor-session.v1.json";
 
 /** Pre-split-editor session shape (flat tabs, single implicit group). */
 type EditorSessionSnapshotV1 = {
@@ -62,13 +66,29 @@ export async function loadEditorSessionSnapshot(): Promise<EditorSessionSnapshot
         const fromFile = parseSnapshot(raw);
         if (fromFile) return fromFile;
       }
+      // One-time dev migration: preserve the editors from the formerly shared session file.
+      // startEditorSessionSync will clear bindings whose profiles do not exist in this env and
+      // persist the resulting snapshot to the dev-specific file, leaving the production file
+      // untouched.
+      if (
+        IS_DEV &&
+        (await exists(LEGACY_FILE_NAME, { baseDir: BaseDirectory.AppData }))
+      ) {
+        const raw = await readTextFile(LEGACY_FILE_NAME, {
+          baseDir: BaseDirectory.AppData,
+        });
+        const fromLegacyFile = parseSnapshot(raw);
+        if (fromLegacyFile) return fromLegacyFile;
+      }
     } catch {
       // Fall through to localStorage.
     }
   }
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw =
+      localStorage.getItem(STORAGE_KEY) ??
+      (IS_DEV ? localStorage.getItem(LEGACY_STORAGE_KEY) : null);
     if (!raw) return null;
     return parseSnapshot(raw);
   } catch {

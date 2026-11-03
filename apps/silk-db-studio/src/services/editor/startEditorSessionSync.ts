@@ -140,7 +140,15 @@ export function startEditorSessionSync(): () => void {
 
     if (raw?.bindings) {
       for (const [tabId, binding] of Object.entries(raw.bindings)) {
-        EditorConnectionBindingService.setBinding(tabId, binding);
+        const profileExists = Boolean(
+          binding.profileId && ConnectionService.getProfile(binding.profileId),
+        );
+        EditorConnectionBindingService.setBinding(
+          tabId,
+          binding.profileId && !profileExists
+            ? { profileId: null, catalog: null, schema: null }
+            : binding,
+        );
       }
     }
 
