@@ -1131,12 +1131,25 @@ function QueryResultGrid({
     if (columnIndex < 0) return;
 
     draggingCellSelectionRef.current = true;
-    applyCellSelection(
-      event.rowIndex,
-      columnIndex,
-      event.rowIndex,
-      columnIndex,
-    );
+    if (mouseEvent.shiftKey && rowSelectionAnchorRef.current != null) {
+      // Keep the copied cell range in sync with the row range selected above.
+      // The range's column anchor comes from the prior cell selection, while its row
+      // anchor follows the same anchor used by Shift row selection.
+      const previousSelection = cellSelectionRef.current;
+      applyCellSelection(
+        rowSelectionAnchorRef.current,
+        previousSelection?.anchorColumnIndex ?? columnIndex,
+        event.rowIndex,
+        columnIndex,
+      );
+    } else {
+      applyCellSelection(
+        event.rowIndex,
+        columnIndex,
+        event.rowIndex,
+        columnIndex,
+      );
+    }
   };
 
   const handleCellMouseOver = (event: CellMouseOverEvent<QueryResultRow>) => {
