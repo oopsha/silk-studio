@@ -19,6 +19,7 @@ import { ContextKeyService } from "../../platform/context/contextKeyService";
 import {
   APP_DISPLAY_NAME,
 } from "../diagnostics/appVersion";
+import { localizeUiLabel } from "../../platform/i18n/localizeUiLabel";
 
 const APP_NAME = APP_DISPLAY_NAME;
 const REBUILD_DEBOUNCE_MS = 80;
@@ -102,6 +103,26 @@ async function buildEntry(
   entry: ResolvedMenuEntry,
 ): Promise<NativeMenuChild | null> {
   if (entry.type === "command") {
+    if (entry.secondaryAction) {
+      const items = [
+        await MenuItem.new({
+          id: `${entry.id}.open`,
+          text: localizeUiLabel("Open"),
+          action: () => runCommand(entry.id),
+        }),
+        await MenuItem.new({
+          id: entry.secondaryAction.id,
+          text: entry.secondaryAction.label,
+          action: () => runCommand(entry.secondaryAction!.id),
+        }),
+      ];
+      return Submenu.new({
+        id: `${entry.id}.submenu`,
+        text: entry.label,
+        items,
+      });
+    }
+
     const predefined = PREDEFINED_EDIT_COMMANDS[entry.id];
     if (predefined) {
       return PredefinedMenuItem.new({

@@ -7,6 +7,7 @@ import { ConnectionService } from "./services/connection/connectionService";
 import { startFileDropListener } from "./services/dnd/startFileDropListener";
 import { startExternalFileWatch } from "./services/files/startExternalFileWatch";
 import { startEditorSessionSync } from "./services/editor/startEditorSessionSync";
+import { RecentSqlEditorsService } from "./services/editor/recentSqlEditorsService";
 import { startWindowLayoutSync } from "./services/windowLayoutSync";
 import { saveStartupTheme } from "./services/startupTheme";
 
@@ -24,6 +25,7 @@ function App() {
     const stopWindowLayout = startWindowLayoutSync();
     const stopFileDrop = startFileDropListener();
     const stopFileWatch = startExternalFileWatch();
+    const stopRecentSqlEditors = RecentSqlEditorsService.start();
     const stopEditorSession = startEditorSessionSync();
     return () => {
       stopMenubar();
@@ -31,6 +33,7 @@ function App() {
       stopFileDrop();
       stopFileWatch();
       stopEditorSession();
+      stopRecentSqlEditors();
     };
   }, []);
 

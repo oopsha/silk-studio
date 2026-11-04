@@ -4,10 +4,15 @@ import { CommandsRegistry } from "../../platform/commands/commandRegistry";
 import { KeybindingsRegistry } from "../../platform/keybinding/keybindingRegistry";
 import { ContextKeyService } from "../../platform/context/contextKeyService";
 import {
-  pickAndReadTextFile,
+  pickTextFiles,
   pickSavePath,
   writeTextFile,
 } from "@silk-studio/editor/services/editor/editorFileIO.ts";
+import {
+  openDroppedFilePaths,
+  openTextFileContents,
+  type OpenDroppedFilesResult,
+} from "@silk-studio/editor/services/editor/openDroppedFiles.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import { TabBarActionService } from "@silk-studio/editor/services/editor/tabBarActionService.ts";
@@ -173,10 +178,52 @@ CommandsRegistry.registerCommand("silk.file.newTextFile", () => {
 });
 
 CommandsRegistry.registerCommand("silk.file.openFile", async () => {
-  const picked = await pickAndReadTextFile();
-  if (!picked) return;
-  EditorService.openFile(picked.path, picked.content);
+  try {
+    const picked = await pickTextFiles();
+    if (!picked) return;
+
+    const result = picked.kind === "paths"
+      ? await openDroppedFilePaths(picked.paths)
+      : openTextFileContents(picked.files, picked.skipped);
+    reportOpenFilesResult(result);
+  } catch (error) {
+    const message = errorMessage(error, tKey("workbench.file.openFailedFallback"));
+    console.warn("[silk.file.openFile] failed", error);
+    AppNotificationService.show(
+      tKey("workbench.file.openFailed").replace("{message}", message),
+      "error",
+    );
+  }
 });
+
+function reportOpenFilesResult(result: OpenDroppedFilesResult): void {
+  const { opened, skipped, errors } = result;
+  if (opened === 0 && skipped === 0 && errors.length === 0) return;
+  if (opened > 0 && skipped === 0 && errors.length === 0) {
+    AppNotificationService.show(
+      tKey("app.dnd.filesOpened").replace("{n}", String(opened)),
+      "success",
+    );
+    return;
+  }
+
+  const parts = [
+    opened > 0
+      ? tKey("app.dnd.filesOpened").replace("{n}", String(opened))
+      : null,
+    skipped > 0
+      ? tKey("app.dnd.filesSkipped").replace("{n}", String(skipped))
+      : null,
+    errors.length > 0
+      ? tKey("app.dnd.filesFailed").replace("{n}", String(errors.length))
+      : null,
+  ].filter(Boolean);
+
+  AppNotificationService.show(
+    parts.join(" · ") || tKey("app.dnd.filesNone"),
+    errors.length > 0 ? "error" : "info",
+  );
+}
 
 CommandsRegistry.registerCommand("silk.file.save", async () => {
   await saveActiveEditor(false);

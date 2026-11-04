@@ -1,0 +1,39 @@
+.connection-import-source-dialog {
+  width: min(520px, 100%);
+}
+
+.connection-import-source-dialog__options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.connection-import-source-dialog__option {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  text-align: left;
+  color: var(--color-foreground);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.connection-import-source-dialog__option:hover,
+.connection-import-source-dialog__option:focus-visible {
+  background: var(--color-list-hover);
+  outline: 1px solid var(--color-focus-border, #007fd4);
+  outline-offset: -1px;
+}
+
+.connection-import-source-dialog__option-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.connection-import-source-dialog__option-description {
+  color: var(--color-description);
+  font-size: 11px;
+}

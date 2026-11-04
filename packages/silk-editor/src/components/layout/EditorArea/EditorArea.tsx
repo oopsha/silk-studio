@@ -110,6 +110,7 @@ function EditorArea({
           onRunScript,
         );
       }
+
     },
     [group, onRunQuery, onRunScript],
   );

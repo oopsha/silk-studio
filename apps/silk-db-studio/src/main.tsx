@@ -17,6 +17,7 @@ import { configureDbStudioDiagnosticsHost } from "./services/diagnostics/configu
 import "@silk-studio/ui/global.css";
 import "@silk-studio/workbench/workbench/workbench.contribution";
 import "./workbench/contributions/queryActions.contribution";
+import "./workbench/contributions/recentSqlEditors.contribution";
 import "./workbench/contributions/queryResultActions.contribution";
 import "./workbench/contributions/connectionTarget.contribution";
 import "./workbench/contributions/connectionTransaction.contribution";
@@ -52,6 +53,25 @@ configureEditorHost({
     }),
 });
 WindowTitleService.setWorkspaceName("silk-db-studio");
+
+function updatePrintableEditorFocus(target: EventTarget | null): void {
+  if (!(target instanceof Element)) return;
+  if (target.closest(".monaco-editor")) {
+    const uri = EditorGroupsService.getFocusedGroup().getActiveTab()?.uri ?? "";
+    ContextKeyService.set(
+      "printableTextEditorFocused",
+      !uri.startsWith("silk://") ||
+        uri.startsWith("silk://plsql/") ||
+        uri.startsWith("silk://ddl/"),
+    );
+  } else if (target.closest(".ag-root-wrapper, .ag-root")) {
+    ContextKeyService.set("printableTextEditorFocused", false);
+  }
+}
+
+document.addEventListener("pointerdown", (event) => updatePrintableEditorFocus(event.target), true);
+document.addEventListener("focusin", (event) => updatePrintableEditorFocus(event.target), true);
+
 configureDbStudioAiContextHost();
 configureDbStudioAiToolHost();
 configureDbStudioAiSqlProposalHost();

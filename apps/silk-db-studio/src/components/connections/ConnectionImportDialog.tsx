@@ -105,6 +105,11 @@ function ConnectionImportDialog() {
               String(candidates.length),
             )}
           </p>
+          {candidates.some((candidate) => candidate.source !== "Silk") ? (
+            <p className="connection-import-dialog__notice">
+              {t("app.connection.importExternalNotice")}
+            </p>
+          ) : null}
 
           <label className="connection-import-dialog__item connection-import-dialog__item--all">
             <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
@@ -127,6 +132,11 @@ function ConnectionImportDialog() {
                     <span className="connection-import-dialog__item-driver">
                       {candidate.driverLabel}
                     </span>
+                    {candidate.source !== "Silk" ? (
+                      <span className="connection-import-dialog__badge connection-import-dialog__badge--source">
+                        {candidate.source}
+                      </span>
+                    ) : null}
                     {candidate.tunnel !== "none" ? (
                       <span className="connection-import-dialog__badge connection-import-dialog__badge--tunnel">
                         {tunnelLabel(candidate.tunnel)}

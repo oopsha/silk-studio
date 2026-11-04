@@ -1,28 +1,35 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { basenameFromPath } from "./languageFromPath";
 
-export async function pickAndReadTextFile(): Promise<{
-  path: string;
-  content: string;
-} | null> {
+export type PickedTextFiles =
+  | { kind: "paths"; paths: string[] }
+  | {
+      kind: "contents";
+      files: Array<{ path: string; content: string }>;
+      skipped: number;
+    };
+
+export async function pickTextFiles(): Promise<PickedTextFiles | null> {
   if (!isTauri()) {
-    return pickFileInBrowser();
+    const files = await pickFilesInBrowser();
+    return files ? { kind: "contents", ...files } : null;
   }
 
   const { open } = await import("@tauri-apps/plugin-dialog");
-  const { readTextFile } = await import("@tauri-apps/plugin-fs");
 
   const selected = await open({
-    multiple: false,
+    multiple: true,
     directory: false,
   });
 
-  if (!selected || Array.isArray(selected)) {
+  if (!selected) {
     return null;
   }
 
-  const content = await readTextFile(selected);
-  return { path: selected, content };
+  return {
+    kind: "paths",
+    paths: Array.isArray(selected) ? selected : [selected],
+  };
 }
 
 export async function pickSavePath(defaultPath?: string): Promise<string | null> {
@@ -57,22 +64,32 @@ export async function readTextFileAtPath(path: string): Promise<string> {
   return readTextFile(path);
 }
 
-function pickFileInBrowser(): Promise<{ path: string; content: string } | null> {
+function pickFilesInBrowser(): Promise<{
+  files: Array<{ path: string; content: string }>;
+  skipped: number;
+} | null> {
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
+    input.multiple = true;
     input.style.display = "none";
 
     input.addEventListener("change", async () => {
-      const file = input.files?.[0];
+      const selectedFiles = Array.from(input.files ?? []);
       input.remove();
-      if (!file) {
+      if (selectedFiles.length === 0) {
         resolve(null);
         return;
       }
 
-      const content = await file.text();
-      resolve({ path: file.name, content });
+      const filesToRead = selectedFiles.slice(0, 20);
+      const files = await Promise.all(
+        filesToRead.map(async (file) => ({
+          path: file.name,
+          content: await file.text(),
+        })),
+      );
+      resolve({ files, skipped: Math.max(0, selectedFiles.length - filesToRead.length) });
     });
 
     input.addEventListener("cancel", () => {

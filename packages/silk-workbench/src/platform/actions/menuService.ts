@@ -20,6 +20,7 @@ export type ResolvedMenuAction = {
   group: string;
   order: number;
   enabled: boolean;
+  secondaryAction?: { id: string; label: string };
 };
 
 export type ResolvedMenuSubmenu = {
@@ -118,6 +119,12 @@ class MenuServiceImpl {
       group: item.group ?? "",
       order: item.order ?? 0,
       enabled: precondition ? ContextKeyService.get(precondition) : true,
+      secondaryAction: item.command.secondaryAction
+        ? {
+            id: item.command.secondaryAction.id,
+            label: resolveMenuLabel(item.command.secondaryAction.title).label,
+          }
+        : undefined,
     };
   }
 
@@ -201,6 +208,10 @@ class MenuServiceImpl {
       case "silk.queryResult.saveColumnLayout":
       case "silk.queryResult.resetColumnLayout":
         return "hasQueryResultGrid";
+      case "workbench.action.closeActiveEditor":
+        return "activeEditorAvailable";
+      case "silk.file.print":
+        return "printableTextEditorFocused";
       // VS Code (src/vs/workbench/contrib/files/browser/fileActions.contribution.ts):
       // Save/Save As only require an active editor — they aren't gated on dirty state.
       case "silk.file.save":

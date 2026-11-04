@@ -28,6 +28,7 @@ import AiSqlExecuteDialog from "../../ai/AiSqlExecuteDialog.tsx";
 import SqlParameterDialog from "../../query/SqlParameterDialog.tsx";
 import ConnectionExportDialog from "../../connections/ConnectionExportDialog.tsx";
 import ConnectionImportDialog from "../../connections/ConnectionImportDialog.tsx";
+import ConnectionImportSourceDialog from "../../connections/ConnectionImportSourceDialog.tsx";
 import ConnectionPasswordPromptDialog from "../../connections/ConnectionPasswordPromptDialog.tsx";
 import SshSecretPromptDialog from "../../connections/SshSecretPromptDialog.tsx";
 import AboutDialog from "@silk-studio/workbench/components/diagnostics/AboutDialog.tsx";
@@ -467,6 +468,7 @@ function AppShell() {
       <AiSqlExecuteDialog />
       <SqlParameterDialog />
       <ConnectionExportDialog />
+      <ConnectionImportSourceDialog />
       <ConnectionImportDialog />
       <ConnectionPasswordPromptDialog />
       <SshSecretPromptDialog />

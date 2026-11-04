@@ -1,4 +1,5 @@
 import { open as openFilePicker, save } from "@tauri-apps/plugin-dialog";
+import { join } from "@tauri-apps/api/path";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { ConnectionService } from "./connectionService";
 import { isKnownDriverId, type StoredConnectionProfile } from "./connectionStorage";
@@ -6,12 +7,15 @@ import { getConnectionDriver, type ConnectionDriverId, type ConnectionProfileInp
 import { parseJdbcUrl } from "./connectionUrlBuilder";
 import { normalizeSsmTunnelConfig } from "./ssmTunnelTypes";
 import { normalizeSshTunnelConfig } from "./sshTunnelTypes";
+import { parseConnectionImportFile, type ConnectionImportSource } from "./externalConnectionImport";
+import { ConnectionImportSourceDialogService } from "./connectionImportSourceDialogService";
 import {
   ConnectionImportDialogService,
   type ConnectionImportCandidate,
 } from "./connectionImportDialogService";
 
 const JSON_FILTER = [{ name: "JSON", extensions: ["json"] }];
+const JSON_IMPORT_FILTER = [{ name: "JSON", extensions: ["json"] }];
 
 type ConnectionExportFile = {
   formatVersion: 1;
@@ -90,36 +94,49 @@ export type ConnectionImportResult = {
  * Returns `null` if the user cancels the file picker or the selection dialog.
  */
 export async function importConnectionProfiles(): Promise<ConnectionImportResult | null> {
-  const path = await openFilePicker({ multiple: false, directory: false, filters: JSON_FILTER });
-  if (typeof path !== "string") return null;
+  const source = await ConnectionImportSourceDialogService.open();
+  if (!source) return null;
 
   let raw: string;
-  try {
-    raw = await readTextFile(path);
-  } catch {
-    throw new Error("Could not read the selected file.");
+  if (source === "DataGrip") {
+    const projectFolder = await openFilePicker({
+      multiple: false,
+      directory: true,
+      title: "Select DataGrip project folder",
+    });
+    if (typeof projectFolder !== "string") return null;
+    raw = await readDataGripProject(projectFolder);
+  } else {
+    const path = await openFilePicker({
+      multiple: false,
+      directory: false,
+      title: source === "DBeaver" ? "Select DBeaver data-sources.json" : "Select Silk connections backup",
+      filters: JSON_IMPORT_FILTER,
+    });
+    if (typeof path !== "string") return null;
+    try {
+      raw = await readTextFile(path);
+    } catch {
+      throw new Error("Could not read the selected file.");
+    }
   }
 
-  let parsed: unknown;
+  let parsed: ReturnType<typeof parseConnectionImportFile>;
   try {
-    parsed = JSON.parse(raw);
+    parsed = parseConnectionImportFile(raw);
   } catch {
-    throw new Error("The selected file is not valid JSON.");
-  }
-
-  if (
-    !parsed ||
-    typeof parsed !== "object" ||
-    (parsed as Record<string, unknown>).formatVersion !== 1 ||
-    !Array.isArray((parsed as Record<string, unknown>).profiles)
-  ) {
     throw new Error("The selected file is not a valid connections export.");
   }
+  if (parsed.source !== source) {
+    throw new Error(`The selected data does not match the chosen source: ${source}.`);
+  }
 
-  const rawRecords = (parsed as ConnectionExportFile).profiles;
-  const { records, skipped: invalidSkipped } = buildImportRecords(rawRecords);
+  const { records, skipped: invalidSkipped } = buildImportRecords(
+    parsed.profiles,
+    parsed.source,
+  );
   if (records.length === 0) {
-    return { imported: 0, skipped: invalidSkipped };
+    return { imported: 0, skipped: invalidSkipped + parsed.skipped };
   }
 
   const dialogResult = await ConnectionImportDialogService.open(
@@ -129,7 +146,7 @@ export async function importConnectionProfiles(): Promise<ConnectionImportResult
 
   const selectedIndexes = new Set(dialogResult.indexes);
   let imported = 0;
-  let skipped = invalidSkipped;
+  let skipped = invalidSkipped + parsed.skipped;
 
   for (const record of records) {
     if (!selectedIndexes.has(record.candidate.index)) continue;
@@ -142,6 +159,23 @@ export async function importConnectionProfiles(): Promise<ConnectionImportResult
   }
 
   return { imported, skipped };
+}
+
+async function readDataGripProject(projectFolder: string): Promise<string> {
+  const candidates = [
+    await join(projectFolder, ".idea", "dataSources.xml"),
+    await join(projectFolder, "dataSources.xml"),
+  ];
+  for (const path of candidates) {
+    try {
+      return await readTextFile(path);
+    } catch {
+      // Try the next supported DataGrip project layout.
+    }
+  }
+  throw new Error(
+    "DataGrip connection settings were not found. Select a project folder containing .idea/dataSources.xml.",
+  );
 }
 
 type ConnectionImportRecord = {
@@ -182,7 +216,10 @@ function tunnelKindOf(profile: { ssmTunnel?: { enabled: boolean }; sshTunnel?: {
   return "none";
 }
 
-function buildImportRecords(rawRecords: unknown[]): {
+function buildImportRecords(
+  rawRecords: unknown[],
+  source: ConnectionImportSource,
+): {
   records: ConnectionImportRecord[];
   skipped: number;
 } {
@@ -217,6 +254,7 @@ function buildImportRecords(rawRecords: unknown[]): {
       candidate: {
         index,
         name: input.name,
+        source,
         driverLabel: getConnectionDriver(input.driverId).label,
         hostPort: parsedUrl ? `${parsedUrl.host}:${parsedUrl.port}` : input.url,
         database: parsedUrl ? parsedUrl.database : "",
