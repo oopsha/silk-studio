@@ -74,6 +74,7 @@ import { insertSqlIntoActiveEditor } from "../../../services/query/querySqlActio
 import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
+import { initializeMonacoFindLocalization } from "../../../services/editor/monacoFindLocalization.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { SettingsService } from "@silk-studio/workbench/services/settings/settingsService.ts";
 import { KeybindingsEditorService } from "@silk-studio/workbench/services/keybindings/keybindingsEditorService.ts";
@@ -108,6 +109,7 @@ function AppShell() {
   useWorkbenchKeybindings();
   useEffect(() => {
     I18nService.start();
+    return initializeMonacoFindLocalization();
   }, []);
   const { t } = useI18n();
   const layout = useLayoutState();
@@ -357,7 +359,7 @@ function AppShell() {
   );
 
   return (
-    <div className="app-shell" data-testid="app-shell">
+    <div className="app-shell monaco-workbench" data-testid="app-shell">
       <TitleBar />
 
       <div className="app-shell__body">

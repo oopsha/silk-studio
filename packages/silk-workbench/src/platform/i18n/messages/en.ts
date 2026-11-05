@@ -84,6 +84,22 @@ export const enMessages = {
       stickyScrollHint:
         "Shows the nested current scopes during the scroll at the top of the editor (BEGIN, IF, …).",
       wordWrap: "Word Wrap",
+      findReplace: {
+        findReplace: "Find / Replace",
+        find: "Find",
+        replace: "Replace",
+        previousMatch: "Previous Match",
+        nextMatch: "Next Match",
+        findInSelection: "Find in Selection",
+        close: "Close",
+        replaceAll: "Replace All",
+        toggleReplace: "Toggle Replace",
+        matchCase: "Match Case",
+        matchWholeWord: "Match Whole Word",
+        useRegularExpression: "Use Regular Expression",
+        preserveCase: "Preserve Case",
+        noResults: "No results",
+      },
     },
     database: {
       title: "Database",

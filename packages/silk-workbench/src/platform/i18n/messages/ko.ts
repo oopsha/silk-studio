@@ -81,6 +81,22 @@ export const koMessages = {
       stickyScrollHint:
         "편집기 위쪽에서 스크롤하는 동안 중첩된 현재 범위를 표시합니다 (BEGIN, IF, …).",
       wordWrap: "자동 줄 바꿈",
+      findReplace: {
+        findReplace: "찾기 / 바꾸기",
+        find: "찾기",
+        replace: "바꾸기",
+        previousMatch: "이전 일치 항목",
+        nextMatch: "다음 일치 항목",
+        findInSelection: "선택 영역에서 찾기",
+        close: "닫기",
+        replaceAll: "모두 바꾸기",
+        toggleReplace: "바꾸기 표시 전환",
+        matchCase: "대/소문자 구분",
+        matchWholeWord: "단어 단위로 일치",
+        useRegularExpression: "정규식 사용",
+        preserveCase: "대/소문자 유지",
+        noResults: "결과 없음",
+      },
     },
     database: {
       title: "데이터베이스",
