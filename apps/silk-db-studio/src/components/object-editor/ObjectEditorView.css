@@ -44,6 +44,7 @@
 }
 
 .object-editor-view__body {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -51,11 +52,17 @@
 }
 
 .object-editor-view__section {
-  display: none;
-  flex: 1;
+  position: absolute;
+  inset: 0;
+  display: flex;
   min-height: 0;
+  visibility: hidden;
 }
 
 .object-editor-view__section--active {
-  display: flex;
+  visibility: visible;
+}
+
+.object-editor-view__section[hidden] {
+  display: none !important;
 }

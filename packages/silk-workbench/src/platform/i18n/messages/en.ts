@@ -655,6 +655,8 @@ export const enMessages = {
       rolledBack: "Rolled back.",
       nothingToRollback: "Nothing to roll back.",
       rollbackFailed: "Rollback failed — {message}",
+      rollbackRefreshFailed: "Failed to refresh data after rollback — {message}",
+      rollbackUnsavedEdits: "Unsaved grid edits on this connection will also be discarded.",
     },
     explorer: {
       connecting: "Connecting…",
@@ -1124,6 +1126,10 @@ export const enMessages = {
       pagedFetchFailed: "Failed to load more rows: {message}",
       pendingEditsDiscardedOnReshuffle:
         "Changing filter/sort discarded unsaved edits (row positions changed)",
+      reshuffleUnsavedTitle: "Review changes before applying filter or sort",
+      reshuffleUnsavedMessage: "There are unsaved grid changes. Save them before applying, or discard them and apply.",
+      reshuffleSave: "Save and Apply",
+      reshuffleDiscard: "Discard and Apply",
       badgeFiltered: "Filtered",
       badgeSorted: "Sorted",
       badgeLayout: "Layout saved",

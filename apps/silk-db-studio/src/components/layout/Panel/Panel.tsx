@@ -279,6 +279,8 @@ function Panel({
               <QueryResultGrid
                 key={activeTab.id}
                 tabId={activeTab.id}
+                groupId={groupId}
+                ownerId={editorTabId ?? ""}
                 sql={activeTab.sql}
                 executedSql={activeTab.executedSql}
                 binds={activeTab.binds}

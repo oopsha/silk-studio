@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { QueryResultDirtyService } from "../../services/query/queryResultDirtyService";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { TableDataImportService } from "../../services/query/tableDataImportService";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
@@ -7,7 +8,7 @@ import { AppNotificationService } from "@silk-studio/workbench/services/notifica
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
 import type { ExplorerObjectRef } from "../../services/connection/explorerObjectActions";
 import { openTableData } from "../../services/connection/openTableDataService";
-import { buildOpenDataOwnerId } from "../../services/query/queryExecutionService";
+import { QueryExecutionService } from "../../services/query/queryExecutionService";
 import { useQueryExecutionStateByOwnerId } from "../../services/query/useQueryExecutionStateByOwnerId";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { toStatusLabel } from "../layout/Panel/Panel";
@@ -16,25 +17,13 @@ import "./DataView.css";
 
 type DataViewProps = {
   objectRef: ObjectEditorRef;
+  ownerId: string;
+  groupId: EditorGroupId;
+  commandEligible: boolean;
 };
 
-function DataView({ objectRef }: DataViewProps) {
+function DataView({ objectRef, ownerId, groupId, commandEligible }: DataViewProps) {
   const { t } = useI18n();
-  const ownerId = useMemo(
-    () =>
-      buildOpenDataOwnerId(
-        objectRef.profileId,
-        objectRef.schemaName,
-        objectRef.objectName,
-        objectRef.catalogName,
-      ),
-    [
-      objectRef.profileId,
-      objectRef.schemaName,
-      objectRef.objectName,
-      objectRef.catalogName,
-    ],
-  );
   const session = useQueryExecutionStateByOwnerId(ownerId);
   const [readyOwnerId, setReadyOwnerId] = useState<string | null>(null);
   const importFile = useSyncExternalStore(
@@ -64,21 +53,26 @@ function DataView({ objectRef }: DataViewProps) {
   );
 
   const runFetch = useCallback(() => {
-    return openTableData(explorerRef).catch((error) => {
+    const current = QueryExecutionService.getSessionState(ownerId);
+    const existing = current.tabs.find((tab) => tab.id === current.activeTabId && tab.result?.kind === "resultSet");
+    return (existing ? QueryExecutionService.refreshTabResult(existing.id) : openTableData(explorerRef, ownerId)).catch((error) => {
       AppNotificationService.show(
         formatErrorMessage(error, t("app.objectEditor.dataLoadFailed")),
         "error",
       );
     });
-  }, [explorerRef, t]);
+  }, [explorerRef, ownerId, t]);
 
-  // A table may have been recreated while Properties was open. Re-read its SELECT
-  // metadata on entering Data, while retaining any unsaved grid edits.
+  // Reuse the current result tab when returning from another editor. Opening the Data tab
+  // alone must not issue another SELECT or replace the active result/filter state.
   useEffect(() => {
     let mounted = true;
     const hasPendingChanges = session.tabs.some((tab) => QueryResultDirtyService.hasPendingChanges(tab.id));
-    if (hasPendingChanges || importFile) {
-      // Explorer import already fetched fresh metadata before queuing its file.
+    const hasExistingResult = session.status === "success" && session.tabs.some(
+      (tab) => tab.result?.kind === "resultSet",
+    );
+    if (hasPendingChanges || hasExistingResult || session.status === "running") {
+      // Keep the existing result session intact while restoring this view.
       setReadyOwnerId(ownerId);
     } else {
       void runFetch().finally(() => {
@@ -128,6 +122,9 @@ function DataView({ objectRef }: DataViewProps) {
           <QueryResultGrid
             key={activeResultTab.id}
             tabId={activeResultTab.id}
+            groupId={groupId}
+            ownerId={ownerId}
+            commandEligible={commandEligible}
             sql={activeResultTab.sql}
             executedSql={activeResultTab.executedSql}
             binds={activeResultTab.binds}

@@ -45,6 +45,7 @@ type EditorAreaSharedProps = {
   configuration: EditorConfigurationOptions;
   beforeMount?: (monaco: Monaco) => void;
   renderAlternative?: (tab: EditorTab, groupId: EditorGroupId) => React.ReactNode | null;
+  keepAlternativeMounted?: (tab: EditorTab) => boolean;
   onRunQuery?: () => void;
   onRunScript?: () => void;
 };

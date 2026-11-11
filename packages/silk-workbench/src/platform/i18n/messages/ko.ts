@@ -653,6 +653,8 @@ export const koMessages = {
       rolledBack: "롤백했습니다.",
       nothingToRollback: "롤백할 내용이 없습니다.",
       rollbackFailed: "롤백 실패 — {message}",
+      rollbackRefreshFailed: "롤백 후 데이터를 다시 읽지 못했습니다 — {message}",
+      rollbackUnsavedEdits: "이 연결의 그리드에서 아직 저장하지 않은 변경도 취소됩니다.",
     },
     explorer: {
       connecting: "연결 중…",
@@ -1116,6 +1118,10 @@ export const koMessages = {
       pagedFetchFailed: "추가 행을 불러오지 못했습니다: {message}",
       pendingEditsDiscardedOnReshuffle:
         "필터·정렬이 바뀌어 행 위치가 달라져 저장하지 않은 편집 내용이 취소되었습니다",
+      reshuffleUnsavedTitle: "필터·정렬 적용 전 변경사항 확인",
+      reshuffleUnsavedMessage: "저장하지 않은 그리드 변경사항이 있습니다. 저장 후 적용하거나, 변경을 취소하고 적용할 수 있습니다.",
+      reshuffleSave: "저장 후 적용",
+      reshuffleDiscard: "변경 취소 후 적용",
       badgeFiltered: "필터됨",
       badgeSorted: "정렬됨",
       badgeLayout: "레이아웃 저장됨",

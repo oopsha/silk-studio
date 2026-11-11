@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type ClipboardEvent } from "react";
+import { QueryResultQueryService, RESULT_PAGE_SIZE } from "../../../services/query/queryResultQueryService";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type ClipboardEvent } from "react";
 import {
   AllCommunityModule,
   ModuleRegistry,
@@ -9,9 +11,8 @@ import {
   type CellMouseDownEvent,
   type CellMouseOverEvent,
   type CellClassParams,
-  type CellValueChangedEvent,
+  type CellEditRequestEvent,
   type ColDef,
-  type ColumnState,
   type FirstDataRenderedEvent,
   type GridApi,
   type GridReadyEvent,
@@ -31,12 +32,11 @@ import {
   toQueryResultRows,
   isResultTruncated,
   getQueryResultRowIndex,
-  QUERY_RESULT_ROW_INDEX_KEY,
   QUERY_RESULT_ROW_NUMBER_COL_ID,
   type QueryResultPayload,
   type QueryResultRow,
 } from "../../../services/query/queryResult";
-import { QueryResultGridService } from "../../../services/query/queryResultGridService";
+import { QueryResultGridService, QueryResultGridController } from "../../../services/query/queryResultGridService";
 import ContextMenu, { type ContextMenuItem } from "../../common/ContextMenu";
 import { fetchQueryResultPage } from "../../../services/query/queryResultPaging";
 import { translateFilterModel, translateSortModel } from "../../../services/query/filterModelTranslator";
@@ -69,9 +69,13 @@ import "./QueryResultUpdateDialog.css";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-type GridUiState = {
-  filterModel: Record<string, unknown>;
-  sortState: ColumnState[];
+import { gridUiStateByTabId, gridViewStateByTabId, type GridUiState } from "../../../services/query/queryResultViewStateService";
+
+type PendingGridReshuffle = {
+  next: GridUiState;
+  previous: GridUiState;
+  firstVisibleRow: number;
+  lastVisibleRow: number;
 };
 
 type GridContextMenuState =
@@ -107,14 +111,28 @@ const TIMESTAMP_JDBC_TYPES = new Set([93, 2013, 2014]);
  * Editor's Data tab unmounting when the user switches to another editor tab
  * and back) — ag-grid itself only keeps this in the DOM-mounted instance.
  */
-const gridUiStateByTabId = new Map<string, GridUiState>();
+
+function readGridUiState(api: GridApi<QueryResultRow>): GridUiState {
+  return {
+    filterModel: api.getFilterModel() as Record<string, unknown>,
+    sortState: (api.getColumnState() ?? []).filter((column) => column.sort != null),
+  };
+}
+
+function applyGridUiState(api: GridApi<QueryResultRow>, state: GridUiState): void {
+  api.setFilterModel(state.filterModel);
+  api.applyColumnState({
+    state: state.sortState,
+    defaultState: { sort: null },
+  });
+}
 
 /**
  * Next-page size for a result that was initially truncated. We deliberately retain AG Grid's
  * Client-Side Row Model and append server pages ourselves: local added/duplicated rows can then
  * coexist with the loaded rows and keep a stable identity while more data arrives.
  */
-const INCREMENTAL_SCROLL_PAGE_SIZE = 100;
+const INCREMENTAL_SCROLL_PAGE_SIZE = RESULT_PAGE_SIZE;
 
 const GRID_THEME_PALETTES: Record<
   EffectiveColorThemeId,
@@ -157,6 +175,9 @@ const GRID_THEME_PALETTES: Record<
 
 type QueryResultGridProps = {
   tabId: string;
+  groupId: EditorGroupId;
+  ownerId: string;
+  commandEligible?: boolean;
   sql: string;
   /** Exact statement text actually executed (bind placeholders already resolved to `?`), when it
    *  differs from `sql` — see `QueryResultTab.executedSql`. Falls back to `sql` when absent. */
@@ -171,6 +192,9 @@ type QueryResultGridProps = {
 
 function QueryResultGrid({
   tabId,
+  groupId,
+  ownerId,
+  commandEligible = true,
   sql,
   executedSql,
   binds,
@@ -181,6 +205,10 @@ function QueryResultGrid({
   onImportFileConsumed,
 }: QueryResultGridProps) {
   const { t } = useI18n();
+  const gridController = useMemo(() => new QueryResultGridController(), [tabId]);
+  useLayoutEffect(() => QueryResultGridService.register(gridController, {
+    groupId, ownerId, eligible: commandEligible,
+  }), [gridController, groupId, ownerId, commandEligible]);
   const configuration = useConfiguration();
   const nullDisplay = configuration["queryResult.nullDisplay"];
   const filterEnabled = configuration["queryResult.filterEnabled"];
@@ -191,17 +219,19 @@ function QueryResultGrid({
   const truncated = isResultTruncated(result, maxRows);
   // A truncated result keeps its initial batch and appends subsequent pages on demand. Unlike AG
   // Grid's Infinite Row Model, this lets Client-Side transactions add/duplicate rows safely.
-  const useIncrementalScroll = truncated && !!connectionId?.trim();
+  const useIncrementalScroll = QueryResultQueryService.isPaged(tabId) && !!connectionId?.trim();
   const apiRef = useRef<GridApi<QueryResultRow> | null>(null);
+  const gridRootRef = useRef<HTMLDivElement | null>(null);
+  const autoSizePendingRef = useRef(true);
+  const viewportRestorePendingRef = useRef(false);
+  const applyingGridQueryStateRef = useRef(false);
+  const appliedGridUiStateRef = useRef<GridUiState>({ filterModel: {}, sortState: [] });
+  const pendingGridReshuffleRef = useRef<PendingGridReshuffle | null>(null);
+  const lastViewportRangeRef = useRef({ first: 0, last: 0 });
   // Display-row index at which the current multi-row selection began. This deliberately tracks
   // the displayed position (rather than the database row id), so Shift selection follows the
   // user's current sort/filter order.
   const rowSelectionAnchorRef = useRef<number | null>(null);
-  const pagingRef = useRef({
-    nextOffset: result.rows.length,
-    hasMore: useIncrementalScroll,
-    loading: false,
-  });
   const cellSelectionRef = useRef<GridCellSelection | null>(null);
   const draggingCellSelectionRef = useRef(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -217,6 +247,7 @@ function QueryResultGrid({
   const [openingPreview, setOpeningPreview] = useState(false);
   const [contextMenu, setContextMenu] = useState<GridContextMenuState | null>(null);
   const [valueEditorTarget, setValueEditorTarget] = useState<ValueEditorTarget | null>(null);
+  const [pendingGridReshuffle, setPendingGridReshuffle] = useState<PendingGridReshuffle | null>(null);
   const [importPreview, setImportPreview] = useState<{ filename: string; source: ParsedImportSource; target: ImportTarget; columns: string[] } | null>(null);
   const [readingImport, setReadingImport] = useState(false);
   const readingImportRef = useRef(false);
@@ -256,10 +287,35 @@ function QueryResultGrid({
   );
 
   const snapshot = useSyncExternalStore(
-    (onStoreChange) => QueryResultGridService.onDidChangeSnapshot(onStoreChange),
-    () => QueryResultGridService.getSnapshot(),
-    () => QueryResultGridService.getSnapshot(),
+    (onStoreChange) => gridController.onDidChangeSnapshot(onStoreChange),
+    () => gridController.getSnapshot(),
+    () => gridController.getSnapshot(),
   );
+
+  const queryBusy = useSyncExternalStore(
+    (listener) => QueryResultQueryService.onDidChange(listener),
+    () => QueryResultQueryService.isBusy(tabId),
+    () => false,
+  );
+  const restoreGridViewport = useCallback(() => {
+    const api = apiRef.current;
+    const root = gridRootRef.current;
+    const view = gridViewStateByTabId.get(tabId);
+    if (!viewportRestorePendingRef.current || QueryResultQueryService.isBusy(tabId) ||
+      !api || api.isDestroyed() || !root?.clientWidth || !root.clientHeight || !view) return;
+    if (api.getDisplayedRowCount() > 0) api.ensureIndexVisible(view.firstVisibleRow, "top");
+    lastViewportRangeRef.current = { first: view.firstVisibleRow, last: view.lastVisibleRow };
+    viewportRestorePendingRef.current = false;
+  }, [tabId]);
+  useEffect(() => {
+    if (queryBusy) {
+      viewportRestorePendingRef.current = true;
+      setValueEditorTarget(null);
+      if (!executingUpdates) setPreview(null);
+    }
+    const frame = window.requestAnimationFrame(restoreGridViewport);
+    return () => window.cancelAnimationFrame(frame);
+  }, [queryBusy, executingUpdates, restoreGridViewport]);
 
   const normalizeEditedValue = useCallback(
     (value: unknown, columnIndex?: number): string | null => {
@@ -416,7 +472,7 @@ function QueryResultGrid({
         resizable: true,
         suppressHeaderMenuButton: true,
         // Keeps this column out of the auto-fit-to-content pass (see
-        // QueryResultGridService.autoSizeToContent's "keep the row-number gutter fixed width"
+        // gridController.autoSizeToContent's "keep the row-number gutter fixed width"
         // comment) — doesn't affect manual drag-resize, which `resizable: true` above enables.
         suppressAutoSize: true,
       },
@@ -507,24 +563,13 @@ function QueryResultGrid({
     ],
   );
 
-  // Keep the original rowData reference stable while local transactions change the new-row
-  // count. Replacing it with the original query result would remove added/duplicated rows
-  // (and appended pages) from AG Grid while leaving their pending INSERT state behind.
-  const originalRowData = useMemo(
-    () => toQueryResultRows(result.columns, result.rows),
-    [result.columns, result.rows],
+  // The grid is a projection of one server baseline plus pending changes.
+  // Neither transport payloads nor imperative grid transactions own row data.
+  const displayedRowData = useSyncExternalStore(
+    (onStoreChange) => QueryResultDirtyService.onDidChange(onStoreChange),
+    () => QueryResultDirtyService.getDisplayRows(tabId),
+    () => QueryResultDirtyService.getDisplayRows(tabId),
   );
-  const rowData = useMemo(() => {
-    if (!truncateBeforeImport) return originalRowData;
-    return QueryResultDirtyService.getNewRowIndexes(tabId).map((rowIndex) => {
-      const values = QueryResultDirtyService.getEffectiveRow(tabId, rowIndex) ?? {};
-      const row: QueryResultRow = { [QUERY_RESULT_ROW_INDEX_KEY]: String(rowIndex) };
-      result.columns.forEach((column) => {
-        row[column] = values[column] ?? null;
-      });
-      return row;
-    });
-  }, [originalRowData, result.columns, tabId, truncateBeforeImport, newRowCount]);
 
   const defaultColDef = useMemo<ColDef>(
     () => ({
@@ -543,7 +588,7 @@ function QueryResultGrid({
   useEffect(() => {
     return () => {
       if (apiRef.current) {
-        QueryResultGridService.detach(apiRef.current);
+        gridController.detach(apiRef.current);
       }
       if (actionTimerRef.current != null) {
         window.clearTimeout(actionTimerRef.current);
@@ -568,60 +613,81 @@ function QueryResultGrid({
    * the same separation of remote rows and local edit changes used by DevExtreme.
    */
   const loadNextPage = useCallback(async () => {
-    const api = apiRef.current;
-    const paging = pagingRef.current;
-    if (!api || !useIncrementalScroll || truncateBeforeImport || !connectionId || paging.loading || !paging.hasMore) {
-      return;
+    if (!useIncrementalScroll || truncateBeforeImport) return;
+    try { await QueryResultQueryService.append(tabId); }
+    catch (error) {
+      if (!apiRef.current || apiRef.current.isDestroyed()) return;
+      flashMessage(t("app.query.pagedFetchFailed").replace("{message}", formatErrorMessage(error, "")));
     }
-
-    paging.loading = true;
-    const offset = paging.nextOffset;
-    try {
-      const payload = await fetchQueryResultPage(
-        connectionId,
-        executedSql ?? sql,
-        result.columns,
-        offset,
-        INCREMENTAL_SCROLL_PAGE_SIZE,
-        { binds },
-      );
-      const rows = toQueryResultRows(payload.columns, payload.rows, offset);
-      QueryResultDirtyService.appendOriginalRows(
-        tabId,
-        offset,
-        payload.columns,
-        payload.rows,
-      );
-      if (rows.length > 0) {
-        api.applyTransaction({ add: rows });
-      }
-      paging.nextOffset += rows.length;
-      // A full page may still be the final page. One cheap final empty-page request is preferable
-      // to assuming an inaccurate total count from a JDBC driver.
-      paging.hasMore = rows.length === INCREMENTAL_SCROLL_PAGE_SIZE;
-    } catch (error) {
-      console.warn("[query-result] incremental page fetch failed", error);
-      paging.hasMore = false;
-      flashMessage(
-        t("app.query.pagedFetchFailed").replace(
-          "{message}",
-          formatErrorMessage(error, ""),
-        ),
-      );
-    } finally {
-      paging.loading = false;
-    }
-  }, [binds, connectionId, executedSql, result.columns, sql, tabId, t, truncateBeforeImport, useIncrementalScroll]);
+  }, [tabId, useIncrementalScroll, truncateBeforeImport, t]);
 
   const handleBodyScrollEnd = useCallback(() => {
     const api = apiRef.current;
-    if (!api || !useIncrementalScroll || truncateBeforeImport) return;
-    const lastVisibleRow = api.getLastDisplayedRowIndex();
-    const displayedRowCount = api.getDisplayedRowCount();
-    if (displayedRowCount > 0 && lastVisibleRow >= displayedRowCount - 3) {
-      void loadNextPage();
+    const root = gridRootRef.current;
+    if (!api || !root?.clientWidth || !root.clientHeight || viewportRestorePendingRef.current ||
+      QueryResultQueryService.isBusy(tabId)) return;
+    const first = Math.max(0, api.getFirstDisplayedRowIndex());
+    const last = Math.max(0, api.getLastDisplayedRowIndex());
+    lastViewportRangeRef.current = { first, last };
+    const view = gridViewStateByTabId.get(tabId);
+    if (view) gridViewStateByTabId.set(tabId, { ...view, firstVisibleRow: first, lastVisibleRow: last });
+    if (api.getDisplayedRowCount() > 0 && last >= api.getDisplayedRowCount() - 3) void loadNextPage();
+  }, [loadNextPage, tabId]);
+
+  const performServerReshuffle = async (request: PendingGridReshuffle) => {
+    const api = apiRef.current;
+    if (!api || !useIncrementalScroll) return;
+    applyingGridQueryStateRef.current = true;
+    applyGridUiState(api, request.next);
+    applyingGridQueryStateRef.current = false;
+    try {
+      const payload = await QueryResultQueryService.reload(tabId, request.next);
+      if (!payload || api.isDestroyed()) return;
+      appliedGridUiStateRef.current = gridUiStateByTabId.get(tabId) ?? request.next;
+      window.requestAnimationFrame(() => {
+        if (api.isDestroyed()) return;
+        gridController.refreshSnapshot();
+        restoreGridViewport();
+      });
+    } catch (error) {
+      if (api.isDestroyed()) return;
+      applyingGridQueryStateRef.current = true;
+      const previous = gridUiStateByTabId.get(tabId) ?? request.previous;
+      applyGridUiState(api, previous);
+      appliedGridUiStateRef.current = previous;
+      applyingGridQueryStateRef.current = false;
+      flashMessage(t("app.query.pagedFetchFailed").replace("{message}", formatErrorMessage(error, "")));
     }
-  }, [loadNextPage, truncateBeforeImport, useIncrementalScroll]);
+  };
+
+  const requestServerReshuffle = (next: GridUiState) => {
+    const api = apiRef.current;
+    if (!api || !useIncrementalScroll || applyingGridQueryStateRef.current) return;
+    const previous = appliedGridUiStateRef.current;
+    const requested = gridUiStateByTabId.get(tabId) ?? previous;
+    if (
+      JSON.stringify(previous.filterModel) === JSON.stringify(next.filterModel) &&
+      JSON.stringify(previous.sortState) === JSON.stringify(next.sortState) &&
+      JSON.stringify(requested) === JSON.stringify(next)
+    ) return;
+
+    const request: PendingGridReshuffle = {
+      next,
+      previous,
+      firstVisibleRow: lastViewportRangeRef.current.first,
+      lastVisibleRow: lastViewportRangeRef.current.last,
+    };
+    if (QueryResultDirtyService.hasPendingChanges(tabId)) {
+      // Keep the current result visible until the user chooses what to do with local edits.
+      applyingGridQueryStateRef.current = true;
+      applyGridUiState(api, previous);
+      applyingGridQueryStateRef.current = false;
+      pendingGridReshuffleRef.current = request;
+      setPendingGridReshuffle(request);
+      return;
+    }
+    void performServerReshuffle(request);
+  };
 
   const fetchAllRowsForExport = useCallback(async (
     visibleColumns: string[],
@@ -681,48 +747,69 @@ function QueryResultGrid({
     return exported;
   }, [binds, connectionId, executedSql, result.columns, sql, tabId, useIncrementalScroll]);
 
-  useEffect(() => {
+  const sizeVisibleGrid = useCallback(() => {
     const api = apiRef.current;
-    if (!api) return;
-    QueryResultGridService.attach(
+    const root = gridRootRef.current;
+    if (!api || !root || root.clientWidth === 0 || root.clientHeight === 0) return;
+    gridController.attach(
       api,
       result.columns,
       nullDisplay,
       openValueEditor,
       useIncrementalScroll ? async (columns, onProgress) => (await fetchAllRowsForExport(columns, onProgress)) ?? [] : undefined,
+      connectionId ?? null,
     );
-    const frame = window.requestAnimationFrame(() => {
-      QueryResultGridService.autoSizeToContent();
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [fetchAllRowsForExport, nullDisplay, openValueEditor, result.columns, result.rows, useIncrementalScroll]);
+    gridController.autoSizeToContent();
+    autoSizePendingRef.current = false;
+    restoreGridViewport();
+  }, [connectionId, gridController, fetchAllRowsForExport, nullDisplay, openValueEditor, result.columns, useIncrementalScroll, restoreGridViewport]);
 
   useEffect(() => {
-    pagingRef.current = {
-      nextOffset: result.rows.length,
-      hasMore: useIncrementalScroll && !truncateBeforeImport,
-      loading: false,
-    };
-  }, [result.rows, truncateBeforeImport, useIncrementalScroll]);
+    autoSizePendingRef.current = true;
+    viewportRestorePendingRef.current = true;
+    const frame = window.requestAnimationFrame(sizeVisibleGrid);
+    return () => window.cancelAnimationFrame(frame);
+  }, [sizeVisibleGrid, result.rows]);
+
+  useEffect(() => {
+    const root = gridRootRef.current;
+    if (!root) return;
+    // Hidden editor pages remain mounted. Defer measurement until they have geometry.
+    const observer = new ResizeObserver(() => {
+      if (autoSizePendingRef.current) sizeVisibleGrid();
+      else restoreGridViewport();
+    });
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [sizeVisibleGrid, restoreGridViewport]);
+
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    const state = gridUiStateByTabId.get(tabId);
+    if (state) {
+      applyingGridQueryStateRef.current = true;
+      applyGridUiState(api, state);
+      appliedGridUiStateRef.current = state;
+      applyingGridQueryStateRef.current = false;
+    }
+    api.deselectAll();
+    rowSelectionAnchorRef.current = null;
+    cellSelectionRef.current = null;
+    gridController.clearCellSelection();
+  }, [result.rows, tabId, gridController]);
 
   const handleGridReady = (event: GridReadyEvent<QueryResultRow>) => {
     apiRef.current = event.api;
-    QueryResultGridService.attach(
-      event.api,
-      result.columns,
-      nullDisplay,
-      openValueEditor,
-      useIncrementalScroll ? async (columns, onProgress) => (await fetchAllRowsForExport(columns, onProgress)) ?? [] : undefined,
-    );
+    sizeVisibleGrid();
 
     const savedUiState = gridUiStateByTabId.get(tabId);
+    applyingGridQueryStateRef.current = true;
     if (savedUiState) {
-      event.api.setFilterModel(savedUiState.filterModel);
-      event.api.applyColumnState({
-        state: savedUiState.sortState,
-        defaultState: { sort: null },
-      });
+      applyGridUiState(event.api, savedUiState);
     }
+    appliedGridUiStateRef.current = readGridUiState(event.api);
+    applyingGridQueryStateRef.current = false;
   };
 
   // Captured live (rather than on unmount) — by the time this component's
@@ -731,65 +818,24 @@ function QueryResultGrid({
   // there returns nothing useful.
   const captureGridUiState = () => {
     const api = apiRef.current;
-    if (!api) return;
-    gridUiStateByTabId.set(tabId, {
-      filterModel: api.getFilterModel(),
-      sortState: (api.getColumnState() ?? []).filter(
-        (column) => column.sort != null,
-      ),
-    });
-  };
-
-  /**
-   * Replays pending edits back onto a freshly (re)mounted grid instance. `QueryResultDirtyService`
-   * survives a remount (e.g. switching to another editor tab and back), but AG Grid itself doesn't:
-   * `rowData` is recomputed from the original `result.rows` and a brand-new grid instance is
-   * created, so added/duplicated rows and edited cell values — both applied to the *previous*
-   * instance imperatively (`applyTransaction`/`setDataValue`) — need to be reapplied here.
-   * Deleted-row and new-row *styling* doesn't need this: `rowClassRules` re-evaluates
-   * `QueryResultDirtyService` against each row on every render, so it self-heals once the row
-   * exists — but a new row's row node doesn't exist at all until re-added below.
-   */
-  const rehydratePendingEdits = () => {
-    const api = apiRef.current;
-    if (!api || !QueryResultDirtyService.hasPendingChanges(tabId)) return;
-
-    for (const row of QueryResultDirtyService.getDirtyRows(tabId)) {
-      if (QueryResultDirtyService.isNewRow(tabId, row.rowIndex)) continue;
-      const node = api.getRowNode(String(row.rowIndex));
-      if (!node) continue;
-      for (const change of row.changes) {
-        node.setDataValue(change.column, change.currentValue);
-      }
-    }
-
-    // Oldest-first (see getNewRowIndexes' doc) — each row is re-added individually, right after
-    // its recorded anchor, so a row anchored to an *earlier* new row lands in the right spot
-    // once that earlier row already has a grid node.
-    for (const rowIndex of QueryResultDirtyService.getNewRowIndexes(tabId)) {
-      if (api.getRowNode(String(rowIndex))) continue;
-      const row = buildGridRow(
-        rowIndex,
-        QueryResultDirtyService.getEffectiveRow(tabId, rowIndex) ?? {},
-      );
-      const anchor = QueryResultDirtyService.getNewRowAnchor(tabId, rowIndex);
-      const anchorNode = anchor != null ? api.getRowNode(String(anchor)) : undefined;
-      const addIndex = anchorNode?.rowIndex != null ? anchorNode.rowIndex + 1 : 0;
-      api.applyTransaction({ add: [row], addIndex });
-    }
+    if (!api || api.isDestroyed() || !QueryResultDirtyService.hasTab(tabId)) return;
+    const state = readGridUiState(api);
+    gridUiStateByTabId.set(tabId, state);
   };
 
   const handleFirstDataRendered = (
     _event: FirstDataRenderedEvent<QueryResultRow>,
   ) => {
-    rehydratePendingEdits();
-    QueryResultGridService.autoSizeToContent();
+    autoSizePendingRef.current = true;
+    viewportRestorePendingRef.current = true;
+    sizeVisibleGrid();
     // A small configured initial-result limit can leave the viewport already at the end, with no
     // physical scroll event to trigger the first append.
     window.requestAnimationFrame(handleBodyScrollEnd);
   };
 
-  const handleCellValueChanged = (event: CellValueChangedEvent<QueryResultRow>) => {
+  const handleCellEditRequest = (event: CellEditRequestEvent<QueryResultRow>) => {
+    if (QueryResultQueryService.isBusy(tabId)) return;
     const rowIndex = event.data ? getQueryResultRowIndex(event.data) : null;
     const field = event.colDef.field;
     if (rowIndex == null || !field || field === "__rowIndex") {
@@ -805,7 +851,7 @@ function QueryResultGrid({
 
   const handleCopySelection = async () => {
     try {
-      const ok = await QueryResultGridService.copy("selection");
+      const ok = await gridController.copy("selection");
       flashMessage(ok ? t("app.query.copiedSelection") : t("app.query.nothingToCopy"));
     } catch (error) {
       console.warn("[query-result] copy selection failed", error);
@@ -815,7 +861,7 @@ function QueryResultGrid({
 
   const handleCopyRows = async () => {
     try {
-      const ok = await QueryResultGridService.copy("rows");
+      const ok = await gridController.copy("rows");
       flashMessage(ok ? t("app.query.copiedRows") : t("app.query.selectRowFirst"));
     } catch (error) {
       console.warn("[query-result] copy rows failed", error);
@@ -834,31 +880,21 @@ function QueryResultGrid({
    * removed from the grid instead of being marked.
    */
   const handleToggleDeleteRows = () => {
+    if (QueryResultQueryService.isBusy(tabId)) return;
     const api = apiRef.current;
     const selectedRows = api?.getSelectedRows() ?? [];
     if (selectedRows.length === 0) {
       flashMessage(t("app.query.selectRowFirst"));
       return;
     }
-    const newRowNodes: NonNullable<ReturnType<GridApi["getRowNode"]>>[] = [];
     const existingRows: QueryResultRow[] = [];
     for (const row of selectedRows) {
       const rowIndex = getQueryResultRowIndex(row);
       if (QueryResultDirtyService.isNewRow(tabId, rowIndex)) {
         QueryResultDirtyService.discardNewRow(tabId, rowIndex);
-        const node = api?.getRowNode(String(rowIndex));
-        if (node) newRowNodes.push(node);
       } else {
         QueryResultDirtyService.toggleRowDeleted(tabId, rowIndex);
         existingRows.push(row);
-      }
-    }
-    if (api && newRowNodes.length > 0) {
-      const newRowData = newRowNodes
-        .map((node) => node.data)
-        .filter((data): data is QueryResultRow => data != null);
-      if (newRowData.length > 0) {
-        api.applyTransaction({ remove: newRowData });
       }
     }
     // rowClassRules is a fresh object identity every render, but AG Grid doesn't re-evaluate it
@@ -872,24 +908,13 @@ function QueryResultGrid({
     }
   };
 
-  /** Builds a full grid row object (all result columns + stamped `__rowIndex`) for `applyTransaction`. */
-  const buildGridRow = (
-    rowIndex: number,
-    values: Record<string, string | null>,
-  ): QueryResultRow => {
-    const row: QueryResultRow = { [QUERY_RESULT_ROW_INDEX_KEY]: String(rowIndex) };
-    result.columns.forEach((column) => {
-      row[column] = values[column] ?? null;
-    });
-    return row;
-  };
-
   /**
    * Adds a blank row right after the (single) selected row — matching where "Duplicate row"
    * inserts — or at the top when nothing is selected, and starts editing its first cell
    * immediately.
    */
   const handleAddRow = () => {
+    if (QueryResultQueryService.isBusy(tabId)) return;
     const api = apiRef.current;
     if (!api) return;
     const selectedRows = api.getSelectedRows();
@@ -897,24 +922,27 @@ function QueryResultGrid({
       selectedRows.length === 1
         ? api.getRowNode(String(getQueryResultRowIndex(selectedRows[0])))
         : undefined;
-    const addIndex = selectedNode?.rowIndex != null ? selectedNode.rowIndex + 1 : 0;
     const insertAfter = selectedNode?.data ? getQueryResultRowIndex(selectedNode.data) : null;
 
     const rowIndex = QueryResultDirtyService.addNewRow(tabId, result.columns, insertAfter);
     if (rowIndex == null) return;
-    const row = buildGridRow(rowIndex, {});
-    api.applyTransaction({ add: [row], addIndex });
     // Clicking a cell to focus it also selects that row (rowSelection.enableClickSelection) —
     // do the same here so the *new* row reads as selected instead of leaving the row it was
     // inserted after (still selected from before Add was clicked) looking selected alongside it.
-    api.getRowNode(String(rowIndex))?.setSelected(true, true);
-    const firstColumn = result.columns[0];
-    if (firstColumn) {
-      api.ensureIndexVisible(addIndex);
-      api.setFocusedCell(addIndex, firstColumn);
-      applyCellSelection(addIndex, 0, addIndex, 0);
-      api.startEditingCell({ rowIndex: addIndex, colKey: firstColumn });
-    }
+    window.requestAnimationFrame(() => {
+      if (api.isDestroyed()) return;
+      const node = api.getRowNode(String(rowIndex));
+      if (node?.rowIndex == null) return;
+      const addIndex = node.rowIndex;
+      api.getRowNode(String(rowIndex))?.setSelected(true, true);
+      const firstColumn = result.columns[0];
+      if (firstColumn) {
+        api.ensureIndexVisible(addIndex);
+        api.setFocusedCell(addIndex, firstColumn);
+        applyCellSelection(addIndex, 0, addIndex, 0);
+        api.startEditingCell({ rowIndex: addIndex, colKey: firstColumn });
+      }
+    });
   };
 
   const openImportFile = async (file: File) => {
@@ -968,13 +996,14 @@ function QueryResultGrid({
     apiRef.current?.deselectAll();
     rowSelectionAnchorRef.current = null;
     cellSelectionRef.current = null;
-    QueryResultGridService.clearCellSelection();
+    gridController.clearCellSelection();
     void QueryExecutionService.refreshTabResult(tabId).catch((error) => {
       flashMessage(formatErrorMessage(error, t("app.query.importRefreshFailed")));
     });
   };
 
   const handlePasteGridData = (event: ClipboardEvent<HTMLDivElement>) => {
+    if (QueryResultQueryService.isBusy(tabId)) return;
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)) return;
     if (!event.clipboardData) return;
@@ -993,7 +1022,6 @@ function QueryResultGrid({
     if (firstColumn < 0) return;
     event.preventDefault();
 
-    const inserted: QueryResultRow[] = [];
     let insertAnchor: number | null = null;
     for (let rowOffset = 0; rowOffset < matrix.length; rowOffset += 1) {
       const displayIndex = focused.rowIndex + rowOffset;
@@ -1007,7 +1035,6 @@ function QueryResultGrid({
           if (!column) return;
           const nextValue = value === "" ? null : value;
           QueryResultDirtyService.setCell(tabId, rowIndex, column, nextValue);
-          node.setDataValue(column, nextValue);
         });
         insertAnchor = rowIndex;
       } else if (!useIncrementalScroll) {
@@ -1018,17 +1045,16 @@ function QueryResultGrid({
         });
         const indexes = QueryResultDirtyService.addImportedRows(tabId, result.columns, [rowValues], insertAnchor);
         if (indexes.length) {
-          inserted.push(buildGridRow(indexes[0], QueryResultDirtyService.getEffectiveRow(tabId, indexes[0]) ?? {}));
           insertAnchor = indexes[0];
         }
       }
     }
-    if (inserted.length) api.applyTransaction({ add: inserted });
     flashMessage(t("app.query.importStaged").replace("{n}", String(matrix.length)));
   };
 
   /** Duplicates exactly one selected row, preserving its values — see `duplicateRow`'s doc. */
   const handleDuplicateRow = () => {
+    if (QueryResultQueryService.isBusy(tabId)) return;
     const api = apiRef.current;
     const selectedRows = api?.getSelectedRows() ?? [];
     if (selectedRows.length !== 1) {
@@ -1038,25 +1064,25 @@ function QueryResultGrid({
     if (!api) return;
     const sourceRow = selectedRows[0];
     const sourceRowIndex = getQueryResultRowIndex(sourceRow);
-    const sourceNode = api.getRowNode(String(sourceRowIndex));
     const rowIndex = QueryResultDirtyService.duplicateRow(tabId, sourceRowIndex);
     if (rowIndex == null) return;
-    const values = QueryResultDirtyService.getEffectiveRow(tabId, rowIndex) ?? {};
-    const row = buildGridRow(rowIndex, values);
-    const addIndex =
-      sourceNode?.rowIndex != null ? sourceNode.rowIndex + 1 : 0;
-    api.applyTransaction({ add: [row], addIndex });
     // See handleAddRow's comment — moves the selection highlight to the new row instead of
     // leaving it on the source row it was duplicated from.
-    api.getRowNode(String(rowIndex))?.setSelected(true, true);
-    const firstColumn = result.columns[0];
-    if (firstColumn) {
-      api.ensureIndexVisible(addIndex);
-      api.setFocusedCell(addIndex, firstColumn);
-      // The custom cell-range paint is independent of AG Grid's row selection. Move it as
-      // well, otherwise the source cell remains painted after its duplicate is inserted.
-      applyCellSelection(addIndex, 0, addIndex, 0);
-    }
+    window.requestAnimationFrame(() => {
+      if (api.isDestroyed()) return;
+      const node = api.getRowNode(String(rowIndex));
+      if (node?.rowIndex == null) return;
+      const addIndex = node.rowIndex;
+      api.getRowNode(String(rowIndex))?.setSelected(true, true);
+      const firstColumn = result.columns[0];
+      if (firstColumn) {
+        api.ensureIndexVisible(addIndex);
+        api.setFocusedCell(addIndex, firstColumn);
+        // The custom cell-range paint is independent of AG Grid's row selection. Move it as
+        // well, otherwise the source cell remains painted after its duplicate is inserted.
+        applyCellSelection(addIndex, 0, addIndex, 0);
+      }
+    });
   };
 
   const applyCellSelection = (
@@ -1075,7 +1101,7 @@ function QueryResultGrid({
 
     const firstColumn = Math.min(anchorColumnIndex, focusColumnIndex);
     const lastColumn = Math.max(anchorColumnIndex, focusColumnIndex);
-    QueryResultGridService.setCellSelection(
+    gridController.setCellSelection(
       result.columns.slice(firstColumn, lastColumn + 1),
       anchorRowIndex,
       focusRowIndex,
@@ -1123,7 +1149,7 @@ function QueryResultGrid({
       // The row-number gutter is not a result cell. It selects the row but must not leave the
       // previously selected data-cell range painted behind it.
       cellSelectionRef.current = null;
-      QueryResultGridService.clearCellSelection();
+      gridController.clearCellSelection();
       event.api.refreshCells({ force: true });
       return;
     }
@@ -1263,42 +1289,16 @@ function QueryResultGrid({
     });
   };
 
-  /**
-   * Restores edited cells to their original values (via `setDataValue`, which re-fires
-   * `onCellValueChanged` and lets the normal dirty-clearing logic run), removes added/duplicated
-   * rows from the grid, and un-marks rows pending deletion.
-   */
+  /** Discard the diff; the grid receives the authoritative baseline again. */
   const applyCancelChanges = () => {
-    const api = apiRef.current;
-    if (api) {
-      for (const row of QueryResultDirtyService.getDirtyRows(tabId)) {
-        if (QueryResultDirtyService.isNewRow(tabId, row.rowIndex)) continue;
-        const node = api.getRowNode(String(row.rowIndex));
-        if (!node) continue;
-        for (const change of row.changes) {
-          node.setDataValue(change.column, change.originalValue);
-        }
-      }
-      const newRowData = QueryResultDirtyService.getNewRowIndexes(tabId)
-        .map((rowIndex) => api.getRowNode(String(rowIndex))?.data)
-        .filter((data): data is QueryResultRow => data != null);
-      if (newRowData.length > 0) {
-        api.applyTransaction({ remove: newRowData });
-      }
-      const deletedNodes = QueryResultDirtyService.getDeletedRowIndexes(tabId)
-        .map((rowIndex) => api.getRowNode(String(rowIndex)))
-        .filter((node) => node != null);
-      if (deletedNodes.length > 0) {
-        api.redrawRows({ rowNodes: deletedNodes });
-      }
-    }
     QueryResultDirtyService.clearTab(tabId);
+    apiRef.current?.redrawRows();
     flashMessage(t("app.query.changesCancelled"));
   };
 
   const handleCopyAll = async () => {
     try {
-      const ok = await QueryResultGridService.copy("all");
+      const ok = await gridController.copy("all");
       flashMessage(ok ? t("app.query.copiedFiltered") : t("app.query.nothingToCopy"));
     } catch (error) {
       console.warn("[query-result] copy all failed", error);
@@ -1312,7 +1312,7 @@ function QueryResultGrid({
     setExportInProgress(true);
     if (useIncrementalScroll) setExportProgressRows(result.rows.length);
     try {
-      const ok = await QueryResultGridService.exportCsv((rowCount) => {
+      const ok = await gridController.exportCsv((rowCount) => {
         setExportProgressRows(rowCount);
       });
       flashMessage(ok ? t("app.query.csvExported") : t("app.query.exportCancelled"));
@@ -1327,7 +1327,11 @@ function QueryResultGrid({
   };
 
   const handleClearFilters = () => {
-    QueryResultGridService.clearFiltersAndSort();
+    if (useIncrementalScroll && apiRef.current) {
+      requestServerReshuffle({ filterModel: {}, sortState: [] });
+      return;
+    }
+    gridController.clearFiltersAndSort();
     flashMessage(t("app.query.filtersCleared"));
   };
 
@@ -1477,13 +1481,7 @@ function QueryResultGrid({
         openValueEditor();
         return;
       case "setCurrentTime": {
-        const api = apiRef.current;
-        const focused = api?.getFocusedCell();
-        const field = focused?.column.getColDef().field;
-        const node = focused && typeof field === "string"
-          ? api?.getDisplayedRowAtIndex(focused.rowIndex)
-          : undefined;
-        node?.setDataValue(field!, CURRENT_TIMESTAMP_VALUE);
+        setFocusedGridCellValue(CURRENT_TIMESTAMP_VALUE);
         return;
       }
       case "setEmptyValue":
@@ -1513,11 +1511,13 @@ function QueryResultGrid({
   }
 
   function setFocusedGridCellValue(value: string | null) {
+    if (QueryResultQueryService.isBusy(tabId)) return;
     const api = apiRef.current;
     const focused = api?.getFocusedCell();
     const field = focused?.column.getColDef().field;
     if (!api || !focused || typeof field !== "string") return;
-    api.getDisplayedRowAtIndex(focused.rowIndex)?.setDataValue(field, value);
+    const row = api.getDisplayedRowAtIndex(focused.rowIndex)?.data;
+    if (row) QueryResultDirtyService.setCell(tabId, getQueryResultRowIndex(row), field, value);
   }
 
   function handleHeaderContextMenuSelect(item: ContextMenuItem) {
@@ -1543,7 +1543,7 @@ function QueryResultGrid({
         api.autoSizeColumns([columnId], false);
         return;
       case "autoSizeAllColumns":
-        QueryResultGridService.autoSizeAllColumns();
+        gridController.autoSizeAllColumns();
         return;
       case "pinColumnLeft":
         api.applyColumnState({ state: [{ colId: columnId, pinned: "left" }] });
@@ -1620,17 +1620,17 @@ function QueryResultGrid({
   }
 
   const handleResetColumnLayout = () => {
-    const ok = QueryResultGridService.resetColumnLayout();
+    const ok = gridController.resetColumnLayout();
     flashMessage(ok ? t("app.query.layoutReset") : t("app.query.nothingToReset"));
   };
 
   const handleSaveColumnLayout = () => {
-    const ok = QueryResultGridService.saveColumnLayoutNow();
+    const ok = gridController.saveColumnLayoutNow();
     flashMessage(ok ? t("app.query.layoutSaved") : t("app.query.nothingToSaveLayout"));
   };
 
   const markLayoutDirty = () => {
-    QueryResultGridService.markColumnLayoutDirty();
+    gridController.markColumnLayoutDirty();
   };
 
   const pendingChangeCount = dirtyCount + deletedRowCount + newRowCount + (truncateBeforeImport ? 1 : 0);
@@ -1641,12 +1641,13 @@ function QueryResultGrid({
 
   const canAttemptSave = pendingChangeCount > 0 && !saveBlockedReason;
 
-  const handleOpenSavePreview = async () => {
+  const handleOpenSavePreview = async (): Promise<boolean> => {
+    if (QueryResultQueryService.isBusy(tabId)) return false;
     if (!canAttemptSave) {
       if (saveHint) {
         flashMessage(saveHint);
       }
-      return;
+      return false;
     }
 
     setOpeningPreview(true);
@@ -1658,12 +1659,14 @@ function QueryResultGrid({
       });
       if ("blocked" in nextPreview) {
         flashMessage(nextPreview.reason);
-        return;
+        return false;
       }
       setPreview(nextPreview);
+      return true;
     } catch (error) {
       console.warn("[query-result] update preview failed", error);
       flashMessage(t("app.query.updatePreviewFailed"));
+      return false;
     } finally {
       setOpeningPreview(false);
     }
@@ -1673,6 +1676,7 @@ function QueryResultGrid({
     if (executingUpdates) return;
     setPreview(null);
     setPreviewError(null);
+    pendingGridReshuffleRef.current = null;
   };
 
   const handleConfirmUpdates = async () => {
@@ -1696,10 +1700,31 @@ function QueryResultGrid({
     apiRef.current?.deselectAll();
     rowSelectionAnchorRef.current = null;
     cellSelectionRef.current = null;
-    QueryResultGridService.clearCellSelection();
+    gridController.clearCellSelection();
     apiRef.current?.refreshCells({ force: true });
     setPreview(null);
     flashMessage(outcome.message);
+    const pendingReshuffle = pendingGridReshuffleRef.current;
+    pendingGridReshuffleRef.current = null;
+    if (pendingReshuffle) await performServerReshuffle(pendingReshuffle);
+  };
+
+  const resolvePendingGridReshuffle = async (choice: "save" | "discard" | "cancel") => {
+    const request = pendingGridReshuffleRef.current;
+    setPendingGridReshuffle(null);
+    if (!request) return;
+    if (choice === "cancel") {
+      pendingGridReshuffleRef.current = null;
+      return;
+    }
+    if (choice === "discard") {
+      pendingGridReshuffleRef.current = null;
+      QueryResultDirtyService.clearTab(tabId);
+      void performServerReshuffle(request);
+      return;
+    }
+    const opened = await handleOpenSavePreview();
+    if (!opened) pendingGridReshuffleRef.current = null;
   };
 
   const tableLabel = preview
@@ -1709,7 +1734,7 @@ function QueryResultGrid({
     : "";
 
   return (
-    <div className="query-result-grid">
+    <div className="query-result-grid" ref={gridRootRef}>
       <div className="query-result-grid__toolbar">
         <div
           className="query-result-grid__status"
@@ -2033,7 +2058,7 @@ function QueryResultGrid({
           key="client"
           theme={gridTheme}
           columnDefs={columnDefs}
-          rowData={rowData}
+          rowData={displayedRowData}
           defaultColDef={defaultColDef}
           // SQL result column labels are always literal strings (e.g. an unaliased
           // `PKG.FUNC('a')` call), never a dotted nested-object path — without this,
@@ -2085,17 +2110,31 @@ function QueryResultGrid({
           onCellDoubleClicked={handleCellDoubleClicked}
           onCellMouseDown={handleCellMouseDown}
           onCellMouseOver={handleCellMouseOver}
-          onCellValueChanged={handleCellValueChanged}
+          loading={queryBusy}
+          readOnlyEdit
+          onCellEditRequest={handleCellEditRequest}
           onFilterChanged={() => {
-            QueryResultGridService.refreshSnapshot();
+            gridController.refreshSnapshot();
+            if (applyingGridQueryStateRef.current) return;
+            const api = apiRef.current;
+            if (useIncrementalScroll && api) {
+              requestServerReshuffle(readGridUiState(api));
+              return;
+            }
             captureGridUiState();
           }}
           onSortChanged={() => {
-            QueryResultGridService.refreshSnapshot();
+            gridController.refreshSnapshot();
+            if (applyingGridQueryStateRef.current) return;
+            const api = apiRef.current;
+            if (useIncrementalScroll && api) {
+              requestServerReshuffle(readGridUiState(api));
+              return;
+            }
             captureGridUiState();
           }}
-          onModelUpdated={() => QueryResultGridService.refreshSnapshot()}
-          onSelectionChanged={() => QueryResultGridService.refreshSnapshot()}
+          onModelUpdated={() => gridController.refreshSnapshot()}
+          onSelectionChanged={() => gridController.refreshSnapshot()}
           onColumnResized={(event) => {
             if (event.finished) markLayoutDirty();
           }}
@@ -2126,6 +2165,48 @@ function QueryResultGrid({
               : handleGridContextMenuSelect
           }
         />
+      ) : null}
+
+      {pendingGridReshuffle ? (
+        <div className="explorer-mutation-dialog__backdrop" role="presentation">
+          <section
+            className="explorer-mutation-dialog confirm-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="query-result-reshuffle-title"
+          >
+            <header className="explorer-mutation-dialog__header">
+              <h2 id="query-result-reshuffle-title">{t("app.query.reshuffleUnsavedTitle")}</h2>
+            </header>
+            <div className="explorer-mutation-dialog__body">
+              <p className="explorer-mutation-dialog__summary">{t("app.query.reshuffleUnsavedMessage")}</p>
+            </div>
+            <footer className="explorer-mutation-dialog__footer">
+              <button
+                type="button"
+                className="explorer-mutation-dialog__button"
+                onClick={() => void resolvePendingGridReshuffle("cancel")}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                className="explorer-mutation-dialog__button explorer-mutation-dialog__button--danger"
+                onClick={() => void resolvePendingGridReshuffle("discard")}
+              >
+                {t("app.query.reshuffleDiscard")}
+              </button>
+              <button
+                type="button"
+                className="explorer-mutation-dialog__button explorer-mutation-dialog__button--primary"
+                autoFocus
+                onClick={() => void resolvePendingGridReshuffle("save")}
+              >
+                {t("app.query.reshuffleSave")}
+              </button>
+            </footer>
+          </section>
+        </div>
       ) : null}
 
       {preview ? (
@@ -2190,8 +2271,9 @@ function QueryResultGrid({
           connectionId={connectionId}
           onCancel={() => setValueEditorTarget(null)}
           onSave={(value) => {
-            const node = apiRef.current?.getRowNode(String(valueEditorTarget.rowIndex));
-            node?.setDataValue(valueEditorTarget.column, normalizeEditedValue(value, valueEditorTarget.columnIndex));
+            if (QueryResultQueryService.isBusy(tabId)) return;
+            QueryResultDirtyService.setCell(tabId, valueEditorTarget.rowIndex,
+              valueEditorTarget.column, normalizeEditedValue(value, valueEditorTarget.columnIndex));
             setValueEditorTarget(null);
           }}
         />

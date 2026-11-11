@@ -4,6 +4,7 @@ import { formatErrorMessage } from "../formatErrorMessage";
 import { ConfirmDialogService } from "../ui/confirmDialogService";
 import { bridgeCommit, bridgeRollback } from "./connectionBridge";
 import { ConnectionService } from "./connectionService";
+import { QueryResultQueryService } from "../query/queryResultQueryService";
 import {
   discardPendingDdlSaves,
   resolvePendingDdlSaves,
@@ -103,38 +104,40 @@ export async function rollbackConnection(connectionId: string): Promise<void> {
   const name = connectionDisplayName(connectionId);
   const confirmed = await ConfirmDialogService.confirm({
     title: tKey("app.transaction.rollback"),
-    message: tKey("app.transaction.rollbackConfirm").replace("{name}", name),
+    message: tKey("app.transaction.rollbackConfirm").replace("{name}", name) +
+      (QueryResultQueryService.hasPendingEdits(connectionId) ? "\n" + tKey("app.transaction.rollbackUnsavedEdits") : ""),
     confirmLabel: tKey("app.transaction.rollback"),
     danger: true,
   });
   if (!confirmed) {
     return;
   }
+  const { QueryExecutionService } = await import("../query/queryExecutionService");
+  const resumeQueries = QueryResultQueryService.pauseConnection(connectionId);
+  QueryExecutionService.invalidateRunningQueriesForConnection(connectionId);
+  let rolledBack = false;
   try {
     const result = await bridgeRollback(connectionId);
+    rolledBack = true;
     ConnectionTransactionService.clear(connectionId);
+    resumeQueries();
     // "Nothing to roll back" is treated conservatively as a rollback outcome for pending saves
     // too — we can't prove the save survived, so discard rather than mark it durable.
     resolvePendingDdlSaves(connectionId, "rollback");
-    if (result.rolledBack) {
-      // Dynamic import breaks the query <-> connection service cycle (same
-      // pattern as resolveExecutionConnection.ts's ActiveDatabaseService import).
-      const { QueryExecutionService } = await import(
-        "../query/queryExecutionService"
-      );
-      await QueryExecutionService.refreshResultTabsForConnection(connectionId);
-    }
+    await QueryExecutionService.refreshResultTabsForConnection(connectionId);
     AppNotificationService.show(
       result.rolledBack ? tKey("app.transaction.rolledBack") : tKey("app.transaction.nothingToRollback"),
       "success",
     );
   } catch (error) {
     AppNotificationService.show(
-      tKey("app.transaction.rollbackFailed").replace(
+      tKey(rolledBack ? "app.transaction.rollbackRefreshFailed" : "app.transaction.rollbackFailed").replace(
         "{message}",
         formatErrorMessage(error, String(error)),
       ),
       "error",
     );
+  } finally {
+    resumeQueries();
   }
 }
