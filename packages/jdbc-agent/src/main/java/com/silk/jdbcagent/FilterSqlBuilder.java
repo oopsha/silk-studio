@@ -9,9 +9,9 @@ import java.util.function.Function;
 /**
  * Translates the frontend's flat, versioned filter wire format (see
  * {@code filterModelTranslator.ts}'s {@code FilterColumnWire[]}) into a SQL WHERE fragment plus
- * an ordered list of bind values — shared across all 4 dialects so the AG-Grid filter-type-to-SQL
- * mapping exists in exactly one place. Column-name quoting is dialect-specific and supplied by the
- * caller via {@code quoteIdentifier} (each dialect's own {@link DbDialect#quoteIdentifier}).
+ * an ordered list of bind values — shared across dialects so the AG-Grid filter-type-to-SQL
+ * mapping exists in exactly one place. The dialect supplies identifier quoting and case-insensitive
+ * text expressions (including text conversion where required).
  *
  * <p>Every column name is validated against {@code knownColumns} (the result's own column list,
  * sent by the frontend) before being quoted and embedded in the generated SQL text — this is the
@@ -33,7 +33,7 @@ final class FilterSqlBuilder {
   static String buildWhereFragment(
       JsonNode filters,
       Set<String> knownColumns,
-      Function<String, String> quoteIdentifier,
+      DbDialect dialect,
       List<String> binds) {
     if (filters == null || !filters.isArray() || filters.isEmpty()) {
       return null;
@@ -49,10 +49,10 @@ final class FilterSqlBuilder {
       if (!conditionsNode.isArray() || conditionsNode.isEmpty()) {
         continue;
       }
-      String quotedColumn = quoteIdentifier.apply(column);
+      String quotedColumn = dialect.quoteIdentifier(column);
       List<String> conditionFragments = new ArrayList<>();
       for (JsonNode condition : conditionsNode) {
-        conditionFragments.add(buildCondition(quotedColumn, condition, binds));
+        conditionFragments.add(buildCondition(quotedColumn, dialect, condition, binds));
       }
       String logic = "OR".equals(columnFilter.path("logic").asText("AND")) ? " OR " : " AND ";
       columnFragments.add(
@@ -95,28 +95,30 @@ final class FilterSqlBuilder {
     return String.join(", ", fragments);
   }
 
-  private static String buildCondition(String quotedColumn, JsonNode condition, List<String> binds) {
+  private static String buildCondition(
+      String quotedColumn, DbDialect dialect, JsonNode condition, List<String> binds) {
     String type = condition.path("type").asText("");
     String value = condition.hasNonNull("value") ? condition.path("value").asText() : null;
+    String textColumn = dialect.caseInsensitiveFilterExpression(quotedColumn);
     switch (type) {
       case "contains":
         binds.add("%" + value + "%");
-        return quotedColumn + " LIKE ?";
+        return textColumn + " LIKE UPPER(?)";
       case "notContains":
         binds.add("%" + value + "%");
-        return quotedColumn + " NOT LIKE ?";
+        return textColumn + " NOT LIKE UPPER(?)";
       case "equals":
         binds.add(value);
-        return quotedColumn + " = ?";
+        return textColumn + " = UPPER(?)";
       case "notEqual":
         binds.add(value);
-        return quotedColumn + " <> ?";
+        return textColumn + " <> UPPER(?)";
       case "startsWith":
         binds.add(value + "%");
-        return quotedColumn + " LIKE ?";
+        return textColumn + " LIKE UPPER(?)";
       case "endsWith":
         binds.add("%" + value);
-        return quotedColumn + " LIKE ?";
+        return textColumn + " LIKE UPPER(?)";
       case "lessThan":
         binds.add(value);
         return quotedColumn + " < ?";

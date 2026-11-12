@@ -450,6 +450,11 @@ interface DbDialect {
    */
   String quoteIdentifier(String raw);
 
+  /** Text-filter comparison independent of the database's default case sensitivity. */
+  default String caseInsensitiveFilterExpression(String quotedColumn) {
+    return "UPPER(" + quotedColumn + ")";
+  }
+
   /**
    * Wraps an arbitrary caller-supplied {@code SELECT} statement ({@code innerSql}, executed
    * as-is, unmodified) as a derived table and applies an optional filter, optional sort, and

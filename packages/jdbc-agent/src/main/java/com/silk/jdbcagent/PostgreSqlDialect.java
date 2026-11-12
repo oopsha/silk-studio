@@ -835,6 +835,12 @@ final class PostgreSqlDialect implements DbDialect {
   }
 
   @Override
+  public String caseInsensitiveFilterExpression(String quotedColumn) {
+    // PostgreSQL requires text input for UPPER, including filters on numeric columns.
+    return "UPPER(CAST(" + quotedColumn + " AS TEXT))";
+  }
+
+  @Override
   public String quoteIdentifier(String raw) {
     return quoteIdent(raw);
   }

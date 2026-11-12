@@ -1,5 +1,6 @@
 import type {
   ConnectionMetadataResult,
+  FoundMetadataObject,
   MetadataGroup,
   MetadataSchema,
 } from "@silk-studio/db-protocol";
@@ -57,10 +58,51 @@ const NOTIFY_DEBOUNCE_MS = 80;
 
 class ConnectionTreeServiceImpl {
   private readonly caches = new Map<string, ProfileTreeCache>();
+  // Partial search hits must never mark a schema's full object list as loaded.
+  private readonly searchObjects = new Map<string, Map<string, FoundMetadataObject>>();
+  private readonly searchTokens = new Map<string, symbol>();
   private readonly listeners = new Set<TreeListener>();
   private readonly explorerFilters = new Map<string, ExplorerFilterContext>();
   private readonly connectedProfileIds = new Set<string>();
   private notifyTimer: ReturnType<typeof setTimeout> | null = null;
+
+  getSearchObjects(profileId: string): readonly FoundMetadataObject[] {
+    return [...(this.searchObjects.get(profileId)?.values() ?? [])];
+  }
+
+  getSearchToken(profileId: string): symbol {
+    let token = this.searchTokens.get(profileId);
+    if (!token) {
+      token = Symbol();
+      this.searchTokens.set(profileId, token);
+    }
+    return token;
+  }
+
+  cacheSearchObjects(profileId: string, objects: readonly FoundMetadataObject[], token: symbol): void {
+    if (!this.isProfileConnected(profileId) || this.getSearchToken(profileId) !== token) return;
+    const cached = this.searchObjects.get(profileId) ?? new Map<string, FoundMetadataObject>();
+    for (const object of objects) {
+      const key = JSON.stringify([object.catalogName ?? "", object.schemaName, object.kind, object.name]);
+      cached.set(key, { ...cached.get(key), ...object });
+    }
+    this.searchObjects.set(profileId, cached);
+    this.fireDidChange();
+  }
+
+  private invalidateSearchSchema(profileId: string, schemaName: string, catalogName?: string): void {
+    // Reject searches started before a refresh, even if the schema isn't in the tree yet.
+    this.searchTokens.delete(profileId);
+    const objects = this.searchObjects.get(profileId);
+    if (!objects) return;
+    for (const [key, object] of objects) {
+      if (object.schemaName.toLowerCase() === schemaName.toLowerCase() &&
+          (!catalogName || object.catalogName?.toLowerCase() === catalogName.toLowerCase())) {
+        objects.delete(key);
+      }
+    }
+    this.fireDidChange();
+  }
 
   getCache(profileId: string): ProfileTreeCache {
     return (
@@ -117,6 +159,8 @@ class ConnectionTreeServiceImpl {
   /** Keep in sync from ConnectionService after disconnect. */
   removeConnectedProfile(profileId: string): void {
     if (!this.connectedProfileIds.delete(profileId)) return;
+    this.searchObjects.delete(profileId);
+    this.searchTokens.delete(profileId);
     this.fireDidChange();
   }
 
@@ -128,6 +172,8 @@ class ConnectionTreeServiceImpl {
     if (profileId === null) {
       if (this.connectedProfileIds.size === 0) return;
       this.connectedProfileIds.clear();
+      this.searchObjects.clear();
+      this.searchTokens.clear();
       this.fireDidChange();
       return;
     }
@@ -136,6 +182,8 @@ class ConnectionTreeServiceImpl {
 
   invalidate(profileId?: string): void {
     if (profileId) {
+      this.searchObjects.delete(profileId);
+      this.searchTokens.delete(profileId);
       this.caches.delete(profileId);
       invalidateObjectPreviewCache(profileId);
     } else {
@@ -143,6 +191,8 @@ class ConnectionTreeServiceImpl {
         invalidateObjectPreviewCache(cachedProfileId);
       }
       this.caches.clear();
+      this.searchObjects.clear();
+      this.searchTokens.clear();
       this.explorerFilters.clear();
     }
     this.fireDidChange();
@@ -158,6 +208,7 @@ class ConnectionTreeServiceImpl {
     catalogName?: string,
   ): void {
     invalidateObjectPreviewCache(profileId, schemaName);
+    this.invalidateSearchSchema(profileId, schemaName, catalogName);
 
     const cache = this.caches.get(profileId);
     if (!cache) return;
@@ -235,7 +286,6 @@ class ConnectionTreeServiceImpl {
     if (!this.connectedProfileIds.has(profileId)) {
       throw new Error("Connect this profile before loading database objects.");
     }
-
     const current = this.getCache(profileId);
     if (!force && (current.status === "loaded" || current.status === "loading")) {
       return;
@@ -414,6 +464,8 @@ class ConnectionTreeServiceImpl {
     if (!this.connectedProfileIds.has(profileId)) {
       throw new Error("Connect this profile before loading database objects.");
     }
+
+    if (force) this.invalidateSearchSchema(profileId, schemaName, catalogName);
 
     const cache = this.getCache(profileId);
 
@@ -645,6 +697,8 @@ class ConnectionTreeServiceImpl {
     }
     this.listeners.clear();
     this.caches.clear();
+    this.searchObjects.clear();
+    this.searchTokens.clear();
     this.explorerFilters.clear();
     this.connectedProfileIds.clear();
   }

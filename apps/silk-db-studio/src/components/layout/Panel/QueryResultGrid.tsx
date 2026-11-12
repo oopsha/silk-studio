@@ -484,7 +484,7 @@ function QueryResultGrid({
         floatingFilter: filterEnabled,
         // Require an explicit Apply (click or Enter) rather than filtering per keystroke. The
         // same client-side behaviour applies before and after incremental pages are appended.
-        filterParams: { buttons: ["apply", "reset"] },
+        filterParams: { buttons: ["apply", "reset"], closeOnApply: true, caseSensitive: false },
         // Existing PK values are editable just like DBeaver. Saving remains safe because
         // `safeUpdateSql` uses the value from the original loaded row in its WHERE clause and
         // the edited PK value only in SET. Deleted rows are not editable because they won't
@@ -575,7 +575,7 @@ function QueryResultGrid({
     () => ({
       filter: filterEnabled ? "agTextColumnFilter" : false,
       floatingFilter: filterEnabled,
-      filterParams: { buttons: ["apply", "reset"] },
+      filterParams: { buttons: ["apply", "reset"], closeOnApply: true, caseSensitive: false },
       editable: true,
       sortable: true,
       resizable: true,
