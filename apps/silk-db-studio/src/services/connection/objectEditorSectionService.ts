@@ -3,6 +3,12 @@ export type ObjectEditorSection = "properties" | "data";
 const activeSectionByTabId = new Map<string, ObjectEditorSection>();
 const listeners = new Set<(tabId: string, section: ObjectEditorSection) => void>();
 
+export function pruneObjectEditorSections(liveTabIds: ReadonlySet<string>): void {
+  for (const tabId of activeSectionByTabId.keys()) {
+    if (!liveTabIds.has(tabId)) activeSectionByTabId.delete(tabId);
+  }
+}
+
 export function getObjectEditorSection(tabId: string): ObjectEditorSection | undefined {
   return activeSectionByTabId.get(tabId);
 }

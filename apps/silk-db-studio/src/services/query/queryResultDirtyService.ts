@@ -1,3 +1,6 @@
+import { QueryResultDataService } from "./queryResultDataService";
+import { QUERY_RESULT_ROW_INDEX_KEY, type QueryResultRow } from "./queryResult";
+
 type DirtyCell = {
   originalValue: string | null;
   currentValue: string | null;
@@ -5,14 +8,14 @@ type DirtyCell = {
 
 type TabDirtyStore = {
   columns: string[];
-  originalRows: Array<Record<string, string | null>>;
+  newRowValues: Map<number, Record<string, string | null>>;
   dirtyByRow: Map<number, Map<string, DirtyCell>>;
   deletedRows: Set<number>;
   /** Not-yet-saved rows added via "Add row"/"Duplicate row" — keyed by their synthetic negative
    *  `rowIndex` (see `nextNewRowIndex`), which never collides with a real 0+ query-result index.
    *  Value is the rowIndex (existing or another new row's) this row was inserted directly after,
    *  or `null` for "inserted at the top" — used to restore each row's grid position after a
-   *  remount (see `QueryResultGrid`'s `rehydratePendingEdits`), since insertion order alone
+   *  remount (see the derived grid snapshot), since insertion order alone
    *  doesn't capture *where* a row was added. */
   newRows: Map<number, number | null>;
   truncateBeforeImport: boolean;
@@ -24,6 +27,9 @@ type DirtyListener = () => void;
 class QueryResultDirtyServiceImpl {
   private readonly stores = new Map<string, TabDirtyStore>();
   private readonly listeners = new Set<DirtyListener>();
+  private readonly displayedRows = new Map<string, QueryResultRow[]>();
+  private readonly rowSnapshots = new Map<string, Map<number, QueryResultRow>>();
+  private readonly revisions = new Map<string, number>();
 
   /**
    * No-ops if `tabId` already has a store. `QueryResultGrid` calls this on every mount — including
@@ -39,24 +45,18 @@ class QueryResultDirtyServiceImpl {
     rows: Array<Array<string | null>>,
   ): void {
     if (this.stores.has(tabId)) return;
-    const originalRows = rows.map((cells) => {
-      const row: Record<string, string | null> = {};
-      columns.forEach((column, index) => {
-        row[column] = cells[index] ?? null;
-      });
-      return row;
-    });
+    QueryResultDataService.replace(tabId, columns, rows);
 
     this.stores.set(tabId, {
       columns,
-      originalRows,
+      newRowValues: new Map(),
       dirtyByRow: new Map(),
       deletedRows: new Set(),
       newRows: new Map(),
       truncateBeforeImport: false,
       nextNewRowIndex: 0,
     });
-    this.emit();
+    this.emit(tabId);
   }
 
   /**
@@ -74,13 +74,25 @@ class QueryResultDirtyServiceImpl {
   ): void {
     const store = this.stores.get(tabId);
     if (!store) return;
-    rows.forEach((cells, offset) => {
-      const row: Record<string, string | null> = {};
-      columns.forEach((column, index) => {
-        row[column] = cells[index] ?? null;
-      });
-      store.originalRows[startIndex + offset] = row;
-    });
+    QueryResultDataService.append(tabId, startIndex, columns, rows);
+    this.emit(tabId);
+  }
+
+  /** Atomically replaces the authoritative baseline and discards edits for the old row positions. */
+  replaceOriginalRows(tabId: string, columns: string[], rows: Array<Array<string | null>>): void {
+    if (!this.stores.has(tabId)) {
+      this.initTab(tabId, columns, rows);
+      return;
+    }
+    const store = this.stores.get(tabId)!;
+    store.columns = columns;
+    store.dirtyByRow.clear();
+    store.deletedRows.clear();
+    store.newRows.clear();
+    store.newRowValues.clear();
+    store.truncateBeforeImport = false;
+    QueryResultDataService.replace(tabId, columns, rows);
+    this.emit(tabId);
   }
 
   /** True when `tabId` has any unsaved cell edits, delete marks, or added/duplicated rows. */
@@ -99,7 +111,7 @@ class QueryResultDirtyServiceImpl {
     const store = this.stores.get(tabId);
     if (!store || store.truncateBeforeImport === value) return;
     store.truncateBeforeImport = value;
-    this.emit();
+    this.emit(tabId);
   }
 
   getTruncateBeforeImport(tabId: string): boolean {
@@ -110,11 +122,11 @@ class QueryResultDirtyServiceImpl {
    * Reconstructs the "as currently shown" values for `rowIndex` — its original snapshot with any
    * pending cell edits overlaid. Shared by `duplicateRow` (source row's live values) and the
    * INSERT-statement builder (a new/duplicated row's full column set, since untouched columns
-   * never get a `dirtyByRow` entry and must still be read from their `originalRows` seed).
+   * never get a `dirtyByRow` entry and must still be read from their pending INSERT values).
    */
   getEffectiveRow(tabId: string, rowIndex: number): Record<string, string | null> | null {
     const store = this.stores.get(tabId);
-    const original = store?.originalRows[rowIndex];
+    const original = store?.newRowValues.get(rowIndex) ?? QueryResultDataService.getRow(tabId, rowIndex);
     if (!store || !original) return null;
     const overlay = store.dirtyByRow.get(rowIndex);
     if (!overlay) return { ...original };
@@ -138,9 +150,9 @@ class QueryResultDirtyServiceImpl {
     columns.forEach((column) => {
       blank[column] = null;
     });
-    store.originalRows[rowIndex] = blank;
+    store.newRowValues.set(rowIndex, blank);
     store.newRows.set(rowIndex, insertAfter);
-    this.emit();
+    this.emit(tabId);
     return rowIndex;
   }
 
@@ -161,12 +173,12 @@ class QueryResultDirtyServiceImpl {
       columns.forEach((column) => {
         row[column] = values[column] ?? null;
       });
-      store.originalRows[rowIndex] = row;
+      store.newRowValues.set(rowIndex, row);
       store.newRows.set(rowIndex, anchor);
       indexes.push(rowIndex);
       anchor = rowIndex;
     }
-    this.emit();
+    this.emit(tabId);
     return indexes;
   }
 
@@ -183,9 +195,9 @@ class QueryResultDirtyServiceImpl {
     const sourceValues = this.getEffectiveRow(tabId, sourceRowIndex);
     if (!sourceValues) return null;
     const rowIndex = (store.nextNewRowIndex -= 1);
-    store.originalRows[rowIndex] = { ...sourceValues };
+    store.newRowValues.set(rowIndex, { ...sourceValues });
     store.newRows.set(rowIndex, sourceRowIndex);
-    this.emit();
+    this.emit(tabId);
     return rowIndex;
   }
 
@@ -214,7 +226,7 @@ class QueryResultDirtyServiceImpl {
 
   /**
    * Creation order (oldest first) — `newRows` is a `Map`, which iterates in insertion order.
-   * `QueryResultGrid`'s rehydrate-on-remount relies on this order: a row's `insertAfter` anchor
+   * The derived view relies on this order: a row's `insertAfter` anchor
    * may itself be another new row, so replaying oldest-first guarantees that anchor already has a
    * grid row by the time its dependent is re-added.
    */
@@ -230,20 +242,27 @@ class QueryResultDirtyServiceImpl {
     const store = this.stores.get(tabId);
     if (!store || !store.newRows.has(rowIndex)) return;
     store.newRows.delete(rowIndex);
-    delete store.originalRows[rowIndex];
+    store.newRowValues.delete(rowIndex);
     store.dirtyByRow.delete(rowIndex);
-    this.emit();
+    this.emit(tabId);
   }
 
   removeTab(tabId: string): void {
+    QueryResultDataService.remove(tabId);
+    this.rowSnapshots.delete(tabId);
+    this.revisions.delete(tabId);
     if (this.stores.delete(tabId)) {
-      this.emit();
+      this.emit(tabId);
     }
   }
 
   removeTabs(tabIds: Iterable<string>): void {
     let changed = false;
     for (const tabId of tabIds) {
+      QueryResultDataService.remove(tabId);
+      this.displayedRows.delete(tabId);
+      this.rowSnapshots.delete(tabId);
+      this.revisions.delete(tabId);
       if (this.stores.delete(tabId)) {
         changed = true;
       }
@@ -267,11 +286,11 @@ class QueryResultDirtyServiceImpl {
     store.dirtyByRow.clear();
     store.deletedRows.clear();
     for (const rowIndex of store.newRows.keys()) {
-      delete store.originalRows[rowIndex];
+      store.newRowValues.delete(rowIndex);
     }
     store.newRows.clear();
     store.truncateBeforeImport = false;
-    this.emit();
+    this.emit(tabId);
   }
 
   /**
@@ -289,7 +308,7 @@ class QueryResultDirtyServiceImpl {
       store.deletedRows.add(rowIndex);
       store.dirtyByRow.delete(rowIndex);
     }
-    this.emit();
+    this.emit(tabId);
   }
 
   isRowDeleted(tabId: string, rowIndex: number): boolean {
@@ -317,7 +336,7 @@ class QueryResultDirtyServiceImpl {
     // callback), but guard here too in case a caller bypasses that.
     if (!store || store.deletedRows.has(rowIndex)) return;
 
-    const originalValue = store.originalRows[rowIndex]?.[column] ?? null;
+    const originalValue = (store.newRowValues.get(rowIndex) ?? QueryResultDataService.getRow(tabId, rowIndex))?.[column] ?? null;
     const normalizedCurrent = currentValue === undefined ? null : currentValue;
 
     let rowDirty = store.dirtyByRow.get(rowIndex);
@@ -335,7 +354,7 @@ class QueryResultDirtyServiceImpl {
       rowDirty.set(column, { originalValue, currentValue: normalizedCurrent });
     }
 
-    this.emit();
+    this.emit(tabId);
   }
 
   getDirtyCount(tabId: string): number {
@@ -376,15 +395,51 @@ class QueryResultDirtyServiceImpl {
   }
 
   getOriginalRows(tabId: string): Array<Record<string, string | null>> {
-    return this.stores.get(tabId)?.originalRows ?? [];
+    return QueryResultDataService.getRows(tabId);
   }
+
+  getDisplayRows(tabId: string): QueryResultRow[] {
+    const cached = this.displayedRows.get(tabId);
+    if (cached) return cached;
+    const store = this.stores.get(tabId);
+    const ordered = store?.truncateBeforeImport ? [] : QueryResultDataService.getRows(tabId).map((_, index) => index);
+    if (store) {
+      // Insertion order keeps newly inserted rows immediately after their recorded anchor.
+      for (const [index, anchor] of store.newRows) {
+        const position = anchor == null ? -1 : ordered.indexOf(anchor);
+        ordered.splice(position + 1, 0, index);
+      }
+    }
+    const previous = this.rowSnapshots.get(tabId);
+    const snapshots = new Map<number, QueryResultRow>();
+    const rows = ordered.map((index) => {
+      const next: QueryResultRow = { ...this.getEffectiveRow(tabId, index), [QUERY_RESULT_ROW_INDEX_KEY]: String(index) };
+      const old = previous?.get(index);
+      // Preserve untouched row identities so an edit does not redraw the entire loaded result.
+      const row = old && Object.keys(old).length === Object.keys(next).length &&
+        Object.keys(next).every((key) => old[key] === next[key]) ? old : next;
+      snapshots.set(index, row);
+      return row;
+    });
+    this.rowSnapshots.set(tabId, snapshots);
+    this.displayedRows.set(tabId, rows);
+    return rows;
+  }
+
+  hasTab(tabId: string): boolean {
+    return this.stores.has(tabId);
+  }
+
+  getRevision(tabId: string): number { return this.revisions.get(tabId) ?? 0; }
 
   onDidChange(listener: DirtyListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
-  private emit(): void {
+  private emit(tabId?: string): void {
+    if (tabId && this.stores.has(tabId)) this.revisions.set(tabId, (this.revisions.get(tabId) ?? 0) + 1);
+    if (tabId) this.displayedRows.delete(tabId);
     for (const listener of this.listeners) {
       listener();
     }

@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { Editor } from "@monaco-editor/react";
+import { useState } from "react";
 import type { Monaco } from "@monaco-editor/react";
 import type { IDisposable, editor } from "monaco-editor";
 import { getEditorFontFamily } from "@silk-studio/ui/platform/fontDefaults.ts";
@@ -7,6 +8,7 @@ import { EditorGroupsService } from "../../../services/editor/editorGroupsServic
 import type { EditorGroupId } from "../../../services/editor/editorGroupTypes";
 import { EditorStatusService } from "../../../services/editor/editorStatusService";
 import { useActiveEditor } from "../../../services/editor/useActiveEditor";
+import { useEditorTabs } from "../../../services/editor/useEditorTabs";
 import type { EditorTab } from "../../../services/editor/editorTypes";
 import {
   monacoModelPathForTab,
@@ -41,6 +43,8 @@ export type EditorAreaProps = {
   /** Execute Script (Ctrl+Shift+Enter) — whole buffer or selection with GO batches. */
   onRunScript?: () => void;
   renderAlternative?: (tab: EditorTab, groupId: EditorGroupId) => React.ReactNode | null;
+  /** Keeps selected alternative editor types mounted after first activation, scoped to this group. */
+  keepAlternativeMounted?: (tab: EditorTab) => boolean;
   configuration: EditorConfigurationOptions;
   /** Extra Monaco setup (language registration, providers) before the first editor mounts. */
   beforeMount?: (monaco: Monaco) => void;
@@ -52,11 +56,16 @@ function EditorArea({
   onRunQuery,
   onRunScript,
   renderAlternative,
+  keepAlternativeMounted,
   configuration,
   beforeMount,
 }: EditorAreaProps) {
   const group = EditorGroupsService.getGroupIfExists(groupId);
   const activeTab = useActiveEditor(groupId);
+  const tabs = useEditorTabs(groupId);
+  const [mountedAlternativeTabIds, setMountedAlternativeTabIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const cursorListenerRef = useRef<IDisposable | null>(null);
   const isFocusedGroupRef = useRef(isFocusedGroup);
@@ -110,6 +119,7 @@ function EditorArea({
           onRunScript,
         );
       }
+
     },
     [group, onRunQuery, onRunScript],
   );
@@ -196,18 +206,46 @@ function EditorArea({
     [activeTab, group],
   );
 
+  const activeAlternativeIsKept = Boolean(
+    activeTab && keepAlternativeMounted?.(activeTab),
+  );
+  useLayoutEffect(() => {
+    if (!activeTab || !activeAlternativeIsKept) return;
+    setMountedAlternativeTabIds((current) => {
+      if (current.has(activeTab.id)) return current;
+      const next = new Set(current);
+      next.add(activeTab.id);
+      return next;
+    });
+  }, [activeAlternativeIsKept, activeTab?.id]);
+
+  const keptAlternativeTabs = tabs.filter(
+    (tab) =>
+      keepAlternativeMounted?.(tab) &&
+      (mountedAlternativeTabIds.has(tab.id) || tab.id === activeTab?.id),
+  );
+
   if (!group || !activeTab) {
     return <main className="editor-area editor-area--empty" />;
   }
 
-  const alternative = renderAlternative?.(activeTab, groupId);
-  if (alternative) {
-    return <main className="editor-area">{alternative}</main>;
-  }
+  const alternative = activeAlternativeIsKept
+    ? null
+    : renderAlternative?.(activeTab, groupId);
 
   return (
     <main className="editor-area">
-      <Editor
+      {keptAlternativeTabs.map((tab) => (
+        <div
+          key={tab.id}
+          className={`editor-area__kept-alternative${tab.id === activeTab.id ? "" : " editor-area__kept-alternative--inactive"}`}
+          aria-hidden={tab.id !== activeTab.id}
+          hidden={tab.id !== activeTab.id}
+        >
+          {renderAlternative?.(tab, groupId)}
+        </div>
+      ))}
+      {alternative ? alternative : activeAlternativeIsKept ? null : <Editor
         height="100%"
         path={monacoModelPathForTab(activeTab)}
         language={activeTab.languageId}
@@ -238,7 +276,7 @@ function EditorArea({
           // Prefer workbench drops (explorer objects) over Monaco's default file drop.
           dropIntoEditor: { enabled: false },
         }}
-      />
+      />}
     </main>
   );
 }

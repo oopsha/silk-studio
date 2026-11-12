@@ -16,7 +16,6 @@ import { ConnectionService } from "../../services/connection/connectionService";
 import { ConnectionTreeService } from "../../services/connection/connectionTreeService";
 import {
   buildExplorerSearchPicksAcrossProfiles,
-  buildLiveSearchResultPick,
   type ExplorerLiveSearchActionPick,
   type ExplorerSearchPick,
 } from "../../services/connection/explorerSearchItems";
@@ -55,9 +54,7 @@ function ExplorerSearchQuickPick() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [busySchema, setBusySchema] = useState<string | null>(null);
   const [placed, setPlaced] = useState(false);
-  // Non-null once a live "search all connections" query has resolved — overrides the
-  // cache-based picks entirely (see the `picks` memo below) until the filter changes again.
-  const [liveResults, setLiveResults] = useState<ExplorerSearchPick[] | null>(null);
+  const [completedSearchTerm, setCompletedSearchTerm] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const focusedOptionRef = useRef<HTMLDivElement>(null);
@@ -86,30 +83,24 @@ function ExplorerSearchQuickPick() {
       searchGenerationRef.current += 1;
       const generation = searchGenerationRef.current;
       setStatusMessage(t("app.explorer.searchLiveSearching"));
-      setLiveResults(null);
+      setCompletedSearchTerm(null);
 
       const connectedProfiles = ConnectionService.getConnectedProfiles();
-      const showLabels = connectedProfiles.length > 1;
-      const results: ExplorerSearchPick[] = [];
+      const tokens = new Map(connectedProfiles.map((profile) => [
+        profile.id, ConnectionTreeService.getSearchToken(profile.id),
+      ]));
       await runWithConcurrency(
         connectedProfiles,
         LIVE_SEARCH_CONCURRENCY,
         async (profile) => {
+          const token = tokens.get(profile.id)!;
           try {
             const response = await bridgeFindObjectsByName(
               profile.id,
               searchTerm,
               { contains: true, includeSystemObjects: profile.showSystemObjects },
             );
-            for (const found of response.objects) {
-              results.push(
-                buildLiveSearchResultPick(
-                  profile.id,
-                  showLabels ? profile.name : undefined,
-                  found,
-                ),
-              );
-            }
+            ConnectionTreeService.cacheSearchObjects(profile.id, response.objects, token);
           } catch {
             // Best-effort across connections — one profile failing/timing out shouldn't blank
             // the search results from every other connected profile.
@@ -117,16 +108,10 @@ function ExplorerSearchQuickPick() {
         },
       );
 
-      // Stale-response guard: a newer search (re-click, or the filter changed) has started
-      // since this one began — discard this response silently rather than clobbering it.
+      // Cache entries are reusable; only the old search's UI status/focus must be ignored.
       if (searchGenerationRef.current !== generation) return;
 
-      results.sort((a, b) => {
-        const byLabel = a.label.localeCompare(b.label);
-        if (byLabel !== 0) return byLabel;
-        return a.description.localeCompare(b.description);
-      });
-      setLiveResults(results);
+      setCompletedSearchTerm(searchTerm);
       setStatusMessage(null);
       inputRef.current?.focus();
     },
@@ -136,6 +121,7 @@ function ExplorerSearchQuickPick() {
   useEffect(() => {
     return ExplorerSearchQuickPickService.onDidChange(() => {
       const next = ExplorerSearchQuickPickService.isOpen();
+      searchGenerationRef.current += 1;
       setOpen(next);
       setPlaced(false);
       if (next) {
@@ -144,7 +130,7 @@ function ExplorerSearchQuickPick() {
         setFilter(initialFilter);
         setFocusedIndex(0);
         setStatusMessage(null);
-        setLiveResults(null);
+        setCompletedSearchTerm(null);
         autoRunFilterRef.current =
           pending?.autoRunLiveSearch && initialFilter.trim()
             ? initialFilter.trim()
@@ -153,13 +139,12 @@ function ExplorerSearchQuickPick() {
     });
   }, []);
 
-  // Typing further after a live search resolved (or while one is in flight) invalidates it — the
-  // results/in-flight query no longer match what's in the box. Bumping the generation here (not
-  // just in the live-search handler itself) makes an in-flight response for the old filter get
-  // silently discarded when it eventually resolves.
+  // Typing filters the combined cache. Only the old search's status/focus effects become stale;
+  // fetched objects remain reusable even when the user changes the input while fetching.
   useEffect(() => {
     searchGenerationRef.current += 1;
-    setLiveResults(null);
+    setCompletedSearchTerm(null);
+    setStatusMessage(null);
 
     // Auto-run request from opening via `show({ autoRunLiveSearch: true })` — fires *after* the
     // generation bump above, once `filter` state actually reflects the pre-filled term, so the
@@ -186,6 +171,7 @@ function ExplorerSearchQuickPick() {
           schemas: [],
         },
         label: ConnectionService.getProfile(profileId)?.name?.trim() || profileId,
+        searchObjects: ConnectionTreeService.getSearchObjects(profileId),
       })),
     [connectedProfileIds, trees],
   );
@@ -207,13 +193,10 @@ function ExplorerSearchQuickPick() {
     : null;
 
   const picks = useMemo(() => {
-    // Once a live search has resolved, it fully replaces the cache-based list (and the action
-    // pick itself) until the filter changes again — see the `filter`-keyed effect above.
-    if (liveResults) return liveResults;
     if (profiles.length === 0 || !open) return [] as ExplorerSearchPick[];
     const cachePicks = buildExplorerSearchPicksAcrossProfiles(profiles, filter);
     return liveSearchActionPick ? [...cachePicks, liveSearchActionPick] : cachePicks;
-  }, [profiles, filter, open, liveResults, liveSearchActionPick]);
+  }, [profiles, filter, open, liveSearchActionPick]);
 
   useLayoutEffect(() => {
     focusedOptionRef.current?.scrollIntoView({ block: "nearest" });
@@ -435,7 +418,7 @@ function ExplorerSearchQuickPick() {
   const anySchemasKnown = profiles.some(
     ({ cache }) => cache.catalogs.length > 0 || cache.schemas.length > 0,
   );
-  const emptyHint = liveResults
+  const emptyHint = completedSearchTerm === filter.trim()
     ? t("app.explorer.searchLiveNoMatches")
     : !connected
       ? t("app.explorer.searchNeedConnect")

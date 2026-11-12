@@ -23,7 +23,7 @@ import { PlsqlCompileStateService } from "./plsqlCompileStateService";
 import { isEditablePlsqlKind, supportsPlsqlSourceEdit } from "./plsqlEditorService";
 import { registerPendingDdlSave } from "./pendingDdlSaveService";
 import { buildPlsqlSaveSql } from "./plsqlSaveSql";
-import { recordPlsqlSnapshot } from "./plsqlSnapshotService";
+import { recordPlsqlSnapshotBestEffort } from "./plsqlSnapshotService";
 import { driverAutoCommitsDdl, supportsCompileDiagnostics } from "../sql/sqlDialect";
 
 export function getPlsqlCompileBlockedReason(tabId?: string): string | null {
@@ -193,7 +193,7 @@ export async function compileActivePlsqlObject(tabId?: string): Promise<void> {
     registerPendingDdlSave(ref.profileId, {
       onCommit: () => {
         const stillOpen = EditorService.getTab(tab.id);
-        recordPlsqlSnapshot(ref, savedContent, "compile");
+        recordPlsqlSnapshotBestEffort(ref, savedContent, "compile");
         if (stillOpen) {
           EditorService.markTabSaved(tab.id, savedUri, savedLabel);
         }
@@ -204,7 +204,7 @@ export async function compileActivePlsqlObject(tabId?: string): Promise<void> {
     });
     AppNotificationService.show(tKey("app.plsql.savePendingCommit"), "info");
   } else {
-    recordPlsqlSnapshot(ref, savedContent, "compile");
+    await recordPlsqlSnapshotBestEffort(ref, savedContent, "compile");
     EditorService.markTabSaved(tab.id, savedUri, savedLabel);
     AppNotificationService.show(tKey("app.plsql.saveSucceeded"), "success");
   }

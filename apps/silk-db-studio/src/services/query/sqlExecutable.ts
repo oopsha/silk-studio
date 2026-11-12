@@ -242,6 +242,88 @@ const PLSQL_END_TAG = /^(?:if|loop|case)$/i;
  */
 const PLSQL_CREATE_BODY_KIND = /^(?:procedure|function|trigger)$/i;
 
+const MYBATIS_STATEMENT_OPEN = /^<(select|insert|update|delete)\b/i;
+
+/** Find the end of a top-level MyBatis mapped statement, ignoring SQL/XML literals and comments. */
+function findMyBatisStatementEnd(content: string, start: number): number | null {
+  const opening = MYBATIS_STATEMENT_OPEN.exec(content.slice(start));
+  if (!opening) return null;
+  const tagName = opening[1];
+  let index = findXmlTagEnd(content, start);
+  if (index < 0) return null;
+
+  let quote = "";
+  while (index < content.length) {
+    if (content.startsWith("<![CDATA[", index)) {
+      const cdataEnd = content.indexOf("]]>", index + 9);
+      if (cdataEnd < 0) return null;
+      index = cdataEnd + 3;
+      continue;
+    }
+    if (content.startsWith("<!--", index)) {
+      const commentEnd = content.indexOf("-->", index + 4);
+      if (commentEnd < 0) return null;
+      index = commentEnd + 3;
+      continue;
+    }
+    if (quote) {
+      if (content[index] === quote) {
+        if (content[index + 1] === quote) {
+          index += 2;
+          continue;
+        }
+        quote = "";
+      }
+      index += 1;
+      continue;
+    }
+    if (content.startsWith("--", index)) {
+      const lineEnd = content.indexOf("\n", index + 2);
+      index = lineEnd < 0 ? content.length : lineEnd + 1;
+      continue;
+    }
+    if (content.startsWith("/*", index)) {
+      const commentEnd = content.indexOf("*/", index + 2);
+      if (commentEnd < 0) return null;
+      index = commentEnd + 2;
+      continue;
+    }
+    const ch = content[index];
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      index += 1;
+      continue;
+    }
+    if (ch === "<" && content[index + 1] === "/") {
+      const closing = new RegExp(`^<\\/${tagName}\\s*>`, "i").exec(content.slice(index));
+      if (closing) return index + closing[0].length;
+    }
+    if (ch === "<" && /[A-Za-z!?/]/.test(content[index + 1] ?? "")) {
+      const tagEnd = findXmlTagEnd(content, index);
+      if (tagEnd < 0) return null;
+      index = tagEnd;
+      continue;
+    }
+    index += 1;
+  }
+  return null;
+}
+
+/** Returns the offset after an XML tag's `>`, respecting quotes in attributes. */
+function findXmlTagEnd(content: string, start: number): number {
+  let quote = "";
+  for (let index = start + 1; index < content.length; index += 1) {
+    const ch = content[index];
+    if (quote) {
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === "'" || ch === '"') quote = ch;
+    else if (ch === ">") return index + 1;
+  }
+  return -1;
+}
+
 /**
  * Splits SQL into statement ranges by `;`, skipping delimiters inside quotes or comments.
  * Ranges exclude the trailing semicolon. Leading whitespace after a `;` is still stored on
@@ -330,6 +412,22 @@ export function splitSqlStatements(content: string): StatementRange[] {
       }
       i += 1;
       continue;
+    }
+
+    // A MyBatis mapped statement is one executable unit even when its SQL body contains
+    // semicolons. Only the outer statement's matching close tag ends it; nested tags such
+    // as <if>, <where>, and </trim> remain part of the same range.
+    if (ch === "<" && MYBATIS_STATEMENT_OPEN.test(content.slice(i))) {
+      const statementEnd = findMyBatisStatementEnd(content, i);
+      if (statementEnd !== null) {
+        if (content.slice(statementStart, i).trim()) {
+          ranges.push({ start: statementStart, end: i });
+        }
+        ranges.push({ start: i, end: statementEnd });
+        resetStatementState(statementEnd);
+        i = statementEnd;
+        continue;
+      }
     }
 
     if (ch === "-" && next === "-") {

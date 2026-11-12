@@ -29,7 +29,7 @@ import { registerSqlLanguages } from "../../services/sql/registerSqlLanguages";
 import { ConfirmDialogService } from "../../services/ui/confirmDialogService";
 import { PackagePlsqlSaveDialogService } from "../../services/connection/packagePlsqlSaveDialogService";
 import { PackagePlsqlHistoryDialogService } from "../../services/connection/packagePlsqlHistoryDialogService";
-import { recordPackagePlsqlSnapshot } from "../../services/connection/plsqlSnapshotService";
+import { recordPackagePlsqlSnapshot, recordPackagePlsqlSnapshotBestEffort } from "../../services/connection/plsqlSnapshotService";
 import {
   getPackageDdlBuffer,
   setPackageDdlBuffer,
@@ -74,7 +74,14 @@ const activeSectionIdByTabId = new Map<string, SectionId>();
 
 function toSourceBuffer(stored: { loaded: string | null; current: string } | undefined): SourceBuffer {
   if (!stored) return EMPTY_BUFFER;
-  return { loaded: stored.loaded, current: stored.current, loading: false, error: null };
+  return {
+    loaded: stored.loaded,
+    current: stored.current,
+    // A Hot Exit/remount can restore an in-flight or failed load with no baseline. Do not
+    // enable save/compare with its empty placeholder while the database source is re-fetched.
+    loading: stored.loaded === null,
+    error: null,
+  };
 }
 
 /**
@@ -195,7 +202,13 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
   // Matches ViewDdlEditor (procedure/function editor): Save doubles as "recompile", so it's
   // enabled whenever a source is loaded, not only when there are local edits — e.g. recompiling
   // after some other object invalidated this package, with nothing changed here locally.
-  const canSave = !readOnly && !saving && !specBuffer.loading && !bodyBuffer.loading;
+  const canSave =
+    !readOnly &&
+    !saving &&
+    !specBuffer.loading &&
+    !bodyBuffer.loading &&
+    specBuffer.loaded !== null &&
+    bodyBuffer.loaded !== null;
 
   const sectionRef = (packageBody: boolean): PlsqlEditorRef => ({
     profileId: objectRef.profileId,
@@ -289,6 +302,9 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
 
   const performSave = async () => {
     if (!driverId) return;
+    if (specBuffer.loaded === null || bodyBuffer.loaded === null || specBuffer.loading || bodyBuffer.loading) {
+      throw new Error(t("app.ddl.loadFailed"));
+    }
     setSaving(true);
     setCompileErrors([]);
     setCompileMessage(null);
@@ -355,7 +371,7 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
         }`,
       );
 
-      recordPackagePlsqlSnapshot(sectionRef(false), specBuffer.current, bodyBuffer.current, "save");
+      await recordPackagePlsqlSnapshotBestEffort(sectionRef(false), specBuffer.current, bodyBuffer.current, "save");
       setSpecBuffer((prev) => ({ ...prev, loaded: prev.current }));
       setBodyBuffer((prev) => ({ ...prev, loaded: prev.current }));
 
@@ -379,6 +395,7 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
   };
 
   const handleSaveClick = () => {
+    if (!canSave) return;
     // Matches PlsqlSaveDialogService (procedure/function editor): always show the diff dialog for
     // both halves, regardless of local dirty state — Compare & Save doubles as "recompile", and
     // the diff panel just legitimately shows "no changes" when that's true. The "before" side is
@@ -466,17 +483,21 @@ function PackageDdlEditorView({ objectRef, tabId }: PackageDdlEditorViewProps) {
     });
   };
 
-  const handleSnapshot = () => {
-    const entry = recordPackagePlsqlSnapshot(
-      sectionRef(false),
-      specBuffer.current,
-      bodyBuffer.current,
-      "manual",
-    );
-    AppNotificationService.show(
-      entry ? t("app.plsql.snapshotSaved") : t("app.plsql.snapshotEmpty"),
-      entry ? "info" : "error",
-    );
+  const handleSnapshot = async () => {
+    try {
+      const entry = await recordPackagePlsqlSnapshot(
+        sectionRef(false),
+        specBuffer.current,
+        bodyBuffer.current,
+        "manual",
+      );
+      AppNotificationService.show(
+        entry ? t("app.plsql.snapshotSaved") : t("app.plsql.snapshotEmpty"),
+        entry ? "info" : "error",
+      );
+    } catch (error) {
+      AppNotificationService.show(formatErrorMessage(error, t("app.plsql.snapshotApplyFailed")), "error");
+    }
   };
 
   // Reloads Spec + Body together, same "always both" rule as Save/Snapshot/History — a mismatched

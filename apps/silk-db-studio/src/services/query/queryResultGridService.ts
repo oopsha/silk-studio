@@ -2,7 +2,8 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { isTauri } from "@tauri-apps/api/core";
 import type { GridApi } from "ag-grid-community";
-import { ConnectionService } from "../connection/connectionService";
+import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
+import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import {
   clearColumnLayout,
   hasSavedColumnLayout,
@@ -49,10 +50,9 @@ type SnapshotListener = () => void;
 const APPLYING_LAYOUT_CLEAR_MS = 120;
 
 /**
- * Holds the mounted query-result grid API so menu/keybinding commands can
- * copy/export without React context.
+ * Owns exactly one rendered grid, including its selection, layout and statistics.
  */
-class QueryResultGridServiceImpl {
+export class QueryResultGridController {
   private active: ActiveGrid | null = null;
   private snapshot: QueryResultGridSnapshot = {
     totalRows: 0,
@@ -74,8 +74,15 @@ class QueryResultGridServiceImpl {
     nullDisplay: string,
     openValueEditor: () => void,
     fetchAllRowsForExport?: (columns: string[], onProgress?: (rowCount: number | null) => void) => Promise<Array<Array<string | null>>>,
+    profileId: string | null = null,
   ): void {
-    const profileId = resolveLayoutProfileId();
+    const previous = this.active;
+    if (previous?.api === api && previous.profileId === profileId &&
+      previous.columns.length === columns.length && previous.columns.every((column, i) => column === columns[i])) {
+      Object.assign(previous, { columns, nullDisplay, openValueEditor, fetchAllRowsForExport });
+      this.refreshSnapshot();
+      return;
+    }
     this.active = { api, columns, nullDisplay, profileId, cellSelection: null, openValueEditor, fetchAllRowsForExport };
     this.layoutDirty = false;
     this.restoreColumnLayout();
@@ -101,7 +108,7 @@ class QueryResultGridServiceImpl {
   }
 
   isAttached(): boolean {
-    return this.active !== null;
+    return this.active !== null && !this.active.api.isDestroyed();
   }
 
   openValueEditor(): void {
@@ -215,6 +222,7 @@ class QueryResultGridServiceImpl {
   autoSizeToContent(): void {
     const grid = this.active;
     if (!grid || grid.columns.length === 0) return;
+    if (this.layoutDirty) return;
     if (hasSavedColumnLayout(grid.profileId, grid.columns)) return;
 
     this.autoSizeAllColumns();
@@ -477,14 +485,6 @@ class QueryResultGridServiceImpl {
   }
 }
 
-function resolveLayoutProfileId(): string | null {
-  return (
-    ConnectionService.getConnectedProfile()?.id ??
-    ConnectionService.getActiveProfile()?.id ??
-    null
-  );
-}
-
 function toPersistedLayoutState(
   state: Array<{
     colId: string;
@@ -535,4 +535,62 @@ function downloadTextFile(
   URL.revokeObjectURL(url);
 }
 
-export const QueryResultGridService = new QueryResultGridServiceImpl();
+type GridCommandTarget = {
+  groupId: EditorGroupId;
+  ownerId: string;
+  eligible: boolean;
+};
+
+/** Routes workbench commands; mounting or updating a controller never activates it. */
+export class QueryResultGridCommandRouter {
+  private readonly targets = new Map<QueryResultGridController, GridCommandTarget>();
+  private readonly listeners = new Set<SnapshotListener>();
+
+  constructor() {
+    EditorGroupsService.onDidChangeAnyGroup(() => this.fire());
+  }
+
+  register(controller: QueryResultGridController, target: GridCommandTarget): () => void {
+    this.targets.set(controller, target);
+    const unsubscribe = controller.onDidChangeSnapshot(() => {
+      if (this.matchesActiveEditor(target)) this.fire();
+    });
+    this.fire();
+    return () => {
+      unsubscribe();
+      if (this.targets.get(controller) === target) this.targets.delete(controller);
+      this.fire();
+    };
+  }
+
+  private target(): QueryResultGridController | undefined {
+    for (const [controller, target] of this.targets) {
+      if (this.matchesActiveEditor(target) && controller.isAttached()) return controller;
+    }
+    return undefined;
+  }
+
+  private matchesActiveEditor(target: GridCommandTarget): boolean {
+    const groupId = EditorGroupsService.getFocusedGroupId();
+    return target.eligible && target.groupId === groupId &&
+      target.ownerId === EditorGroupsService.getGroupIfExists(groupId)?.getActiveTabId();
+  }
+
+  isAttached(): boolean { return this.target() !== undefined; }
+  onDidChangeSnapshot(listener: SnapshotListener): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
+  openValueEditor(): void { this.target()?.openValueEditor(); }
+  async copy(mode: QueryResultCopyMode): Promise<boolean> { return this.target()?.copy(mode) ?? false; }
+  async exportCsv(onProgress?: (rowCount: number | null) => void): Promise<boolean> {
+    return this.target()?.exportCsv(onProgress) ?? false;
+  }
+  clearFiltersAndSort(): void { this.target()?.clearFiltersAndSort(); }
+  saveColumnLayoutNow(): boolean { return this.target()?.saveColumnLayoutNow() ?? false; }
+  resetColumnLayout(): boolean { return this.target()?.resetColumnLayout() ?? false; }
+
+  private fire(): void { this.listeners.forEach((listener) => listener()); }
+}
+
+export const QueryResultGridService = new QueryResultGridCommandRouter();

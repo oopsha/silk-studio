@@ -2,13 +2,44 @@ import { EditorService } from "./editorServiceFacade";
 import { readTextFileAtPath } from "./editorFileIO";
 import { isOpenableTextPath } from "./languageFromPath";
 
-const MAX_DROP_FILES = 20;
+const MAX_OPEN_FILES = 20;
 
 export type OpenDroppedFilesResult = {
   opened: number;
   skipped: number;
   errors: string[];
 };
+
+export type OpenableTextFile = { path: string; content: string };
+
+/** Open already-read text files, applying the same extension and count limits as OS drops. */
+export function openTextFileContents(
+  files: OpenableTextFile[],
+  initiallySkipped = 0,
+): OpenDroppedFilesResult {
+  const errors: string[] = [];
+  let opened = 0;
+  const candidates = files.filter((file) => isOpenableTextPath(file.path));
+  const skipped = files.length - candidates.length;
+  const limited = candidates.slice(0, MAX_OPEN_FILES);
+
+  for (const file of limited) {
+    try {
+      EditorService.openFile(file.path, file.content, false);
+      opened += 1;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error ?? "Unknown error");
+      errors.push(`${file.path}: ${message}`);
+    }
+  }
+
+  return {
+    opened,
+    skipped: initiallySkipped + skipped + Math.max(0, candidates.length - limited.length),
+    errors,
+  };
+}
 
 /**
  * Open OS-dropped (or otherwise path-based) text files as editor tabs.
@@ -33,7 +64,7 @@ export async function openDroppedFilePaths(
     return true;
   });
 
-  const limited = candidates.slice(0, MAX_DROP_FILES);
+  const limited = candidates.slice(0, MAX_OPEN_FILES);
   skipped += Math.max(0, candidates.length - limited.length);
 
   for (const path of limited) {

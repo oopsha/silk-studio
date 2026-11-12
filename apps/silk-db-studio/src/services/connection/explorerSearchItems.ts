@@ -43,7 +43,7 @@ export type ExplorerLoadCatalogSearchPick = {
 /**
  * The opt-in "search all connections" action — appended to the end of the cache-based picks
  * (never automatically, only on an explicit click) so Ctrl+Shift+O can also find objects that
- * were never loaded into any profile's client-side tree cache. Backed by a live, uncached
+ * were never loaded into any profile's client-side tree cache. Backed by a live
  * substring (`LIKE '%term%'`) query against every already-connected profile's database — see
  * {@link ExplorerSearchQuickPick}'s live-search handler.
  */
@@ -327,7 +327,7 @@ export function buildLiveSearchResultPick(
     : location;
   return {
     type: "object",
-    id: `liveObject:${profileId}:${catalogName ?? ""}:${found.schemaName}:${found.kind}:${found.name}`,
+    id: `object:${profileId}:${catalogName ?? ""}:${found.schemaName}:${found.kind}:${found.name}`,
     label: found.name,
     description: withProfilePrefix(withComment, profileLabel),
     icon: iconForKind(found.kind),
@@ -345,7 +345,12 @@ export function buildLiveSearchResultPick(
  * profile is connected, so results stay disambiguated.
  */
 export function buildExplorerSearchPicksAcrossProfiles(
-  profiles: readonly { profileId: string; cache: ProfileTreeCache; label: string }[],
+  profiles: readonly {
+    profileId: string;
+    cache: ProfileTreeCache;
+    label: string;
+    searchObjects?: readonly FoundMetadataObject[];
+  }[],
   filter: string,
 ): ExplorerCacheSearchPick[] {
   const showLabels = profiles.length > 1;
@@ -353,7 +358,7 @@ export function buildExplorerSearchPicksAcrossProfiles(
   const loadSchemas: ExplorerLoadSchemaSearchPick[] = [];
   const loadCatalogs: ExplorerLoadCatalogSearchPick[] = [];
 
-  for (const { profileId, cache, label } of profiles) {
+  for (const { profileId, cache, label, searchObjects = [] } of profiles) {
     const picks = buildExplorerSearchPicks(
       profileId,
       cache,
@@ -364,6 +369,19 @@ export function buildExplorerSearchPicksAcrossProfiles(
       if (pick.type === "object") objects.push(pick);
       else if (pick.type === "loadSchema") loadSchemas.push(pick);
       else loadCatalogs.push(pick);
+    }
+    const objectIndexes = new Map(objects.map((object, index) => [object.id, index]));
+    for (const found of searchObjects) {
+      if (!SEARCHABLE_KINDS.has(found.kind)) continue;
+      if (!matchesObject(filter.trim(), found.catalogName, found.schemaName, found.name) &&
+          !matchesTreeFilter(found.commentSnippet ?? "", filter)) continue;
+      const pick = buildLiveSearchResultPick(profileId, showLabels ? label : undefined, found);
+      const existing = objectIndexes.get(pick.id);
+      if (existing === undefined) {
+        objectIndexes.set(pick.id, objects.length);
+        objects.push(pick);
+      }
+      else if (found.commentSnippet) objects[existing] = { ...pick, object: objects[existing].object };
     }
   }
 

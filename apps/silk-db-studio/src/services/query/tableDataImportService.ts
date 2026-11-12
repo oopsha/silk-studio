@@ -3,6 +3,16 @@ const pendingFiles = new Map<string, File>();
 const listeners = new Set<() => void>();
 
 export const TableDataImportService = {
+  retainOwners(liveOwnerIds: ReadonlySet<string>): void {
+    let changed = false;
+    for (const ownerId of pendingFiles.keys()) {
+      if (!liveOwnerIds.has(ownerId)) {
+        pendingFiles.delete(ownerId);
+        changed = true;
+      }
+    }
+    if (changed) listeners.forEach((listener) => listener());
+  },
   subscribe(listener: () => void): () => void {
     listeners.add(listener);
     return () => { listeners.delete(listener); };

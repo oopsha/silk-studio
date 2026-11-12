@@ -2,28 +2,57 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 
 // Lightweight unit tests for binding helpers without Tauri.
 
+const editorState = vi.hoisted(() => ({
+  groups: [] as Array<{
+    id: string;
+    tabs: Array<{ id: string; languageId: string }>;
+  }>,
+  listeners: new Set<() => void>(),
+}));
+
 vi.mock("@silk-studio/editor/services/editor/editorServiceFacade.ts", () => {
-  const tabs: Array<{ id: string; languageId: string }> = [];
-  const listeners = new Set<() => void>();
+  const focusedTabs = () => editorState.groups[0]?.tabs ?? [];
+  const notify = () => {
+    for (const listener of editorState.listeners) listener();
+  };
   return {
     EditorService: {
-      getTabs: () => tabs,
-      getActiveTab: () => tabs[0] ?? null,
+      getTabs: focusedTabs,
+      getActiveTab: () => focusedTabs()[0] ?? null,
       onDidChange: (listener: () => void) => {
-        listeners.add(listener);
-        return () => listeners.delete(listener);
+        editorState.listeners.add(listener);
+        return () => editorState.listeners.delete(listener);
       },
       __reset() {
-        tabs.length = 0;
-        listeners.clear();
+        editorState.groups.splice(0, editorState.groups.length, {
+          id: "group-1",
+          tabs: [],
+        });
+        editorState.listeners.clear();
       },
       __addTab(tab: { id: string; languageId: string }) {
-        tabs.push(tab);
-        for (const listener of listeners) listener();
+        focusedTabs().push(tab);
+        notify();
+      },
+      __addGroup(id: string) {
+        editorState.groups.push({ id, tabs: [] });
+      },
+      __addTabToGroup(id: string, tab: { id: string; languageId: string }) {
+        editorState.groups.find((group) => group.id === id)?.tabs.push(tab);
+        notify();
       },
     },
   };
 });
+
+vi.mock("@silk-studio/editor/services/editor/editorGroupsService.ts", () => ({
+  EditorGroupsService: {
+    getGroupIds: () => editorState.groups.map((group) => group.id),
+    getGroup: (id: string) => ({
+      getTabs: () => editorState.groups.find((group) => group.id === id)?.tabs ?? [],
+    }),
+  },
+}));
 
 vi.mock("./connectionService", () => ({
   ConnectionService: {
@@ -83,6 +112,29 @@ describe("EditorConnectionBindingService", () => {
     const binding = EditorConnectionBindingService.getBinding("tab-1");
     expect(binding.profileId).toBe("p1");
     expect(binding.schema).toBe("HR");
+  });
+
+  it("keeps bindings for tabs in other editor groups", async () => {
+    const { EditorConnectionBindingService } = await import(
+      "./editorConnectionBindingService"
+    );
+    const editor = await import(
+      "@silk-studio/editor/services/editor/editorServiceFacade.ts"
+    );
+    const service = editor.EditorService as unknown as {
+      __addGroup: (id: string) => void;
+      __addTabToGroup: (id: string, tab: { id: string; languageId: string }) => void;
+    };
+
+    EditorConnectionBindingService.start();
+    service.__addGroup("group-2");
+    service.__addTabToGroup("group-2", { id: "tab-2", languageId: "sql" });
+
+    expect(EditorConnectionBindingService.getBinding("tab-2")).toEqual({
+      profileId: "p1",
+      catalog: null,
+      schema: "HR",
+    });
   });
 
   it("setBinding updates only that tab", async () => {

@@ -1496,7 +1496,7 @@ public final class Main {
       List<String> filterBinds = new ArrayList<>();
       String whereFragment =
           FilterSqlBuilder.buildWhereFragment(
-              params.path("filters"), knownColumns, session.dialect::quoteIdentifier, filterBinds);
+              params.path("filters"), knownColumns, session.dialect, filterBinds);
       String orderByFragment =
           FilterSqlBuilder.buildOrderByFragment(
               params.path("sort"), knownColumns, session.dialect::quoteIdentifier);

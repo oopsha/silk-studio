@@ -11,7 +11,7 @@ vi.mock("./metadataGroups", () => ({
   getMetadataGroupDefinition: (id: string) => ({ id, title: id, icon: `icon-${id}` }),
 }));
 
-const { buildLiveSearchResultPick } = await import("./explorerSearchItems");
+const { buildLiveSearchResultPick, buildExplorerSearchPicksAcrossProfiles } = await import("./explorerSearchItems");
 
 describe("buildLiveSearchResultPick", () => {
   it("maps a schema-scoped result (no catalog) into an object pick", () => {
@@ -95,5 +95,52 @@ describe("buildLiveSearchResultPick", () => {
       kind: "view",
     });
     expect(a.id).not.toBe(b.id);
+  });
+});
+
+describe("combined object search", () => {
+  const found: FoundMetadataObject = {
+    catalogName: "SWM", schemaName: "dbo", kind: "procedure", name: "PS_CM_MSG_SEND",
+  };
+  const cache = {
+    status: "loaded" as const, errorMessage: null, catalogs: [], currentCatalog: null,
+    schemas: [],
+  };
+
+  it("finds previously fetched objects as input narrows, changes or clears", () => {
+    const profiles = [{ profileId: "p", label: "Database", cache, searchObjects: [found] }];
+    for (const filter of ["ps_cm_", "msg", "ps*msg", ""]) {
+      expect(buildExplorerSearchPicksAcrossProfiles(profiles, filter).map((pick) => pick.label))
+        .toContain(found.name);
+    }
+    expect(buildExplorerSearchPicksAcrossProfiles(profiles, "not_found")).toEqual([]);
+  });
+
+  it("deduplicates tree and fetched hits without conflating different connections", () => {
+    const tree = {
+      ...cache,
+      catalogs: [{ name: "SWM", status: "loaded" as const, errorMessage: null, schemas: [{
+        name: "dbo", status: "loaded" as const, errorMessage: null,
+        groups: [{ id: "procedures" as const, title: "Procedures", objects: [{
+          name: found.name, kind: "procedure" as const,
+        }] }],
+      }] }],
+    };
+    const picks = buildExplorerSearchPicksAcrossProfiles([
+      { profileId: "p1", label: "First", cache: tree, searchObjects: [found] },
+      { profileId: "p2", label: "Second", cache, searchObjects: [found] },
+    ], "msg");
+    expect(picks).toHaveLength(2);
+    expect(new Set(picks.map((pick) => pick.id)).size).toBe(2);
+  });
+
+  it("keeps comment matches and excludes non-navigable object kinds", () => {
+    const picks = buildExplorerSearchPicksAcrossProfiles([{
+      profileId: "p", label: "Database", cache,
+      searchObjects: [{ ...found, commentSnippet: "Send notifications" }, {
+        ...found, kind: "index", name: "notifications_index",
+      }],
+    }], "notifications");
+    expect(picks.map((pick) => pick.label)).toEqual([found.name]);
   });
 });

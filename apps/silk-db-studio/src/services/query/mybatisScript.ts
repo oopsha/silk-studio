@@ -1,6 +1,71 @@
 import { parameterValueKey, type SqlParameterField, type SqlParameterValue, type SqlParameterOccurrence } from "./sqlParameters";
 
-const tagPattern = /<!\[CDATA\[[\s\S]*?\]\]>|<\/?(?:script|if|choose|when|otherwise|where|trim|set|bind|foreach|include)\b(?:"[^"]*"|'[^']*'|[^'">])*\/?>/gi;
+const tagPattern = /<!\[CDATA\[[\s\S]*?\]\]>|<!--[\s\S]*?-->|<\/?(?:script|select|insert|update|delete|if|choose|when|otherwise|where|trim|set|bind|foreach|include)\b(?:"[^"]*"|'[^']*'|[^'">])*\/?>/gi;
+
+/** Keep MyBatis from turning placeholder-looking text inside SQL comments into JDBC binds. */
+function protectCommentPlaceholdersInText(text: string): string {
+  let result = "";
+  let cursor = 0;
+  let index = 0;
+  while (index < text.length) {
+    const ch = text[index];
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      index += 1;
+      while (index < text.length) {
+        if (text[index] === quote) {
+          if (text[index + 1] === quote) {
+            index += 2;
+            continue;
+          }
+          index += 1;
+          break;
+        }
+        index += 1;
+      }
+      continue;
+    }
+
+    let commentEnd = -1;
+    if (text.startsWith("--", index)) {
+      commentEnd = text.indexOf("\n", index + 2);
+      if (commentEnd < 0) commentEnd = text.length;
+    } else if (text.startsWith("/*", index)) {
+      const closing = text.indexOf("*/", index + 2);
+      commentEnd = closing < 0 ? text.length : closing + 2;
+    }
+    if (commentEnd < 0) {
+      index += 1;
+      continue;
+    }
+
+    const comment = text.slice(index, commentEnd);
+    const protectedComment = comment.replace(/([#$])\{/g, "$1 {");
+    result += text.slice(cursor, index) + protectedComment;
+    cursor = commentEnd;
+    index = commentEnd;
+  }
+  return result + text.slice(cursor);
+}
+
+/** Apply SQL comment protection between XML tags, including SQL inside CDATA sections. */
+function protectCommentPlaceholders(sql: string): string {
+  let result = "";
+  let cursor = 0;
+  for (const match of sql.matchAll(tagPattern)) {
+    const start = match.index!;
+    result += protectCommentPlaceholdersInText(sql.slice(cursor, start));
+    const token = match[0];
+    if (token.startsWith("<![CDATA[")) {
+      const body = token.slice(9, -3);
+      result += `<![CDATA[${protectCommentPlaceholdersInText(body)}]]>`;
+    } else {
+      result += token;
+    }
+    cursor = start + token.length;
+  }
+  return result + protectCommentPlaceholdersInText(sql.slice(cursor));
+}
 
 export function isMybatisScript(sql: string): boolean {
   return /<\/?(?:script|if|choose|when|otherwise|where|trim|set|bind|foreach|include)\b|[#\$]\{/i.test(sql);
@@ -29,6 +94,7 @@ export function mergeMybatisParameters(sql: string, occurrences: SqlParameterOcc
 export function wrapMybatisScript(sql: string): string {
   // A copied mapper statement is a container, not part of the SQL sent to JDBC.
   sql = sql.replace(/^\s*<(select|insert|update|delete)\b(?:"[^"]*"|'[^']*'|[^'">])*\s*>([\s\S]*)<\/\1>\s*$/i, "$2");
+  sql = protectCommentPlaceholders(sql);
   let result = "";
   let cursor = 0;
   const escape = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -45,14 +111,15 @@ export function collectMybatisFields(sql: string): SqlParameterField[] {
     throw new Error("MyBatis foreach(배열 입력), include(외부 SQL 참조)는 아직 지원하지 않습니다.");
   }
   const fields = new Map<string, SqlParameterField>();
+  const parameterSql = protectCommentPlaceholders(sql);
   const localNames = new Set<string>(["_parameter", "_databaseId"]);
-  for (const match of sql.matchAll(/<bind\b[^>]*\bname\s*=\s*["']([^"']+)["']/gi)) localNames.add(match[1]);
+  for (const match of parameterSql.matchAll(/<bind\b[^>]*\bname\s*=\s*["']([^"']+)["']/gi)) localNames.add(match[1]);
   const add = (key: string) => {
     if (!localNames.has(key.split(".")[0]) && !fields.has(key)) fields.set(key, { kind: "named", key, label: key });
   };
-  for (const match of sql.matchAll(/[#\$]\{\s*([\w.]+)(?:\s*,[^}]*)?\s*\}/g)) add(match[1]);
+  for (const match of parameterSql.matchAll(/[#\$]\{\s*([\w.]+)(?:\s*,[^}]*)?\s*\}/g)) add(match[1]);
   const reserved = new Set(["null", "true", "false", "and", "or", "not", "eq", "neq", "ne", "gt", "gte", "ge", "lt", "lte", "le", "in", "instanceof", "new"]);
-  for (const tag of sql.matchAll(tagPattern)) {
+  for (const tag of parameterSql.matchAll(tagPattern)) {
     if (tag[0].startsWith("<![CDATA[")) continue;
     for (const attr of tag[0].matchAll(/\b(?:test|value)\s*=\s*("([^"]*)"|'([^']*)')/gi)) {
       const expression = (attr[2] ?? attr[3]).replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");

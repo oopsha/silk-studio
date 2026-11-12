@@ -31,6 +31,7 @@ import AiSqlExecuteDialog from "../../ai/AiSqlExecuteDialog.tsx";
 import SqlParameterDialog from "../../query/SqlParameterDialog.tsx";
 import ConnectionExportDialog from "../../connections/ConnectionExportDialog.tsx";
 import ConnectionImportDialog from "../../connections/ConnectionImportDialog.tsx";
+import ConnectionImportSourceDialog from "../../connections/ConnectionImportSourceDialog.tsx";
 import ConnectionPasswordPromptDialog from "../../connections/ConnectionPasswordPromptDialog.tsx";
 import SshSecretPromptDialog from "../../connections/SshSecretPromptDialog.tsx";
 import AboutDialog from "@silk-studio/workbench/components/diagnostics/AboutDialog.tsx";
@@ -85,6 +86,7 @@ import { insertSqlIntoActiveEditor } from "../../../services/query/querySqlActio
 import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import { useConfiguration } from "@silk-studio/workbench/platform/configuration/useConfiguration.ts";
 import { I18nService } from "@silk-studio/workbench/platform/i18n/i18nService.ts";
+import { initializeMonacoFindLocalization } from "../../../services/editor/monacoFindLocalization.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { SettingsService } from "@silk-studio/workbench/services/settings/settingsService.ts";
 import { KeybindingsEditorService } from "@silk-studio/workbench/services/keybindings/keybindingsEditorService.ts";
@@ -125,6 +127,7 @@ function AppShell() {
   useWorkbenchKeybindings();
   useEffect(() => {
     I18nService.start();
+    return initializeMonacoFindLocalization();
   }, []);
   const { t } = useI18n();
   const layout = useLayoutState();
@@ -365,6 +368,7 @@ function AppShell() {
             wordWrap: configuration["editor.wordWrap"],
           },
           beforeMount: handleEditorBeforeMount,
+          keepAlternativeMounted: (tab) => isObjectEditorTab(tab.uri),
           renderAlternative: (tab, groupId) => {
             if (SettingsService.isSettingsTab(tab.uri)) {
               return (
@@ -390,7 +394,7 @@ function AppShell() {
               return <PlsqlEditorView groupId={groupId} />;
             }
             if (isObjectEditorTab(tab.uri)) {
-              return <ObjectEditorView groupId={groupId} />;
+              return <ObjectEditorView groupId={groupId} tabId={tab.id} />;
             }
             if (isCreateTableDraftTab(tab.uri)) {
               return <CreateTableDraftView groupId={groupId} />;
@@ -514,6 +518,7 @@ function AppShell() {
       <AiSqlExecuteDialog />
       <SqlParameterDialog />
       <ConnectionExportDialog />
+      <ConnectionImportSourceDialog />
       <ConnectionImportDialog />
       <ConnectionPasswordPromptDialog />
       <SshSecretPromptDialog />

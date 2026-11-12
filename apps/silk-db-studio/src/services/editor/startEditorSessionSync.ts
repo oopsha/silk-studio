@@ -43,13 +43,23 @@ export function startEditorSessionSync(): () => void {
       const stored = raw as DbStoredEditorSession | null;
       if (stored?.bindings) {
         for (const [tabId, binding] of Object.entries(stored.bindings)) {
-          EditorConnectionBindingService.setBinding(tabId, binding);
+          const profileExists = Boolean(
+            binding.profileId && ConnectionService.getProfile(binding.profileId),
+          );
+          EditorConnectionBindingService.setBinding(
+            tabId,
+            binding.profileId && !profileExists
+              ? { profileId: null, catalog: null, schema: null }
+              : binding,
+          );
         }
       }
 
       const restoredProfileIds = new Set<string>();
       for (const binding of Object.values(stored?.bindings ?? {})) {
-        if (binding.profileId) restoredProfileIds.add(binding.profileId);
+        if (binding.profileId && ConnectionService.getProfile(binding.profileId)) {
+          restoredProfileIds.add(binding.profileId);
+        }
       }
       if (restoredProfileIds.size > 0) {
         void ConnectionService.initialize().then(() =>

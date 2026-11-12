@@ -1,5 +1,9 @@
 import { loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
+// @ts-expect-error Monaco's internal configuration registry has no public declarations.
+import { Registry } from "monaco-editor/esm/vs/platform/registry/common/platform.js";
+// @ts-expect-error Monaco's internal configuration registry has no public declarations.
+import { Extensions } from "monaco-editor/esm/vs/platform/configuration/common/configurationRegistry.js";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import CssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
@@ -16,5 +20,14 @@ self.MonacoEnvironment = {
     return new EditorWorker();
   },
 };
+
+// Standalone Monaco omits VS Code's workbench configuration. Without a numeric
+// hover delay, managed Find/Replace tooltips never start their TimeoutTimer.
+Registry.as(Extensions.Configuration).registerConfiguration({
+  id: "silkEditorHover",
+  properties: {
+    "workbench.hover.delay": { type: "number", default: 300, minimum: 0 },
+  },
+});
 
 loader.config({ monaco });

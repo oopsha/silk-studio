@@ -17,6 +17,10 @@ export interface ICommandAction {
   id: string;
   title: string | ICommandActionTitle;
   icon?: string;
+  secondaryAction?: {
+    id: string;
+    title: string | ICommandActionTitle;
+  };
   toggled?: {
     icon?: string;
     condition?: string;

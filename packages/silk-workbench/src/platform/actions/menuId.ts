@@ -3,6 +3,7 @@ export class MenuId {
 
   static readonly MenubarMainMenu = MenuId.create("MenubarMainMenu");
   static readonly MenubarFileMenu = MenuId.create("MenubarFileMenu");
+  static readonly MenubarRecentSqlEditorsMenu = MenuId.create("MenubarRecentSqlEditorsMenu");
   static readonly MenubarEditMenu = MenuId.create("MenubarEditMenu");
   static readonly MenubarSelectionMenu = MenuId.create("MenubarSelectionMenu");
   static readonly MenubarViewMenu = MenuId.create("MenubarViewMenu");

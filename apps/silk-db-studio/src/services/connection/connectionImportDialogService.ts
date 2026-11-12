@@ -2,6 +2,7 @@ export type ConnectionImportCandidate = {
   /** Index into the source file's `profiles` array — the stable key for this dialog session. */
   index: number;
   name: string;
+  source: "Silk" | "DBeaver" | "DataGrip";
   driverLabel: string;
   hostPort: string;
   database: string;

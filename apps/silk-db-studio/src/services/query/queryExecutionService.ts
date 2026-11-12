@@ -38,6 +38,12 @@ import {
   type QueryResultTabStatus,
 } from "./queryResultTab";
 import { QueryResultDirtyService } from "./queryResultDirtyService";
+import { QueryResultQueryService } from "./queryResultQueryService";
+import { isResultTruncated } from "./queryResult";
+import { removeResultViewStates } from "./queryResultViewStateService";
+import { isObjectEditorTab } from "../connection/objectEditorConstants";
+import { pruneObjectEditorSections } from "../connection/objectEditorSectionService";
+import { TableDataImportService } from "./tableDataImportService";
 import { SqlParameterDialogService } from "./sqlParameterDialogService";
 import { collectMybatisFields, isMybatisScript, mergeMybatisParameters } from "./mybatisScript";
 import {
@@ -223,7 +229,7 @@ class QueryExecutionServiceImpl {
     const session = this.sessions.get(ownerId);
     if (!session) return;
 
-    QueryResultDirtyService.removeTab(tabId);
+    this.disposeResultTabs([tabId]);
     const tabs = session.tabs.filter((item) => item.id !== tabId);
     if (tabs.length === session.tabs.length) return;
 
@@ -266,7 +272,7 @@ class QueryExecutionServiceImpl {
     const ownerId = this.viewOwnerIds.get(groupId);
     if (!ownerId) return;
     const session = this.sessions.get(ownerId) ?? emptySession();
-    QueryResultDirtyService.removeTabs(session.tabs.map((tab) => tab.id));
+    this.disposeResultTabs(session.tabs.map((tab) => tab.id));
     this.setSessionState(ownerId, {
       status: session.status === "running" ? "running" : "idle",
       output: session.status === "running" ? session.output : idleOutput(),
@@ -320,44 +326,31 @@ class QueryExecutionServiceImpl {
       throw new Error("Refreshing results is available in the desktop app only.");
     }
 
-    const connectionId =
-      tab.connectionId?.trim() || resolveExecutionConnectionId();
-    const readOnly = ConfigurationService.getValue("database.readOnly");
-    assertReadOnlyQueryAllowed(tab.sql, readOnly);
-    await ensureExecutionConnection(connectionId);
-
-    // Re-run the exact statement actually executed (bind parameters already resolved to `?` +
-    // values), not `tab.sql` — for a bound query, `tab.sql` still has the original `:name`/`#{}`/
-    // anonymous placeholder syntax, which the driver can't execute as literal SQL text.
-    const payload = await this.invokeQuery(
-      connectionId,
-      tab.executedSql ?? tab.sql,
-      readOnly,
-      tab.binds,
-    );
-    if (!isQueryResultPayload(payload)) {
-      throw new Error("Invalid query result payload from desktop bridge.");
+    try {
+      const payload = await QueryResultQueryService.reload(tabId);
+      if (!payload) return;
+      const current = this.sessions.get(ownerId);
+      if (!current?.tabs.some((item) => item.id === tabId)) return;
+      const tabs = current.tabs.map((item) => item.id === tabId ? {
+        ...item, result: payload, status: "success" as const, output: payload.message || item.output,
+      } : item);
+      const active = tabs.find((item) => item.id === current.activeTabId);
+      this.setSessionState(ownerId, { ...current, tabs,
+        status: active?.status ?? current.status,
+        result: active?.result ?? current.result,
+        output: active?.output ?? current.output,
+      });
+    } catch (error) {
+      const current = this.sessions.get(ownerId);
+      if (!current?.tabs.some((item) => item.id === tabId)) return;
+      const output = formatErrorMessage(error, "Failed to refresh result.");
+      this.setSessionState(ownerId, { ...current,
+        tabs: current.tabs.map((item) => item.id === tabId ? { ...item, status: "error", output } : item),
+        status: current.activeTabId === tabId ? "error" : current.status,
+        output: current.activeTabId === tabId ? output : current.output,
+      });
+      throw error;
     }
-
-    const tabs = session.tabs.map((item) =>
-      item.id === tabId
-        ? {
-            ...item,
-            result: payload,
-            output: payload.message || item.output,
-          }
-        : item,
-    );
-    const active = tabs.find((item) => item.id === tabId);
-    const isActive = session.activeTabId === tabId;
-
-    this.setSessionState(ownerId, {
-      ...session,
-      tabs,
-      result: isActive ? payload : session.result,
-      output: isActive ? active?.output ?? session.output : session.output,
-      logParts: isActive ? active?.logParts ?? null : session.logParts,
-    });
   }
 
   /**
@@ -378,13 +371,26 @@ class QueryExecutionServiceImpl {
       }
     }
 
-    for (const tabId of tabIds) {
-      try {
-        await this.refreshTabResult(tabId);
-        QueryResultDirtyService.clearTab(tabId);
-      } catch (error) {
-        console.warn("[query-execution] refresh after rollback failed", tabId, error);
-      }
+    const failures: unknown[] = [];
+    // Start all refreshes before awaiting any one result, invalidating every old page request.
+    await Promise.all(tabIds.map(async (tabId) => {
+      try { await this.refreshTabResult(tabId); }
+      catch (error) { failures.push(error); }
+    }));
+    if (failures.length) throw new Error(failures.map((error) => formatErrorMessage(error, "Refresh failed")).join("; "));
+  }
+
+  /** Prevent a run started before a transaction outcome from publishing a late result. */
+  invalidateRunningQueriesForConnection(connectionId: string): void {
+    for (const [ownerId, runtime] of this.runtimes) {
+      if (runtime.activeRunConnectionId !== connectionId) continue;
+      runtime.runGeneration++;
+      runtime.cancelRequested = true;
+      runtime.activeRunConnectionId = null;
+      const session = this.sessions.get(ownerId);
+      if (session?.status === "running") this.setSessionState(ownerId, {
+        ...session, status: "cancelled", output: tKey("app.query.cancelled"),
+      });
     }
   }
 
@@ -461,6 +467,9 @@ class QueryExecutionServiceImpl {
       boundList.push({ sql: item.sql, range: item.range, bound: resolved });
     }
 
+    if (!isSyntheticOwnerId(ownerId) && !EditorGroupsService.getGroupIds().some((id) =>
+      EditorGroupsService.getGroup(id).getTabs().some((tab) => tab.id === ownerId),
+    )) return;
     const runtime = this.ensureRuntime(ownerId);
     const generation = ++runtime.runGeneration;
     runtime.cancelRequested = false;
@@ -1310,11 +1319,11 @@ class QueryExecutionServiceImpl {
   ): void {
     const prev = this.sessions.get(ownerId);
     if (prev?.tabs.length) {
-      QueryResultDirtyService.removeTabs(prev.tabs.map((tab) => tab.id));
+      this.disposeResultTabs(prev.tabs.map((tab) => tab.id));
     }
     const runtime = this.ensureRuntime(ownerId);
     runtime.runTabOrdinal = 0;
-    this.viewOwnerIds.set(viewGroupId, ownerId);
+    this.showOwnerInPanel(viewGroupId, ownerId);
     this.setSessionState(ownerId, {
       status: "running",
       output,
@@ -1366,10 +1375,29 @@ class QueryExecutionServiceImpl {
       connectionId: input.connectionId,
     };
 
+    if (input.result?.kind === "resultSet") {
+      QueryResultDirtyService.initTab(tab.id, input.result.columns, input.result.rows);
+      const connectionId = input.connectionId!;
+      QueryResultQueryService.register(tab.id, {
+        connectionId, sql: input.executedSql ?? input.sql, columns: input.result.columns, binds: input.binds,
+        paged: isResultTruncated(input.result, ConfigurationService.getValue("queryResult.maxRows")),
+        prepare: async () => {
+          assertReadOnlyQueryAllowed(input.sql, ConfigurationService.getValue("database.readOnly"));
+          await ensureExecutionConnection(connectionId);
+        },
+        fetchInitial: async () => {
+          const payload = await this.invokeQuery(connectionId, input.executedSql ?? input.sql,
+            ConfigurationService.getValue("database.readOnly"), input.binds);
+          if (!isQueryResultPayload(payload)) throw new Error("Invalid refreshed query result.");
+          return payload;
+        },
+      }, input.result.rows.length);
+    }
+
     let tabs = [...session.tabs, tab];
     if (tabs.length > MAX_QUERY_RESULT_TABS) {
       const dropped = tabs.slice(0, tabs.length - MAX_QUERY_RESULT_TABS);
-      QueryResultDirtyService.removeTabs(dropped.map((item) => item.id));
+      this.disposeResultTabs(dropped.map((item) => item.id));
       tabs = tabs.slice(tabs.length - MAX_QUERY_RESULT_TABS);
     }
 
@@ -1446,7 +1474,7 @@ class QueryExecutionServiceImpl {
       lastSql?: string;
     },
   ): void {
-    this.viewOwnerIds.set(viewGroupId, ownerId);
+    this.showOwnerInPanel(viewGroupId, ownerId);
     const session = this.sessions.get(ownerId) ?? emptySession();
     this.setSessionState(ownerId, {
       ...session,
@@ -1686,10 +1714,26 @@ class QueryExecutionServiceImpl {
   }
 
   private isCurrentRun(ownerId: string, generation: number): boolean {
-    return this.ensureRuntime(ownerId).runGeneration === generation;
+    return this.runtimes.get(ownerId)?.runGeneration === generation;
+  }
+
+  private showOwnerInPanel(groupId: EditorGroupId, ownerId: string): void {
+    const tab = EditorGroupsService.getGroupIds().flatMap((id) =>
+      EditorGroupsService.getGroup(id).getTabs(),
+    ).find((item) => item.id === ownerId);
+    if (!isObjectEditorTab(tab?.uri)) this.viewOwnerIds.set(groupId, ownerId);
+  }
+
+  private disposeResultTabs(tabIds: string[]): void {
+    QueryResultQueryService.removeTabs(tabIds);
+    QueryResultDirtyService.removeTabs(tabIds);
+    removeResultViewStates(tabIds);
   }
 
   private setSessionState(ownerId: string, next: QueryExecutionState): void {
+    if (!isSyntheticOwnerId(ownerId) && !EditorGroupsService.getGroupIds().some((id) =>
+      EditorGroupsService.getGroup(id).getTabs().some((tab) => tab.id === ownerId),
+    )) return;
     this.sessions.set(ownerId, next);
     this.fireDidChange();
   }
@@ -1697,7 +1741,7 @@ class QueryExecutionServiceImpl {
   private discardSession(ownerId: string): void {
     const session = this.sessions.get(ownerId);
     if (session?.tabs.length) {
-      QueryResultDirtyService.removeTabs(session.tabs.map((tab) => tab.id));
+      this.disposeResultTabs(session.tabs.map((tab) => tab.id));
     }
 
     const runtime = this.runtimes.get(ownerId);
@@ -1728,6 +1772,9 @@ class QueryExecutionServiceImpl {
       }
     }
     let changed = false;
+
+    pruneObjectEditorSections(liveIds);
+    TableDataImportService.retainOwners(liveIds);
 
     for (const ownerId of [...this.sessions.keys()]) {
       if (isSyntheticOwnerId(ownerId)) continue;

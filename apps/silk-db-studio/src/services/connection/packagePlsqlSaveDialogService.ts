@@ -36,6 +36,10 @@ class PackagePlsqlSaveDialogServiceImpl {
     return this.request;
   }
 
+  getRequestNonce(): number {
+    return this.nonce;
+  }
+
   /** Returns a nonce identifying this open() call — pass it back to `patchSection` so a stale
    * async fetch from a dialog that's since been closed and reopened can't patch the wrong one. */
   open(request: PackagePlsqlSaveDialogRequest): number {

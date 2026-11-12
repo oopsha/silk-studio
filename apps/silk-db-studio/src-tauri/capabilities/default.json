@@ -41,6 +41,14 @@
       "allow": [{ "path": "**" }]
     },
     {
+      "identifier": "fs:allow-exists",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [{ "path": "**" }]
+    },
+    {
       "identifier": "fs:allow-watch",
       "allow": [{ "path": "**" }]
     },

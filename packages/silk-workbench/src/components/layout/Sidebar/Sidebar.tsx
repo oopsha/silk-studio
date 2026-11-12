@@ -10,7 +10,6 @@ type SidebarProps = {
 function Sidebar({ views }: SidebarProps) {
   const activeViewId = useActiveView();
   const { t } = useI18n();
-  const activeView = views.find((view) => view.id === activeViewId);
 
   return (
     <aside className="sidebar" aria-label={t("workbench.sidebar.primaryAria")}>

@@ -1460,6 +1460,11 @@ final class SqlServerDialect implements DbDialect {
   }
 
   @Override
+  public String caseInsensitiveFilterExpression(String quotedColumn) {
+    return "UPPER(CONVERT(NVARCHAR(MAX), " + quotedColumn + "))";
+  }
+
+  @Override
   public String quoteIdentifier(String raw) {
     return quoteSqlServerIdent(raw);
   }

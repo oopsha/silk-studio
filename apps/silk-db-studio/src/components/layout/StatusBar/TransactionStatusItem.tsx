@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { ConnectionService } from "../../../services/connection/connectionService";
+import { parseObjectEditorUri } from "../../../services/connection/objectEditorConstants";
 import {
   ConnectionTransactionService,
   commitConnection,
   rollbackConnection,
 } from "../../../services/connection/connectionTransactionService";
 import { useEditorConnectionBinding } from "../../../services/connection/useEditorConnectionBinding";
+import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
 import "./TransactionStatusItem.css";
 
 function useConnectionTransactionDirty(connectionId: string | null): boolean {
@@ -28,12 +30,17 @@ function useConnectionTransactionDirty(connectionId: string | null): boolean {
 /** Status bar indicator + commit/rollback for the active editor's bound connection. */
 function TransactionStatusItem() {
   const { t } = useI18n();
+  const activeTab = useActiveEditor();
   const binding = useEditorConnectionBinding();
+  const objectEditorConnectionId = parseObjectEditorUri(activeTab?.uri)?.profileId ?? null;
   // Object and DDL editor tabs are not executable SQL tabs, so some have no editor binding.
   // In that case use the explorer's active profile; this lets a hover-menu DROP immediately
   // expose its transaction controls without rebinding an unrelated SQL editor.
   const connectionId =
-    binding.profileId ?? ConnectionService.getActiveProfile()?.id ?? null;
+    objectEditorConnectionId ??
+    binding.profileId ??
+    ConnectionService.getActiveProfile()?.id ??
+    null;
   const dirty = useConnectionTransactionDirty(connectionId);
   const [busy, setBusy] = useState(false);
 

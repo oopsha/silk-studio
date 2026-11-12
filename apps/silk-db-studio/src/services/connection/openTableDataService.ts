@@ -1,9 +1,9 @@
 import type { ConnectionDriverId } from "./connectionTypes";
 import { ConnectionService } from "./connectionService";
+import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import type { ExplorerObjectRef } from "./explorerObjectActions";
 import { formatTableReference } from "../query/sqlLiteral";
 import {
-  buildOpenDataOwnerId,
   QueryExecutionService,
 } from "../query/queryExecutionService";
 
@@ -17,7 +17,11 @@ export function buildOpenDataSql(
   return `SELECT * FROM ${tableRef}`;
 }
 
-export async function openTableData(ref: ExplorerObjectRef): Promise<void> {
+export async function openTableData(ref: ExplorerObjectRef, ownerId: string): Promise<void> {
+  const ownerIsOpen = () => EditorGroupsService.getGroupIds().some((groupId) =>
+    EditorGroupsService.getGroup(groupId).getTabs().some((tab) => tab.id === ownerId),
+  );
+  if (!ownerIsOpen()) return;
   if (ref.object.kind !== "table" && ref.object.kind !== "view") {
     throw new Error("Open Data is only available for tables and views.");
   }
@@ -30,6 +34,7 @@ export async function openTableData(ref: ExplorerObjectRef): Promise<void> {
   if (!ConnectionService.isConnected(ref.profileId)) {
     await ConnectionService.connect(ref.profileId);
   }
+  if (!ownerIsOpen()) return;
 
   // A 3-part reference (catalog.schema.table) resolves correctly against another database
   // without switching the shared session's current catalog — see sqlLiteral.ts.
@@ -47,11 +52,6 @@ export async function openTableData(ref: ExplorerObjectRef): Promise<void> {
     relationKind: ref.object.kind,
     tabTitle,
     connectionId: ref.profileId,
-    ownerId: buildOpenDataOwnerId(
-      ref.profileId,
-      ref.schemaName,
-      ref.object.name,
-      ref.catalogName,
-    ),
+    ownerId,
   });
 }

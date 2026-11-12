@@ -3,14 +3,18 @@ import type { EditorSessionSnapshotV2 } from "./editorSessionTypes";
 import type { EditorSessionTabSnapshot } from "./editorService";
 import { createInitialLayout } from "./editorGroupTypes";
 
-const STORAGE_KEY = "silk-editor.session.v1";
-const FILE_NAME = "editor-session.v1.json";
+const IS_DEV = import.meta.env.DEV;
+const ENVIRONMENT_SUFFIX = IS_DEV ? ".dev" : "";
+const STORAGE_KEY = `silk-editor.session${ENVIRONMENT_SUFFIX}.v1`;
+const FILE_NAME = `editor-session${ENVIRONMENT_SUFFIX}.v1.json`;
+const LEGACY_STORAGE_KEY = "silk-editor.session.v1";
+const LEGACY_FILE_NAME = "editor-session.v1.json";
 
 function storageLocation(scope?: string) {
   const suffix = scope ? `.${scope}` : "";
   return {
-    storageKey: scope ? `silk-editor.session${suffix}.v1` : STORAGE_KEY,
-    fileName: scope ? `editor-session${suffix}.v1.json` : FILE_NAME,
+    storageKey: scope ? `silk-editor.session${suffix}${ENVIRONMENT_SUFFIX}.v1` : STORAGE_KEY,
+    fileName: scope ? `editor-session${suffix}${ENVIRONMENT_SUFFIX}.v1.json` : FILE_NAME,
   };
 }
 
@@ -73,13 +77,29 @@ export async function loadEditorSessionSnapshot(
         const fromFile = parseSnapshot(raw);
         if (fromFile) return fromFile;
       }
+      // One-time dev migration: preserve the editors from the formerly shared session file.
+      // startEditorSessionSync will clear bindings whose profiles do not exist in this env and
+      // persist the resulting snapshot to the dev-specific file, leaving the production file
+      // untouched.
+      if (
+        IS_DEV && !scope &&
+        (await exists(LEGACY_FILE_NAME, { baseDir: BaseDirectory.AppData }))
+      ) {
+        const raw = await readTextFile(LEGACY_FILE_NAME, {
+          baseDir: BaseDirectory.AppData,
+        });
+        const fromLegacyFile = parseSnapshot(raw);
+        if (fromLegacyFile) return fromLegacyFile;
+      }
     } catch {
       // Fall through to localStorage.
     }
   }
 
   try {
-    const raw = localStorage.getItem(storageKey);
+    const raw =
+      localStorage.getItem(storageKey) ??
+      (IS_DEV && !scope ? localStorage.getItem(LEGACY_STORAGE_KEY) : null);
     if (!raw) return null;
     return parseSnapshot(raw);
   } catch {
