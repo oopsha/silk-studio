@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "allow-window-layout-commands"
+description = "Allows persisting and showing the main window with saved geometry."
+commands.allow = [
+  "window_layout_save",
+  "window_layout_apply_and_show",
+  "window_layout_show",
+  "window_layout_file_exists",
+]

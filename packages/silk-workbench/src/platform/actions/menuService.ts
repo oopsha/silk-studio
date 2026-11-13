@@ -225,6 +225,24 @@ class MenuServiceImpl {
       // Save All *is* gated on dirty state there (DirtyWorkingCopiesContext).
       case "silk.file.saveAll":
         return "hasDirtyFiles";
+      // Silk Zip archive commands are enabled only while an archive is open.
+      case "silkZip.file.closeArchive":
+      case "silkZip.file.saveAs":
+      case "silkZip.file.delete":
+      case "silkZip.file.deletePermanently":
+      case "silkZip.file.openFolder":
+      case "silkZip.file.test":
+      case "silkZip.file.scan":
+      case "silkZip.file.extract":
+      case "silkZip.placeholder.MenubarEditMenu.1":
+      case "silkZip.placeholder.MenubarEditMenu.2":
+      case "silkZip.placeholder.MenubarEditMenu.3":
+      case "silkZip.placeholder.MenubarEditMenu.9":
+        return "hasOpenArchive";
+      case "silkZip.placeholder.MenubarEditMenu.0":
+      case "silkZip.placeholder.MenubarEditMenu.5":
+      case "silkZip.placeholder.MenubarEditMenu.7":
+        return "hasArchiveEntrySelection";
       // VS Code (editor/contrib/find/browser/findController.ts): Find/Replace require
       // editor focus or an open editor.
       case "silk.edit.find":

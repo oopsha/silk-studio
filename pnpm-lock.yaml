@@ -303,6 +303,9 @@ importers:
       '@silk-studio/ui':
         specifier: workspace:*
         version: link:../../packages/silk-ui
+      '@silk-studio/workbench':
+        specifier: workspace:*
+        version: link:../../packages/silk-workbench
       '@tauri-apps/api':
         specifier: ^2
         version: 2.11.1

@@ -7,7 +7,6 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { useCloseOnAppBlur } from "@silk-studio/ui/hooks/useCloseOnAppBlur.ts";
 import { CommandService } from "../../../platform/commands/commandService";
 import {
@@ -239,7 +238,7 @@ function ActivityBarContextMenu({
         >
           <span className="activity-bar-context-menu__label">{item.label}</span>
           <span className="activity-bar-context-menu__submenu-indicator" aria-hidden>
-            <Codicon name="chevron-right" />
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 4L10 8L6 12" stroke="currentColor" strokeWidth="1.25" /></svg>
           </span>
         </button>
         {isActive ? (

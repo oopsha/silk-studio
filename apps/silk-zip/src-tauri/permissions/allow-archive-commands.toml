@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-archive-commands"
+description = "Allows reading the entries in a user-selected archive."
+commands.allow = ["archive_list"]

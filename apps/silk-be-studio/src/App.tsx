@@ -63,12 +63,10 @@ function EmptyView({ title, message }: { title: string; message: string }) {
 }
 
 function ExplorerView() {
-  const { t } = useI18n();
   const [openEditorsExpanded, setOpenEditorsExpanded] = useState(true);
 
   return (
     <div className="be-view">
-      <ViewPaneTitle title={t("workbench.activityBar.explorer")} />
       <OpenEditorsSection
         newFileTitleKey="studio.be.commands.newFile"
         expanded={openEditorsExpanded}

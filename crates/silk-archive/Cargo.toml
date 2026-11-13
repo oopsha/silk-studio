@@ -1,0 +1,11 @@
+[package]
+name = "silk-archive"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[build-dependencies]
+vcpkg = "0.2"
+pkg-config = "0.3"

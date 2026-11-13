@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "crates/silk-archive",
   "apps/silk-db-studio/src-tauri",
   "apps/silk-be-studio/src-tauri",
   "apps/silk-zip/src-tauri",

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readDir, readTextFile } from "@tauri-apps/plugin-fs";
@@ -6,7 +6,8 @@ import { EditorService } from "@silk-studio/editor/services/editor/editorService
 import { languageIdFromPath } from "@silk-studio/editor/services/editor/languageFromPath.ts";
 import { getOfflineIndentSize } from "../services/springProjectGenerationSettings.ts";
 
-type Entry = { name: string; isDirectory: boolean; isFile: boolean; isSymlink: boolean };
+import ResourceTree from "@silk-studio/workbench/components/explorer/ResourceTree.tsx";
+import { createProjectSource } from "../services/projectResourceSource";
 type CreateRequest = {
   source: "online" | "offline";
   indentSize: number;
@@ -40,7 +41,6 @@ type InitializrFormMetadata = {
 };
 
 const STORAGE_KEY = "silk.be.projectRoot";
-const HIDDEN_DIRS = new Set([".git", ".gradle", "build", "node_modules", "target"]);
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -69,81 +69,21 @@ function readInitializrOptionSet(raw: Record<string, unknown>): { defaults: Reco
   return { defaults, options, dependencies: dependencyGroups };
 }
 
-function joinPath(parent: string, child: string) {
-  return `${parent.replace(/[\\/]$/, "")}${parent.includes("\\") ? "\\" : "/"}${child}`;
-}
-
-function ProjectTree({ root, path, depth = 0 }: { root: string; path: string; depth?: number }) {
-  const [entries, setEntries] = useState<Entry[] | null>(null);
-  const [expanded, setExpanded] = useState(depth === 0);
+function ProjectTree({ root }: { root: string }) {
+  const source = useMemo(() => createProjectSource(root), [root]);
+  const [selectedId, setSelectedId] = useState(root);
   const [error, setError] = useState("");
-  const pathSegments = path.replace(/[\\/]+$/, "").split(/[\\/]/);
-  const name = pathSegments[pathSegments.length - 1] || path;
-
-  async function loadDirectory() {
-    try {
-      const items = await readDir(path);
-      setEntries(items
-        .filter((entry) => !(entry.isDirectory && HIDDEN_DIRS.has(entry.name)))
-        .sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name)));
-      setError("");
-    } catch (cause) {
-      setError(String(cause));
-    }
-  }
-
-  useEffect(() => {
-    if (expanded && !entries) void loadDirectory();
-  }, [expanded]);
-
-  async function toggleDirectory() {
-    if (expanded) {
-      setExpanded(false);
-    } else {
-      if (!entries) await loadDirectory();
-      setExpanded(true);
-    }
-  }
-
-  async function openFile(filePath = path, fileName = name) {
-    try {
-      const content = await readTextFile(filePath);
-      const fileNameSegments = fileName.split(".");
-      const extension = fileNameSegments[fileNameSegments.length - 1]?.toLowerCase();
-      EditorService.openEditor({
-        uri: filePath,
-        label: fileName,
-        languageId: extension === "java" ? "java" : languageIdFromPath(filePath),
-        content,
-      });
-    } catch (cause) {
-      setError(String(cause));
-    }
-  }
-
-  const isDirectory = depth === 0 || Boolean(entries) || path.endsWith("/") || path.endsWith("\\");
   return <>
-    <button
-      className="be-project-tree__row"
-      style={{ paddingLeft: 12 + depth * 14 }}
-      onClick={() => isDirectory ? void toggleDirectory() : void openFile()}
-      title={error || path}
-    >
-      <span className="be-project-tree__icon">{isDirectory ? (expanded ? "▾" : "▸") : ""}</span>
-      <span>{isDirectory ? "▰" : "▱"}</span>
-      <span className="be-project-tree__name">{name}</span>
-    </button>
-    {error ? <div className="be-project-tree__error">{error}</div> : null}
-    {expanded ? (entries ?? []).map((entry) => {
-      const childPath = joinPath(path, entry.name);
-      return entry.isDirectory
-        ? <ProjectTree key={childPath} root={root} path={`${childPath}${path.includes("\\") ? "\\" : "/"}`} depth={depth + 1} />
-        : <button key={childPath} className="be-project-tree__row" style={{ paddingLeft: 12 + (depth + 1) * 14 }} onClick={() => void openFile(childPath, entry.name)} title={childPath}>
-          <span className="be-project-tree__icon" />
-          <span>▱</span>
-          <span className="be-project-tree__name">{entry.name}</span>
-        </button>;
-    }) : null}
+    <ResourceTree source={source} selectedId={selectedId} onSelect={async (node) => {
+      setSelectedId(node.id);
+      if (node.directory) return;
+      try {
+        const content = await readTextFile(node.id);
+        EditorService.openEditor({ uri: node.id, label: node.name, languageId: node.name.toLowerCase().endsWith(".java") ? "java" : languageIdFromPath(node.id), content });
+        setError("");
+      } catch (cause) { setError(String(cause)); }
+    }} />
+    {error ? <div className="be-project-tree__error" role="alert">{error}</div> : null}
   </>;
 }
 
@@ -314,7 +254,7 @@ export default function ProjectExplorer() {
     </div>
     {error ? <div className="be-project-tree__error">{error}</div> : null}
     {notice ? <div className="be-project-empty">{notice}</div> : null}
-    {root ? <div className="be-project-tree"><ProjectTree key={root} root={root} path={root} /></div> : <div className="be-project-empty">프로젝트 폴더를 열거나 새 Spring 프로젝트를 만드세요.</div>}
+    {root ? <div className="be-project-tree"><ProjectTree key={root} root={root} /></div> : <div className="be-project-empty">프로젝트 폴더를 열거나 새 Spring 프로젝트를 만드세요.</div>}
     {showCreate ? <SpringProjectDialog onClose={() => setShowCreate(false)} onCreated={(result) => { setProjectRoot(result.path); setShowCreate(false); setNotice(result.source === "offline" ? "오프라인 템플릿으로 프로젝트를 생성했습니다." : "Spring Initializr에서 프로젝트를 생성했습니다."); }} /> : null}
   </div>;
 }

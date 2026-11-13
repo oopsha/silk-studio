@@ -68,8 +68,15 @@
 }
 
 .menu-dropdown__submenu-arrow {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
   padding: 0 12px 0 16px;
-  font-size: 17px;
+}
+
+.menu-dropdown__submenu-arrow svg {
+  display: block;
+  flex: none;
 }
 
 .menu-dropdown__submenu-host > .menu-dropdown {

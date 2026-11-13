@@ -4,6 +4,6 @@
   "version": "0.1.0",
   "identifier": "com.oopsha.silk-zip",
   "build": { "beforeDevCommand": "pnpm dev", "devUrl": "http://localhost:1424", "beforeBuildCommand": "pnpm build", "frontendDist": "../dist" },
-  "app": { "windows": [{ "label": "main", "title": "Silk Zip", "width": 980, "height": 700, "minWidth": 720, "minHeight": 480, "visible": true, "dragDropEnabled": true, "backgroundColor": "#191a1b" }], "security": { "csp": null } },
+  "app": { "windows": [{ "label": "main", "title": "Silk Zip", "width": 980, "height": 700, "minWidth": 720, "minHeight": 480, "visible": false, "decorations": false, "dragDropEnabled": true, "backgroundColor": "#191a1b" }], "security": { "csp": null } },
   "bundle": { "active": true, "targets": "all", "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"] }
 }

@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-ensure-title-bar-overlay"
+description = "Allows re-initializing the native title bar overlay."
+commands.allow = ["ensure_title_bar_overlay"]

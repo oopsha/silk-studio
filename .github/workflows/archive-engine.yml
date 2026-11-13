@@ -1,0 +1,36 @@
+name: Shared archive engine
+on:
+  workflow_dispatch:
+  push:
+    paths: ['crates/silk-archive/**', '.github/workflows/archive-engine.yml']
+  pull_request:
+    paths: ['crates/silk-archive/**', '.github/workflows/archive-engine.yml']
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: brew install libarchive pkg-config
+      - name: Test archive engine
+        run: |
+          export PKG_CONFIG_PATH="$(brew --prefix libarchive)/lib/pkgconfig:${PKG_CONFIG_PATH}"
+          cargo test -p silk-archive
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Prepare native libraries
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git .local/vcpkg
+          git -C .local/vcpkg checkout af2c387aa62cf2d0909cd50f4049f2bee1ab682b
+          .local/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+          .local/vcpkg/vcpkg.exe install "libarchive[core,bzip2,lzma,lz4,zstd,xar]:x64-windows-static-md" --disable-metrics
+      - name: Test archive engine
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = (Resolve-Path .local/vcpkg).Path
+          cargo test -p silk-archive
