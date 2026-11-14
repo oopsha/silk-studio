@@ -6,6 +6,7 @@ import { QueryExecutionService } from "./queryExecutionService";
 
 /** Open SQL in a new untitled editor tab. */
 export function openSqlInEditor(sql: string, label?: string): void {
+  const binding = EditorConnectionBindingService.resolveNewEditorBinding(true);
   const content = sql.endsWith("\n") ? sql : `${sql}\n`;
   const tabId = EditorService.openEditor({
     label: label?.trim() || `Query-${Date.now().toString().slice(-6)}`,
@@ -13,7 +14,7 @@ export function openSqlInEditor(sql: string, label?: string): void {
     content,
     preview: false,
   });
-  EditorConnectionBindingService.ensureBinding(tabId);
+  EditorConnectionBindingService.setBinding(tabId, binding);
 }
 
 /** Insert SQL at the active editor cursor (or replace selection). */

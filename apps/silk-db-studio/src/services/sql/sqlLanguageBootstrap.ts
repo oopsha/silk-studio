@@ -51,8 +51,9 @@ export function bootstrapSqlLanguageBinding(): void {
   applyDialectToSqlTabs();
 
   CommandsRegistry.registerCommand("silk.file.newTextFile", () => {
+    const binding = EditorConnectionBindingService.resolveNewEditorBinding();
     const tabId = EditorService.openUntitled(resolveActiveMonacoLanguageId());
-    EditorConnectionBindingService.ensureBinding(tabId);
+    EditorConnectionBindingService.setBinding(tabId, binding);
   });
 
   ConnectionService.onDidChange(() => {

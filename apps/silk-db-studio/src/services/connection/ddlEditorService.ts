@@ -6,6 +6,7 @@ import {
 import type { ExplorerObjectRef } from "./explorerObjectActions";
 import { monacoLanguageIdForDriver } from "../sql/sqlDialect";
 import { ConnectionService } from "./connectionService";
+import { EditorConnectionBindingService } from "./editorConnectionBindingService";
 
 export function openObjectDdl(ref: ExplorerObjectRef): void {
   const profile = ConnectionService.getProfile(ref.profileId);
@@ -30,4 +31,5 @@ export function openObjectDdl(ref: ExplorerObjectRef): void {
     preview: false,
   });
   EditorService.pinTab(tabId);
+  EditorConnectionBindingService.setBinding(tabId, { profileId: ref.profileId, catalog: ref.catalogName, schema: ref.schemaName });
 }

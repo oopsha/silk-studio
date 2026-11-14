@@ -3,9 +3,10 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 // Lightweight unit tests for binding helpers without Tauri.
 
 const editorState = vi.hoisted(() => ({
+  activeTabId: null as string | null,
   groups: [] as Array<{
     id: string;
-    tabs: Array<{ id: string; languageId: string }>;
+    tabs: Array<{ id: string; languageId: string; uri?: string }>;
   }>,
   listeners: new Set<() => void>(),
 }));
@@ -18,20 +19,22 @@ vi.mock("@silk-studio/editor/services/editor/editorServiceFacade.ts", () => {
   return {
     EditorService: {
       getTabs: focusedTabs,
-      getActiveTab: () => focusedTabs()[0] ?? null,
+      getActiveTab: () => focusedTabs().find((tab) => tab.id === editorState.activeTabId) ?? focusedTabs()[0] ?? null,
       onDidChange: (listener: () => void) => {
         editorState.listeners.add(listener);
         return () => editorState.listeners.delete(listener);
       },
       __reset() {
+        editorState.activeTabId = null;
         editorState.groups.splice(0, editorState.groups.length, {
           id: "group-1",
           tabs: [],
         });
         editorState.listeners.clear();
       },
-      __addTab(tab: { id: string; languageId: string }) {
+      __addTab(tab: { id: string; languageId: string; uri?: string }) {
         focusedTabs().push(tab);
+        editorState.activeTabId = tab.id;
         notify();
       },
       __addGroup(id: string) {
@@ -62,9 +65,9 @@ vi.mock("./connectionService", () => ({
       activeProfileId: "p1",
     }),
     getProfile: (id: string) =>
-      id === "p1"
+      (id === "p1" || id === "p2")
         ? {
-            id: "p1",
+            id,
             name: "Prod",
             driverId: "oracle",
             url: "jdbc:oracle",
@@ -95,7 +98,51 @@ describe("EditorConnectionBindingService", () => {
     (editor.EditorService as unknown as { __reset: () => void }).__reset();
   });
 
-  it("assigns default binding for new SQL tabs", async () => {
+  it("does not use the last connected profile when no context is available", async () => {
+    const { EditorConnectionBindingService: bindings } = await import("./editorConnectionBindingService");
+    const { EditorService } = await import("@silk-studio/editor/services/editor/editorServiceFacade.ts");
+    bindings.start();
+    (EditorService as unknown as { __addTab: (tab: { id: string; languageId: string }) => void })
+      .__addTab({ id: "unbound", languageId: "sql" });
+    expect(bindings.getBinding("unbound").profileId).toBeNull();
+  });
+
+  it.each(["object", "ddl", "plsql"])("uses the %s object's connection before Explorer and last-connected profiles", async (kind) => {
+    const { EditorConnectionBindingService: bindings } = await import("./editorConnectionBindingService");
+    const { EditorService } = await import("@silk-studio/editor/services/editor/editorServiceFacade.ts");
+    bindings.start();
+    bindings.setExplorerProfileId("p1");
+    (EditorService as unknown as { __addTab: (tab: { id: string; languageId: string; uri: string }) => void })
+      .__addTab({ id: "object", languageId: "sql", uri: `silk://${kind}/p2/dbo/table/ORDERS?catalog=SHOP` });
+    expect(bindings.getBinding("object")).toEqual({ profileId: "p2", catalog: "SHOP", schema: "dbo" });
+  });
+
+  it("prefers Explorer for generic commands, source editor for editor commands, and inherits when no selection exists", async () => {
+    const { EditorConnectionBindingService: bindings } = await import("./editorConnectionBindingService");
+    const { EditorService } = await import("@silk-studio/editor/services/editor/editorServiceFacade.ts");
+    const editor = EditorService as unknown as { __addTab: (tab: { id: string; languageId: string }) => void };
+    bindings.start();
+    editor.__addTab({ id: "source", languageId: "sql" });
+    bindings.setBinding("source", { profileId: "p2", catalog: "SHOP", schema: "sales" });
+    bindings.setExplorerProfileId("p1");
+    expect(bindings.resolveNewEditorBinding().profileId).toBe("p1");
+    expect(bindings.resolveNewEditorBinding(true).profileId).toBe("p2");
+    bindings.setExplorerProfileId(null);
+    editor.__addTab({ id: "new", languageId: "sql" });
+    expect(bindings.getBinding("new")).toEqual({ profileId: "p2", catalog: "SHOP", schema: "sales" });
+  });
+
+  it("opens an object with a missing profile unbound instead of targeting a different database", async () => {
+    const { EditorConnectionBindingService: bindings } = await import("./editorConnectionBindingService");
+    const { EditorService } = await import("@silk-studio/editor/services/editor/editorServiceFacade.ts");
+    bindings.start();
+    bindings.setExplorerProfileId("p1");
+    (EditorService as unknown as { __addTab: (tab: { id: string; languageId: string; uri: string }) => void })
+      .__addTab({ id: "missing", languageId: "sql", uri: "silk://object/deleted/dbo/table/ORDERS" });
+    expect(bindings.getBinding("missing").profileId).toBeNull();
+  });
+
+  it("uses the explicitly selected Explorer connection for new SQL tabs", async () => {
     const { EditorConnectionBindingService } = await import(
       "./editorConnectionBindingService"
     );
@@ -103,6 +150,7 @@ describe("EditorConnectionBindingService", () => {
       "@silk-studio/editor/services/editor/editorServiceFacade.ts"
     );
     EditorConnectionBindingService.start();
+    EditorConnectionBindingService.setExplorerProfileId("p1");
     (
       editor.EditorService as unknown as {
         __addTab: (tab: { id: string; languageId: string }) => void;
@@ -127,6 +175,7 @@ describe("EditorConnectionBindingService", () => {
     };
 
     EditorConnectionBindingService.start();
+    EditorConnectionBindingService.setExplorerProfileId("p1");
     service.__addGroup("group-2");
     service.__addTabToGroup("group-2", { id: "tab-2", languageId: "sql" });
 

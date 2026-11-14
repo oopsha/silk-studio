@@ -6,6 +6,7 @@ import {
 import type { ExplorerObjectRef } from "./explorerObjectActions";
 import { monacoLanguageIdForDriver } from "../sql/sqlDialect";
 import { ConnectionService } from "./connectionService";
+import { EditorConnectionBindingService } from "./editorConnectionBindingService";
 import { setObjectEditorSection, type ObjectEditorSection } from "./objectEditorSectionService";
 
 export function openObjectEditor(ref: ExplorerObjectRef, section: ObjectEditorSection = "properties"): string {
@@ -31,6 +32,7 @@ export function openObjectEditor(ref: ExplorerObjectRef, section: ObjectEditorSe
     preview: false,
   });
   EditorService.pinTab(tabId);
+  EditorConnectionBindingService.setBinding(tabId, { profileId: ref.profileId, catalog: ref.catalogName, schema: ref.schemaName });
   setObjectEditorSection(tabId, section);
   return tabId;
 }

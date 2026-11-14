@@ -3,6 +3,9 @@ import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorG
 import { ConnectionService } from "./connectionService";
 import { effectiveDefaultSchema } from "./connectionTypes";
 import { isSqlLanguageId } from "../sql/sqlDialect";
+import { parseObjectEditorUri } from "./objectEditorConstants";
+import { parseDdlEditorUri } from "./ddlEditorConstants";
+import { parsePlsqlEditorUri } from "./plsqlEditorConstants";
 
 export type EditorConnectionBinding = {
   profileId: string | null;
@@ -26,7 +29,7 @@ function defaultBindingFromProfile(
   }
   const profile = ConnectionService.getProfile(profileId);
   if (!profile) {
-    return { profileId, catalog: null, schema: null };
+    return emptyBinding();
   }
   return {
     profileId,
@@ -41,8 +44,9 @@ function defaultBindingFromProfile(
  */
 class EditorConnectionBindingServiceImpl {
   private readonly bindings = new Map<string, EditorConnectionBinding>();
-  /** Default for newly opened SQL tabs — last successfully used / connected profile. */
-  private defaultProfileId: string | null = null;
+  private explorerProfileId: string | null = null;
+  private lastActiveTabId: string | null = null;
+  private lastFocusedSurface: "editor" | "explorer" | null = null;
   private readonly listeners = new Set<BindingListener>();
   private started = false;
 
@@ -50,31 +54,32 @@ class EditorConnectionBindingServiceImpl {
     if (this.started) return;
     this.started = true;
 
-    this.defaultProfileId = ConnectionService.getState().connectedProfileId;
+    document.addEventListener("pointerdown", this.recordFocusedSurface, true);
+    document.addEventListener("focusin", this.recordFocusedSurface, true);
+    document.addEventListener("keydown", this.recordFocusedSurface, true);
 
     EditorService.onDidChange(() => {
       this.syncWithEditorTabs();
     });
-    ConnectionService.onDidChange(() => {
-      const state = ConnectionService.getState();
-      if (
-        state.connectedProfileId &&
-        state.connectedProfileIds.includes(state.connectedProfileId)
-      ) {
-        this.defaultProfileId = state.connectedProfileId;
-      }
-    });
     this.syncWithEditorTabs();
   }
 
-  getDefaultProfileId(): string | null {
-    return this.defaultProfileId;
+  setExplorerProfileId(profileId: string | null): void {
+    this.explorerProfileId = profileId;
   }
 
-  setDefaultProfileId(profileId: string | null): void {
-    if (this.defaultProfileId === profileId) return;
-    this.defaultProfileId = profileId;
-    this.fireDidChange();
+  /** Capture the connection selected in the UI surface that initiated the command. */
+  resolveNewEditorBinding(
+    fromEditor?: boolean,
+    activeOverride?: EditorConnectionBinding,
+  ): EditorConnectionBinding {
+    const active = activeOverride ?? this.getActiveBinding();
+    const selected = defaultBindingFromProfile(this.explorerProfileId);
+    const preferEditor = fromEditor ?? this.lastFocusedSurface === "editor";
+    const candidates = preferEditor ? [active, selected] : [selected, active];
+    return candidates.find((binding) =>
+      binding.profileId && ConnectionService.getProfile(binding.profileId),
+    ) ?? emptyBinding();
   }
 
   getBinding(tabId: string): EditorConnectionBinding {
@@ -103,9 +108,6 @@ class EditorConnectionBindingServiceImpl {
       return;
     }
     this.bindings.set(tabId, next);
-    if (next.profileId) {
-      this.defaultProfileId = next.profileId;
-    }
     this.fireDidChange();
   }
 
@@ -130,9 +132,6 @@ class EditorConnectionBindingServiceImpl {
       }
       this.bindings.set(tab.id, { ...next });
       changed = true;
-    }
-    if (next.profileId) {
-      this.defaultProfileId = next.profileId;
     }
     if (changed) {
       this.fireDidChange();
@@ -183,7 +182,6 @@ class EditorConnectionBindingServiceImpl {
     }
 
     if (changed) {
-      this.defaultProfileId = id;
       this.fireDidChange();
     }
   }
@@ -229,16 +227,15 @@ class EditorConnectionBindingServiceImpl {
     }
 
     if (changed) {
-      this.defaultProfileId = id;
       this.fireDidChange();
     }
   }
 
-  /** Assign default binding when missing (new SQL tabs). */
+  /** Assign a contextual binding when missing (new SQL tabs). */
   ensureBinding(tabId: string): EditorConnectionBinding {
     const existing = this.bindings.get(tabId);
     if (existing) return existing;
-    const next = defaultBindingFromProfile(this.resolveDefaultProfileId());
+    const next = this.resolveNewEditorBinding();
     this.bindings.set(tabId, next);
     this.fireDidChange();
     return next;
@@ -254,22 +251,6 @@ class EditorConnectionBindingServiceImpl {
     return () => this.listeners.delete(listener);
   }
 
-  /**
-   * Only ever returns a *currently connected* profile — never a merely-saved one
-   * (`activeProfileId` is just the Explorer's last-selected row and may not be
-   * connected at all). A new tab with nothing connected must open unbound.
-   */
-  private resolveDefaultProfileId(): string | null {
-    const state = ConnectionService.getState();
-    if (
-      this.defaultProfileId &&
-      state.connectedProfileIds.includes(this.defaultProfileId)
-    ) {
-      return this.defaultProfileId;
-    }
-    return state.connectedProfileIds[0] ?? null;
-  }
-
   private syncWithEditorTabs(): void {
     // Bindings are stored across all editor groups. `EditorService.getTabs()` only
     // returns tabs from the focused group, so using it here would mistake tabs in
@@ -278,6 +259,10 @@ class EditorConnectionBindingServiceImpl {
       EditorGroupsService.getGroup(groupId).getTabs(),
     );
     const liveIds = new Set(tabs.map((tab) => tab.id));
+    const previousBinding = this.lastActiveTabId
+      ? this.getBinding(this.lastActiveTabId)
+      : emptyBinding();
+    this.lastActiveTabId = EditorService.getActiveTab()?.id ?? null;
     let changed = false;
 
     for (const tabId of [...this.bindings.keys()]) {
@@ -290,10 +275,13 @@ class EditorConnectionBindingServiceImpl {
     for (const tab of tabs) {
       if (!isSqlLanguageId(tab.languageId)) continue;
       if (this.bindings.has(tab.id)) continue;
-      this.bindings.set(
-        tab.id,
-        defaultBindingFromProfile(this.resolveDefaultProfileId()),
-      );
+      const ref = parseObjectEditorUri(tab.uri) ?? parseDdlEditorUri(tab.uri) ?? parsePlsqlEditorUri(tab.uri);
+      const binding = ref
+        ? (ConnectionService.getProfile(ref.profileId)
+            ? { profileId: ref.profileId, catalog: ref.catalogName ?? null, schema: ref.schemaName }
+            : emptyBinding())
+        : this.resolveNewEditorBinding(undefined, previousBinding);
+      this.bindings.set(tab.id, binding);
       changed = true;
     }
 
@@ -301,6 +289,18 @@ class EditorConnectionBindingServiceImpl {
       this.fireDidChange();
     }
   }
+
+  private readonly recordFocusedSurface = (event: Event): void => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (
+      target.closest(".monaco-editor, .editor-area, .tab-bar")
+    ) {
+      this.lastFocusedSurface = "editor";
+    } else if (target.closest(".connections-explorer")) {
+      this.lastFocusedSurface = "explorer";
+    }
+  };
 
   private fireDidChange(): void {
     for (const listener of this.listeners) {
