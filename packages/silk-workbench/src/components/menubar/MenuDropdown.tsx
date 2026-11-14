@@ -85,6 +85,7 @@ function MenuDropdown({ groups, onSelect }: MenuDropdownProps) {
                   }}
                 >
                   <span className="menu-dropdown__label">{action.label}</span>
+                  {action.checked ? <span className="menu-dropdown__check" aria-hidden="true">✓</span> : null}
                   {action.keybinding ? (
                     <span className="menu-dropdown__keybinding">
                       {action.keybinding}

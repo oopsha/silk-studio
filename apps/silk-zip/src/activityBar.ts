@@ -2,6 +2,7 @@ import { COLOR_THEMES } from "@silk-studio/workbench/platform/configuration/colo
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
+import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 
 const registrationState = globalThis as typeof globalThis & {
   __silkZipActivityMenuRegistered?: boolean;
@@ -35,7 +36,9 @@ if (!registrationState.__silkZipActivityMenuRegistered) {
 
   for (const [index, theme] of COLOR_THEMES.entries()) {
     const id = `silkZip.activity.theme.${theme.id}`;
-    CommandsRegistry.registerCommand(id, () => undefined);
+    CommandsRegistry.registerCommand(id, () => {
+      ConfigurationService.updateValue("workbench.colorTheme", theme.id);
+    });
     MenuRegistry.appendMenuItem(MenuId.GlobalActivityThemesSubmenu, {
       command: { id, title: theme.label },
       group: "1_themes",

@@ -106,6 +106,8 @@
   outline: none;
 }
 
+.menu-dropdown__check { width: 24px; flex: none; text-align: center; }
+
 .menu-dropdown__item--focused,
 .menu-dropdown__item:hover,
 .menu-dropdown__item:focus-visible {

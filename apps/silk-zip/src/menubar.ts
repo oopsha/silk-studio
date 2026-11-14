@@ -57,7 +57,7 @@ for (const item of fileItems) {
 
 const otherMenus = [
   [MenuId.MenubarEditMenu, ["이름 바꾸기|F2", "파일 추가|Ins", "파일 삭제|Del", "압축 파일 설명 편집|Ctrl+Shift+M", "|", "클립보드로 파일 복사|Ctrl+C", "클립보드에서 파일 붙여넣기|Ctrl+V", "파일의 경로명을 클립보드로 복사", "|", "찾기...|Ctrl+F"]],
-  [MenuId.MenubarViewMenu, ["트리 컨트롤|F7", "압축 파일 설명|F8", "이미지 파일 미리 보기 사용", "상태 표시줄", "툴바 ›", "파일 목록 ›", "칼럼 설정 ›", "|", "항상 위에 표시", "색상 설정..."]],
+  [MenuId.MenubarViewMenu, ["보기 형식", "표시할 열", "테마"]],
   [MenuId.MenubarToolsMenu, ["손상된 압축 파일 복구...", "압축 파일 암호 복구..."]],
   [MenuId.MenubarHelpMenu, ["정보|F1", "프로그램 설치 폴더 열기", "|", "도움말 페이지 열기", "토론 게시판 열기", "홈페이지 열기"]],
 ] as const;
@@ -65,6 +65,33 @@ const otherMenus = [
 for (const [menuId, labels] of otherMenus) {
   labels.forEach((entry, order) => {
     if (entry === "|") return;
+    if (menuId === MenuId.MenubarViewMenu && order === 0) {
+      MenuRegistry.appendMenuItem(menuId, {
+        submenu: MenuId.MenubarSelectionMenu,
+        title: "보기 형식",
+        group: `group-${labels.slice(0, order).filter((label) => label === "|").length}`,
+        order,
+      });
+      return;
+    }
+    if (menuId === MenuId.MenubarViewMenu && order === 1) {
+      MenuRegistry.appendMenuItem(menuId, {
+        submenu: MenuId.MenubarFindMenu,
+        title: "표시할 열",
+        group: "group-0",
+        order,
+      });
+      return;
+    }
+    if (menuId === MenuId.MenubarViewMenu && order === 2) {
+      MenuRegistry.appendMenuItem(menuId, {
+        submenu: MenuId.GlobalActivityThemesSubmenu,
+        title: "테마",
+        group: `group-${labels.slice(0, order).filter((label) => label === "|").length}`,
+        order,
+      });
+      return;
+    }
     const [title, shortcut] = entry.split("|");
     MenuRegistry.appendMenuItem(menuId, {
       command: { id: `silkZip.placeholder.${menuId.id}.${order}`, title },
@@ -74,4 +101,22 @@ for (const [menuId, labels] of otherMenus) {
     void shortcut;
   });
 }
+
+["큰 아이콘", "아이콘", "목록", "자세히"].forEach((title, order) => {
+  MenuRegistry.appendMenuItem(MenuId.MenubarSelectionMenu, {
+    command: { id: `silkZip.viewMode.${order}`, title },
+    group: "1_viewModes",
+    order: order + 1,
+  });
+});
+
+["압축 크기", "원본 크기", "파일 종류", "수정한 날짜", "|", "압축 방식", "암호 방식", "CRC", "속성", "파일 설명", "부가 정보"].forEach((entry, order) => {
+  if (entry === "|") return;
+  const group = order < 4 ? "1_primary" : "2_additional";
+  MenuRegistry.appendMenuItem(MenuId.MenubarFindMenu, {
+    command: { id: `silkZip.column.${order}`, title: entry },
+    group,
+    order,
+  });
+});
 }

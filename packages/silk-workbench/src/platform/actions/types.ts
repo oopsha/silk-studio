@@ -29,6 +29,7 @@ export interface ICommandAction {
 
 export interface IMenuItem {
   command: ICommandAction;
+  checkedWhen?: string;
   group?: string;
   order?: number;
   when?: string;

@@ -22,6 +22,7 @@ export type ResolvedMenuAction = {
   group: string;
   order: number;
   enabled: boolean;
+  checked: boolean;
   secondaryAction?: { id: string; label: string };
 };
 
@@ -124,6 +125,7 @@ class MenuServiceImpl {
       group: item.group ?? "",
       order: item.order ?? 0,
       enabled: precondition ? ContextKeyService.get(precondition) : true,
+      checked: item.checkedWhen ? ContextKeyService.get(item.checkedWhen) : false,
       secondaryAction: item.command.secondaryAction
         ? {
             id: item.command.secondaryAction.id,
@@ -239,6 +241,10 @@ class MenuServiceImpl {
       case "silkZip.placeholder.MenubarEditMenu.3":
       case "silkZip.placeholder.MenubarEditMenu.9":
         return "hasOpenArchive";
+      case "silkZip.placeholder.MenubarHelpMenu.3":
+      case "silkZip.placeholder.MenubarHelpMenu.4":
+      case "silkZip.placeholder.MenubarHelpMenu.5":
+        return "silkZipHelpLinksEnabled";
       case "silkZip.placeholder.MenubarEditMenu.0":
       case "silkZip.placeholder.MenubarEditMenu.5":
       case "silkZip.placeholder.MenubarEditMenu.7":

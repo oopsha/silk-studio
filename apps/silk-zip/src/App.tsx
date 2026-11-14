@@ -15,6 +15,7 @@ import { ContextKeyService } from "@silk-studio/workbench/platform/context/conte
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
 import { listArchive, type ArchiveListing } from "./archive";
 import ArchiveExplorer from "./components/ArchiveExplorer";
+import { startRecentArchives } from "./recentArchives";
 
 const ARCHIVE_FILE_FILTERS = [
   { name: "압축 파일", extensions: ["zip", "zipx", "tar", "tgz", "taz", "gz", "gzip", "bz2", "xz", "txz", "lz", "lzma", "lzh", "lha", "iso", "7z", "zpaq", "rar", "rar5"] },
@@ -41,6 +42,21 @@ function App() {
 
   useEffect(() => {
     let disposed = false;
+    const recentArchives = startRecentArchives(async (path) => {
+      if (busy.current) return;
+      busy.current = true;
+      try {
+        setLoading(true);
+        setError(null);
+        const result = await listArchive(path);
+        if (!disposed) setArchive(result);
+      } catch (reason) {
+        if (!disposed) setError(String(reason));
+      } finally {
+        busy.current = false;
+        if (!disposed) setLoading(false);
+      }
+    });
     const openArchive = async () => {
       if (busy.current) return;
       busy.current = true;
@@ -50,7 +66,7 @@ function App() {
         setLoading(true);
         setError(null);
         const result = await listArchive(path);
-        if (!disposed) { setArchive(result); }
+        if (!disposed) { setArchive(result); recentArchives.record(path); }
       } catch (reason) {
         if (!disposed) setError(String(reason));
       } finally {
@@ -62,7 +78,7 @@ function App() {
     const unregisterKey = KeybindingsRegistry.registerKeybinding("silkZip.file.openArchive", detectWorkbenchPlatform() === "mac" ? "Cmd+O" : "Ctrl+O");
     const onKeyDown = (event: KeyboardEvent) => { KeybindingsRegistry.handleKeyboardEvent(event); };
     window.addEventListener("keydown", onKeyDown);
-    return () => { disposed = true; unregisterKey(); unregister(); window.removeEventListener("keydown", onKeyDown); };
+    return () => { disposed = true; recentArchives.stop(); unregisterKey(); unregister(); window.removeEventListener("keydown", onKeyDown); };
   }, []);
   const addFiles = async () => {
     const selected = await open({ multiple: true, directory: false });
@@ -82,7 +98,7 @@ function App() {
           {archive ? <ArchiveExplorer archive={archive} /> : <div className="zip-start-workspace">
           {layout.sidebar ? <aside className="zip-empty-explorer" style={{ width: layout.sidebarWidth }} aria-label="탐색기"><ViewPaneTitle title="탐색기" /></aside> : null}
           <section className="zip-content">
-            <div className="zip-toolbar"><div><h1>새 압축 파일</h1><p>파일을 선택하고 ZIP 또는 7z 파일로 압축하세요.</p></div><div className="zip-toolbar__actions"><select aria-label="압축 형식"><option>7z</option><option>zip</option></select><button className="zip-button" onClick={addFiles}>파일 추가</button></div></div>
+            <div className="zip-toolbar"><div><h1>새 압축 파일</h1><p>파일을 선택하고 원하는 형식으로 압축하세요.</p></div><div className="zip-toolbar__actions"><select aria-label="압축 형식" defaultValue="zip"><option value="zip">ZIP</option><option value="zipx">ZIPX</option><option value="7z">7z</option><option value="tar">TAR</option><option value="gz">GZ</option><option value="xz">XZ</option><option value="iso">ISO</option><option disabled>────────────</option><option value="exe" disabled>EXE</option><option value="lzh" disabled>LZH</option><option value="zpaq" disabled>ZPAQ</option></select><button className="zip-button" onClick={addFiles}>파일 추가</button></div></div>
             <div className="zip-drop" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setFiles((current) => [...current, ...Array.from(event.dataTransfer.files, (file) => file.name)]); }}>
               {files.length === 0 ? <><div className="zip-empty-icon">＋</div><strong>파일을 여기로 끌어오세요</strong><span>또는 파일 추가를 눌러 선택</span></> : <div className="zip-file-list">{files.map((file, index) => <div className="zip-file" key={`${file}-${index}`}><span className="codicon codicon-file" />{file}</div>)}</div>}
             </div>
