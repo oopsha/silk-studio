@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 
 // Lightweight unit tests for binding helpers without Tauri.
 
@@ -91,12 +91,15 @@ vi.mock("../sql/sqlDialect", () => ({
 
 describe("EditorConnectionBindingService", () => {
   beforeEach(async () => {
+    vi.stubGlobal("document", { addEventListener: vi.fn() });
     vi.resetModules();
     const editor = await import(
       "@silk-studio/editor/services/editor/editorServiceFacade.ts"
     );
     (editor.EditorService as unknown as { __reset: () => void }).__reset();
   });
+
+  afterEach(() => vi.unstubAllGlobals());
 
   it("does not use the last connected profile when no context is available", async () => {
     const { EditorConnectionBindingService: bindings } = await import("./editorConnectionBindingService");
