@@ -1,4 +1,5 @@
 import type { editor } from "monaco-editor";
+import { scheduleEditorFocus } from "@silk-studio/editor/services/editor/monacoModelPath.ts";
 
 /**
  * Tracks Monaco editor instances that live outside `EditorGroupsService`'s own
@@ -18,7 +19,9 @@ const instances = new Set<editor.ICodeEditor>();
 
 export function registerMonacoInstance(instance: editor.ICodeEditor): () => void {
   instances.add(instance);
+  const cancelFocus = scheduleEditorFocus(instance);
   return () => {
+    cancelFocus();
     instances.delete(instance);
   };
 }

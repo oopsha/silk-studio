@@ -14,6 +14,33 @@ import {
 } from "../../services/query/sqlExecutable";
 import { extractExecutableScript } from "../../services/query/sqlScriptBatches";
 import { resolveActiveDriverId } from "../../services/sql/sqlDialect";
+import { ConnectionTargetQuickPickService } from "../../services/connection/connectionTargetQuickPickService";
+import { EditorConnectionBindingService } from "../../services/connection/editorConnectionBindingService";
+
+let choosingExecutionConnection = false;
+
+/** Resume only for the tab that requested the picker; closing it without a target cancels. */
+async function selectExecutionConnection(): Promise<boolean> {
+  if (choosingExecutionConnection) return false;
+  if (EditorConnectionBindingService.getActiveBinding().profileId) return true;
+  const tabId = EditorService.getActiveTab()?.id;
+  if (!tabId) return false;
+  choosingExecutionConnection = true;
+  try {
+    await new Promise<void>((resolve) => {
+      const unsubscribe = ConnectionTargetQuickPickService.onDidChange(() => {
+        if (ConnectionTargetQuickPickService.isOpen()) return;
+        unsubscribe();
+        resolve();
+      });
+      ConnectionTargetQuickPickService.show();
+    });
+    return EditorService.getActiveTab()?.id === tabId
+      && Boolean(EditorConnectionBindingService.getActiveBinding().profileId);
+  } finally {
+    choosingExecutionConnection = false;
+  }
+}
 
 function updateCancelQueryContextKey(): void {
   const groupId = EditorGroupsService.getFocusedGroupId();
@@ -25,6 +52,7 @@ EditorGroupsService.onDidChangeAnyGroup(updateCancelQueryContextKey);
 updateCancelQueryContextKey();
 
 CommandsRegistry.registerCommand("silk.query.execute", async () => {
+  if (!await selectExecutionConnection()) return;
   const snapshot = EditorService.getActiveEditorSnapshot();
   if (!snapshot) return;
 
@@ -40,6 +68,7 @@ CommandsRegistry.registerCommand("silk.query.execute", async () => {
 });
 
 CommandsRegistry.registerCommand("silk.query.executeScript", async () => {
+  if (!await selectExecutionConnection()) return;
   const snapshot = EditorService.getActiveEditorSnapshot();
   if (!snapshot) return;
 

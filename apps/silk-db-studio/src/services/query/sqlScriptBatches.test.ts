@@ -5,6 +5,30 @@ import {
   goBatchesInRange,
 } from "./sqlScriptBatches";
 
+describe("Oracle script comments", () => {
+  it("does not execute trailing design comments as an extra statement", () => {
+    const sql = "CREATE SEQUENCE SQ_TEST START WITH 1 CACHE 20 NOCYCLE;\n\n"
+      + "-- 설계 규칙:\n-- 1. INSERT에서 NEXTVAL로 발급한다.\n-- 2. FK는 추가하지 않는다.";
+    const result = extractExecutableScript(sql, 0, 0, "oracle");
+    expect(result.statements.map((statement) => statement.sql)).toEqual([
+      "CREATE SEQUENCE SQ_TEST START WITH 1 CACHE 20 NOCYCLE",
+    ]);
+  });
+
+  it.each(["-- 주석만 선택", "/* 설명 ; */\n-- 끝", "-- 설명\n; /* 끝 */"])(
+    "does not execute comment-only buffers or selections: %s",
+    (sql) => {
+      expect(extractExecutableScript(sql, 0, 0, "oracle").statements).toEqual([]);
+      expect(extractExecutableScript(sql, 0, sql.length, "oracle").statements).toEqual([]);
+    },
+  );
+
+  it("preserves comment markers inside SQL string literals", () => {
+    const sql = "SELECT '-- 주석 아님', '/* 값 */' FROM DUAL; -- 끝";
+    expect(extractExecutableScript(sql, 0, 0, "oracle").statements).toHaveLength(1);
+  });
+});
+
 describe("findGoSeparatorRanges", () => {
   it("finds standalone GO lines case-insensitively", () => {
     const sql = "SELECT 1;\nGO\nSELECT 2;\ngo\nSELECT 3";

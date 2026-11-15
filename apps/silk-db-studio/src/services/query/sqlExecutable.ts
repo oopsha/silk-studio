@@ -73,7 +73,7 @@ export function extractExecutableStatements(
 
   const statement = findStatementRange(content, start);
   const trimmed = trimSqlRange(content, statement.start, statement.end);
-  if (!trimmed.sql || isLoneSlashMarker(trimmed.sql)) {
+  if (!trimmed.sql || isNonExecutableSql(trimmed.sql)) {
     return { statements: [], mode: "statement" };
   }
   return {
@@ -102,7 +102,7 @@ export function statementsInRange(
       start + relativeRange.start,
       start + relativeRange.end,
     );
-    if (trimmed.sql.length > 0 && !isLoneSlashMarker(trimmed.sql)) {
+    if (trimmed.sql.length > 0 && !isNonExecutableSql(trimmed.sql)) {
       statements.push({ sql: trimmed.sql, range: trimmed.range });
     }
   }
@@ -110,7 +110,7 @@ export function statementsInRange(
   // Selection with no `;` still counts as one statement.
   if (statements.length === 0) {
     const trimmed = trimSqlRange(content, start, end);
-    if (trimmed.sql.length > 0 && !isLoneSlashMarker(trimmed.sql)) {
+    if (trimmed.sql.length > 0 && !isNonExecutableSql(trimmed.sql)) {
       statements.push({ sql: trimmed.sql, range: trimmed.range });
     }
   }
@@ -119,14 +119,15 @@ export function statementsInRange(
 }
 
 /**
- * True when `sql` (already whitespace/`;`-trimmed) is nothing but a standalone SQL*Plus/SQLcl
+ * Skip comment-only SQL (including empty separators) and a standalone SQL*Plus/SQLcl
  * buffer-execute marker: a lone `/` on its own line, optionally with a trailing comment. This is
  * a client convention, not SQL — Oracle rejects it as a statement (ORA-00900) if sent verbatim,
  * so it must never reach {@link statementsInRange}'s or {@link extractExecutableStatements}'s
  * output; it is dropped silently rather than surfaced as a failed statement.
  */
-function isLoneSlashMarker(sql: string): boolean {
-  return stripSqlComments(sql).trim() === "/";
+function isNonExecutableSql(sql: string): boolean {
+  const body = stripSqlComments(sql).trim();
+  return /^[\s;]*$/.test(body) || body === "/";
 }
 
 /**

@@ -366,6 +366,7 @@ function ProfileTree({
    *  right away) and a failed connect surfaces through the row's existing error UI (`run`)
    *  without discarding the tab. */
   function openNewQueryForProfile() {
+    ConnectionService.setActiveProfile(profile.id);
     const tabId = EditorService.openUntitled(monacoLanguageIdForProfile(profile.id));
     EditorConnectionBindingService.setBinding(tabId, { profileId: profile.id });
     if (!isConnected && !isConnecting) {
