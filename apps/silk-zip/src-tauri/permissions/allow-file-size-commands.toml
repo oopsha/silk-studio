@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-file-size-commands"
+description = "Allows reading the sizes of user-selected files."
+commands.allow = ["file_sizes", "draft_scan"]

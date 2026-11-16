@@ -1,4 +1,6 @@
 //! Shared, UI-independent archive inspection backed by libarchive.
+pub mod create;
+
 use serde::Serialize;
 #[cfg(not(windows))]
 use std::ffi::CString;
@@ -52,6 +54,8 @@ pub struct ArchiveListing {
     pub entries: Vec<ArchiveEntry>,
     pub warnings: Vec<String>,
 }
+
+pub use create::{create_zip, create_zip_entries, CreateInput, CreateProgress, CreateResult};
 
 struct Reader(*mut c_void);
 impl Drop for Reader {

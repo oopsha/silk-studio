@@ -2,7 +2,8 @@
 
 Tauri, React, 앱 설정에 의존하지 않는 공통 Rust 압축 엔진입니다.
 DB Studio와 BE Studio에서도 `silk-archive` 의존성을 추가해 사용할 수 있습니다.
-현재 제공 API는 `list_archive(&Path)`이며 압축 파일을 변경하거나 풀지 않습니다.
+현재 제공 API는 압축 파일 목록 읽기와 ZIP 생성(`create_zip`)입니다.
+ZIP 생성은 입력 파일과 선택 폴더를 새 파일로 작성하며, 취소와 진행률 콜백을 지원합니다.
 RAR/RAR5는 읽기·압축 풀기 대상으로만 구현합니다.
 7-Zip은 ZIP/7z 성능을 측정한 뒤 필요할 때 추가합니다.
 
@@ -39,10 +40,13 @@ macOS 실행 검증은 Windows에서 수행한 검사와 별개입니다.
 
 - 지원 코덱은 연결한 libarchive의 빌드 옵션에 따라 달라집니다.
 - 목록 읽기는 무결성 검사와 다릅니다. 데이터 손상 여부 전체를 보장하지 않습니다.
-- 비밀번호 입력 및 다중 볼륨 파일 선택은 다음 단계에서 구현합니다.
+- ZIP 비밀번호 압축은 호환성을 위해 ZipCrypto를 사용합니다. ZipCrypto는 보안이 약합니다.
+- ZIP 다중 볼륨 압축은 아직 지원하지 않습니다.
 - 파일 이름을 정상적으로 읽지 못하면 대체 이름으로 숨기지 않고 오류를 반환합니다.
 - 현재 목록 한도는 10만 항목, 파일 이름 합계 16MB입니다. 초과 시 오류를 반환합니다.
 - libarchive 및 정적 연결된 코덱의 저작권·라이선스 문서를 배포물에 포함해야 합니다.
   Windows는 vcpkg `installed/<triplet>/share/*/copyright`, macOS는 실제 연결한
   패키지별 LICENSE/COPYING을 기준으로 수집해야 합니다.
 - 기본 엔진이 지원하는 모든 형식이 검증된 제품 지원 형식은 아닙니다.
+
+`create_zip_entries` accepts explicit source paths and archive paths. An entry with no source path creates a directory inside the ZIP without creating a directory on disk. Each entry is written once (source directories are not recursively expanded by this API); callers provide the complete draft listing. Archive paths are relative, use `/`, and must be unique.

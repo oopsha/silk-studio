@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 export type ArchiveListing = {
   path: string;
@@ -8,6 +8,44 @@ export type ArchiveListing = {
   warnings: string[];
 };
 
+export type CreateProgress = {
+  phase: "preparing" | "writing" | "finalizing";
+  completedBytes: number;
+  totalBytes: number;
+  completedEntries: number;
+  totalEntries: number;
+};
+
+export type CreateResult = { path: string; entries: number; size: number };
+
 export function listArchive(path: string): Promise<ArchiveListing> {
   return invoke("archive_list", { path });
+}
+
+export function createArchive(
+  operationId: string,
+  inputs: { sourcePath: string | null; archivePath: string }[],
+  outputPath: string,
+  compressionLevel: number,
+  password: string,
+  onProgress: (progress: CreateProgress) => void,
+): Promise<CreateResult> {
+  const channel = new Channel<CreateProgress>();
+  channel.onmessage = onProgress;
+  return invoke("archive_create", {
+    operationId,
+    inputs,
+    outputPath,
+    compressionLevel,
+    password: password || null,
+    onProgress: channel,
+  });
+}
+
+export function cancelArchive(operationId: string): Promise<boolean> {
+  return invoke("archive_cancel", { operationId });
+}
+
+export function openOutputFolder(path: string): Promise<void> {
+  return invoke("open_output_folder", { path });
 }

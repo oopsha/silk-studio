@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "allow-archive-commands"
-description = "Allows reading the entries in a user-selected archive."
-commands.allow = ["archive_list"]
+description = "Allows reading and creating archives and opening their output folder."
+commands.allow = ["archive_list", "archive_create", "archive_cancel", "open_output_folder"]
