@@ -214,7 +214,7 @@ function QueryResultGrid({
   const filterEnabled = configuration["queryResult.filterEnabled"];
   const rowHeight = configuration["queryResult.rowHeight"];
   const fontSize = configuration["queryResult.fontSize"];
-  const colorTheme = configuration["workbench.colorTheme"];
+  const colorTheme = resolveEffectiveColorTheme(configuration["workbench.colorTheme"]);
   const maxRows = configuration["queryResult.maxRows"];
   const truncated = isResultTruncated(result, maxRows);
   // A truncated result keeps its initial batch and appends subsequent pages on demand. Unlike AG
@@ -410,7 +410,7 @@ function QueryResultGrid({
   }, [sql, result.columns, relationKind, connectionId, truncateBeforeImport]);
 
   const gridTheme = useMemo(() => {
-    const palette = GRID_THEME_PALETTES[resolveEffectiveColorTheme(colorTheme)];
+    const palette = GRID_THEME_PALETTES[colorTheme];
     return themeQuartz.withParams({
       backgroundColor: palette.backgroundColor,
       dataBackgroundColor: palette.backgroundColor,

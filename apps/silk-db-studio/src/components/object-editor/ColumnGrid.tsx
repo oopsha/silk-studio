@@ -62,8 +62,8 @@ export default function ColumnGrid<Row extends ColumnGridRow>({ rows, columns, f
     return () => window.removeEventListener("mouseup", stop);
   }, []);
 
-  const colorTheme = configuration["workbench.colorTheme"];
-  const palette = resolveEffectiveColorTheme(colorTheme) === "light"
+  const colorTheme = resolveEffectiveColorTheme(configuration["workbench.colorTheme"]);
+  const palette = colorTheme === "light"
     ? { background: "#fafafd", foreground: "#202020", header: "#eaeaea", odd: "#f5f5f7", hover: "rgba(0,0,0,.06)", border: "#f0f1f2", input: "#fff", inputBorder: "#d8d8d8", selected: "rgba(0,105,204,.15)" }
     : { background: "#191a1b", foreground: "#bfbfbf", header: "#202122", odd: "#1e1f20", hover: "#242526", border: "#2a2b2c", input: "#121314", inputBorder: "#333536", selected: "rgba(57,148,188,.22)" };
   const rowHeight = configuration["queryResult.rowHeight"];
