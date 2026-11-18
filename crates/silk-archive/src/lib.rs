@@ -2,7 +2,6 @@
 pub mod create;
 
 use serde::Serialize;
-#[cfg(not(windows))]
 use std::ffi::CString;
 use std::{
     ffi::{c_char, c_int, c_void, CStr},
@@ -34,6 +33,11 @@ unsafe extern "C" {
     fn archive_entry_size_is_set(e: *mut c_void) -> c_int;
     fn archive_entry_filetype(e: *mut c_void) -> ArchiveMode;
     fn archive_entry_is_encrypted(e: *mut c_void) -> c_int;
+    fn silk_7zip_list_split_zip(
+        archive_path: *const c_char,
+        entry_callback: Option<SplitZipEntryCallback>,
+        entry_context: *mut c_void,
+    ) -> c_int;
 }
 
 #[derive(Debug, Serialize)]
@@ -55,7 +59,19 @@ pub struct ArchiveListing {
     pub warnings: Vec<String>,
 }
 
-pub use create::{create_zip, create_zip_entries, CreateInput, CreateProgress, CreateResult};
+pub use create::{
+    create_zip, create_zip_entries, create_zip_entries_with_split, CreateInput, CreateProgress,
+    CreateResult,
+};
+
+type SplitZipEntryCallback = unsafe extern "C" fn(
+    name: *const c_char,
+    size: u64,
+    size_is_set: c_int,
+    is_directory: c_int,
+    is_encrypted: c_int,
+    context: *mut c_void,
+) -> c_int;
 
 struct Reader(*mut c_void);
 impl Drop for Reader {
@@ -84,11 +100,116 @@ impl Reader {
     }
 }
 
+fn split_volume_exists(path: &Path) -> Result<bool, String> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .ok_or("압축 파일 이름을 읽지 못했습니다.")?;
+    let expected = format!("{stem}.z01");
+    for entry in std::fs::read_dir(parent).map_err(|error| error.to_string())? {
+        let name = entry
+            .map_err(|error| error.to_string())?
+            .file_name()
+            .to_string_lossy()
+            .into_owned();
+        if name.eq_ignore_ascii_case(&expected) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+struct SplitZipListingContext {
+    entries: Vec<ArchiveEntry>,
+    name_bytes: usize,
+    error: Option<String>,
+}
+
+unsafe extern "C" fn collect_split_zip_entry(
+    name: *const c_char,
+    size: u64,
+    size_is_set: c_int,
+    is_directory: c_int,
+    is_encrypted: c_int,
+    context: *mut c_void,
+) -> c_int {
+    let context = &mut *context.cast::<SplitZipListingContext>();
+    if name.is_null() {
+        context.error = Some("분할 ZIP 항목 이름을 읽지 못했습니다.".into());
+        return 1;
+    }
+    let name = match CStr::from_ptr(name).to_str() {
+        Ok(name) => name.to_owned(),
+        Err(_) => {
+            context.error = Some("분할 ZIP 파일 이름이 올바른 UTF-8이 아닙니다.".into());
+            return 1;
+        }
+    };
+    context.name_bytes = context.name_bytes.saturating_add(name.len());
+    if context.entries.len() >= 100_000 || context.name_bytes > 16 * 1024 * 1024 {
+        context.error = Some(
+            "이 파일은 현재 목록 표시 한도(10만 항목 또는 이름 합계 16MB)를 초과합니다.".into(),
+        );
+        return 1;
+    }
+    context.entries.push(ArchiveEntry {
+        path: name,
+        size: (size_is_set != 0).then_some(size),
+        directory: is_directory != 0,
+        encrypted: is_encrypted != 0,
+    });
+    0
+}
+
+fn list_split_zip(path: &Path) -> Result<ArchiveListing, String> {
+    let path_string = path
+        .to_str()
+        .ok_or("압축 파일 경로를 UTF-8로 처리할 수 없습니다.")?;
+    let path_c = CString::new(path_string).map_err(|_| "잘못된 압축 파일 경로입니다.")?;
+    let mut context = SplitZipListingContext {
+        entries: Vec::new(),
+        name_bytes: 0,
+        error: None,
+    };
+    let status = unsafe {
+        silk_7zip_list_split_zip(
+            path_c.as_ptr(),
+            Some(collect_split_zip_entry),
+            (&mut context as *mut SplitZipListingContext).cast(),
+        )
+    };
+    if let Some(error) = context.error {
+        return Err(error);
+    }
+    if status != 0 {
+        return Err(format!("분할 ZIP을 열거나 목록을 읽지 못했습니다. 모든 .z01, .z02 등의 조각이 같은 폴더에 있는지 확인하세요. (오류 코드 0x{:08X})", status as u32));
+    }
+    Ok(ArchiveListing {
+        path: path.to_string_lossy().into_owned(),
+        format: "ZIP".into(),
+        engine: "7-Zip SDK".into(),
+        entries: context.entries,
+        warnings: Vec::new(),
+    })
+}
+
 /// Inspect headers without writing to disk. This is not an archive integrity test.
 /// Reject excessive listings rather than silently returning a partial archive.
 pub fn list_archive(path: &Path) -> Result<ArchiveListing, String> {
     if !path.is_file() {
         return Err("압축 파일을 찾을 수 없습니다.".into());
+    }
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
+        && split_volume_exists(path)?
+    {
+        return list_split_zip(path);
     }
     let handle = unsafe { archive_read_new() };
     if handle.is_null() {

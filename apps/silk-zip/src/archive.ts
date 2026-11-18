@@ -28,6 +28,7 @@ export function createArchive(
   outputPath: string,
   compressionLevel: number,
   password: string,
+  splitSizeBytes: number | null,
   onProgress: (progress: CreateProgress) => void,
 ): Promise<CreateResult> {
   const channel = new Channel<CreateProgress>();
@@ -38,6 +39,7 @@ export function createArchive(
     outputPath,
     compressionLevel,
     password: password || null,
+    splitSizeBytes,
     onProgress: channel,
   });
 }

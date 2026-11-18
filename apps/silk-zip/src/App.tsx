@@ -62,6 +62,7 @@ function App() {
   const [outputConfirmed, setOutputConfirmed] = useState(false);
   const [preparationMessage, setPreparationMessage] = useState("");
   const [compressionProgress, setCompressionProgress] = useState<CreateProgress | null>(null);
+  const [compressionError, setCompressionError] = useState<string | null>(null);
   const [cancelRequested, setCancelRequested] = useState(false);
   const [completedArchive, setCompletedArchive] = useState<CreateResult | null>(null);
   const [archive, setArchive] = useState<ArchiveListing | null>(null);
@@ -224,17 +225,24 @@ function App() {
     creating.current = true;
     activeCreateId.current = operationId;
     setCancelRequested(false);
+    setCompressionError(null);
     setCompressionProgress({ phase: "writing", completedBytes: 0, totalBytes: draft.entries.reduce((total, entry) => total + (entry.size ?? 0), 0), completedEntries: 0, totalEntries: files.length });
     setPreparationMessage("");
     const compressionLevel = compressionMethod === "fast" ? 1 : compressionMethod === "maximum" ? 9 : 6;
     try {
-      const result = await createArchive(operationId, draft.entries, destination, compressionLevel, password, setCompressionProgress);
+      const splitSizeMb = splitSize === "none"
+        ? null
+        : splitSize === "custom"
+          ? Number(customSplitSize)
+          : Number(splitSize);
+      const splitSizeBytes = splitSizeMb === null ? null : splitSizeMb * 1024 * 1024;
+      const result = await createArchive(operationId, draft.entries, destination, compressionLevel, password, splitSizeBytes, setCompressionProgress);
       setCompletedArchive(result);
       setOutputConfirmed(false);
     } catch (reason) {
       const message = String(reason);
       if (message.includes("취소")) setPreparationMessage("압축 작업을 취소했습니다.");
-      else setPreparationMessage(message);
+      else setCompressionError(message);
     } finally {
       creating.current = false;
       activeCreateId.current = null;
@@ -249,8 +257,11 @@ function App() {
       return;
     }
     if (splitSize !== "none") {
-      setPreparationMessage("분할 압축은 아직 지원하지 않습니다. ‘분할하지 않음’을 선택하세요.");
-      return;
+      const splitSizeMb = splitSize === "custom" ? Number(customSplitSize) : Number(splitSize);
+      if (!Number.isSafeInteger(splitSizeMb) || splitSizeMb < 1 || !Number.isSafeInteger(splitSizeMb * 1024 * 1024)) {
+        setPreparationMessage("분할 크기는 1MB 이상의 정수로 입력하세요.");
+        return;
+      }
     }
     if (password !== confirmPassword) {
       setPreparationMessage("암호가 일치하는지 확인하세요.");
@@ -347,6 +358,7 @@ function App() {
       </div>
       <div className="zip-status"><span>{archive?.engine ?? "압축 파일을 열려면 파일 메뉴 또는 Ctrl+O를 사용하세요."}</span><span>Silk Studio</span></div>
       {compressionProgress ? <div className="zip-operation-backdrop"><section className="zip-operation-dialog" role="dialog" aria-modal="true" aria-labelledby="zip-progress-title"><h2 id="zip-progress-title">압축 중</h2><p>{cancelRequested ? "취소 요청을 처리하고 있습니다…" : compressionProgress.phase === "preparing" ? "압축할 파일을 확인하고 있습니다." : "파일을 ZIP으로 압축하고 있습니다."}</p><div className="zip-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent}><div style={{ width: `${progressPercent}%` }} /></div><span className="zip-progress-detail">{progressPercent}% · {compressionProgress.completedEntries.toLocaleString()} / {compressionProgress.totalEntries.toLocaleString()}개 항목</span><footer><button className="zip-button" onClick={() => { void cancelCompression(); }} disabled={cancelRequested}>{cancelRequested ? "취소 중…" : "취소"}</button></footer></section></div> : null}
+      {compressionError ? <div className="zip-operation-backdrop"><section className="zip-operation-dialog zip-error-dialog" role="alertdialog" aria-modal="true" aria-labelledby="zip-error-title" aria-describedby="zip-error-message"><h2 id="zip-error-title">압축 오류</h2><p id="zip-error-message">{compressionError}</p><footer><button className="zip-button primary" autoFocus onClick={() => setCompressionError(null)}>확인</button></footer></section></div> : null}
       {completedArchive ? <div className="zip-operation-backdrop"><section className="zip-operation-dialog" role="dialog" aria-modal="true" aria-labelledby="zip-complete-title"><h2 id="zip-complete-title">압축 완료</h2><p>{completedArchive.entries.toLocaleString()}개 항목을 압축했습니다. ({formatFileSize(completedArchive.size)})</p><p className="zip-complete-path" title={completedArchive.path}>{completedArchive.path}</p><footer><button className="zip-button" onClick={() => { void openCompletedFolder(); }}>폴더 열기</button><button className="zip-button" onClick={() => setCompletedArchive(null)}>닫기</button><button className="zip-button primary" onClick={() => { void openCompletedArchive(); }}>압축 파일 열기</button></footer></section></div> : null}
       <ConfirmDialog />
     </main>

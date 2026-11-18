@@ -29,6 +29,7 @@ pub async fn archive_create(
     output_path: String,
     compression_level: u8,
     password: Option<String>,
+    split_size_bytes: Option<u64>,
     on_progress: Channel<silk_archive::CreateProgress>,
 ) -> Result<silk_archive::CreateResult, String> {
     if operation_id.is_empty() {
@@ -49,11 +50,12 @@ pub async fn archive_create(
     let output = PathBuf::from(output_path);
     let worker_cancel = Arc::clone(&cancellation);
     let result = tauri::async_runtime::spawn_blocking(move || {
-        silk_archive::create_zip_entries(
+        silk_archive::create_zip_entries_with_split(
             &inputs,
             &output,
             compression_level,
             password.as_deref(),
+            split_size_bytes,
             &worker_cancel,
             |progress| {
                 let _ = on_progress.send(progress);

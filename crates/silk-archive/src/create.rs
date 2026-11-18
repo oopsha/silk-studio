@@ -1,10 +1,10 @@
-//! Shared ZIP creation support backed by libarchive.
+//! Shared ZIP creation support backed by the 7-Zip SDK.
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
-    ffi::{c_char, c_int, c_void, CStr, CString},
+    ffi::{c_char, c_int, c_void, CString},
     fs::{self, File, Metadata},
-    io::Read,
+    io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -13,40 +13,31 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-#[cfg(any(windows, target_os = "macos"))]
-type ArchiveMode = u16;
-#[cfg(not(any(windows, target_os = "macos")))]
-type ArchiveMode = u32;
-
 unsafe extern "C" {
-    fn archive_write_new() -> *mut c_void;
-    fn archive_write_set_format_zip(a: *mut c_void) -> c_int;
-    fn archive_write_add_filter_none(a: *mut c_void) -> c_int;
-    fn archive_write_set_options(a: *mut c_void, options: *const c_char) -> c_int;
-    fn archive_write_set_passphrase(a: *mut c_void, passphrase: *const c_char) -> c_int;
-    #[cfg(not(windows))]
-    fn archive_write_open_filename(a: *mut c_void, path: *const c_char) -> c_int;
-    #[cfg(windows)]
-    fn archive_write_open_filename_w(a: *mut c_void, path: *const u16) -> c_int;
-    fn archive_write_header(a: *mut c_void, entry: *mut c_void) -> c_int;
-    fn archive_write_data(a: *mut c_void, buffer: *const c_void, size: usize) -> isize;
-    fn archive_write_finish_entry(a: *mut c_void) -> c_int;
-    fn archive_write_close(a: *mut c_void) -> c_int;
-    fn archive_write_free(a: *mut c_void) -> c_int;
-    fn archive_error_string(a: *mut c_void) -> *const c_char;
-    fn archive_entry_new() -> *mut c_void;
-    fn archive_entry_free(entry: *mut c_void);
-    fn archive_entry_set_pathname_utf8(entry: *mut c_void, path: *const c_char);
-    fn archive_entry_set_filetype(entry: *mut c_void, kind: u32);
-    fn archive_entry_set_perm(entry: *mut c_void, permissions: ArchiveMode);
-    fn archive_entry_set_size(entry: *mut c_void, size: i64);
-    fn archive_entry_set_mtime(entry: *mut c_void, seconds: i64, nanoseconds: std::ffi::c_long);
+    fn silk_7zip_create_zip(
+        output_path: *const c_char,
+        inputs: *const SdkInput,
+        input_count: u32,
+        compression_level: u32,
+        password: *const c_char,
+        total_bytes: u64,
+        progress: Option<SdkProgressCallback>,
+        progress_context: *mut c_void,
+    ) -> c_int;
 }
 
-const ARCHIVE_OK: c_int = 0;
-const FILE_TYPE_REGULAR: u32 = 0o100000;
-const FILE_TYPE_DIRECTORY: u32 = 0o040000;
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[repr(C)]
+struct SdkInput {
+    source_path: *const c_char,
+    archive_path: *const c_char,
+    size: u64,
+    modified_seconds: i64,
+    is_directory: c_int,
+}
+
+type SdkProgressCallback = unsafe extern "C" fn(u64, u64, u32, u32, *mut c_void) -> c_int;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -73,48 +64,19 @@ struct SourceEntry {
     directory: bool,
 }
 
-struct Writer(*mut c_void);
-
-impl Writer {
-    fn error(&self) -> String {
-        unsafe {
-            let message = archive_error_string(self.0);
-            if message.is_null() {
-                "ZIP 파일을 생성하지 못했습니다.".into()
-            } else {
-                CStr::from_ptr(message).to_string_lossy().into_owned()
-            }
-        }
-    }
-}
-
-impl Drop for Writer {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            unsafe {
-                archive_write_free(self.0);
-            }
-        }
-    }
-}
-
-struct Entry(*mut c_void);
-
-impl Drop for Entry {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            unsafe {
-                archive_entry_free(self.0);
-            }
-        }
-    }
-}
-
 struct TemporaryOutput(PathBuf);
 
 impl Drop for TemporaryOutput {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.0);
+    }
+}
+
+struct TemporaryDirectory(PathBuf);
+
+impl Drop for TemporaryDirectory {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
     }
 }
 
@@ -291,74 +253,29 @@ fn temporary_path(output: &Path) -> Result<PathBuf, String> {
     Err("임시 압축 파일 이름을 만들지 못했습니다.".into())
 }
 
-fn open_writer(writer: &Writer, path: &Path) -> Result<(), String> {
-    #[cfg(windows)]
-    let status = {
-        use std::os::windows::ffi::OsStrExt;
-        let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
-        unsafe { archive_write_open_filename_w(writer.0, wide.as_ptr()) }
-    };
-    #[cfg(not(windows))]
-    let status = {
-        use std::os::unix::ffi::OsStrExt;
-        let path =
-            CString::new(path.as_os_str().as_bytes()).map_err(|_| "잘못된 저장 경로입니다.")?;
-        unsafe { archive_write_open_filename(writer.0, path.as_ptr()) }
-    };
-    if status == ARCHIVE_OK {
-        Ok(())
-    } else {
-        Err(writer.error())
-    }
-}
-
-fn set_entry(writer: &Writer, source: &SourceEntry) -> Result<Entry, String> {
-    let name = c_string(&source.archive_path, "압축 항목 이름이 올바르지 않습니다.")?;
-    let entry = Entry(unsafe { archive_entry_new() });
-    if entry.0.is_null() {
-        return Err("압축 항목을 생성하지 못했습니다.".into());
-    }
-    let size = if source.directory {
-        0
-    } else {
-        source.metadata.as_ref().map_or(0, Metadata::len)
-    };
-    let size = i64::try_from(size).map_err(|_| "파일 크기가 ZIP 형식의 한도를 초과합니다.")?;
-    let modified = source
-        .metadata
-        .as_ref()
-        .and_then(|metadata| metadata.modified().ok())
-        .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
-        .unwrap_or_default();
-    unsafe {
-        archive_entry_set_pathname_utf8(entry.0, name.as_ptr());
-        archive_entry_set_filetype(
-            entry.0,
-            if source.directory {
-                FILE_TYPE_DIRECTORY
-            } else {
-                FILE_TYPE_REGULAR
-            },
-        );
-        archive_entry_set_perm(
-            entry.0,
-            if source.directory {
-                0o755 as ArchiveMode
-            } else {
-                0o644 as ArchiveMode
-            },
-        );
-        archive_entry_set_size(entry.0, size);
-        archive_entry_set_mtime(
-            entry.0,
-            modified.as_secs().min(i64::MAX as u64) as i64,
-            modified.subsec_nanos() as std::ffi::c_long,
-        );
-        if archive_write_header(writer.0, entry.0) != ARCHIVE_OK {
-            return Err(writer.error());
+fn temporary_directory(output: &Path) -> Result<TemporaryDirectory, String> {
+    let parent = output
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let name = output
+        .file_name()
+        .ok_or("저장 파일 이름이 올바르지 않습니다.")?;
+    for _ in 0..100 {
+        let mut candidate = name.to_os_string();
+        candidate.push(format!(
+            ".silk-zip-{}-{}.parts",
+            std::process::id(),
+            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let candidate = parent.join(candidate);
+        match fs::create_dir(&candidate) {
+            Ok(()) => return Ok(TemporaryDirectory(candidate)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("분할 압축 임시 폴더를 만들지 못했습니다: {error}")),
         }
     }
-    Ok(entry)
+    Err("분할 압축 임시 폴더 이름을 만들지 못했습니다.".into())
 }
 
 fn replace_output(temporary: &Path, output: &Path) -> Result<(), String> {
@@ -390,6 +307,1057 @@ fn replace_output(temporary: &Path, output: &Path) -> Result<(), String> {
     }
 }
 
+fn split_volume_number(name: &str, stem: &str) -> Option<u64> {
+    let prefix = format!("{stem}.z");
+    let suffix = name.strip_prefix(&prefix)?;
+    if suffix.is_empty() || !suffix.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    suffix.parse().ok()
+}
+
+fn existing_split_targets(output: &Path) -> Result<Vec<PathBuf>, String> {
+    let parent = output
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let output_name = output
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("저장 파일 이름을 UTF-8로 처리할 수 없습니다.")?;
+    let stem = output
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .ok_or("저장 파일 이름을 UTF-8로 처리할 수 없습니다.")?;
+    let mut targets = Vec::new();
+    for item in fs::read_dir(parent).map_err(|error| error.to_string())? {
+        let path = item.map_err(|error| error.to_string())?.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let matches_output = if cfg!(windows) {
+            name.eq_ignore_ascii_case(output_name)
+        } else {
+            name == output_name
+        };
+        let matches_volume = if cfg!(windows) {
+            let lower_name = name.to_ascii_lowercase();
+            let lower_stem = stem.to_ascii_lowercase();
+            split_volume_number(&lower_name, &lower_stem).is_some()
+        } else {
+            split_volume_number(name, stem).is_some()
+        };
+        if matches_output || matches_volume {
+            if !path.is_file() {
+                return Err(format!(
+                    "분할 압축 저장 경로에 파일이 아닌 항목이 있습니다: {}",
+                    path.display()
+                ));
+            }
+            targets.push(path);
+        }
+    }
+    targets.sort_by(|left, right| {
+        let left_name = left
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        let right_name = right
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        let left_number = split_volume_number(left_name, stem).unwrap_or(u64::MAX);
+        let right_number = split_volume_number(right_name, stem).unwrap_or(u64::MAX);
+        left_number.cmp(&right_number)
+    });
+    Ok(targets)
+}
+
+fn commit_split_outputs(stage: &Path, output: &Path) -> Result<u64, String> {
+    let parent = output
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let output_name = output
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("저장 파일 이름을 UTF-8로 처리할 수 없습니다.")?;
+    let stem = output
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .ok_or("저장 파일 이름을 UTF-8로 처리할 수 없습니다.")?;
+    let mut outputs = fs::read_dir(stage)
+        .map_err(|error| error.to_string())?
+        .map(|item| {
+            item.map(|item| item.path())
+                .map_err(|error| error.to_string())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    outputs.retain(|path| {
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            return false;
+        };
+        name == output_name || split_volume_number(name, stem).is_some()
+    });
+    if !outputs.iter().any(|path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == output_name)
+    }) {
+        return Err("분할 압축 엔진이 최종 ZIP 파일을 만들지 않았습니다.".into());
+    }
+    let total_size = outputs
+        .iter()
+        .try_fold(0u64, |total, path| {
+            total.checked_add(fs::metadata(path).ok()?.len())
+        })
+        .ok_or("분할 압축 파일 크기를 계산하지 못했습니다.")?;
+    outputs.sort_by(|left, right| {
+        let left_name = left
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        let right_name = right
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        let left_number = split_volume_number(left_name, stem).unwrap_or(u64::MAX);
+        let right_number = split_volume_number(right_name, stem).unwrap_or(u64::MAX);
+        left_number.cmp(&right_number)
+    });
+
+    let existing = existing_split_targets(output)?;
+    let backup = stage.join(".previous-output");
+    fs::create_dir(&backup).map_err(|error| error.to_string())?;
+    let mut backed_up = Vec::<(PathBuf, PathBuf)>::new();
+    for target in existing {
+        let name = target
+            .file_name()
+            .ok_or("기존 분할 파일 이름을 읽지 못했습니다.")?;
+        let backup_path = backup.join(name);
+        if let Err(error) = fs::rename(&target, &backup_path) {
+            for (original, saved) in backed_up.iter().rev() {
+                let _ = fs::rename(saved, original);
+            }
+            return Err(format!(
+                "기존 분할 압축 파일을 보관하지 못했습니다: {error}"
+            ));
+        }
+        backed_up.push((target, backup_path));
+    }
+
+    let mut installed = Vec::<(PathBuf, PathBuf)>::new();
+    for source in outputs {
+        let Some(name) = source.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let destination = if name == output_name {
+            output.to_path_buf()
+        } else {
+            parent.join(name)
+        };
+        if let Err(error) = fs::rename(&source, &destination) {
+            for (original, destination) in installed.iter().rev() {
+                let _ = fs::rename(destination, original);
+            }
+            for (original, saved) in backed_up.iter().rev() {
+                if let Err(restore_error) = fs::rename(saved, original) {
+                    return Err(format!(
+                        "새 분할 압축 파일 저장 실패 후 기존 파일 복원도 실패했습니다: {error}; {restore_error}"
+                    ));
+                }
+            }
+            return Err(format!("분할 압축 파일을 저장하지 못했습니다: {error}"));
+        }
+        installed.push((source, destination));
+    }
+    Ok(total_size)
+}
+
+fn zip_u16(bytes: &[u8], offset: usize) -> Result<u16, String> {
+    let value = bytes
+        .get(offset..offset + 2)
+        .ok_or("ZIP 구조가 잘못되었습니다.")?;
+    Ok(u16::from_le_bytes([value[0], value[1]]))
+}
+
+fn zip_u32(bytes: &[u8], offset: usize) -> Result<u32, String> {
+    let value = bytes
+        .get(offset..offset + 4)
+        .ok_or("ZIP 구조가 잘못되었습니다.")?;
+    Ok(u32::from_le_bytes([value[0], value[1], value[2], value[3]]))
+}
+
+fn put_u16(bytes: &mut [u8], offset: usize, value: u16) {
+    bytes[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
+}
+
+fn put_u32(bytes: &mut [u8], offset: usize, value: u32) {
+    bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+}
+
+fn zip_u64(bytes: &[u8], offset: usize) -> Result<u64, String> {
+    let value = bytes
+        .get(offset..offset + 8)
+        .ok_or("ZIP64 구조가 잘못되었습니다.")?;
+    Ok(u64::from_le_bytes(value.try_into().unwrap()))
+}
+
+fn put_u64(bytes: &mut [u8], offset: usize, value: u64) {
+    bytes[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+}
+
+fn central_zip64_sizes(record: &[u8]) -> Result<(u64, u64), String> {
+    let mut uncompressed = zip_u32(record, 24)? as u64;
+    let mut compressed = zip_u32(record, 20)? as u64;
+    let need_uncompressed = uncompressed == u32::MAX as u64;
+    let need_compressed = compressed == u32::MAX as u64;
+    if !need_uncompressed && !need_compressed {
+        return Ok((uncompressed, compressed));
+    }
+    let name_len = zip_u16(record, 28)? as usize;
+    let extra_len = zip_u16(record, 30)? as usize;
+    let extra_start = 46 + name_len;
+    let extra_end = extra_start
+        .checked_add(extra_len)
+        .filter(|end| *end <= record.len())
+        .ok_or("ZIP 중앙 디렉터리 추가 정보가 잘못되었습니다.")?;
+    let mut cursor = extra_start;
+    while cursor + 4 <= extra_end {
+        let id = zip_u16(record, cursor)?;
+        let size = zip_u16(record, cursor + 2)? as usize;
+        let data = cursor + 4;
+        let end = data
+            .checked_add(size)
+            .filter(|end| *end <= extra_end)
+            .ok_or("ZIP 추가 정보 항목 길이가 잘못되었습니다.")?;
+        if id == 0x0001 {
+            let mut value = data;
+            if need_uncompressed {
+                if value + 8 > end {
+                    return Err("ZIP64 원본 크기 정보가 누락되었습니다.".into());
+                }
+                uncompressed = zip_u64(record, value)?;
+                value += 8;
+            }
+            if need_compressed {
+                if value + 8 > end {
+                    return Err("ZIP64 압축 크기 정보가 누락되었습니다.".into());
+                }
+                compressed = zip_u64(record, value)?;
+            }
+            return Ok((uncompressed, compressed));
+        }
+        cursor = end;
+    }
+    Err("ZIP64 크기 정보가 누락되었습니다.".into())
+}
+
+fn central_zip64_location(record: &[u8]) -> Result<(u64, u32), String> {
+    let offset32 = zip_u32(record, 42)?;
+    let disk16 = zip_u16(record, 34)?;
+    if offset32 != u32::MAX && disk16 != u16::MAX {
+        return Ok((offset32 as u64, disk16 as u32));
+    }
+    let name_len = zip_u16(record, 28)? as usize;
+    let extra_len = zip_u16(record, 30)? as usize;
+    let extra_start = 46 + name_len;
+    let extra_end = extra_start
+        .checked_add(extra_len)
+        .filter(|end| *end <= record.len())
+        .ok_or("ZIP 중앙 디렉터리 추가 정보가 잘못되었습니다.")?;
+    let mut cursor = extra_start;
+    while cursor + 4 <= extra_end {
+        let id = zip_u16(record, cursor)?;
+        let size = zip_u16(record, cursor + 2)? as usize;
+        let data = cursor + 4;
+        let end = data
+            .checked_add(size)
+            .filter(|end| *end <= extra_end)
+            .ok_or("ZIP 추가 정보 항목 길이가 잘못되었습니다.")?;
+        if id == 0x0001 {
+            let mut value = data;
+            if zip_u32(record, 24)? == u32::MAX {
+                value += 8;
+            }
+            if zip_u32(record, 20)? == u32::MAX {
+                value += 8;
+            }
+            let offset = if offset32 == u32::MAX {
+                let parsed = zip_u64(record, value)?;
+                value += 8;
+                parsed
+            } else {
+                offset32 as u64
+            };
+            let disk = if disk16 == u16::MAX {
+                let bytes = record
+                    .get(value..value + 4)
+                    .filter(|_| value + 4 <= end)
+                    .ok_or("ZIP64 시작 디스크 정보가 누락되었습니다.")?;
+                u32::from_le_bytes(bytes.try_into().unwrap())
+            } else {
+                disk16 as u32
+            };
+            return Ok((offset, disk));
+        }
+        cursor = end;
+    }
+    Err("ZIP64 로컬 헤더 위치 정보가 누락되었습니다.".into())
+}
+
+fn patch_central_location(record: &mut [u8], disk: u16, offset: u32) -> Result<(), String> {
+    let old_offset = zip_u32(record, 42)?;
+    let old_disk = zip_u16(record, 34)?;
+    if old_offset != u32::MAX {
+        put_u32(record, 42, offset);
+    }
+    if old_disk != u16::MAX {
+        put_u16(record, 34, disk);
+    }
+    if old_offset != u32::MAX && old_disk != u16::MAX {
+        return Ok(());
+    }
+    let name_len = zip_u16(record, 28)? as usize;
+    let extra_len = zip_u16(record, 30)? as usize;
+    let extra_start = 46 + name_len;
+    let extra_end = extra_start
+        .checked_add(extra_len)
+        .filter(|end| *end <= record.len())
+        .ok_or("ZIP 중앙 디렉터리 추가 정보가 잘못되었습니다.")?;
+    let mut cursor = extra_start;
+    while cursor + 4 <= extra_end {
+        let id = zip_u16(record, cursor)?;
+        let size = zip_u16(record, cursor + 2)? as usize;
+        let data = cursor + 4;
+        let end = data
+            .checked_add(size)
+            .filter(|end| *end <= extra_end)
+            .ok_or("ZIP 추가 정보 항목 길이가 잘못되었습니다.")?;
+        if id == 0x0001 {
+            let mut value = data;
+            if zip_u32(record, 24)? == u32::MAX {
+                value = value
+                    .checked_add(8)
+                    .ok_or("ZIP64 추가 정보 위치가 잘못되었습니다.")?;
+            }
+            if zip_u32(record, 20)? == u32::MAX {
+                value = value
+                    .checked_add(8)
+                    .ok_or("ZIP64 추가 정보 위치가 잘못되었습니다.")?;
+            }
+            if old_offset == u32::MAX {
+                if value + 8 > end {
+                    return Err("ZIP64 로컬 헤더 위치 정보가 누락되었습니다.".into());
+                }
+                put_u64(record, value, offset as u64);
+                value += 8;
+            }
+            if old_disk == u16::MAX {
+                if value + 4 > end {
+                    return Err("ZIP64 디스크 번호 정보가 누락되었습니다.".into());
+                }
+                record[value..value + 4].copy_from_slice(&(disk as u32).to_le_bytes());
+            }
+            return Ok(());
+        }
+        cursor = end;
+    }
+    Err("ZIP64 중앙 디렉터리 추가 정보가 누락되었습니다.".into())
+}
+
+fn read_data_descriptor(
+    input: &mut File,
+    position: u64,
+    limit: u64,
+    crc: u32,
+    compressed: u64,
+    uncompressed: u64,
+) -> Result<Vec<u8>, String> {
+    let available = limit.saturating_sub(position).min(24) as usize;
+    if available < 12 {
+        return Err("ZIP 데이터 설명자가 잘렸습니다.".into());
+    }
+    let mut bytes = vec![0; available];
+    input
+        .seek(SeekFrom::Start(position))
+        .map_err(|error| error.to_string())?;
+    input
+        .read_exact(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    let mut candidates = Vec::new();
+    for signed in [true, false] {
+        for zip64 in [true, false] {
+            let start = if signed { 4 } else { 0 };
+            let length = start + 4 + if zip64 { 16 } else { 8 };
+            if length > bytes.len() || (signed && zip_u32(&bytes, 0).ok() != Some(0x0807_4b50)) {
+                continue;
+            }
+            let found_crc = zip_u32(&bytes, start)?;
+            let found_compressed = if zip64 {
+                zip_u64(&bytes, start + 4)?
+            } else {
+                zip_u32(&bytes, start + 4)? as u64
+            };
+            let found_uncompressed = if zip64 {
+                zip_u64(&bytes, start + 12)?
+            } else {
+                zip_u32(&bytes, start + 8)? as u64
+            };
+            if found_crc == crc
+                && found_compressed == compressed
+                && found_uncompressed == uncompressed
+            {
+                candidates.push(length);
+            }
+        }
+    }
+    let length = candidates
+        .into_iter()
+        .max()
+        .ok_or("ZIP 데이터 설명자 값이 중앙 디렉터리와 일치하지 않습니다.")?;
+    Ok(bytes[..length].to_vec())
+}
+
+struct ZipVolumeWriter<'a> {
+    stage: &'a Path,
+    stem: &'a str,
+    output_name: &'a std::ffi::OsStr,
+    limit: u64,
+    disk: u16,
+    length: u64,
+    file: Option<File>,
+    paths: Vec<PathBuf>,
+}
+
+impl<'a> ZipVolumeWriter<'a> {
+    fn new(
+        stage: &'a Path,
+        stem: &'a str,
+        output_name: &'a std::ffi::OsStr,
+        limit: u64,
+    ) -> Result<Self, String> {
+        let mut writer = Self {
+            stage,
+            stem,
+            output_name,
+            limit: limit.min(u32::MAX as u64 - 1),
+            disk: 0,
+            length: 0,
+            file: None,
+            paths: Vec::new(),
+        };
+        writer.open_disk()?;
+        writer.write_payload(&0x0807_4b50u32.to_le_bytes())?;
+        Ok(writer)
+    }
+
+    fn open_disk(&mut self) -> Result<(), String> {
+        if self.disk >= u16::MAX {
+            return Err("PKWARE 분할 ZIP의 디스크 수 한도를 초과했습니다.".into());
+        }
+        let path = self
+            .stage
+            .join(format!("{}.z{:02}", self.stem, self.disk + 1));
+        self.file = Some(File::create(&path).map_err(|error| error.to_string())?);
+        self.length = 0;
+        self.paths.push(path);
+        Ok(())
+    }
+
+    fn next_disk(&mut self) -> Result<(), String> {
+        self.file.take();
+        self.disk = self
+            .disk
+            .checked_add(1)
+            .ok_or("분할 ZIP 디스크 번호가 너무 큽니다.")?;
+        self.open_disk()
+    }
+
+    fn ensure_record_room(&mut self, size: u64) -> Result<(), String> {
+        if size > self.limit {
+            return Err("ZIP 헤더 또는 중앙 디렉터리 항목이 분할 크기보다 큽니다.".into());
+        }
+        if self
+            .length
+            .checked_add(size)
+            .is_none_or(|end| end > self.limit)
+        {
+            self.next_disk()?;
+        }
+        Ok(())
+    }
+
+    fn write_record(&mut self, record: &[u8]) -> Result<(u16, u32), String> {
+        self.ensure_record_room(record.len() as u64)?;
+        let position = (
+            self.disk,
+            u32::try_from(self.length).map_err(|_| "ZIP 조각 내 위치가 너무 큽니다.")?,
+        );
+        self.file
+            .as_mut()
+            .ok_or("분할 ZIP 출력이 닫혔습니다.")?
+            .write_all(record)
+            .map_err(|error| error.to_string())?;
+        self.length += record.len() as u64;
+        Ok(position)
+    }
+
+    fn write_payload(&mut self, mut bytes: &[u8]) -> Result<(), String> {
+        while !bytes.is_empty() {
+            if self.length == self.limit {
+                self.next_disk()?;
+            }
+            let available = (self.limit - self.length).min(usize::MAX as u64) as usize;
+            let count = available.min(bytes.len());
+            self.file
+                .as_mut()
+                .ok_or("분할 ZIP 출력이 닫혔습니다.")?
+                .write_all(&bytes[..count])
+                .map_err(|error| error.to_string())?;
+            self.length += count as u64;
+            bytes = &bytes[count..];
+        }
+        Ok(())
+    }
+
+    fn finish(mut self) -> Result<Vec<PathBuf>, String> {
+        self.file.take();
+        let final_volume = self.paths.pop().ok_or("분할 ZIP 출력이 비어 있습니다.")?;
+        let final_path = self.stage.join(self.output_name);
+        fs::rename(final_volume, &final_path).map_err(|error| error.to_string())?;
+        self.paths.push(final_path);
+        Ok(self.paths)
+    }
+}
+
+fn convert_zip_to_pkware_split(
+    source: &Path,
+    stage: &Path,
+    output_path: &Path,
+    split_size: u64,
+    cancelled: &AtomicBool,
+) -> Result<(), String> {
+    let mut input = File::open(source).map_err(|error| error.to_string())?;
+    let input_size = input.metadata().map_err(|error| error.to_string())?.len();
+    if input_size <= split_size {
+        let output_name = output_path
+            .file_name()
+            .ok_or("저장 파일 이름이 올바르지 않습니다.")?;
+        fs::copy(source, stage.join(output_name)).map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+    let tail_size = input_size.min(65_557) as usize;
+    input
+        .seek(SeekFrom::End(-(tail_size as i64)))
+        .map_err(|error| error.to_string())?;
+    let mut tail = vec![0; tail_size];
+    input
+        .read_exact(&mut tail)
+        .map_err(|error| error.to_string())?;
+    let eocd_relative = tail
+        .windows(4)
+        .enumerate()
+        .rev()
+        .find_map(|(index, window)| {
+            if window != [0x50, 0x4b, 0x05, 0x06] || tail.len().saturating_sub(index) < 22 {
+                return None;
+            }
+            let comment_len = u16::from_le_bytes([tail[index + 20], tail[index + 21]]) as usize;
+            (index + 22 + comment_len == tail.len()).then_some(index)
+        })
+        .ok_or("7-Zip SDK가 만든 ZIP의 끝 레코드를 찾지 못했습니다.")?;
+    let eocd = tail[eocd_relative..].to_vec();
+    if eocd.len() < 22 {
+        return Err("ZIP 끝 레코드가 잘렸습니다.".into());
+    }
+    let eocd_absolute = input_size - tail_size as u64 + eocd_relative as u64;
+    let mut entries = zip_u16(&eocd, 10)? as u64;
+    let mut cd_size = zip_u32(&eocd, 12)? as u64;
+    let mut cd_offset = zip_u32(&eocd, 16)? as u64;
+    let mut zip64_present = false;
+    if eocd_absolute >= 20 {
+        input
+            .seek(SeekFrom::Start(eocd_absolute - 20))
+            .map_err(|error| error.to_string())?;
+        let mut locator = [0u8; 20];
+        input
+            .read_exact(&mut locator)
+            .map_err(|error| error.to_string())?;
+        if zip_u32(&locator, 0)? == 0x0706_4b50 {
+            zip64_present = true;
+            let zip64_offset = zip_u64(&locator, 8)?;
+            if zip_u32(&locator, 4)? != 0 || zip_u32(&locator, 16)? != 1 {
+                return Err("변환 입력 ZIP64는 단일 디스크 형식이어야 합니다.".into());
+            }
+            if zip64_offset
+                .checked_add(56)
+                .is_none_or(|end| end > eocd_absolute - 20)
+            {
+                return Err("ZIP64 끝 레코드 위치가 잘못되었습니다.".into());
+            }
+            input
+                .seek(SeekFrom::Start(zip64_offset))
+                .map_err(|error| error.to_string())?;
+            let mut zip64_end = [0u8; 56];
+            input
+                .read_exact(&mut zip64_end)
+                .map_err(|error| error.to_string())?;
+            let zip64_record_size = zip_u64(&zip64_end, 4)?;
+            if zip_u32(&zip64_end, 0)? != 0x0606_4b50 || zip64_record_size < 44 {
+                return Err("ZIP64 끝 레코드가 잘못되었습니다.".into());
+            }
+            if zip64_offset
+                .checked_add(12)
+                .and_then(|offset| offset.checked_add(zip64_record_size))
+                != Some(eocd_absolute - 20)
+            {
+                return Err("ZIP64 끝 레코드와 위치 정보가 이어지지 않습니다.".into());
+            }
+            if zip_u32(&zip64_end, 16)? != 0 || zip_u32(&zip64_end, 20)? != 0 {
+                return Err("변환 입력 ZIP64는 단일 디스크 형식이어야 합니다.".into());
+            }
+            entries = zip_u64(&zip64_end, 32)?;
+            cd_size = zip_u64(&zip64_end, 40)?;
+            cd_offset = zip_u64(&zip64_end, 48)?;
+            if cd_offset
+                .checked_add(cd_size)
+                .is_none_or(|end| end > zip64_offset)
+            {
+                return Err("ZIP64 중앙 디렉터리 범위가 잘못되었습니다.".into());
+            }
+        }
+    }
+    if !zip64_present {
+        if zip_u16(&eocd, 4)? != 0 || zip_u16(&eocd, 6)? != 0 {
+            return Err("변환 입력 ZIP은 단일 디스크 형식이어야 합니다.".into());
+        }
+        if zip_u16(&eocd, 10)? == u16::MAX
+            || zip_u32(&eocd, 12)? == u32::MAX
+            || zip_u32(&eocd, 16)? == u32::MAX
+        {
+            return Err("ZIP64 끝 레코드 위치 정보가 누락되었습니다.".into());
+        }
+        if cd_offset
+            .checked_add(cd_size)
+            .is_none_or(|end| end > eocd_absolute)
+        {
+            return Err("ZIP 중앙 디렉터리 범위가 잘못되었습니다.".into());
+        }
+    }
+    if entries > 100_000 {
+        return Err("ZIP 항목이 지원 한도(10만 개)를 초과합니다.".into());
+    }
+    if cd_offset
+        .checked_add(cd_size)
+        .is_none_or(|end| end > eocd_absolute)
+    {
+        return Err("ZIP 중앙 디렉터리 범위가 잘못되었습니다.".into());
+    }
+    input
+        .seek(SeekFrom::Start(cd_offset))
+        .map_err(|error| error.to_string())?;
+    let mut local_records = Vec::with_capacity(entries as usize);
+    for _ in 0..entries {
+        let mut header = [0u8; 46];
+        input
+            .read_exact(&mut header)
+            .map_err(|error| error.to_string())?;
+        if &header[..4] != b"PK\x01\x02" {
+            return Err("ZIP 중앙 디렉터리 항목이 손상되었습니다.".into());
+        }
+        let name_len = zip_u16(&header, 28)? as usize;
+        let extra_len = zip_u16(&header, 30)? as usize;
+        let comment_len = zip_u16(&header, 32)? as usize;
+        let record_len = 46usize
+            .checked_add(name_len + extra_len + comment_len)
+            .ok_or("ZIP 항목 길이가 너무 큽니다.")?;
+        let mut record = vec![0; record_len];
+        record[..46].copy_from_slice(&header);
+        input
+            .read_exact(&mut record[46..])
+            .map_err(|error| error.to_string())?;
+        let (uncompressed_size, compressed_size) = central_zip64_sizes(&record)?;
+        let (local_offset, disk_start) = central_zip64_location(&record)?;
+        if disk_start != 0 {
+            return Err("변환 입력 ZIP 중앙 디렉터리가 여러 디스크에 있습니다.".into());
+        }
+        local_records.push((local_offset, compressed_size, uncompressed_size, record));
+    }
+    if input.stream_position().map_err(|error| error.to_string())? != cd_offset + cd_size {
+        return Err("ZIP 중앙 디렉터리 크기와 항목 개수가 일치하지 않습니다.".into());
+    }
+    local_records.sort_by_key(|record| record.0);
+    let stem = output_path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .ok_or("저장 파일 이름이 올바르지 않습니다.")?;
+    let output_name = output_path
+        .file_name()
+        .ok_or("저장 파일 이름이 올바르지 않습니다.")?;
+    let mut writer = ZipVolumeWriter::new(stage, stem, output_name, split_size)?;
+    let mut rewritten_central = Vec::with_capacity(entries as usize);
+    let mut buffer = [0u8; 128 * 1024];
+    let mut previous_local_end = 0u64;
+    for (local_offset, compressed_size, uncompressed_size, mut central) in local_records {
+        if cancelled.load(Ordering::Relaxed) {
+            return Err("압축 작업이 취소되었습니다.".into());
+        }
+        if local_offset < previous_local_end || local_offset >= cd_offset {
+            return Err("ZIP 로컬 항목의 위치가 겹치거나 잘못되었습니다.".into());
+        }
+        input
+            .seek(SeekFrom::Start(local_offset))
+            .map_err(|error| error.to_string())?;
+        let mut local_header = [0u8; 30];
+        input
+            .read_exact(&mut local_header)
+            .map_err(|error| error.to_string())?;
+        if &local_header[..4] != b"PK\x03\x04" {
+            return Err("ZIP 로컬 헤더가 손상되었습니다.".into());
+        }
+        let flags = zip_u16(&local_header, 6)?;
+        let has_descriptor = flags & 0x0008 != 0;
+        let name_len = zip_u16(&local_header, 26)? as usize;
+        let extra_len = zip_u16(&local_header, 28)? as usize;
+        let header_len = 30usize
+            .checked_add(name_len + extra_len)
+            .ok_or("ZIP 로컬 헤더 길이가 너무 큽니다.")?;
+        let mut local = vec![0; header_len];
+        local[..30].copy_from_slice(&local_header);
+        input
+            .read_exact(&mut local[30..])
+            .map_err(|error| error.to_string())?;
+        let local_compressed_size = zip_u32(&local_header, 18)? as u64;
+        if !has_descriptor
+            && local_compressed_size != u32::MAX as u64
+            && local_compressed_size != compressed_size
+        {
+            return Err("ZIP 로컬 헤더와 중앙 디렉터리의 압축 크기가 다릅니다.".into());
+        }
+        let (disk, offset) = writer.write_record(&local)?;
+        patch_central_location(&mut central, disk, offset)?;
+        input
+            .seek(SeekFrom::Start(local_offset + header_len as u64))
+            .map_err(|error| error.to_string())?;
+        let mut remaining = compressed_size;
+        while remaining > 0 {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err("압축 작업이 취소되었습니다.".into());
+            }
+            let count = remaining.min(buffer.len() as u64) as usize;
+            input
+                .read_exact(&mut buffer[..count])
+                .map_err(|error| error.to_string())?;
+            writer.write_payload(&buffer[..count])?;
+            remaining -= count as u64;
+        }
+        let descriptor = if has_descriptor {
+            let descriptor = read_data_descriptor(
+                &mut input,
+                local_offset + header_len as u64 + compressed_size,
+                cd_offset,
+                zip_u32(&central, 16)?,
+                compressed_size,
+                uncompressed_size,
+            )?;
+            writer.write_record(&descriptor)?;
+            descriptor.len() as u64
+        } else {
+            0
+        };
+        previous_local_end = local_offset + header_len as u64 + compressed_size + descriptor;
+        if previous_local_end > cd_offset {
+            return Err("ZIP 로컬 항목이 중앙 디렉터리 영역과 겹칩니다.".into());
+        }
+        rewritten_central.push(central);
+    }
+    let mut entries_by_disk = Vec::<u64>::new();
+    let (central_disk, central_offset) = writer.write_record(&rewritten_central[0])?;
+    entries_by_disk.resize(writer.disk as usize + 1, 0);
+    entries_by_disk[central_disk as usize] += 1;
+    let central_start = central_offset as u64;
+    let mut central_size = rewritten_central[0].len() as u64;
+    for record in rewritten_central.iter().skip(1) {
+        if cancelled.load(Ordering::Relaxed) {
+            return Err("압축 작업이 취소되었습니다.".into());
+        }
+        writer.ensure_record_room(record.len() as u64)?;
+        if entries_by_disk.len() <= writer.disk as usize {
+            entries_by_disk.resize(writer.disk as usize + 1, 0);
+        }
+        writer
+            .file
+            .as_mut()
+            .ok_or("분할 ZIP 출력이 닫혔습니다.")?
+            .write_all(record)
+            .map_err(|error| error.to_string())?;
+        writer.length += record.len() as u64;
+        central_size += record.len() as u64;
+        entries_by_disk[writer.disk as usize] += 1;
+    }
+    let use_zip64 = zip64_present
+        || entries >= u16::MAX as u64
+        || central_size >= u32::MAX as u64
+        || central_start >= u32::MAX as u64;
+    let trailing_size = eocd.len() as u64 + if use_zip64 { 56 + 20 } else { 0 };
+    writer.ensure_record_room(trailing_size)?;
+    if entries_by_disk.len() <= writer.disk as usize {
+        entries_by_disk.resize(writer.disk as usize + 1, 0);
+    }
+    let final_disk = writer.disk;
+    let mut end = eocd;
+    put_u16(&mut end, 4, final_disk);
+    put_u16(&mut end, 6, central_disk);
+    if use_zip64 {
+        put_u16(&mut end, 8, u16::MAX);
+        put_u16(&mut end, 10, u16::MAX);
+        put_u32(&mut end, 12, u32::MAX);
+        put_u32(&mut end, 16, u32::MAX);
+        let zip64_offset = writer.length;
+        let mut zip64_end = [0u8; 56];
+        put_u32(&mut zip64_end, 0, 0x0606_4b50);
+        put_u64(&mut zip64_end, 4, 44);
+        put_u16(&mut zip64_end, 12, 45);
+        put_u16(&mut zip64_end, 14, 45);
+        zip64_end[16..20].copy_from_slice(&(final_disk as u32).to_le_bytes());
+        zip64_end[20..24].copy_from_slice(&(central_disk as u32).to_le_bytes());
+        put_u64(&mut zip64_end, 24, entries_by_disk[final_disk as usize]);
+        put_u64(&mut zip64_end, 32, entries);
+        put_u64(&mut zip64_end, 40, central_size);
+        put_u64(&mut zip64_end, 48, central_start);
+        let mut locator = [0u8; 20];
+        put_u32(&mut locator, 0, 0x0706_4b50);
+        put_u32(&mut locator, 4, final_disk as u32);
+        put_u64(&mut locator, 8, zip64_offset);
+        put_u32(&mut locator, 16, final_disk as u32 + 1);
+        let file = writer.file.as_mut().ok_or("분할 ZIP 출력이 닫혔습니다.")?;
+        file.write_all(&zip64_end)
+            .map_err(|error| error.to_string())?;
+        file.write_all(&locator)
+            .map_err(|error| error.to_string())?;
+        file.write_all(&end).map_err(|error| error.to_string())?;
+        writer.length += trailing_size;
+    } else {
+        put_u16(
+            &mut end,
+            8,
+            u16::try_from(entries_by_disk[final_disk as usize])
+                .map_err(|_| "분할 디스크의 ZIP 항목 수가 너무 많습니다.")?,
+        );
+        put_u16(
+            &mut end,
+            10,
+            u16::try_from(entries).map_err(|_| "ZIP 항목 수가 너무 많습니다.")?,
+        );
+        put_u32(
+            &mut end,
+            12,
+            u32::try_from(central_size).map_err(|_| "ZIP 중앙 디렉터리가 너무 큽니다.")?,
+        );
+        put_u32(
+            &mut end,
+            16,
+            u32::try_from(central_start).map_err(|_| "ZIP 중앙 디렉터리 위치가 너무 큽니다.")?,
+        );
+        writer
+            .file
+            .as_mut()
+            .ok_or("분할 ZIP 출력이 닫혔습니다.")?
+            .write_all(&end)
+            .map_err(|error| error.to_string())?;
+        writer.length += end.len() as u64;
+    }
+    if cancelled.load(Ordering::Relaxed) {
+        return Err("압축 작업이 취소되었습니다.".into());
+    }
+    writer.finish()?;
+    Ok(())
+}
+
+struct SdkProgressContext<'a, F> {
+    cancelled: &'a AtomicBool,
+    on_progress: &'a mut F,
+}
+
+unsafe extern "C" fn sdk_progress<F: FnMut(CreateProgress)>(
+    completed_bytes: u64,
+    total_bytes: u64,
+    completed_entries: u32,
+    total_entries: u32,
+    context: *mut c_void,
+) -> c_int {
+    let context = &mut *context.cast::<SdkProgressContext<'_, F>>();
+    if context.cancelled.load(Ordering::Relaxed) {
+        return 1;
+    }
+    (context.on_progress)(CreateProgress {
+        phase: "writing".into(),
+        completed_bytes: completed_bytes.min(total_bytes),
+        total_bytes,
+        completed_entries: completed_entries as usize,
+        total_entries: total_entries as usize,
+    });
+    c_int::from(context.cancelled.load(Ordering::Relaxed))
+}
+
+fn create_with_7zip_sdk<F: FnMut(CreateProgress)>(
+    sources: &[SourceEntry],
+    temporary_path: &Path,
+    compression_level: u8,
+    password: Option<&str>,
+    total_bytes: u64,
+    cancelled: &AtomicBool,
+    on_progress: &mut F,
+) -> Result<(), String> {
+    let output_path = c_string(
+        temporary_path
+            .to_str()
+            .ok_or("저장 경로를 UTF-8로 처리할 수 없습니다.")?,
+        "저장 경로가 올바르지 않습니다.",
+    )?;
+    let source_paths = sources
+        .iter()
+        .map(|source| {
+            c_string(
+                source
+                    .path
+                    .to_str()
+                    .ok_or("입력 경로를 UTF-8로 처리할 수 없습니다.")?,
+                "입력 경로가 올바르지 않습니다.",
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let archive_paths = sources
+        .iter()
+        .map(|source| c_string(&source.archive_path, "압축 항목 이름이 올바르지 않습니다."))
+        .collect::<Result<Vec<_>, _>>()?;
+    let inputs = sources
+        .iter()
+        .enumerate()
+        .map(|(index, source)| {
+            let modified_seconds = source
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.modified().ok())
+                .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+                .map_or(0, |value| value.as_secs().min(i64::MAX as u64) as i64);
+            SdkInput {
+                source_path: source_paths[index].as_ptr(),
+                archive_path: archive_paths[index].as_ptr(),
+                size: source.metadata.as_ref().map_or(0, Metadata::len),
+                modified_seconds,
+                is_directory: c_int::from(source.directory),
+            }
+        })
+        .collect::<Vec<_>>();
+    let password = password
+        .filter(|value| !value.is_empty())
+        .map(|value| c_string(value, "암호에 지원하지 않는 문자가 포함되어 있습니다."))
+        .transpose()?;
+
+    let mut context = SdkProgressContext {
+        cancelled,
+        on_progress,
+    };
+    let status = unsafe {
+        silk_7zip_create_zip(
+            output_path.as_ptr(),
+            inputs.as_ptr(),
+            u32::try_from(inputs.len()).map_err(|_| "압축 항목 수가 너무 많습니다.")?,
+            compression_level as u32,
+            password
+                .as_ref()
+                .map_or(std::ptr::null(), |value| value.as_ptr()),
+            total_bytes,
+            Some(sdk_progress::<F>),
+            (&mut context as *mut SdkProgressContext<'_, F>).cast(),
+        )
+    };
+    if status != 0 {
+        return Err(if cancelled.load(Ordering::Relaxed) {
+            "압축 작업이 취소되었습니다.".into()
+        } else {
+            format!(
+                "7-Zip SDK에서 ZIP 생성에 실패했습니다 (HRESULT 0x{:08X}).",
+                status as u32
+            )
+        });
+    }
+    if cancelled.load(Ordering::Relaxed) {
+        return Err("압축 작업이 취소되었습니다.".into());
+    }
+    for source in sources.iter().filter(|source| !source.directory) {
+        if fs::metadata(&source.path)
+            .map_err(|error| error.to_string())?
+            .len()
+            != source.metadata.as_ref().map_or(0, Metadata::len)
+        {
+            return Err(format!(
+                "압축 중 파일 크기가 변경되었습니다: {}",
+                source.path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn write_split_zip<F: FnMut(CreateProgress)>(
+    sources: Vec<SourceEntry>,
+    output_path: &Path,
+    compression_level: u8,
+    password: Option<&str>,
+    split_size: u64,
+    total_bytes: u64,
+    cancelled: &Arc<AtomicBool>,
+    mut on_progress: F,
+) -> Result<CreateResult, String> {
+    let stage = temporary_directory(output_path)?;
+    let staged_zip = stage.0.join(format!(
+        "source-{}.zip",
+        TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    create_with_7zip_sdk(
+        &sources,
+        &staged_zip,
+        compression_level,
+        password,
+        total_bytes,
+        cancelled,
+        &mut on_progress,
+    )?;
+    for source in sources.iter().filter(|source| !source.directory) {
+        if fs::metadata(&source.path)
+            .map_err(|error| error.to_string())?
+            .len()
+            != source.metadata.as_ref().map_or(0, Metadata::len)
+        {
+            return Err(format!(
+                "압축 중 파일 크기가 변경되었습니다: {}",
+                source.path.display()
+            ));
+        }
+    }
+    if cancelled.load(Ordering::Relaxed) {
+        return Err("압축 작업이 취소되었습니다.".into());
+    }
+    on_progress(CreateProgress {
+        phase: "finalizing".into(),
+        completed_bytes: total_bytes,
+        total_bytes,
+        completed_entries: sources.len(),
+        total_entries: sources.len(),
+    });
+    convert_zip_to_pkware_split(&staged_zip, &stage.0, output_path, split_size, cancelled)?;
+    let _ = fs::remove_file(staged_zip);
+    let size = commit_split_outputs(&stage.0, output_path)?;
+    Ok(CreateResult {
+        path: output_path.to_string_lossy().into_owned(),
+        entries: sources.len(),
+        size,
+    })
+}
+
 /// Create a ZIP archive. Input files are stored by basename; selected folders
 /// keep their top-level directory and relative contents.
 pub fn create_zip<F>(
@@ -409,6 +1377,7 @@ where
         output_path,
         compression_level,
         password,
+        None,
         cancelled,
         on_progress,
     )
@@ -427,6 +1396,26 @@ pub fn create_zip_entries<F: FnMut(CreateProgress)>(
     output_path: &Path,
     compression_level: u8,
     password: Option<&str>,
+    cancelled: &Arc<AtomicBool>,
+    on_progress: F,
+) -> Result<CreateResult, String> {
+    create_zip_entries_with_split(
+        inputs,
+        output_path,
+        compression_level,
+        password,
+        None,
+        cancelled,
+        on_progress,
+    )
+}
+
+pub fn create_zip_entries_with_split<F: FnMut(CreateProgress)>(
+    inputs: &[CreateInput],
+    output_path: &Path,
+    compression_level: u8,
+    password: Option<&str>,
+    split_size: Option<u64>,
     cancelled: &Arc<AtomicBool>,
     on_progress: F,
 ) -> Result<CreateResult, String> {
@@ -492,6 +1481,7 @@ pub fn create_zip_entries<F: FnMut(CreateProgress)>(
         output_path,
         compression_level,
         password,
+        split_size,
         cancelled,
         on_progress,
     )
@@ -502,11 +1492,15 @@ fn write_zip<F: FnMut(CreateProgress)>(
     output_path: &Path,
     compression_level: u8,
     password: Option<&str>,
+    split_size: Option<u64>,
     cancelled: &Arc<AtomicBool>,
     mut on_progress: F,
 ) -> Result<CreateResult, String> {
     if !matches!(compression_level, 1 | 6 | 9) {
         return Err("지원하지 않는 ZIP 압축 수준입니다.".into());
+    }
+    if split_size.is_some_and(|size| size < 64 * 1024 || size > i64::MAX as u64) {
+        return Err("분할 크기는 64KB 이상이어야 합니다.".into());
     }
     if !output_path
         .extension()
@@ -544,6 +1538,23 @@ fn write_zip<F: FnMut(CreateProgress)>(
             return Err("압축 파일을 입력 파일과 같은 경로에 저장할 수 없습니다.".into());
         }
     }
+    if split_size.is_some() {
+        for target in existing_split_targets(output_path)? {
+            let target_canonical = fs::canonicalize(&target).map_err(|error| error.to_string())?;
+            if sources
+                .iter()
+                .filter(|source| !source.directory)
+                .any(|source| {
+                    fs::canonicalize(&source.path).ok().as_ref() == Some(&target_canonical)
+                })
+            {
+                return Err(format!(
+                    "분할 압축 파일이 입력 파일과 같은 경로입니다: {}",
+                    target.display()
+                ));
+            }
+        }
+    }
     let total_bytes = sources
         .iter()
         .filter(|source| !source.directory)
@@ -559,134 +1570,40 @@ fn write_zip<F: FnMut(CreateProgress)>(
         total_entries: sources.len(),
     });
 
+    if let Some(split_size) = split_size {
+        return write_split_zip(
+            sources,
+            output_path,
+            compression_level,
+            password,
+            split_size,
+            total_bytes,
+            cancelled,
+            on_progress,
+        );
+    }
+
     let temporary = temporary_path(output_path)?;
     let cleanup = TemporaryOutput(temporary.clone());
-    let handle = unsafe { archive_write_new() };
-    if handle.is_null() {
-        return Err("압축 엔진을 초기화하지 못했습니다.".into());
-    }
-    let writer = Writer(handle);
-    unsafe {
-        if archive_write_set_format_zip(writer.0) != ARCHIVE_OK
-            || archive_write_add_filter_none(writer.0) != ARCHIVE_OK
-        {
-            return Err(writer.error());
-        }
-    }
-    let options = c_string(
-        &format!("zip:hdrcharset=UTF-8,zip:compression-level={compression_level}"),
-        "ZIP 옵션이 올바르지 않습니다.",
-    )?;
-    if unsafe { archive_write_set_options(writer.0, options.as_ptr()) } != ARCHIVE_OK {
-        return Err(writer.error());
-    }
-    if let Some(password) = password.filter(|value| !value.is_empty()) {
-        let passphrase = c_string(password, "암호에 지원하지 않는 문자가 포함되어 있습니다.")?;
-        let encryption = c_string(
-            "zip:encryption=zipcrypt",
-            "ZIP 암호화 설정이 올바르지 않습니다.",
-        )?;
-        if unsafe { archive_write_set_options(writer.0, encryption.as_ptr()) } != ARCHIVE_OK
-            || unsafe { archive_write_set_passphrase(writer.0, passphrase.as_ptr()) } != ARCHIVE_OK
-        {
-            return Err(writer.error());
-        }
-    }
-    open_writer(&writer, &temporary)?;
-
-    let mut completed_bytes = 0u64;
-    for (index, source) in sources.iter().enumerate() {
-        if cancelled.load(Ordering::Relaxed) {
-            return Err("압축 작업이 취소되었습니다.".into());
-        }
-        let entry = set_entry(&writer, source)?;
-        if !source.directory {
-            let mut file = File::open(&source.path).map_err(|error| {
-                format!(
-                    "파일을 읽지 못했습니다: {} ({error})",
-                    source.path.display()
-                )
-            })?;
-            let mut remaining = source.metadata.as_ref().map_or(0, Metadata::len);
-            let mut buffer = [0u8; 128 * 1024];
-            while remaining > 0 {
-                if cancelled.load(Ordering::Relaxed) {
-                    return Err("압축 작업이 취소되었습니다.".into());
-                }
-                let requested = buffer
-                    .len()
-                    .min(remaining.min(buffer.len() as u64) as usize);
-                let read = file.read(&mut buffer[..requested]).map_err(|error| {
-                    format!(
-                        "파일을 읽지 못했습니다: {} ({error})",
-                        source.path.display()
-                    )
-                })?;
-                if read == 0 {
-                    return Err(format!(
-                        "압축 중 파일 크기가 변경되었습니다: {}",
-                        source.path.display()
-                    ));
-                }
-                let mut offset = 0;
-                while offset < read {
-                    let written = unsafe {
-                        archive_write_data(
-                            writer.0,
-                            buffer[offset..read].as_ptr().cast(),
-                            read - offset,
-                        )
-                    };
-                    if written <= 0 {
-                        return Err(writer.error());
-                    }
-                    offset += written as usize;
-                }
-                remaining -= read as u64;
-                completed_bytes += read as u64;
-                on_progress(CreateProgress {
-                    phase: "writing".into(),
-                    completed_bytes,
-                    total_bytes,
-                    completed_entries: index,
-                    total_entries: sources.len(),
-                });
-            }
-            if file.metadata().map_err(|error| error.to_string())?.len()
-                != source.metadata.as_ref().map_or(0, Metadata::len)
-            {
-                return Err(format!(
-                    "압축 중 파일 크기가 변경되었습니다: {}",
-                    source.path.display()
-                ));
-            }
-        }
-        drop(entry);
-        if unsafe { archive_write_finish_entry(writer.0) } != ARCHIVE_OK {
-            return Err(writer.error());
-        }
-        on_progress(CreateProgress {
-            phase: "writing".into(),
-            completed_bytes,
-            total_bytes,
-            completed_entries: index + 1,
-            total_entries: sources.len(),
-        });
-    }
     if cancelled.load(Ordering::Relaxed) {
         return Err("압축 작업이 취소되었습니다.".into());
     }
+    create_with_7zip_sdk(
+        &sources,
+        &temporary,
+        compression_level,
+        password,
+        total_bytes,
+        cancelled,
+        &mut on_progress,
+    )?;
     on_progress(CreateProgress {
         phase: "finalizing".into(),
-        completed_bytes,
+        completed_bytes: total_bytes,
         total_bytes,
         completed_entries: sources.len(),
         total_entries: sources.len(),
     });
-    if unsafe { archive_write_close(writer.0) } != ARCHIVE_OK {
-        return Err(writer.error());
-    }
-    drop(writer);
     replace_output(&temporary, output_path)?;
     drop(cleanup);
     let size = fs::metadata(output_path)

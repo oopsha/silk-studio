@@ -69,6 +69,7 @@ button, select { font:inherit; color:inherit; }
 .zip-operation-dialog h2 { margin:0; font-size:15px; font-weight:600; }
 .zip-operation-dialog p { margin:0; color:var(--color-description); }
 .zip-operation-dialog footer { display:flex; justify-content:flex-end; gap:8px; margin-top:4px; }
+.zip-error-dialog p { max-height:40vh; overflow:auto; overflow-wrap:anywhere; white-space:pre-wrap; }
 .zip-progress-track { height:8px; overflow:hidden; border-radius:4px; background:var(--color-border); }
 .zip-progress-track > div { height:100%; background:var(--color-focus-border); transition:width 120ms linear; }
 .zip-progress-detail { color:var(--color-description); font-size:12px; }
