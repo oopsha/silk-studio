@@ -759,7 +759,7 @@ function QueryResultGrid({
       useIncrementalScroll ? async (columns, onProgress) => (await fetchAllRowsForExport(columns, onProgress)) ?? [] : undefined,
       connectionId ?? null,
     );
-    gridController.autoSizeToContent();
+    gridController.autoSizeToContent(root);
     autoSizePendingRef.current = false;
     restoreGridViewport();
   }, [connectionId, gridController, fetchAllRowsForExport, nullDisplay, openValueEditor, result.columns, useIncrementalScroll, restoreGridViewport]);
@@ -1543,7 +1543,7 @@ function QueryResultGrid({
         api.autoSizeColumns([columnId], false);
         return;
       case "autoSizeAllColumns":
-        gridController.autoSizeAllColumns();
+        gridController.autoSizeAllColumns(gridRootRef.current);
         return;
       case "pinColumnLeft":
         api.applyColumnState({ state: [{ colId: columnId, pinned: "left" }] });
@@ -2068,7 +2068,9 @@ function QueryResultGrid({
           rowHeight={rowHeight}
           animateRows={false}
           rowBuffer={8}
-          suppressColumnVirtualisation={false}
+          // Auto-size only measures rendered columns, so off-screen columns would keep their
+          // default width. Render every column so autoSizeColumns can fit all of them.
+          suppressColumnVirtualisation
           stopEditingWhenCellsLoseFocus
           getRowId={(params) =>
             params.data ? String(getQueryResultRowIndex(params.data)) : "0"
