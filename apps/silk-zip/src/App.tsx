@@ -21,7 +21,9 @@ import { cancelArchive, createArchive, listArchive, openOutputFolder, revealInFo
 import { startNativeMenubar } from "@silk-studio/workbench/services/nativeMenubar/nativeMenubarService.ts";
 import CommandPalette from "@silk-studio/workbench/components/commands/index.ts";
 import ZipSettingsPage from "./components/ZipSettingsPage";
-import { getZipSettings, setSettingsViewOpen, useSettingsViewOpen } from "./zipSettings";
+import ZipKeybindingsPage from "./components/ZipKeybindingsPage";
+import { UserKeybindingsService } from "@silk-studio/workbench/platform/keybinding/userKeybindingsService.ts";
+import { getZipSettings, setPage, usePage } from "./zipSettings";
 import ArchiveExplorer from "./components/ArchiveExplorer";
 import CommandBar from "./components/CommandBar";
 import { ExtractDialog, useExtraction } from "./components/ExtractDialog";
@@ -86,7 +88,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [elevated, setElevated] = useState(false);
-  const settingsOpen = useSettingsViewOpen();
+  const page = usePage();
   const busy = useRef(false);
   const creating = useRef(false);
   const activeCreateId = useRef<string | null>(null);
@@ -118,11 +120,11 @@ function App() {
   useEffect(() => startNativeMenubar({ appName: "Silk Zip" }), []);
 
   useEffect(() => {
-    if (!settingsOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setSettingsViewOpen(false); };
+    if (!page) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setPage(null); };
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [settingsOpen]);
+  }, [page]);
 
   // Suppress the browser's own context menu; text fields keep it for copy/paste.
   useEffect(() => {
@@ -268,10 +270,12 @@ function App() {
     const unregisterClose = CommandsRegistry.registerCommand("silkZip.file.closeArchive", closeArchive);
     const unregisterCloseKey = KeybindingsRegistry.registerKeybinding("silkZip.file.closeArchive", "F4");
     const unregisterExtract = CommandsRegistry.registerCommand("silkZip.file.extract", () => extractCurrentArchive(getZipSettings().extractTarget)());
-    const openSettings = () => setSettingsViewOpen(true);
+    const openSettings = () => setPage("settings");
     const unregisterSettings = [
       CommandsRegistry.registerCommand("workbench.action.openSettings", openSettings),
       KeybindingsRegistry.registerKeybinding("workbench.action.openSettings", "Ctrl+,"),
+      CommandsRegistry.registerCommand("workbench.action.openGlobalKeybindings", () => setPage("keybindings")),
+      KeybindingsRegistry.registerKeybinding("workbench.action.openGlobalKeybindings", "Ctrl+K Ctrl+S"),
     ];
     const unregisterExtractHere = CommandsRegistry.registerCommand("silkZip.file.extractHere", extractCurrentArchive("here"));
     const unregisterExtractNamed = CommandsRegistry.registerCommand("silkZip.file.extractNamed", extractCurrentArchive("named"));
@@ -285,6 +289,8 @@ function App() {
     const unregisterNew = CommandsRegistry.registerCommand("silkZip.file.newArchive", newArchive);
     const unregisterKey = KeybindingsRegistry.registerKeybinding("silkZip.file.openArchive", detectWorkbenchPlatform() === "mac" ? "Cmd+O" : "Ctrl+O");
     const unregisterNewKey = KeybindingsRegistry.registerKeybinding("silkZip.file.newArchive", detectWorkbenchPlatform() === "mac" ? "Cmd+N" : "Ctrl+N");
+    // Re-apply the user's shortcut changes now that every default is registered.
+    UserKeybindingsService.reapply();
     const onKeyDown = (event: KeyboardEvent) => { KeybindingsRegistry.handleKeyboardEvent(event); };
     window.addEventListener("keydown", onKeyDown);
     return () => { disposed = true; recentArchives.stop(); unregisterNewKey(); unregisterNew(); unregisterSettings.forEach((stop) => stop()); unregisterNewWindow(); unregisterNewWindowAdmin(); unregisterNewWindowKeys.forEach((stop) => stop()); unregisterTest(); unregisterTestKey(); unregisterOpenFolder(); unregisterClose(); unregisterCloseKey(); unregisterExtract(); unregisterExtractHere(); unregisterExtractNamed(); unregisterExtractKeys.forEach((stop) => stop()); unregisterKey(); unregister(); window.removeEventListener("keydown", onKeyDown); };
@@ -484,7 +490,7 @@ function App() {
           <ActivityBar views={activityViews} />
         </div>
         <div className="zip-workbench__main">
-          {settingsOpen ? <ZipSettingsPage /> : <>
+          {page === "settings" ? <ZipSettingsPage /> : page === "keybindings" ? <ZipKeybindingsPage /> : <>
           {elevated && !archive ? <div className="zip-message" role="note">관리자 권한으로 실행 중이라 일반 탐색기에서 이 창으로 파일을 끌어놓을 수 없습니다(끌 때 금지 표시가 나옵니다). 탐색기도 관리자 권한으로 실행하거나 '추가' 버튼을 사용하세요.</div> : null}
           {loading ? <div className="zip-message" role="status">압축 파일을 읽고 있습니다…</div> : null}
           {error ? <div className="zip-message zip-message--error" role="alert">{error}</div> : null}

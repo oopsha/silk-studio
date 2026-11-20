@@ -52,19 +52,21 @@ export function useZipSettings(): ZipSettings {
   );
 }
 
-// The settings page replaces the workbench area while it is open.
-let settingsOpen = false;
-const viewListeners = new Set<() => void>();
+// A full-page view (settings, keyboard shortcuts) replaces the workbench area while open.
+export type ZipPage = "settings" | "keybindings" | null;
 
-export function setSettingsViewOpen(open: boolean): void {
-  if (settingsOpen === open) return;
-  settingsOpen = open;
-  viewListeners.forEach((listener) => listener());
+let currentPage: ZipPage = null;
+const pageListeners = new Set<() => void>();
+
+export function setPage(page: ZipPage): void {
+  if (currentPage === page) return;
+  currentPage = page;
+  pageListeners.forEach((listener) => listener());
 }
 
-export function useSettingsViewOpen(): boolean {
+export function usePage(): ZipPage {
   return useSyncExternalStore(
-    (listener) => { viewListeners.add(listener); return () => viewListeners.delete(listener); },
-    () => settingsOpen,
+    (listener) => { pageListeners.add(listener); return () => pageListeners.delete(listener); },
+    () => currentPage,
   );
 }

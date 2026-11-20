@@ -23,6 +23,15 @@ class UserKeybindingsServiceImpl {
     }
   }
 
+  /** Applies the loaded overrides again; for apps that register defaults after `initialize()`
+   *  (or re-register them, e.g. React StrictMode remounts). */
+  reapply(): void {
+    this.initialize();
+    for (const [commandId, keys] of this.overrides) {
+      KeybindingsRegistry.setBindings(commandId, keys);
+    }
+  }
+
   isOverridden(commandId: string): boolean {
     return this.overrides.has(commandId);
   }

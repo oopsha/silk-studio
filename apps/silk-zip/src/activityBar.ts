@@ -12,7 +12,6 @@ if (!registrationState.__silkZipActivityMenuRegistered) {
   registrationState.__silkZipActivityMenuRegistered = true;
 
   const commands = [
-    { id: "silkZip.activity.keybindings", title: "키보드 단축키", group: "2_configuration", order: 2 },
     { id: "silkZip.activity.checkUpdates", title: "업데이트 확인...", group: "4_updates", order: 1 },
   ] as const;
 
@@ -27,6 +26,12 @@ if (!registrationState.__silkZipActivityMenuRegistered) {
     command: { id: "workbench.action.openSettings", title: "설정" },
     group: "2_configuration",
     order: 1,
+  });
+
+  MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
+    command: { id: "workbench.action.openGlobalKeybindings", title: "키보드 단축키" },
+    group: "2_configuration",
+    order: 2,
   });
 
   for (const command of commands) {

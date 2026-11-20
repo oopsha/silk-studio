@@ -1,6 +1,6 @@
 import SettingsEditor from "@silk-studio/workbench/components/settings/index.ts";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import { setSettingsViewOpen, updateZipSettings, useZipSettings, type ExtractDefaultTarget } from "../zipSettings";
+import { setPage, updateZipSettings, useZipSettings, type ExtractDefaultTarget } from "../zipSettings";
 
 function Row({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
@@ -46,7 +46,7 @@ function ExtractSettings() {
 export default function ZipSettingsPage() {
   return (
     <div className="zip-settings-view">
-      <button type="button" className="zip-settings-view__close" title="설정 닫기 (Esc)" aria-label="설정 닫기" onClick={() => setSettingsViewOpen(false)}>
+      <button type="button" className="zip-settings-view__close" title="설정 닫기 (Esc)" aria-label="설정 닫기" onClick={() => setPage(null)}>
         <Codicon name="close" />
       </button>
       <SettingsEditor
