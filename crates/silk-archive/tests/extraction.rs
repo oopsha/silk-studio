@@ -1,4 +1,4 @@
-use silk_archive::{create_archive_entries, extract_archive, ArchiveFormat, CreateInput};
+use silk_archive::{create_archive_entries, extract_archive, extract_entries, ArchiveFormat, CreateInput};
 use std::{
     fs,
     path::PathBuf,
@@ -110,4 +110,46 @@ fn keeps_existing_files_unless_overwriting() {
     assert!(result.skipped >= 1, "{result:?}");
     extract_archive(&archive, &out, None, true, &cancelled, |_| {}).unwrap();
     assert_eq!(fs::read_to_string(out.join("dir/한글.txt")).unwrap(), "한글 내용 hello hello hello");
+}
+
+#[test]
+fn extracts_only_selected_entries_without_their_parent_folders() {
+    let workspace = Workspace::new();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let mut inputs = Vec::new();
+    for (path, text) in [
+        ("top/mid/leaf/a.txt", "a"),
+        ("top/mid/b.txt", "b"),
+        ("top/한글 폴더/c.txt", "c"),
+        ("top/d.txt", "d"),
+        ("e.txt", "e"),
+    ] {
+        let source = workspace.0.join(path.replace('/', "_"));
+        fs::write(&source, text).unwrap();
+        inputs.push(CreateInput { source_path: Some(source), archive_path: path.into() });
+    }
+    for (format, name) in [
+        (ArchiveFormat::Zip, "n.zip"),
+        (ArchiveFormat::SevenZip, "n.7z"),
+        (ArchiveFormat::Tgz, "n.tgz"),
+    ] {
+        let archive = workspace.0.join(name);
+        create_archive_entries(format, &inputs, &archive, 6, None, None, &cancelled, |_| {}, None).unwrap();
+
+        let folder = workspace.0.join(format!("folder-{name}"));
+        extract_entries(&archive, &folder, None, false, &["top/mid".into()], &cancelled, |_| {}).unwrap();
+        assert_eq!(fs::read_to_string(folder.join("mid/leaf/a.txt")).unwrap(), "a", "{name}");
+        assert_eq!(fs::read_to_string(folder.join("mid/b.txt")).unwrap(), "b", "{name}");
+        assert!(!folder.join("d.txt").exists() && !folder.join("top").exists() && !folder.join("e.txt").exists(), "{name}");
+
+        let file = workspace.0.join(format!("file-{name}"));
+        extract_entries(&archive, &file, None, false, &["top/d.txt".into(), "top/한글 폴더".into()], &cancelled, |_| {}).unwrap();
+        assert_eq!(fs::read_to_string(file.join("d.txt")).unwrap(), "d", "{name}");
+        assert_eq!(fs::read_to_string(file.join("한글 폴더/c.txt")).unwrap(), "c", "{name}");
+        assert!(!file.join("mid").exists(), "{name}");
+
+        let none = workspace.0.join(format!("none-{name}"));
+        let error = extract_entries(&archive, &none, None, false, &["missing".into()], &cancelled, |_| {}).unwrap_err();
+        assert!(error.contains("찾지 못"), "{name}: {error}");
+    }
 }

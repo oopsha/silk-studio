@@ -3,7 +3,7 @@
 use crate::create::{c_string, sdk_progress, CreateProgress, SdkProgressContext};
 use serde::Serialize;
 use std::{
-    ffi::{c_char, c_int, c_void},
+    ffi::{c_char, c_int, c_void, CString},
     fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicU64, Ordering},
@@ -28,6 +28,8 @@ unsafe extern "C" {
         output_dir: *const c_char,
         password: *const c_char,
         overwrite: c_int,
+        only: *const *const c_char,
+        only_count: u32,
         progress: Option<SdkProgressCallback>,
         progress_context: *mut c_void,
         result: *mut SdkExtractResult,
@@ -63,6 +65,7 @@ fn extract_once<F: FnMut(CreateProgress)>(
     output_dir: &Path,
     password: Option<&str>,
     overwrite: bool,
+    only: &[CString],
     cancelled: &AtomicBool,
     on_progress: &mut F,
 ) -> Result<(String, u32, u32), String> {
@@ -78,6 +81,7 @@ fn extract_once<F: FnMut(CreateProgress)>(
         .filter(|value| !value.is_empty())
         .map(|value| c_string(value, "암호가 올바르지 않습니다."))
         .transpose()?;
+    let only_pointers: Vec<*const c_char> = only.iter().map(|value| value.as_ptr()).collect();
     let mut context = SdkProgressContext { cancelled, on_progress };
     let mut result = SdkExtractResult {
         extracted: 0,
@@ -94,6 +98,8 @@ fn extract_once<F: FnMut(CreateProgress)>(
             output_c.as_ptr(),
             password_c.as_ref().map_or(std::ptr::null(), |value| value.as_ptr()),
             c_int::from(overwrite),
+            if only_pointers.is_empty() { std::ptr::null() } else { only_pointers.as_ptr() },
+            only_pointers.len() as u32,
             Some(sdk_progress::<F>),
             (&mut context as *mut SdkProgressContext<'_, F>).cast(),
             &mut result,
@@ -108,6 +114,9 @@ fn extract_once<F: FnMut(CreateProgress)>(
         } else {
             "암호가 필요한 압축 파일입니다.".into()
         });
+    }
+    if text(&result.message) == "no_match" {
+        return Err("선택한 항목을 압축 파일에서 찾지 못했습니다.".into());
     }
     if status == 1 {
         return Err("지원하지 않는 형식이거나 손상된 압축 파일입니다.".into());
@@ -147,8 +156,37 @@ pub fn extract_archive<F: FnMut(CreateProgress)>(
     password: Option<&str>,
     overwrite: bool,
     cancelled: &AtomicBool,
+    on_progress: F,
+) -> Result<ExtractResult, String> {
+    extract_entries(archive, output_dir, password, overwrite, &[], cancelled, on_progress)
+}
+
+/// Like [`extract_archive`] but only the listed archive paths (folders include everything
+/// below them) are written, each below `output_dir` without its parent folders.
+/// An empty `only` extracts everything.
+pub fn extract_entries<F: FnMut(CreateProgress)>(
+    archive: &Path,
+    output_dir: &Path,
+    password: Option<&str>,
+    overwrite: bool,
+    only: &[String],
+    cancelled: &AtomicBool,
     mut on_progress: F,
 ) -> Result<ExtractResult, String> {
+    use unicode_normalization::UnicodeNormalization;
+    // The listing shows NFC names, while an archive may store NFD; match either form.
+    let mut variants: Vec<String> = Vec::new();
+    for path in only {
+        for form in [path.clone(), path.nfc().collect(), path.nfd().collect()] {
+            if !form.is_empty() && !variants.contains(&form) {
+                variants.push(form);
+            }
+        }
+    }
+    let only = variants
+        .iter()
+        .map(|path| c_string(path, "선택한 항목 경로가 올바르지 않습니다."))
+        .collect::<Result<Vec<_>, _>>()?;
     crate::locale::ensure_utf8();
     if !archive.is_file() {
         return Err("압축 파일을 찾을 수 없습니다.".into());
@@ -178,7 +216,7 @@ pub fn extract_archive<F: FnMut(CreateProgress)>(
         .any(|suffix| name.ends_with(suffix));
     if !may_wrap_tar {
         let (format, extracted, skipped) =
-            extract_once(archive, &output_dir, password, overwrite, cancelled, &mut on_progress)?;
+            extract_once(archive, &output_dir, password, overwrite, &only, cancelled, &mut on_progress)?;
         on_progress(CreateProgress {
             phase: "finalizing".into(),
             completed_bytes: 1,
@@ -202,7 +240,7 @@ pub fn extract_archive<F: FnMut(CreateProgress)>(
     )));
     fs::create_dir(&stage.0).map_err(|error| error.to_string())?;
     let (format, extracted, skipped) =
-        extract_once(archive, &stage.0, password, true, cancelled, &mut on_progress)?;
+        extract_once(archive, &stage.0, password, true, &[], cancelled, &mut on_progress)?;
 
     let staged: Vec<PathBuf> = fs::read_dir(&stage.0)
         .map_err(|error| error.to_string())?
@@ -212,7 +250,7 @@ pub fn extract_archive<F: FnMut(CreateProgress)>(
         let name = staged[0].file_name().unwrap().to_string_lossy().to_lowercase();
         if name.ends_with(".tar") || looks_like_tar(&staged[0]) {
             let (_, extracted, skipped) =
-                extract_once(&staged[0], &output_dir, None, overwrite, cancelled, &mut on_progress)?;
+                extract_once(&staged[0], &output_dir, None, overwrite, &only, cancelled, &mut on_progress)?;
             return Ok(ExtractResult {
                 output_dir: display_dir,
                 format: format!("{format}+tar"),

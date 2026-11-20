@@ -690,6 +690,30 @@ static void prefer_utf8_zip_names(IInArchive *archive, UInt32 items) {
 }
 #endif
 
+
+// Normalises an archive path for comparison with a selection.
+static UString normalize_archive_path(const UString &path) {
+  UString result;
+  for (unsigned i = 0; i < path.Len(); ++i) result += static_cast<wchar_t>(path[i] == L'\\' ? L'/' : path[i]);
+  while (result.Len() > 0 && result.Back() == L'/') result.DeleteBack();
+  while (result.Len() >= 2 && result[0] == L'.' && result[1] == L'/') result.DeleteFrontal(2);
+  return result;
+}
+
+// Length of the selection that contains `path`, or -1. A selection matches itself and
+// everything below it.
+static int selection_index(const std::vector<UString> &selections, const UString &path) {
+  const UString normalized = normalize_archive_path(path);
+  for (size_t i = 0; i < selections.size(); ++i) {
+    const UString &selection = selections[i];
+    if (normalized == selection) return static_cast<int>(i);
+    if (normalized.Len() > selection.Len() && normalized[selection.Len()] == L'/' &&
+        normalized.IsPrefixedBy(selection.Ptr()))
+      return static_cast<int>(i);
+  }
+  return -1;
+}
+
 class SilkExtractCallback final : public IArchiveExtractCallback,
                                   public ICryptoGetTextPassword,
                                   public CMyUnknownImp {
@@ -703,6 +727,9 @@ class SilkExtractCallback final : public IArchiveExtractCallback,
         fallback_name_(std::move(fallback_name)), password_(std::move(password)),
         overwrite_(overwrite), total_items_(total_items), progress_(progress),
         progress_context_(progress_context), result_(result) {}
+
+  // Normalised ("/" separators, no trailing slash) archive paths chosen for extraction.
+  std::vector<UString> selections;
 
   Z7_COM7F_IMF(SetTotal(UInt64 total)) { total_ = total; return S_OK; }
 
@@ -735,6 +762,7 @@ class SilkExtractCallback final : public IArchiveExtractCallback,
 
     UString path = path_value.vt == VT_BSTR ? UString(path_value.bstrVal) : fallback_name_;
     if (path.IsEmpty()) path = fallback_name_;
+    if (!selections.empty()) path = relative_to_selection(path);
     FString full;
     if (!safe_target(path, full)) {
       fail("unsafe_path");
@@ -833,6 +861,17 @@ class SilkExtractCallback final : public IArchiveExtractCallback,
   }
 
  private:
+  // Drops the parent folders of the matching selection so "a/b/c/x" selected via "a/b/c"
+  // is written as "c/x".
+  UString relative_to_selection(const UString &path) const {
+    const UString normalized = normalize_archive_path(path);
+    const int index = selection_index(selections, path);
+    if (index < 0) return normalized;
+    const UString &selection = selections[static_cast<size_t>(index)];
+    const int slash = selection.ReverseFind(L'/');
+    return slash < 0 ? normalized : normalized.Ptr(static_cast<unsigned>(slash) + 1);
+  }
+
   void fail(const char *message) {
     if (result_->message[0] == 0) strncpy(result_->message, message, sizeof(result_->message) - 1);
   }
@@ -891,6 +930,7 @@ class SilkExtractCallback final : public IArchiveExtractCallback,
 // handles numbered split volumes (.001) and encrypted headers/data.
 extern "C" int silk_7zip_extract(const char *archive_path, const char *output_dir,
                                   const char *password, int overwrite,
+                                  const char *const *only, std::uint32_t only_count,
                                   SilkZipProgress progress, void *progress_context,
                                   SilkExtractResult *out) {
   if (!archive_path || !output_dir || !out) return static_cast<int>(E_INVALIDARG);
@@ -931,11 +971,35 @@ extern "C" int silk_7zip_extract(const char *archive_path, const char *output_di
   if (dot > 0) fallback.DeleteFrom(static_cast<unsigned>(dot));
   if (fallback.IsEmpty()) fallback = L"extracted";
 
+  std::vector<UString> selections;
+  for (std::uint32_t i = 0; i < only_count; ++i) {
+    UString selection = normalize_archive_path(from_utf8(only[i]));
+    if (!selection.IsEmpty()) selections.push_back(selection);
+  }
+  std::vector<UInt32> indices;
+  if (only_count > 0) {
+    for (UInt32 i = 0; i < items; ++i) {
+      CPropVariant path;
+      if (opened.archive->GetProperty(i, kpidPath, &path) != S_OK || path.vt != VT_BSTR) continue;
+      if (selection_index(selections, UString(path.bstrVal)) >= 0) indices.push_back(i);
+    }
+    if (indices.empty()) {
+      strncpy(out->message, "no_match", sizeof(out->message) - 1);
+      opened.archive->Close();
+      return 0;
+    }
+  }
+
   SilkExtractCallback *callback_spec = new SilkExtractCallback(
       opened.archive, destination, fallback, from_utf8(password ? password : ""),
-      overwrite != 0, items, progress, progress_context, out);
+      overwrite != 0, only_count > 0 ? static_cast<UInt32>(indices.size()) : items, progress,
+      progress_context, out);
+  callback_spec->selections = selections;
   CMyComPtr<IArchiveExtractCallback> callback = callback_spec;
-  result = opened.archive->Extract(nullptr, static_cast<UInt32>(-1), 0, callback);
+  result = opened.archive->Extract(indices.empty() ? nullptr : indices.data(),
+                                   indices.empty() ? static_cast<UInt32>(-1)
+                                                   : static_cast<UInt32>(indices.size()),
+                                   0, callback);
   opened.archive->Close();
   return static_cast<int>(result);
 }

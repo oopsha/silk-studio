@@ -94,6 +94,7 @@ pub async fn archive_extract(
     output_dir: String,
     password: Option<String>,
     overwrite: bool,
+    entries: Option<Vec<String>>,
     on_progress: Channel<silk_archive::CreateProgress>,
 ) -> Result<silk_archive::ExtractResult, String> {
     if operation_id.is_empty() {
@@ -113,11 +114,12 @@ pub async fn archive_extract(
     let worker_cancel = Arc::clone(&cancellation);
     let result = tauri::async_runtime::spawn_blocking(move || {
         let mut last_sent = Instant::now() - PROGRESS_CHANNEL_INTERVAL;
-        silk_archive::extract_archive(
+        silk_archive::extract_entries(
             std::path::Path::new(&archive_path),
             std::path::Path::new(&output_dir),
             password.as_deref(),
             overwrite,
+            entries.as_deref().unwrap_or(&[]),
             &worker_cancel,
             |progress| {
                 if last_sent.elapsed() >= PROGRESS_CHANNEL_INTERVAL || progress.phase != "writing" {
