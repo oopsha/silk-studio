@@ -106,6 +106,17 @@ function App() {
     };
   }, [addMenuOpen]);
 
+  // Suppress the browser's own context menu; text fields keep it for copy/paste.
+  useEffect(() => {
+    const block = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable='true']")) return;
+      event.preventDefault();
+    };
+    document.addEventListener("contextmenu", block);
+    return () => document.removeEventListener("contextmenu", block);
+  }, []);
+
   useEffect(() => {
     ContextKeyService.set("hasOpenArchive", archive !== null);
     ContextKeyService.set("hasArchiveEntrySelection", false);
