@@ -869,7 +869,8 @@ class SilkExtractCallback final : public IArchiveExtractCallback,
     if (index < 0) return normalized;
     const UString &selection = selections[static_cast<size_t>(index)];
     const int slash = selection.ReverseFind(L'/');
-    return slash < 0 ? normalized : normalized.Ptr(static_cast<unsigned>(slash) + 1);
+    if (slash < 0) return normalized;
+    return UString(normalized.Ptr(static_cast<unsigned>(slash) + 1));
   }
 
   void fail(const char *message) {
