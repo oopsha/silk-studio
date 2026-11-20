@@ -33,9 +33,6 @@ fn main() {
         let path = sdk_root.join(line);
         if line.ends_with(".c") { c_files.push(path) } else { cpp_files.push(path) }
     }
-    if target_os != "windows" {
-        cpp_files.push(sdk_cpp.join("Common/MyWindows.cpp"));
-    }
     let configure = |build: &mut cc::Build| {
         build.opt_level(2).include(&sdk_cpp);
         for include in &compression.include_paths {
