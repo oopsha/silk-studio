@@ -300,6 +300,9 @@ importers:
 
   apps/silk-zip:
     dependencies:
+      '@silk-studio/editor':
+        specifier: workspace:*
+        version: link:../../packages/silk-editor
       '@silk-studio/ui':
         specifier: workspace:*
         version: link:../../packages/silk-ui

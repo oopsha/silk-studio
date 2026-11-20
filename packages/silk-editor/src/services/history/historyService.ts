@@ -40,6 +40,11 @@ class HistoryServiceImpl {
     this.fireDidChange();
   }
 
+  /** The location history currently points at. */
+  current(): NavigationLocation | undefined {
+    return this.backStack[this.backStack.length - 1];
+  }
+
   canGoBack(): boolean {
     return this.backStack.length > 1;
   }

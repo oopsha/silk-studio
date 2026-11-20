@@ -22,8 +22,9 @@ import { startNativeMenubar } from "@silk-studio/workbench/services/nativeMenuba
 import CommandPalette from "@silk-studio/workbench/components/commands/index.ts";
 import ZipSettingsPage from "./components/ZipSettingsPage";
 import ZipKeybindingsPage from "./components/ZipKeybindingsPage";
+import { HistoryService } from "@silk-studio/editor/services/history/historyService.ts";
 import { UserKeybindingsService } from "@silk-studio/workbench/platform/keybinding/userKeybindingsService.ts";
-import { getZipSettings, setPage, usePage } from "./zipSettings";
+import { getZipSettings, setPage, usePage, type ZipPage } from "./zipSettings";
 import ArchiveExplorer from "./components/ArchiveExplorer";
 import CommandBar from "./components/CommandBar";
 import { ExtractDialog, useExtraction } from "./components/ExtractDialog";
@@ -125,6 +126,14 @@ function App() {
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [page]);
+
+  // Navigation history: every screen (create form, open archive, settings pages) is a location.
+  useEffect(() => {
+    const uri = page ? `zip:page:${page}` : archive ? `zip:archive:${archive.path}` : "zip:create";
+    if ((HistoryService.current()?.uri ?? "zip:create") === uri) return;
+    const name = archive?.path.split(/[\/]/).pop() ?? "";
+    HistoryService.push({ uri, label: page === "settings" ? "설정" : page === "keybindings" ? "키보드 단축키" : archive ? name : "새 압축 만들기" });
+  }, [archive, page]);
 
   // Suppress the browser's own context menu; text fields keep it for copy/paste.
   useEffect(() => {
@@ -271,9 +280,32 @@ function App() {
     const unregisterCloseKey = KeybindingsRegistry.registerKeybinding("silkZip.file.closeArchive", "F4");
     const unregisterExtract = CommandsRegistry.registerCommand("silkZip.file.extract", () => extractCurrentArchive(getZipSettings().extractTarget)());
     const openSettings = () => setPage("settings");
+    const restoreLocation = async () => {
+      const uri = HistoryService.current()?.uri ?? "zip:create";
+      if (uri === "zip:create") { setArchive(null); setPage(null); return; }
+      if (uri.startsWith("zip:page:")) { setPage(uri.slice("zip:page:".length) as ZipPage); return; }
+      const path = uri.slice("zip:archive:".length);
+      if (createDraft.current.archive?.path === path) { setPage(null); return; }
+      try {
+        setLoading(true);
+        setError(null);
+        const result = await listArchive(path);
+        setArchive(result);
+        setPage(null);
+      } catch (reason) {
+        setError(String(reason));
+      } finally {
+        setLoading(false);
+      }
+    };
+    const stopHistory = HistoryService.onDidChange(() => { void restoreLocation(); });
     const unregisterSettings = [
       CommandsRegistry.registerCommand("workbench.action.openSettings", openSettings),
       KeybindingsRegistry.registerKeybinding("workbench.action.openSettings", "Ctrl+,"),
+      CommandsRegistry.registerCommand("workbench.action.navigateBack", () => HistoryService.goBack()),
+      CommandsRegistry.registerCommand("workbench.action.navigateForward", () => HistoryService.goForward()),
+      KeybindingsRegistry.registerKeybinding("workbench.action.navigateBack", "Alt+Left"),
+      KeybindingsRegistry.registerKeybinding("workbench.action.navigateForward", "Alt+Right"),
       CommandsRegistry.registerCommand("workbench.action.openGlobalKeybindings", () => setPage("keybindings")),
       KeybindingsRegistry.registerKeybinding("workbench.action.openGlobalKeybindings", "Ctrl+K Ctrl+S"),
     ];
@@ -293,7 +325,7 @@ function App() {
     UserKeybindingsService.reapply();
     const onKeyDown = (event: KeyboardEvent) => { KeybindingsRegistry.handleKeyboardEvent(event); };
     window.addEventListener("keydown", onKeyDown);
-    return () => { disposed = true; recentArchives.stop(); unregisterNewKey(); unregisterNew(); unregisterSettings.forEach((stop) => stop()); unregisterNewWindow(); unregisterNewWindowAdmin(); unregisterNewWindowKeys.forEach((stop) => stop()); unregisterTest(); unregisterTestKey(); unregisterOpenFolder(); unregisterClose(); unregisterCloseKey(); unregisterExtract(); unregisterExtractHere(); unregisterExtractNamed(); unregisterExtractKeys.forEach((stop) => stop()); unregisterKey(); unregister(); window.removeEventListener("keydown", onKeyDown); };
+    return () => { disposed = true; recentArchives.stop(); unregisterNewKey(); unregisterNew(); stopHistory(); unregisterSettings.forEach((stop) => stop()); unregisterNewWindow(); unregisterNewWindowAdmin(); unregisterNewWindowKeys.forEach((stop) => stop()); unregisterTest(); unregisterTestKey(); unregisterOpenFolder(); unregisterClose(); unregisterCloseKey(); unregisterExtract(); unregisterExtractHere(); unregisterExtractNamed(); unregisterExtractKeys.forEach((stop) => stop()); unregisterKey(); unregister(); window.removeEventListener("keydown", onKeyDown); };
   }, []);
   const addFiles = async () => {
     setAddMenuOpen(false);

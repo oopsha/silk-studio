@@ -62,6 +62,17 @@ MenuRegistry.appendMenuItem(MenuId.MenubarHelpMenu, {
   order: -1,
 });
 
+MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
+  command: { id: "workbench.action.navigateBack", title: "뒤로 가기" },
+  group: "group-9",
+  order: 90,
+});
+MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
+  command: { id: "workbench.action.navigateForward", title: "앞으로 가기" },
+  group: "group-9",
+  order: 91,
+});
+
 const otherMenus = [
   [MenuId.MenubarEditMenu, ["이름 바꾸기|F2", "파일 추가|Ins", "파일 삭제|Del", "압축 파일 설명 편집|Ctrl+Shift+M", "|", "클립보드로 파일 복사|Ctrl+C", "클립보드에서 파일 붙여넣기|Ctrl+V", "파일의 경로명을 클립보드로 복사", "|", "찾기...|Ctrl+F"]],
   [MenuId.MenubarViewMenu, ["보기 형식", "표시할 열", "테마"]],
