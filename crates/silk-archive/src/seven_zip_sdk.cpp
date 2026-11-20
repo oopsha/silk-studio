@@ -118,8 +118,16 @@ class SilkZipUpdateCallback final : public IArchiveUpdateCallback2,
         property_value = item.is_directory;
         break;
       case kpidAttrib:
+#ifdef _WIN32
         if (!item.is_directory) property_value = static_cast<UInt32>(0x20);  // ARCHIVE
         else property_value = static_cast<UInt32>(0x10);                     // DIRECTORY
+#else
+        // ZIP written on a Unix host stores the mode in the high 16 bits (0x8000 marks it).
+        if (!item.is_directory)
+          property_value = static_cast<UInt32>(0x20 | 0x8000 | (0100644u << 16));
+        else
+          property_value = static_cast<UInt32>(0x10 | 0x8000 | (040755u << 16));
+#endif
         break;
       case kpidSize:
         property_value = static_cast<UInt64>(item.is_directory ? 0 : item.size);
