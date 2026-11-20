@@ -4,6 +4,7 @@
 #include "Windows/PropVariantConv.h"
 #include "Windows/FileName.h"
 #include "Windows/FileDir.h"
+#include "Windows/TimeUtils.h"
 #include "Windows/FileFind.h"
 #include "7zip/Archive/IArchive.h"
 #include "7zip/Common/FileStreams.h"
@@ -753,7 +754,16 @@ class SilkExtractCallback final : public IArchiveExtractCallback,
 
   Z7_COM7F_IMF(SetOperationResult(Int32 op_result)) {
     if (out_spec_) {
-      if (has_time_) out_spec_->SetMTime(&modified_);
+      if (has_time_) {
+        CFiTime modified_time;
+#ifdef _WIN32
+        modified_time = modified_;
+        const bool converted = true;
+#else
+        const bool converted = FILETIME_To_timespec(modified_, modified_time);
+#endif
+        if (converted) out_spec_->SetMTime(&modified_time);
+      }
       out_spec_->Close();
       out_spec_ = nullptr;
       out_stream_.Release();
