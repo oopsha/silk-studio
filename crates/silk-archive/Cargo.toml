@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+unicode-normalization = "0.1.26"
 
 [build-dependencies]
 cc = "1"

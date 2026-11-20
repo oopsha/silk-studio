@@ -4,6 +4,7 @@ pub mod extract;
 mod locale;
 
 use serde::Serialize;
+use unicode_normalization::UnicodeNormalization;
 use std::ffi::CString;
 use std::{
     ffi::{c_char, c_int, c_void, CStr},
@@ -261,6 +262,8 @@ pub fn list_archive(path: &Path) -> Result<ArchiveListing, String> {
         }
         let name = unsafe { string(archive_entry_pathname_utf8(entry)) }
             .ok_or("파일 이름을 UTF-8로 읽지 못했습니다.")?;
+        // macOS libarchive hands back decomposed (NFD) names; show them composed like everywhere else.
+        let name: String = name.nfc().collect();
         name_bytes += name.len();
         if entries.len() >= 100_000 || name_bytes > 16 * 1024 * 1024 {
             return Err(
