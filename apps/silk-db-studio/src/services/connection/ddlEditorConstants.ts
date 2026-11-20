@@ -60,6 +60,21 @@ export function isDdlSourceAwaitingInitialLoad(
   );
 }
 
+/**
+ * Like {@link isDdlSourceAwaitingInitialLoad}, but also treats a blank buffer as "not loaded yet"
+ * until this tab has loaded once. Object Editor tabs (`silk://object/...`) are opened with
+ * `content: ""` (see `openObjectEditor`), so a blank buffer there is the initial state, not a
+ * user edit. Once `alreadyLoaded`, a blank buffer is a deliberate clear and must not refetch.
+ */
+export function shouldFetchInitialDdl(
+  content: string | undefined,
+  localizedLoadingMessage: string,
+  alreadyLoaded: boolean,
+): boolean {
+  if (isDdlSourceAwaitingInitialLoad(content, localizedLoadingMessage)) return true;
+  return !alreadyLoaded && (content ?? "").trim().length === 0;
+}
+
 export function buildDdlTabLabel(schemaName: string, objectName: string): string {
   return `DDL — ${schemaName}.${objectName}`;
 }
