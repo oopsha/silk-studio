@@ -214,7 +214,7 @@ function QueryResultGrid({
   const filterEnabled = configuration["queryResult.filterEnabled"];
   const rowHeight = configuration["queryResult.rowHeight"];
   const fontSize = configuration["queryResult.fontSize"];
-  const colorTheme = configuration["workbench.colorTheme"];
+  const colorTheme = resolveEffectiveColorTheme(configuration["workbench.colorTheme"]);
   const maxRows = configuration["queryResult.maxRows"];
   const truncated = isResultTruncated(result, maxRows);
   // A truncated result keeps its initial batch and appends subsequent pages on demand. Unlike AG
@@ -410,7 +410,7 @@ function QueryResultGrid({
   }, [sql, result.columns, relationKind, connectionId, truncateBeforeImport]);
 
   const gridTheme = useMemo(() => {
-    const palette = GRID_THEME_PALETTES[resolveEffectiveColorTheme(colorTheme)];
+    const palette = GRID_THEME_PALETTES[colorTheme];
     return themeQuartz.withParams({
       backgroundColor: palette.backgroundColor,
       dataBackgroundColor: palette.backgroundColor,
@@ -759,7 +759,7 @@ function QueryResultGrid({
       useIncrementalScroll ? async (columns, onProgress) => (await fetchAllRowsForExport(columns, onProgress)) ?? [] : undefined,
       connectionId ?? null,
     );
-    gridController.autoSizeToContent();
+    gridController.autoSizeToContent(root);
     autoSizePendingRef.current = false;
     restoreGridViewport();
   }, [connectionId, gridController, fetchAllRowsForExport, nullDisplay, openValueEditor, result.columns, useIncrementalScroll, restoreGridViewport]);
@@ -1543,7 +1543,7 @@ function QueryResultGrid({
         api.autoSizeColumns([columnId], false);
         return;
       case "autoSizeAllColumns":
-        gridController.autoSizeAllColumns();
+        gridController.autoSizeAllColumns(gridRootRef.current);
         return;
       case "pinColumnLeft":
         api.applyColumnState({ state: [{ colId: columnId, pinned: "left" }] });
@@ -2068,7 +2068,9 @@ function QueryResultGrid({
           rowHeight={rowHeight}
           animateRows={false}
           rowBuffer={8}
-          suppressColumnVirtualisation={false}
+          // Auto-size only measures rendered columns, so off-screen columns would keep their
+          // default width. Render every column so autoSizeColumns can fit all of them.
+          suppressColumnVirtualisation
           stopEditingWhenCellsLoseFocus
           getRowId={(params) =>
             params.data ? String(getQueryResultRowIndex(params.data)) : "0"

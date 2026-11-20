@@ -46,6 +46,48 @@ type ActiveGrid = {
 
 type SnapshotListener = () => void;
 
+/**
+ * AG Grid's auto-size measures cloned header cells inside the body row container, which AG Grid
+ * hides (`display: none`) while the result has no rows — every column then measures 0 and collapses
+ * to its minWidth with truncated headers. For empty results, size from the rendered header text.
+ */
+function fitHeaderWidths(
+  api: GridApi<QueryResultRow>,
+  columns: string[],
+  gridRoot: HTMLElement,
+): void {
+  const canvas = document.createElement("canvas").getContext("2d");
+  if (!canvas) return;
+
+  const wanted = new Map<string, number>();
+  gridRoot.querySelectorAll<HTMLElement>(".ag-header-cell[col-id]").forEach((cell) => {
+    const colId = cell.getAttribute("col-id");
+    const text = cell.querySelector<HTMLElement>(".ag-header-cell-text");
+    if (!colId || !text || !columns.includes(colId)) return;
+    const style = getComputedStyle(text);
+    canvas.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const label = cell.querySelector<HTMLElement>(".ag-header-cell-label");
+    if (!label) return;
+    // Everything in the cell that is not the text: cell padding plus sort/menu icons. The label
+    // itself stretches to the column width, so its free space must not count as chrome.
+    let others = 0;
+    for (const child of Array.from(label.children) as HTMLElement[]) {
+      if (child !== text) others += child.offsetWidth;
+    }
+    const chrome = cell.offsetWidth - label.offsetWidth + others;
+    // 20 = AG Grid's default `autoSizePadding`, so empty and non-empty results size alike.
+    wanted.set(colId, Math.ceil(canvas.measureText(text.textContent ?? "").width) + chrome + 20);
+  });
+
+  const state = [...wanted].map(([colId, width]) => {
+    const column = api.getColumn(colId);
+    const min = column?.getMinWidth() ?? 0;
+    const max = column?.getMaxWidth() ?? Number.MAX_SAFE_INTEGER;
+    return { colId, width: Math.min(max, Math.max(min, width)) };
+  });
+  if (state.length > 0) api.applyColumnState({ state });
+}
+
 /** Ignore column events briefly after programmatic layout/autosize. */
 const APPLYING_LAYOUT_CLEAR_MS = 120;
 
@@ -219,26 +261,42 @@ export class QueryResultGridController {
    * Size columns to header/cell contents when no saved layout exists.
    * Safe to call after data is rendered (firstDataRendered / new result).
    */
-  autoSizeToContent(): void {
+  autoSizeToContent(gridRoot?: HTMLElement | null): void {
     const grid = this.active;
     if (!grid || grid.columns.length === 0) return;
     if (this.layoutDirty) return;
     if (hasSavedColumnLayout(grid.profileId, grid.columns)) return;
 
-    this.autoSizeAllColumns();
+    this.autoSizeAllColumns(gridRoot);
   }
 
-  /** Explicit user action: size every result column even when a layout is saved. */
-  autoSizeAllColumns(): void {
+  /**
+   * Explicit user action: size every result column even when a layout is saved.
+   * `gridRoot` enables the empty-result header fallback (see `fitHeaderWidths`).
+   */
+  autoSizeAllColumns(gridRoot?: HTMLElement | null): void {
     const grid = this.active;
     if (!grid || grid.columns.length === 0) return;
 
     this.beginApplyingLayout();
     try {
-      grid.api.autoSizeColumns(grid.columns, false);
+      if (gridRoot && !this.hasDataRows(grid)) {
+        // AG Grid's own pass can run later (asynchronously) and would overwrite this.
+        fitHeaderWidths(grid.api, grid.columns, gridRoot);
+      } else {
+        grid.api.autoSizeColumns(grid.columns, false);
+      }
     } finally {
       this.endApplyingLayout({ keepClean: true });
     }
+  }
+
+  private hasDataRows(grid: ActiveGrid): boolean {
+    let found = false;
+    grid.api.forEachNode((node) => {
+      if (node.data) found = true;
+    });
+    return found;
   }
 
   clearFiltersAndSort(): void {

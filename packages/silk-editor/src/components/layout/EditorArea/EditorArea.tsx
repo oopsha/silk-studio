@@ -12,6 +12,7 @@ import { useEditorTabs } from "../../../services/editor/useEditorTabs";
 import type { EditorTab } from "../../../services/editor/editorTypes";
 import {
   monacoModelPathForTab,
+  scheduleEditorFocus,
   scheduleRestoreViewState,
 } from "../../../services/editor/monacoModelPath";
 import {
@@ -83,6 +84,7 @@ function EditorArea({
     (instance: editor.IStandaloneCodeEditor, monaco: Monaco) => {
       editorRef.current = instance;
       group?.setActiveTextEditor(instance);
+      if (isFocusedGroupRef.current) scheduleEditorFocus(instance);
 
       const tabId = group?.getActiveTabId();
       if (tabId) {
@@ -146,7 +148,8 @@ function EditorArea({
     const tabId = activeTab?.id;
     if (!instance || !tabId || !group) return;
     scheduleRestoreViewState(instance, () => group.getViewState(tabId));
-  }, [activeTab?.id, group]);
+    if (isFocusedGroup) return scheduleEditorFocus(instance);
+  }, [activeTab?.id, group, isFocusedGroup]);
 
   // Opening a tab from the sidebar/toolbar changes the active editor but leaves DOM
   // focus on the clicked control. Focus Monaco after React has committed the tab change.
@@ -234,7 +237,7 @@ function EditorArea({
     : renderAlternative?.(activeTab, groupId);
 
   return (
-    <main className="editor-area">
+    <main className="editor-area" data-editor-focus-target={isFocusedGroup}>
       {keptAlternativeTabs.map((tab) => (
         <div
           key={tab.id}

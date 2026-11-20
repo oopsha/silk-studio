@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { isDdlSourceAwaitingInitialLoad } from "./ddlEditorConstants";
+import { isDdlSourceAwaitingInitialLoad, shouldFetchInitialDdl } from "./ddlEditorConstants";
+
+describe("shouldFetchInitialDdl", () => {
+  it("fetches for a blank Object Editor buffer that has never loaded", () => {
+    expect(shouldFetchInitialDdl("", "Loading...", false)).toBe(true);
+    expect(shouldFetchInitialDdl(undefined, "Loading...", false)).toBe(true);
+  });
+
+  it("does not refetch a blank buffer once the tab has loaded", () => {
+    expect(shouldFetchInitialDdl("", "Loading...", true)).toBe(false);
+    expect(shouldFetchInitialDdl("CREATE VIEW v AS SELECT 1", "Loading...", false)).toBe(false);
+  });
+});
 
 describe("isDdlSourceAwaitingInitialLoad", () => {
   it("requests the initial load for missing content and loading placeholders", () => {

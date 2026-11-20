@@ -24,6 +24,9 @@ class ConfigurationServiceImpl {
     // itself never changes, only what it resolves to.
     onSystemColorSchemeChange(() => {
       if (this.values["workbench.colorTheme"] !== "system") return;
+      // React subscribers need a new snapshot even though the saved preference
+      // remains "system"; its effective appearance has changed.
+      this.values = { ...this.values };
       applyWorkbenchConfiguration(this.values);
       this.fireDidChange();
     });

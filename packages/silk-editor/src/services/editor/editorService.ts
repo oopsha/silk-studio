@@ -76,6 +76,8 @@ type LanguageIdResolver = (path: string, fromExtension: string) => string;
 export class EditorServiceImpl {
   private tabs: EditorTab[] = [];
   private activeTabId: string | null = null;
+  /** Most recently active tabs in this editor group, newest first. */
+  private recentlyActiveTabIds: string[] = [];
   /** Configured by EditorGroupsService so numbering stays unique/reset across all groups. */
   private untitledLabelFactory: () => string = () => "Untitled-1";
   private readonly savedContent = new Map<string, string>();
@@ -290,6 +292,7 @@ export class EditorServiceImpl {
     }
     this.tabs = [];
     this.activeTabId = null;
+    this.recentlyActiveTabIds = [];
     this.savedContent.clear();
     this.viewStates.clear();
     this.sessionRestorePending = false;
@@ -463,6 +466,15 @@ export class EditorServiceImpl {
   setActiveTab(id: string): void {
     if (!this.tabs.some((tab) => tab.id === id)) return;
     if (this.activeTabId === id) return;
+    const previousId = this.activeTabId;
+    if (previousId && this.tabs.some((tab) => tab.id === previousId)) {
+      this.recentlyActiveTabIds = [
+        previousId,
+        ...this.recentlyActiveTabIds.filter(
+          (tabId) => tabId !== previousId && tabId !== id,
+        ),
+      ];
+    }
     this.activeTabId = id;
     this.updateContextKeys();
     this.fireDidChange();
@@ -498,10 +510,7 @@ export class EditorServiceImpl {
       this.disposeClosedTab(removed);
     }
 
-    if (this.activeTabId === id) {
-      const nextTab = this.tabs[index] ?? this.tabs[index - 1] ?? null;
-      this.activeTabId = nextTab?.id ?? null;
-    }
+    this.activateAfterRemovingTab(id, index);
 
     // Emptying out is allowed here — EditorGroupsService decides whether to
     // close this group or backfill an Untitled tab (see closeTab wrapper).
@@ -586,6 +595,29 @@ export class EditorServiceImpl {
     disposeMonacoModelForTab(tab);
   }
 
+  private activateAfterRemovingTab(removedId: string, removedIndex: number): void {
+    const wasActive = this.activeTabId === removedId;
+    this.recentlyActiveTabIds = this.recentlyActiveTabIds.filter(
+      (tabId) => tabId !== removedId && this.tabs.some((tab) => tab.id === tabId),
+    );
+    if (!wasActive) return;
+
+    const recentIndex = this.recentlyActiveTabIds.findIndex((tabId) =>
+      this.tabs.some((tab) => tab.id === tabId),
+    );
+    const recentId = recentIndex >= 0 ? this.recentlyActiveTabIds[recentIndex] : null;
+    if (recentId) {
+      this.recentlyActiveTabIds = this.recentlyActiveTabIds.filter(
+        (tabId) => tabId !== recentId,
+      );
+      this.activeTabId = recentId;
+      return;
+    }
+
+    const adjacentTab = this.tabs[removedIndex] ?? this.tabs[removedIndex - 1] ?? null;
+    this.activeTabId = adjacentTab?.id ?? null;
+  }
+
   /**
    * Removes and returns `tabId` plus its private per-tab state (dirty baseline, Monaco view
    * state), *without* disposing its Monaco model — used to transplant a tab into a different
@@ -610,10 +642,7 @@ export class EditorServiceImpl {
     this.savedContent.delete(tabId);
     this.viewStates.delete(tabId);
 
-    if (this.activeTabId === tabId) {
-      const nextTab = this.tabs[index] ?? this.tabs[index - 1] ?? null;
-      this.activeTabId = nextTab?.id ?? null;
-    }
+    this.activateAfterRemovingTab(tabId, index);
 
     // Emptying out is allowed here — EditorGroupsService decides whether to close this group.
     this.updateContextKeys();
@@ -642,6 +671,15 @@ export class EditorServiceImpl {
     }
     if (entry.viewState !== undefined) {
       this.viewStates.set(entry.tab.id, entry.viewState);
+    }
+    const previousId = this.activeTabId;
+    if (previousId && this.tabs.some((tab) => tab.id === previousId)) {
+      this.recentlyActiveTabIds = [
+        previousId,
+        ...this.recentlyActiveTabIds.filter(
+          (tabId) => tabId !== previousId && tabId !== entry.tab.id,
+        ),
+      ];
     }
     this.activeTabId = entry.tab.id;
     this.updateContextKeys();

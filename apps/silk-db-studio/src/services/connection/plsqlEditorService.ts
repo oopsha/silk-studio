@@ -2,6 +2,7 @@ import type { MetadataObjectKind } from "@silk-studio/db-protocol";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import type { ConnectionDriverId } from "./connectionTypes";
 import { ConnectionService } from "./connectionService";
+import { EditorConnectionBindingService } from "./editorConnectionBindingService";
 import type { ExplorerObjectRef } from "./explorerObjectActions";
 import {
   buildPlsqlTabLabel,
@@ -107,4 +108,5 @@ export function openPlsqlObjectSource(
     preview: false,
   });
   EditorService.pinTab(tabId);
+  EditorConnectionBindingService.setBinding(tabId, { profileId: ref.profileId, catalog: ref.catalogName, schema: ref.schemaName });
 }

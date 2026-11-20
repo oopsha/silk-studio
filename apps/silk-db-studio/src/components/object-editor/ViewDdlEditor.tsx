@@ -20,7 +20,7 @@ import {
 } from "@silk-studio/editor/themes/dark-monaco.ts";
 import type { ObjectEditorRef } from "../../services/connection/objectEditorConstants";
 import { bridgeFetchObjectDdl } from "../../services/connection/connectionDdlBridge";
-import { isDdlSourceAwaitingInitialLoad } from "../../services/connection/ddlEditorConstants";
+import { shouldFetchInitialDdl } from "../../services/connection/ddlEditorConstants";
 import { formatErrorMessage } from "../../services/formatErrorMessage";
 import { ConnectionService } from "../../services/connection/connectionService";
 import type { PlsqlEditorRef } from "../../services/connection/plsqlEditorConstants";
@@ -55,6 +55,9 @@ type ViewDdlEditorProps = {
   tabUri: string | undefined;
   bufferedContent: string | undefined;
 };
+
+/** Tabs whose DDL has been fetched (or restored) at least once; survives editor remounts. */
+const loadedDdlTabIds = new Set<string>();
 
 type LoadState =
   | { status: "loading" }
@@ -120,15 +123,18 @@ function ViewDdlEditor({ groupId, objectRef, tabId, tabUri, bufferedContent }: V
   }, []);
 
   useEffect(() => {
-    // A blank buffer is a valid edit, not evidence that the editor has never loaded.
-    // Only the initial loading marker (or a missing buffer during tab activation) fetches.
-    // Load failures are also terminal until the user explicitly requests Reload.
+    // A blank buffer is a valid edit once this tab has loaded, but an Object Editor tab starts
+    // out blank (`content: ""`) and has never loaded — so blank only skips the fetch after the
+    // first load. Otherwise only the loading marker (or a missing buffer during tab activation)
+    // fetches. Load failures are also terminal until the user explicitly requests Reload.
     if (
-      !isDdlSourceAwaitingInitialLoad(
+      !shouldFetchInitialDdl(
         bufferedContent,
         t("app.ddl.loading"),
+        loadedDdlTabIds.has(tabId),
       )
     ) {
+      loadedDdlTabIds.add(tabId);
       setLoadState({ status: "ready" });
       return;
     }
@@ -146,12 +152,14 @@ function ViewDdlEditor({ groupId, objectRef, tabId, tabUri, bufferedContent }: V
     )
       .then((result) => {
         if (cancelled) return;
+        loadedDdlTabIds.add(tabId);
         const source = result.ddl.endsWith("\n") ? result.ddl : `${result.ddl}\n`;
         EditorService.setTabContentBaseline(tabId, source);
         setLoadState({ status: "ready" });
       })
       .catch((error) => {
         if (cancelled) return;
+        loadedDdlTabIds.add(tabId);
         const message = formatErrorMessage(error, t("app.ddl.loadFailed"));
         const fallback = `-- ${t("app.ddl.loadFailed")}\n-- ${message}\n`;
         EditorService.setTabContentBaseline(tabId, fallback);

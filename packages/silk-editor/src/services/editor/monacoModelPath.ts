@@ -1,6 +1,17 @@
 import { editor, Uri } from "monaco-editor";
 import type { EditorTab } from "./editorTypes";
 
+/** Wait for the active editor pane to be visible before transferring keyboard focus. */
+export function scheduleEditorFocus(instance: editor.ICodeEditor): () => void {
+  const frame = requestAnimationFrame(() => {
+    const node = instance.getDomNode();
+    if (!node?.isConnected || !node.getClientRects().length) return;
+    if (node.closest('[data-editor-focus-target="false"]')) return;
+    instance.focus();
+  });
+  return () => cancelAnimationFrame(frame);
+}
+
 /** Stable Monaco model URI for `@monaco-editor/react` `path` / `keepCurrentModel`. */
 export function monacoModelPathForTab(
   tab: Pick<EditorTab, "id" | "uri">,

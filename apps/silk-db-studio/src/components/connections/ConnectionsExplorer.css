@@ -77,7 +77,12 @@
 }
 
 .connections-explorer__profile--active > .connections-explorer__row {
-  background-color: var(--color-list-hover);
+  background-color: var(--color-list-active-selection-background, rgba(57, 148, 188, 0.28));
+  box-shadow: inset 3px 0 0 var(--color-focus-border, #007fd4);
+}
+
+.connections-explorer__profile--active > .connections-explorer__row .connections-explorer__label {
+  font-weight: 600;
 }
 
 .connections-explorer__profile--connected > .connections-explorer__row .connections-explorer__status {

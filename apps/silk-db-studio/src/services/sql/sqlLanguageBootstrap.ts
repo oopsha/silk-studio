@@ -53,8 +53,9 @@ export function bootstrapSqlLanguageBinding(): void {
   CommandsRegistry.registerCommand(
     "silk.file.newTextFile",
     () => {
+      const binding = EditorConnectionBindingService.resolveNewEditorBinding();
       const tabId = EditorService.openUntitled(resolveActiveMonacoLanguageId());
-      EditorConnectionBindingService.ensureBinding(tabId);
+      EditorConnectionBindingService.setBinding(tabId, binding);
     },
     { replace: true, titleKey: "studio.db.commands.newQuery" },
   );

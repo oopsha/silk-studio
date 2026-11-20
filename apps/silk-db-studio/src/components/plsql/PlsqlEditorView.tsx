@@ -10,6 +10,7 @@ import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
 import { EditorService } from "@silk-studio/editor/services/editor/editorServiceFacade.ts";
 import {
   monacoModelPathForTab,
+  scheduleEditorFocus,
   scheduleRestoreViewState,
 } from "@silk-studio/editor/services/editor/monacoModelPath.ts";
 import { useActiveEditor } from "@silk-studio/editor/services/editor/useActiveEditor.ts";
@@ -148,6 +149,7 @@ function PlsqlEditorView({ groupId }: { groupId: EditorGroupId }) {
 
   const handleMount = useCallback((instance: editor.IStandaloneCodeEditor) => {
     editorRef.current = instance;
+    scheduleEditorFocus(instance);
     EditorService.setActiveTextEditor(instance, groupId);
     const tabId = activeTab?.id;
     if (tabId) {

@@ -212,9 +212,11 @@
 }
 
 .panel__content::selection {
+  color: #fff;
   background-color: #276782dd;
 }
 
 .panel__content::-moz-selection {
+  color: #fff;
   background-color: #276782dd;
 }

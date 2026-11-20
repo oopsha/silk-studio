@@ -105,6 +105,15 @@ function objectSelectionKey(
   return `${profileId}::${schemaName}::${objectName}`;
 }
 
+function treeGroupSelectionKey(
+  kind: "catalog" | "schema" | "object-group",
+  profileId: string,
+  name: string,
+  catalogName?: string,
+): SelectedObjectKey {
+  return `${kind}::${profileId}::${catalogName ?? ""}::${name}`;
+}
+
 function ExplorerRowAction({
   item,
   icon,
@@ -357,6 +366,7 @@ function ProfileTree({
    *  right away) and a failed connect surfaces through the row's existing error UI (`run`)
    *  without discarding the tab. */
   function openNewQueryForProfile() {
+    ConnectionService.setActiveProfile(profile.id);
     const tabId = EditorService.openUntitled(monacoLanguageIdForProfile(profile.id));
     EditorConnectionBindingService.setBinding(tabId, { profileId: profile.id });
     if (!isConnected && !isConnecting) {
@@ -483,6 +493,17 @@ function ProfileTree({
     // drivers don't support mid-session). Show and dispatch it as a database here too, or
     // "Use this schema" throws immediately and the row-actions label lies about what it does.
     const isDatabaseNode = !getConnectionDriver(profile.driverId).showSchemaField;
+    const schemaSelectionKey = treeGroupSelectionKey(
+      isDatabaseNode ? "catalog" : "schema",
+      profile.id,
+      schema.name,
+      catalogName,
+    );
+    const selectSchema = () => {
+      EditorConnectionBindingService.setExplorerProfileId(profile.id);
+      ConnectionService.setActiveProfile(profile.id);
+      onSelectObject(schemaSelectionKey);
+    };
 
     return (
       <div
@@ -491,9 +512,15 @@ function ProfileTree({
       >
         {!flattenSchema ? (
           <div
-            className="connections-explorer__row"
+            className={`connections-explorer__row${
+              selectedKey === schemaSelectionKey
+                ? " connections-explorer__row--selected"
+                : ""
+            }`}
+            onClick={selectSchema}
             onContextMenu={(event) => {
               event.preventDefault();
+              selectSchema();
               onOpenContextMenu({
                 x: event.clientX,
                 y: event.clientY,
@@ -514,7 +541,8 @@ function ProfileTree({
             type="button"
             className="connections-explorer__twistie"
             aria-label={schemaExpanded ? t("common.collapse") : t("common.expand")}
-            onClick={() => {
+            onClick={(event) => {
+              event.stopPropagation();
               const next = !schemaExpanded;
               setExpandedValue(schemaKey, next);
               // A "lite" schema (loaded with only tables/views/procedures/functions, e.g. by
@@ -740,6 +768,7 @@ function ProfileTree({
           }}
           onClick={() => {
             if (shouldSuppressProfileReorderClick()) return;
+            EditorConnectionBindingService.setExplorerProfileId(profile.id);
             ConnectionService.setActiveProfile(profile.id);
           }}
           onDoubleClick={() => {
@@ -1153,12 +1182,34 @@ function ObjectGroup({
   onCommand: (item: ExplorerMenuItem, payload: unknown) => void;
 }) {
   const { t } = useI18n();
+  const selectionKey = treeGroupSelectionKey(
+    "object-group",
+    profileId,
+    groupId,
+    databaseName ? `${databaseName}:${schemaName}` : schemaName,
+  );
+
+  const selectOwningProfile = () => {
+    EditorConnectionBindingService.setExplorerProfileId(profileId);
+    ConnectionService.setActiveProfile(profileId);
+  };
+
   return (
     <div className="connections-explorer__node">
       <div
-        className="connections-explorer__row"
+        className={`connections-explorer__row${
+          selectedKey === selectionKey
+            ? " connections-explorer__row--selected"
+            : ""
+        }`}
+        onClick={() => {
+          selectOwningProfile();
+          onSelectObject(selectionKey);
+        }}
         onContextMenu={(event) => {
           event.preventDefault();
+          selectOwningProfile();
+          onSelectObject(selectionKey);
           onOpenContextMenu({
             x: event.clientX,
             y: event.clientY,
@@ -1176,7 +1227,10 @@ function ObjectGroup({
           type="button"
           className="connections-explorer__twistie"
           aria-label={expanded ? t("common.collapse") : t("common.expand")}
-          onClick={onToggle}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggle();
+          }}
         >
           <Codicon name={expanded ? "chevron-down" : "chevron-right"} />
         </button>
@@ -1273,17 +1327,23 @@ function ObjectGroup({
                   }}
                   onClick={() => {
                     if (shouldSuppressExplorerObjectClick()) return;
+                    selectOwningProfile();
                     onSelectObject(key);
                   }}
-                  onDoubleClick={() => onObjectAction(item)}
+                  onDoubleClick={() => {
+                    selectOwningProfile();
+                    onObjectAction(item);
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       event.preventDefault();
+                      selectOwningProfile();
                       onObjectAction(item);
                     }
                   }}
                   onContextMenu={(event) => {
                     event.preventDefault();
+                    selectOwningProfile();
                     onSelectObject(key);
                     onOpenContextMenu({
                       x: event.clientX,
