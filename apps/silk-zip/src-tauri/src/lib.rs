@@ -26,6 +26,32 @@ fn configure_main_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Moves a second window down and to the right of the saved position so it does not
+/// cover the first one; near the screen edge it moves up and to the left instead.
+fn cascade_window(window: &tauri::WebviewWindow) {
+    if window.is_maximized().unwrap_or(false) {
+        return;
+    }
+    let (Ok(position), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+        return;
+    };
+    let offset = (32.0 * window.scale_factor().unwrap_or(1.0)) as i32;
+    let mut direction = 1;
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let area = monitor.position();
+        let extent = monitor.size();
+        let right = area.x + extent.width as i32;
+        let bottom = area.y + extent.height as i32;
+        if position.x + size.width as i32 + offset > right || position.y + size.height as i32 + offset > bottom {
+            direction = -1;
+        }
+    }
+    let _ = window.set_position(tauri::PhysicalPosition::new(
+        position.x + direction * offset,
+        position.y + direction * offset,
+    ));
+}
+
 #[tauri::command]
 fn ensure_title_bar_overlay(window: tauri::WebviewWindow) -> Result<(), String> {
     configure_main_window(&window).map_err(|error| error.to_string())
@@ -103,9 +129,13 @@ pub fn run() {
             archive::archive_list,
             archive::archive_create,
             archive::archive_extract,
+            archive::archive_test,
             archive::archive_progress_diagnostic,
             archive::archive_cancel,
             archive::open_output_folder,
+            archive::new_window,
+            archive::is_elevated,
+            archive::reveal_in_folder,
             file_sizes,
             draft_scan,
             ensure_title_bar_overlay,
@@ -117,7 +147,13 @@ pub fn run() {
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 configure_main_window(&window)?;
+                if archive::is_elevated() {
+                    let _ = window.set_title("Silk Zip (관리자)");
+                }
                 silk_window_state::restore_main_window(app.handle(), &window);
+                if std::env::args().any(|arg| arg == archive::NEW_WINDOW_ARG) {
+                    cascade_window(&window);
+                }
             }
             Ok(())
         })

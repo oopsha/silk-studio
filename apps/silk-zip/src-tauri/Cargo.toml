@@ -12,6 +12,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading"] }
+
 [dependencies]
 silk-archive = { path = "../../../crates/silk-archive" }
 tauri = { version = "2", features = [] }

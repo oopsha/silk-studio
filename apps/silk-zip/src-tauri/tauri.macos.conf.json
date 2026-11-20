@@ -1,5 +1,11 @@
 {
   "app": {
-    "windows": [{ "decorations": true }]
+    "windows": [
+      {
+        "decorations": true,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay"
+      }
+    ]
   }
 }

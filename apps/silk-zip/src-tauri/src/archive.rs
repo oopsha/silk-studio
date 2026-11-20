@@ -138,6 +138,51 @@ pub async fn archive_extract(
 }
 
 #[tauri::command]
+pub async fn archive_test(
+    tasks: State<'_, CreateTasks>,
+    operation_id: String,
+    archive_path: String,
+    password: Option<String>,
+    on_progress: Channel<silk_archive::CreateProgress>,
+) -> Result<silk_archive::TestResult, String> {
+    if operation_id.is_empty() {
+        return Err("테스트 작업 식별자가 없습니다.".into());
+    }
+    let cancellation = Arc::new(AtomicBool::new(false));
+    {
+        let mut active = tasks
+            .0
+            .lock()
+            .map_err(|_| "작업 상태를 읽지 못했습니다.")?;
+        if active.contains_key(&operation_id) {
+            return Err("이미 실행 중인 작업입니다.".into());
+        }
+        active.insert(operation_id.clone(), Arc::clone(&cancellation));
+    }
+    let worker_cancel = Arc::clone(&cancellation);
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let mut last_sent = Instant::now() - PROGRESS_CHANNEL_INTERVAL;
+        silk_archive::test_archive(
+            std::path::Path::new(&archive_path),
+            password.as_deref(),
+            &worker_cancel,
+            |progress| {
+                if last_sent.elapsed() >= PROGRESS_CHANNEL_INTERVAL || progress.phase != "writing" {
+                    last_sent = Instant::now();
+                    let _ = on_progress.send(progress);
+                }
+            },
+        )
+    })
+    .await
+    .map_err(|_| "압축 파일 테스트를 실행하지 못했습니다.".to_string());
+    if let Ok(mut active) = tasks.0.lock() {
+        active.remove(&operation_id);
+    }
+    result?
+}
+
+#[tauri::command]
 pub async fn archive_create(
     app: AppHandle,
     tasks: State<'_, CreateTasks>,
@@ -439,6 +484,100 @@ pub fn archive_cancel(tasks: State<'_, CreateTasks>, operation_id: String) -> bo
     } else {
         false
     }
+}
+
+/// Opens the folder containing `path` with the file selected where the OS supports it.
+#[tauri::command]
+pub fn reveal_in_folder(path: String) -> Result<(), String> {
+    let file = PathBuf::from(&path);
+    if !file.exists() {
+        return Err("압축 파일을 찾을 수 없습니다.".into());
+    }
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        use std::os::windows::process::CommandExt;
+        let mut command = Command::new("explorer.exe");
+        command.raw_arg(format!("/select,\"{}\"", file.display()));
+        command
+    };
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = Command::new("open");
+        command.arg("-R").arg(&file);
+        command
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = {
+        let mut command = Command::new("xdg-open");
+        command.arg(file.parent().unwrap_or(std::path::Path::new(".")));
+        command
+    };
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("폴더를 열지 못했습니다: {error}"))
+}
+
+/// Command line flag of a second window; it is shifted so it does not hide the first one.
+pub const NEW_WINDOW_ARG: &str = "--new-window";
+
+/// Starts another instance of the app. With `admin` (Windows only) it is started elevated,
+/// which shows the system permission prompt.
+#[tauri::command]
+pub fn new_window(admin: bool) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|error| format!("실행 파일 경로를 찾지 못했습니다: {error}"))?;
+    if admin {
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            let path = exe.display().to_string().replace('\'', "''");
+            return Command::new("powershell.exe")
+                .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command"])
+                .arg(format!("Start-Process -FilePath '{path}' -ArgumentList '{NEW_WINDOW_ARG}' -Verb RunAs"))
+                .creation_flags(0x0800_0000)
+                .spawn()
+                .map(|_| ())
+                .map_err(|error| format!("관리자 권한으로 새 창을 열지 못했습니다: {error}"));
+        }
+        #[cfg(not(target_os = "windows"))]
+        return Err("관리자 권한 새 창은 Windows에서만 지원합니다.".into());
+    }
+    Command::new(exe)
+        .arg(NEW_WINDOW_ARG)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("새 창을 열지 못했습니다: {error}"))
+}
+
+/// Whether the process runs with administrator rights (always false off Windows).
+/// Windows blocks drag and drop from a non-elevated Explorer onto such a window.
+#[tauri::command]
+pub fn is_elevated() -> bool {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows_sys::Win32::{
+            Foundation::{CloseHandle, HANDLE},
+            Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY},
+            System::Threading::{GetCurrentProcess, OpenProcessToken},
+        };
+        let mut token: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+            return false;
+        }
+        let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
+        let mut size = 0u32;
+        let ok = GetTokenInformation(
+            token,
+            TokenElevation,
+            (&mut elevation as *mut TOKEN_ELEVATION).cast(),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut size,
+        );
+        CloseHandle(token);
+        ok != 0 && elevation.TokenIsElevated != 0
+    }
+    #[cfg(not(target_os = "windows"))]
+    false
 }
 
 #[tauri::command]
