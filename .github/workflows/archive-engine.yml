@@ -12,13 +12,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Prepare 7-Zip SDK
+      - name: Prepare native libraries
         run: |
           git clone https://github.com/microsoft/vcpkg.git .local/vcpkg
           git -C .local/vcpkg checkout af2c387aa62cf2d0909cd50f4049f2bee1ab682b
           .local/vcpkg/bootstrap-vcpkg.sh -disableMetrics
           if [ "$(uname -m)" = "arm64" ]; then TRIPLET=arm64-osx; else TRIPLET=x64-osx; fi
-          .local/vcpkg/vcpkg install "7zip:${TRIPLET}" --disable-metrics
+          .local/vcpkg/vcpkg install "zlib-ng:${TRIPLET}" --disable-metrics
       - run: brew install libarchive pkg-config
       - name: Test archive engine
         run: |
@@ -36,7 +36,7 @@ jobs:
           git clone https://github.com/microsoft/vcpkg.git .local/vcpkg
           git -C .local/vcpkg checkout af2c387aa62cf2d0909cd50f4049f2bee1ab682b
           .local/vcpkg/bootstrap-vcpkg.bat -disableMetrics
-          .local/vcpkg/vcpkg.exe install "7zip:x64-windows-static-md" "libarchive[core,bzip2,lzma,lz4,zstd,xar]:x64-windows-static-md" --disable-metrics
+          .local/vcpkg/vcpkg.exe install "zlib-ng:x64-windows-static-md" "libarchive[core,bzip2,lzma,lz4,zstd,xar]:x64-windows-static-md" --disable-metrics
       - name: Test archive engine
         shell: pwsh
         run: |
