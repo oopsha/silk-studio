@@ -24,6 +24,8 @@ jobs:
         run: |
           export VCPKG_ROOT="$PWD/.local/vcpkg"
           export PKG_CONFIG_PATH="$(brew --prefix libarchive)/lib/pkgconfig:${PKG_CONFIG_PATH}"
+          # libarchive.a links zstd, lz4 and friends from Homebrew's lib directory.
+          export LIBRARY_PATH="$(brew --prefix)/lib:${LIBRARY_PATH}"
           cargo test -p silk-archive
   windows:
     runs-on: windows-latest
