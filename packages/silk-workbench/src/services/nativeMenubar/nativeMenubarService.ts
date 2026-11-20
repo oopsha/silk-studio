@@ -15,13 +15,14 @@ import {
   type ResolvedMenuGroup,
 } from "../../platform/actions/menuService";
 import { CommandService } from "../../platform/commands/commandService";
+import { CommandsRegistry } from "../../platform/commands/commandRegistry";
 import { ContextKeyService } from "../../platform/context/contextKeyService";
 import {
   APP_DISPLAY_NAME,
 } from "../diagnostics/appVersion";
 import { localizeUiLabel } from "../../platform/i18n/localizeUiLabel";
 
-const APP_NAME = APP_DISPLAY_NAME;
+let appName: string = APP_DISPLAY_NAME;
 const REBUILD_DEBOUNCE_MS = 80;
 
 type NativeMenuChild =
@@ -154,15 +155,20 @@ async function buildEntry(
 }
 
 async function buildAppSubmenu(): Promise<Submenu> {
-  return Submenu.new({
-    text: APP_NAME,
-    items: [
+  // About and Settings are app specific; list only the ones this app registered.
+  const items: NativeMenuChild[] = [];
+  if (CommandsRegistry.getCommand("silk.help.about")) {
+    items.push(
       await MenuItem.new({
         id: "silk.help.about",
-        text: `About ${APP_NAME}`,
+        text: `About ${appName}`,
         action: () => runCommand("silk.help.about"),
       }),
       await PredefinedMenuItem.new({ item: "Separator" }),
+    );
+  }
+  if (CommandsRegistry.getCommand("workbench.action.openSettings")) {
+    items.push(
       await MenuItem.new({
         id: "workbench.action.openSettings",
         text: "Settings...",
@@ -170,15 +176,18 @@ async function buildAppSubmenu(): Promise<Submenu> {
         action: () => runCommand("workbench.action.openSettings"),
       }),
       await PredefinedMenuItem.new({ item: "Separator" }),
-      await PredefinedMenuItem.new({ item: "Services" }),
-      await PredefinedMenuItem.new({ item: "Separator" }),
-      await PredefinedMenuItem.new({ item: "Hide" }),
-      await PredefinedMenuItem.new({ item: "HideOthers" }),
-      await PredefinedMenuItem.new({ item: "ShowAll" }),
-      await PredefinedMenuItem.new({ item: "Separator" }),
-      await PredefinedMenuItem.new({ item: "Quit" }),
-    ],
-  });
+    );
+  }
+  items.push(
+    await PredefinedMenuItem.new({ item: "Services" }),
+    await PredefinedMenuItem.new({ item: "Separator" }),
+    await PredefinedMenuItem.new({ item: "Hide" }),
+    await PredefinedMenuItem.new({ item: "HideOthers" }),
+    await PredefinedMenuItem.new({ item: "ShowAll" }),
+    await PredefinedMenuItem.new({ item: "Separator" }),
+    await PredefinedMenuItem.new({ item: "Quit" }),
+  );
+  return Submenu.new({ text: appName, items });
 }
 
 async function buildNativeMenu(): Promise<Menu> {
@@ -229,8 +238,9 @@ function scheduleRebuild(): void {
  * Installs the macOS system menubar from MenuService (MVP).
  * No-op on non-macOS or non-Tauri hosts.
  */
-export function startNativeMenubar(): () => void {
+export function startNativeMenubar(options: { appName?: string } = {}): () => void {
   if (started) return () => {};
+  if (options.appName) appName = options.appName;
   if (!isTauri() || detectWorkbenchPlatform() !== "mac") {
     return () => {};
   }

@@ -229,13 +229,11 @@ class MenuServiceImpl {
         return "hasDirtyFiles";
       // Silk Zip archive commands are enabled only while an archive is open.
       case "silkZip.file.closeArchive":
-      case "silkZip.file.saveAs":
-      case "silkZip.file.delete":
-      case "silkZip.file.deletePermanently":
       case "silkZip.file.openFolder":
       case "silkZip.file.test":
-      case "silkZip.file.scan":
       case "silkZip.file.extract":
+      case "silkZip.file.extractHere":
+      case "silkZip.file.extractNamed":
       case "silkZip.placeholder.MenubarEditMenu.1":
       case "silkZip.placeholder.MenubarEditMenu.2":
       case "silkZip.placeholder.MenubarEditMenu.3":

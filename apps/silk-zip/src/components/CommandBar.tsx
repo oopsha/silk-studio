@@ -23,7 +23,7 @@ export default function CommandBar({ archivePath, onOpen, onNew, onExtract }: Co
       <button type="button" className="zip-command" onClick={onOpen} title="압축 파일 열기 (Ctrl+O)">
         <Codicon name="folder-opened" /><span>열기</span>
       </button>
-      <button type="button" className="zip-command" onClick={onNew} title="새로 압축 (Ctrl+N)">
+      <button type="button" className="zip-command" onClick={onNew} title="새 압축 만들기 (Ctrl+N)">
         <Codicon name="new-file" /><span>새 압축</span>
       </button>
       <span className="zip-command-bar__separator" aria-hidden="true" />

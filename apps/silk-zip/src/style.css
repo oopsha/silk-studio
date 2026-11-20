@@ -128,3 +128,9 @@ button, select { font:inherit; color:inherit; }
 /* Dark theme: the default button fill is nearly the surface colour, so lift it. */
 :root:not([data-color-theme="light"]) .zip-button:not(.primary) { background:#3c3d3f; border-color:#58595b; color:#e4e4e4; }
 :root:not([data-color-theme="light"]) .zip-button:not(.primary):hover:not(:disabled) { background:#4a4b4d; border-color:#6b6c6e; }
+
+.zip-status__admin { margin-right:10px; padding:1px 8px; border-radius:3px; background:#c27d0e; color:#fff; font-weight:600; }
+
+.zip-settings-view { position:relative; display:flex; flex:1; min-width:0; min-height:0; }
+.zip-settings-view__close { position:absolute; top:8px; right:12px; z-index:3; display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border:0; border-radius:4px; background:transparent; color:var(--color-description); cursor:pointer; }
+.zip-settings-view__close:hover { background:var(--color-toolbar-hover-background); color:var(--color-foreground); }

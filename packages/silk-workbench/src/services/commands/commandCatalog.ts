@@ -9,12 +9,20 @@ export type CommandPaletteItem = {
   keybinding?: string;
 };
 
+const hiddenCommandIds = new Set<string>();
+
+/** Keeps helper commands (aliases, placeholders) out of the palette; apps call this at startup. */
+export function hideCommandsFromPalette(...commandIds: string[]): void {
+  for (const id of commandIds) hiddenCommandIds.add(id);
+}
+
 /** Build searchable command rows from the registry + menu titles. */
 export function listCommandPaletteItems(): CommandPaletteItem[] {
   const menuTitles = MenuRegistry.collectCommandTitles();
   const items: CommandPaletteItem[] = [];
 
   for (const command of CommandsRegistry.getCommands()) {
+    if (hiddenCommandIds.has(command.id)) continue;
     items.push({
       id: command.id,
       label: resolveCommandDisplayLabel(command.id, menuTitles),

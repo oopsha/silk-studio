@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import { cancelArchive, extractArchive, openOutputFolder, type CreateProgress, type ExtractResult } from "../archive.ts";
+import { cancelArchive, extractArchive, openOutputFolder, testArchive, type CreateProgress, type ExtractResult } from "../archive.ts";
+import { getZipSettings } from "../zipSettings.ts";
 import { parentFolder, rememberFolder, resolveTargetFolder, type ExtractTarget } from "../extractTargets.ts";
 
 type ExtractState =
   | null
   | { phase: "running"; progress: CreateProgress | null }
   | { phase: "password"; message: string }
-  | { phase: "done"; result: ExtractResult; elapsedMs: number }
+  | { phase: "done"; kind: "extract"; result: ExtractResult; elapsedMs: number }
+  | { phase: "done"; kind: "test"; tested: number; elapsedMs: number }
   | { phase: "error"; message: string };
 
 function formatDuration(ms: number): string {
@@ -32,7 +34,7 @@ function formatBytes(bytes: number): string {
 /** Folder pick, progress, password prompt and cancel for one extraction at a time. */
 export function useExtraction() {
   const [state, setState] = useState<ExtractState>(null);
-  const job = useRef<{ operationId: string; archivePath: string; outputDir: string; entries: string[] } | null>(null);
+  const job = useRef<{ operationId: string; archivePath: string; outputDir: string; entries: string[]; test?: boolean } | null>(null);
   const active = useRef(false);
 
   const run = useCallback(async (password: string) => {
@@ -42,11 +44,18 @@ export function useExtraction() {
     setState({ phase: "running", progress: null });
     const startedAt = performance.now();
     try {
-      const result = await extractArchive(current.operationId, current.archivePath, current.outputDir, password, false, (progress) => {
+      const onProgress = (progress: CreateProgress) => {
         setState((previous) => (previous?.phase === "running" ? { phase: "running", progress } : previous));
-      }, current.entries);
-      rememberFolder(result.outputDir);
-      setState({ phase: "done", result, elapsedMs: performance.now() - startedAt });
+      };
+      if (current.test) {
+        const result = await testArchive(current.operationId, current.archivePath, password, onProgress);
+        setState({ phase: "done", kind: "test", tested: result.tested, elapsedMs: performance.now() - startedAt });
+      } else {
+        const result = await extractArchive(current.operationId, current.archivePath, current.outputDir, password, getZipSettings().overwrite, onProgress, current.entries);
+        rememberFolder(result.outputDir);
+        if (getZipSettings().openFolderAfter) void openOutputFolder(`${result.outputDir.replace(/[\\/]+$/, "")}/_`);
+        setState({ phase: "done", kind: "extract", result, elapsedMs: performance.now() - startedAt });
+      }
     } catch (reason) {
       const message = String(reason);
       if (message.includes("취소")) setState(null);
@@ -70,13 +79,19 @@ export function useExtraction() {
     await run("");
   }, [run]);
 
+  const startTest = useCallback(async (archivePath: string) => {
+    if (active.current) return;
+    job.current = { operationId: `test-${Date.now()}`, archivePath, outputDir: "", entries: [], test: true };
+    await run("");
+  }, [run]);
+
   const cancel = useCallback(() => {
     if (job.current) void cancelArchive(job.current.operationId);
   }, []);
 
   const close = useCallback(() => { if (!active.current) setState(null); }, []);
 
-  return { state, start, submitPassword: run, cancel, close, outputDir: () => job.current?.outputDir ?? "" };
+  return { state, start, startTest, submitPassword: run, cancel, close, isTest: () => job.current?.test === true, outputDir: () => job.current?.outputDir ?? "" };
 }
 
 type ExtractionController = ReturnType<typeof useExtraction>;
@@ -95,7 +110,11 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
       : progress.totalBytes > 0 ? Math.min(99, Math.floor(progress.completedBytes / progress.totalBytes * 100))
       : progress.totalEntries > 0 ? Math.min(99, Math.floor(progress.completedEntries / progress.totalEntries * 100)) : 0
     : 0;
-  const title = state.phase === "done" ? "압축 풀기 완료" : state.phase === "password" ? "암호 입력" : state.phase === "error" ? "압축 풀기 실패" : "압축 푸는 중";
+  const testing = controller.isTest();
+  const title = state.phase === "done" ? (state.kind === "test" ? "테스트 완료" : "압축 풀기 완료")
+    : state.phase === "password" ? "암호 입력"
+    : state.phase === "error" ? (testing ? "압축 파일 테스트 실패" : "압축 풀기 실패")
+    : testing ? "압축 파일 테스트 중" : "압축 푸는 중";
   const canDismiss = state.phase !== "running";
 
   return (
@@ -123,7 +142,11 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
               <label className="zip-extract-show"><input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} /> 암호 표시</label>
             </form>
           ) : null}
-          {state.phase === "done" ? (
+          {state.phase === "done" && state.kind === "test" ? (
+            <p>{`${state.tested.toLocaleString()}개 항목이 모두 정상입니다.
+소요 시간: ${formatDuration(state.elapsedMs)}`}</p>
+          ) : null}
+          {state.phase === "done" && state.kind === "extract" ? (
             <p>{`${state.result.extracted.toLocaleString()}개 항목을 풀었습니다.${state.result.skipped ? `\n이미 있는 ${state.result.skipped.toLocaleString()}개 항목은 건너뛰었습니다.` : ""}\n소요 시간: ${formatDuration(state.elapsedMs)}\n${state.result.outputDir}`}</p>
           ) : null}
           {state.phase === "error" ? <p>{state.message}</p> : null}
@@ -136,9 +159,10 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
               <button type="submit" form="zip-extract-password-form" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" disabled={!password}>확인</button>
             </>
           ) : null}
-          {state.phase === "done" ? (
+          {state.phase === "done" && state.kind === "test" ? <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>확인</button> : null}
+          {state.phase === "done" && state.kind === "extract" ? (
             <>
-              <button type="button" className="workbench-confirm-dialog__button" onClick={() => { void openOutputFolder(`${state.result.outputDir.replace(/[\/]+$/, "")}/_`); close(); }}>폴더 열기</button>
+              <button type="button" className="workbench-confirm-dialog__button" onClick={() => { void openOutputFolder(`${state.result.outputDir.replace(/[\\/]+$/, "")}/_`); close(); }}>폴더 열기</button>
               <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>확인</button>
             </>
           ) : null}

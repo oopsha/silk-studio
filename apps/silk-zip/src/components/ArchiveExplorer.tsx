@@ -3,9 +3,11 @@ import ResourceExplorer, { type ResourceColumn } from "@silk-studio/workbench/co
 import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import type { ResourceNode } from "@silk-studio/workbench/components/explorer/resourceExplorerTypes.ts";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import type { ArchiveListing } from "../archive";
+import { revealInFolder, type ArchiveListing } from "../archive";
+import { ConfirmDialogService } from "@silk-studio/workbench/services/dialog/confirmDialogService.ts";
 import { archiveNodePath, createArchiveSource } from "../archiveSource";
 import type { ExtractTarget } from "../extractTargets";
+import { useZipSettings } from "../zipSettings";
 import ExtractMenu, { type MenuAnchor } from "./ExtractMenu";
 import ViewPaneTitle from "@silk-studio/workbench/components/layout/Sidebar/ViewPaneTitle/ViewPaneTitle.tsx";
 import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayoutState.ts";
@@ -15,12 +17,14 @@ const columns: readonly ResourceColumn[] = [{ id: "encrypted", title: "암호화
 interface ArchiveExplorerProps {
   archive: ArchiveListing;
   onExtract: (target: ExtractTarget, entries?: string[]) => void;
+  onTest: () => void;
 }
 
-export default function ArchiveExplorer({ archive, onExtract }: ArchiveExplorerProps) {
+export default function ArchiveExplorer({ archive, onExtract, onTest }: ArchiveExplorerProps) {
   const layout = useLayoutState();
+  const { extractTarget } = useZipSettings();
   const source = useMemo(() => createArchiveSource(archive), [archive]);
-  const [menu, setMenu] = useState<(MenuAnchor & { selection?: { label: string; paths: string[] } }) | null>(null);
+  const [menu, setMenu] = useState<(MenuAnchor & { selection?: { label: string; paths: string[] }; reveal?: boolean }) | null>(null);
   const selected = useRef<readonly ResourceNode[]>([]);
   const onSelectionChange = useCallback((nodes: readonly ResourceNode[]) => {
     selected.current = nodes;
@@ -40,7 +44,7 @@ export default function ArchiveExplorer({ archive, onExtract }: ArchiveExplorerP
     event.preventDefault();
     // Only offer the selected entries when the click landed on a list row.
     const onRow = (event.target as HTMLElement).closest("tbody tr") !== null;
-    setMenu({ x: event.clientX, y: event.clientY, selection: onRow ? currentSelection(selected.current) : undefined });
+    setMenu({ x: event.clientX, y: event.clientY, selection: onRow ? currentSelection(selected.current) : undefined, reveal: true });
   };
   const fileName = archive.path.slice(Math.max(archive.path.lastIndexOf("\\"), archive.path.lastIndexOf("/")) + 1);
   const header = (
@@ -48,7 +52,7 @@ export default function ArchiveExplorer({ archive, onExtract }: ArchiveExplorerP
       <div className="zip-archive-header__text"><h1 title={fileName}>{fileName}</h1><p title={archive.path}>{archive.path}</p></div>
       <div className="zip-toolbar__actions">
         <div className="zip-extract-split">
-          <button type="button" className="zip-button zip-extract-split__main" title="압축 풀기 (Ctrl+E)" onClick={() => onExtract("ask")}>압축 풀기</button>
+          <button type="button" className="zip-button zip-extract-split__main" title="압축 풀기 (Ctrl+E)" onClick={() => onExtract(extractTarget)}>압축 풀기</button>
           <button type="button" className="zip-button zip-extract-split__arrow" title="풀기 옵션" aria-label="풀기 옵션" aria-haspopup="menu" aria-expanded={menu !== null} onClick={openMenuBelow}>
             <Codicon name="chevron-down" />
           </button>
@@ -68,9 +72,9 @@ export default function ArchiveExplorer({ archive, onExtract }: ArchiveExplorerP
         onListContextMenu={openContextMenu}
         onTreeContextMenu={openContextMenu}
         rowAction={{ icon: "export", title: "압축 풀기" }}
-        onRowMenu={(nodes, at) => setMenu({ ...at, selection: currentSelection(nodes) })}
+        onRowMenu={(nodes, at) => setMenu({ ...at, selection: currentSelection(nodes), reveal: true })}
       />
     </div>
-    {menu ? <ExtractMenu archivePath={archive.path} anchor={menu} onClose={closeMenu} selectionLabel={menu.selection?.label} onPick={(target, scope) => { const entries = scope === "selection" && menu.selection ? menu.selection.paths : undefined; setMenu(null); onExtract(target, entries); }} /> : null}
+    {menu ? <ExtractMenu archivePath={archive.path} anchor={menu} onClose={closeMenu} selectionLabel={menu.selection?.label} onTestArchive={menu.reveal ? () => { setMenu(null); onTest(); } : undefined} onRevealArchive={menu.reveal ? () => { setMenu(null); void revealInFolder(archive.path).catch((reason) => ConfirmDialogService.confirm({ title: "압축 파일 위치 열기", message: String(reason), confirmLabel: "확인", hideCancel: true })); } : undefined} onPick={(target, scope) => { const entries = scope === "selection" && menu.selection ? menu.selection.paths : undefined; setMenu(null); onExtract(target, entries); }} /> : null}
   </section>;
 }

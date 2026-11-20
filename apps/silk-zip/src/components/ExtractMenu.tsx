@@ -11,13 +11,17 @@ interface ExtractMenuProps {
   /** Label of the selected entries (e.g. "'a.txt'" or "3개 항목"); when set the menu also offers extracting just those. */
   selectionLabel?: string;
   onPick: (target: ExtractTarget, scope: ExtractScope) => void;
+  /** When set, a "압축 파일 위치 열기" item is appended. */
+  onRevealArchive?: () => void;
+  /** When set, a "압축 파일 테스트" item is added above it. */
+  onTestArchive?: () => void;
   onClose: () => void;
 }
 
 const MENU_WIDTH = 260;
 
 /** Folder templates for extraction, shown as a popup at a screen position (button or right-click). */
-export default function ExtractMenu({ archivePath, anchor, selectionLabel, onPick, onClose }: ExtractMenuProps) {
+export default function ExtractMenu({ archivePath, anchor, selectionLabel, onPick, onRevealArchive, onTestArchive, onClose }: ExtractMenuProps) {
   const [recent] = useState(loadRecentFolders);
   const menu = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState(anchor);
@@ -73,6 +77,13 @@ export default function ExtractMenu({ archivePath, anchor, selectionLabel, onPic
               <span>{folderLabel(folder)}</span>
             </button>
           ))}
+        </>
+      ) : null}
+      {onRevealArchive ? (
+        <>
+          <div className="zip-command-menu__separator" role="separator" />
+          {onTestArchive ? <button type="button" role="menuitem" onClick={onTestArchive}><span>압축 파일 테스트</span><kbd>Ctrl+T</kbd></button> : null}
+          <button type="button" role="menuitem" onClick={onRevealArchive}><span>압축 파일 위치 열기</span></button>
         </>
       ) : null}
     </div>

@@ -12,11 +12,22 @@ if (!registrationState.__silkZipActivityMenuRegistered) {
   registrationState.__silkZipActivityMenuRegistered = true;
 
   const commands = [
-    { id: "silkZip.activity.commandPalette", title: "명령 팔레트...", group: "1_command", order: 1 },
-    { id: "silkZip.activity.settings", title: "설정", group: "2_configuration", order: 1 },
     { id: "silkZip.activity.keybindings", title: "키보드 단축키", group: "2_configuration", order: 2 },
     { id: "silkZip.activity.checkUpdates", title: "업데이트 확인...", group: "4_updates", order: 1 },
   ] as const;
+
+  // Shared palette command (registered by the workbench contribution).
+  MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
+    command: { id: "workbench.action.showCommands", title: "명령 팔레트..." },
+    group: "1_command",
+    order: 1,
+  });
+
+  MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
+    command: { id: "workbench.action.openSettings", title: "설정" },
+    group: "2_configuration",
+    order: 1,
+  });
 
   for (const command of commands) {
     CommandsRegistry.registerCommand(command.id, () => undefined);

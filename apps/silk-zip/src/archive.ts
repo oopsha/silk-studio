@@ -72,6 +72,19 @@ export function extractArchive(
   });
 }
 
+export type TestResult = { format: string; tested: number };
+
+export function testArchive(
+  operationId: string,
+  archivePath: string,
+  password: string,
+  onProgress: (progress: CreateProgress) => void,
+): Promise<TestResult> {
+  const channel = new Channel<CreateProgress>();
+  channel.onmessage = onProgress;
+  return invoke("archive_test", { operationId, archivePath, password: password || null, onProgress: channel });
+}
+
 export function reportArchiveProgressDiagnostic(
   operationId: string,
   sample: {
@@ -93,6 +106,18 @@ export function reportArchiveProgressDiagnostic(
 
 export function cancelArchive(operationId: string): Promise<boolean> {
   return invoke("archive_cancel", { operationId });
+}
+
+export function isElevated(): Promise<boolean> {
+  return invoke("is_elevated");
+}
+
+export function openNewWindow(admin: boolean): Promise<void> {
+  return invoke("new_window", { admin });
+}
+
+export function revealInFolder(path: string): Promise<void> {
+  return invoke("reveal_in_folder", { path });
 }
 
 export function openOutputFolder(path: string): Promise<void> {
