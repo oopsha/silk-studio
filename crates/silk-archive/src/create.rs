@@ -1759,6 +1759,7 @@ pub fn create_archive_entries<F: FnMut(CreateProgress)>(
     on_progress: F,
     mut diagnostics: Option<&mut ZipDiagnostics>,
 ) -> Result<CreateResult, String> {
+    crate::locale::ensure_utf8();
     if let Some(diagnostics) = diagnostics.as_mut() {
         **diagnostics = ZipDiagnostics::default();
     }

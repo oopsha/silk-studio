@@ -1,6 +1,7 @@
 //! Shared, UI-independent archive inspection backed by libarchive.
 pub mod create;
 pub mod extract;
+mod locale;
 
 use serde::Serialize;
 use std::ffi::CString;
@@ -203,6 +204,7 @@ fn list_split_zip(path: &Path) -> Result<ArchiveListing, String> {
 /// Inspect headers without writing to disk. This is not an archive integrity test.
 /// Reject excessive listings rather than silently returning a partial archive.
 pub fn list_archive(path: &Path) -> Result<ArchiveListing, String> {
+    locale::ensure_utf8();
     if !path.is_file() {
         return Err("압축 파일을 찾을 수 없습니다.".into());
     }

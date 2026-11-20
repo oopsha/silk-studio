@@ -149,6 +149,7 @@ pub fn extract_archive<F: FnMut(CreateProgress)>(
     cancelled: &AtomicBool,
     mut on_progress: F,
 ) -> Result<ExtractResult, String> {
+    crate::locale::ensure_utf8();
     if !archive.is_file() {
         return Err("압축 파일을 찾을 수 없습니다.".into());
     }
