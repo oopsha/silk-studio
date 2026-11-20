@@ -1,0 +1,67 @@
+import { useEffect, useRef, useState } from "react";
+import { archiveStem, folderLabel, loadRecentFolders, type ExtractTarget } from "../extractTargets.ts";
+
+export interface MenuAnchor { x: number; y: number }
+
+interface ExtractMenuProps {
+  archivePath: string;
+  anchor: MenuAnchor;
+  onPick: (target: ExtractTarget) => void;
+  onClose: () => void;
+}
+
+const MENU_WIDTH = 260;
+
+/** Folder templates for extraction, shown as a popup at a screen position (button or right-click). */
+export default function ExtractMenu({ archivePath, anchor, onPick, onClose }: ExtractMenuProps) {
+  const [recent] = useState(loadRecentFolders);
+  const menu = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState(anchor);
+
+  useEffect(() => {
+    const height = menu.current?.offsetHeight ?? 0;
+    setPosition({
+      x: Math.max(4, Math.min(anchor.x, window.innerWidth - MENU_WIDTH - 4)),
+      y: Math.max(4, Math.min(anchor.y, window.innerHeight - height - 4)),
+    });
+    menu.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  }, [anchor]);
+
+  useEffect(() => {
+    const closeOnOutside = (event: MouseEvent) => {
+      if (!menu.current?.contains(event.target as Node)) onClose();
+    };
+    const closeOnKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", closeOnOutside);
+    document.addEventListener("keydown", closeOnKey);
+    window.addEventListener("blur", onClose);
+    window.addEventListener("resize", onClose);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnKey);
+      window.removeEventListener("blur", onClose);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [onClose]);
+
+  return (
+    <div className="zip-command-menu zip-command-menu--fixed" role="menu" ref={menu} style={{ left: position.x, top: position.y, width: MENU_WIDTH }}>
+      <button type="button" role="menuitem" onClick={() => onPick("named")}><span>{`'${archiveStem(archivePath)}' 폴더에 풀기`}</span><kbd>Ctrl+Shift+S</kbd></button>
+      <button type="button" role="menuitem" onClick={() => onPick("here")}><span>현재 폴더에 풀기</span><kbd>Ctrl+Shift+C</kbd></button>
+      <button type="button" role="menuitem" onClick={() => onPick("ask")}><span>폴더 선택…</span><kbd>Ctrl+E</kbd></button>
+      {recent.length ? (
+        <>
+          <div className="zip-command-menu__separator" role="separator" />
+          <div className="zip-command-menu__heading">최근 사용한 폴더</div>
+          {recent.map((folder) => (
+            <button type="button" role="menuitem" key={folder} title={folder} onClick={() => onPick({ dir: folder })}>
+              <span>{folderLabel(folder)}</span>
+            </button>
+          ))}
+        </>
+      ) : null}
+    </div>
+  );
+}

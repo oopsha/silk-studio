@@ -91,3 +91,40 @@ button, select { font:inherit; color:inherit; }
 .zip-create-form .zip-drop > p { margin:4px 12px; flex:none; }
 
 .zip-file.zip-draft-drop-target,.resource-tree__row.zip-draft-drop-target { background:var(--color-menu-selection-background); outline:1px solid var(--color-focus-border); outline-offset:-1px; }
+.zip-extract-body { display:flex; flex-direction:column; gap:10px; min-width:0; }
+.zip-extract-body p { overflow-wrap:anywhere; }
+.zip-extract-password { height:28px; padding:0 8px; color:var(--color-foreground); background:var(--color-input-background, transparent); border:1px solid var(--color-border); border-radius:4px; font:inherit; }
+.zip-extract-password:focus { outline:1px solid var(--color-focus-border); }
+.zip-extract-show { display:flex; align-items:center; gap:6px; margin-top:8px; color:var(--color-description); font-size:12px; }
+
+.zip-command-bar { height:36px; flex:none; display:flex; align-items:center; gap:2px; padding:0 8px; border-bottom:1px solid var(--color-border); box-sizing:border-box; }
+.zip-command { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 10px; border:1px solid transparent; border-radius:4px; background:transparent; color:inherit; font:inherit; cursor:pointer; white-space:nowrap; }
+.zip-command:hover:not(:disabled) { background:var(--color-toolbar-hover-background); }
+.zip-command:focus-visible { outline:1px solid #1177bb; outline-offset:-1px; }
+.zip-command:disabled { opacity:.45; cursor:default; }
+.zip-command--arrow { padding:0 4px; margin-left:-2px; }
+.zip-command-bar__separator { width:1px; height:18px; margin:0 6px; background:var(--color-border); }
+.zip-command-split { position:relative; display:inline-flex; align-items:center; }
+.zip-command-menu { position:absolute; top:100%; left:0; z-index:30; min-width:240px; margin-top:2px; padding:4px; border:1px solid var(--color-border); border-radius:6px; background:var(--color-menu-background, var(--color-editor-background, #fff)); box-shadow:0 4px 14px rgba(0,0,0,.25); }
+.zip-command-menu button { display:flex; align-items:center; justify-content:space-between; gap:24px; width:100%; padding:6px 10px; border:0; border-radius:4px; background:transparent; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.zip-command-menu button:hover, .zip-command-menu button:focus-visible { background:var(--color-toolbar-hover-background); outline:none; }
+.zip-command-menu button span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.zip-command-menu kbd { font:inherit; opacity:.6; white-space:nowrap; }
+.zip-command-menu__separator { height:1px; margin:4px 0; background:var(--color-border); }
+.zip-command-menu__heading { padding:4px 10px; font-size:.85em; opacity:.6; }
+
+.zip-command-menu--fixed { position:fixed; margin:0; z-index:1000; }
+.zip-explorer-content { --zip-archive-header-height:64px; }
+.zip-explorer-content .zip-archive-header { box-sizing:border-box; height:var(--zip-archive-header-height); flex:none; margin:0 0 0 min(var(--zip-sidebar-width),50%); padding:0 20px; gap:16px; }
+.zip-archive-header__text { min-width:0; }
+.zip-archive-header h1 { margin:0 0 4px; font-size:18px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.zip-archive-header p { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.zip-explorer-content .resource-explorer__tree { margin-top:calc(-1 * var(--zip-archive-header-height)); }
+.zip-extract-split { display:inline-flex; align-items:stretch; }
+.zip-extract-split .zip-button { display:inline-flex; align-items:center; }
+.zip-extract-split__main { border-radius:4px 0 0 4px; }
+.zip-extract-split__arrow { padding:6px 8px; margin-left:-1px; border-radius:0 4px 4px 0; }
+
+/* Dark theme: the default button fill is nearly the surface colour, so lift it. */
+:root:not([data-color-theme="light"]) .zip-button:not(.primary) { background:#3c3d3f; border-color:#58595b; color:#e4e4e4; }
+:root:not([data-color-theme="light"]) .zip-button:not(.primary):hover:not(:disabled) { background:#4a4b4d; border-color:#6b6c6e; }

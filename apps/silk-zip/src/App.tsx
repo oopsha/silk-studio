@@ -17,10 +17,16 @@ import { ContextKeyService } from "@silk-studio/workbench/platform/context/conte
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
 import ConfirmDialog from "@silk-studio/workbench/components/dialogs/ConfirmDialog.tsx";
 import { ConfirmDialogService } from "@silk-studio/workbench/services/dialog/confirmDialogService.ts";
-import { cancelArchive, createArchive, extractArchive, listArchive, openOutputFolder, reportArchiveProgressDiagnostic, type ArchiveListing, type CreateProgress, type CreateResult } from "./archive";
+import { cancelArchive, createArchive, listArchive, openOutputFolder, reportArchiveProgressDiagnostic, type ArchiveListing, type CreateProgress, type CreateResult } from "./archive";
 import ArchiveExplorer from "./components/ArchiveExplorer";
+import CommandBar from "./components/CommandBar";
+import { ExtractDialog, useExtraction } from "./components/ExtractDialog";
 import { useCompressionDraft } from "./components/useCompressionDraft";
 import { startRecentArchives } from "./recentArchives";
+import type { ExtractTarget } from "./extractTargets";
+
+/** The icon toolbar under the menu bar is kept but hidden; extraction lives in the explorer title row. */
+const SHOW_COMMAND_BAR = false;
 
 const ARCHIVE_FILE_FILTERS = [
   { name: "압축 파일", extensions: ["zip", "zipx", "tar", "tgz", "taz", "gz", "gzip", "bz2", "xz", "txz", "lz", "lzma", "lzh", "lha", "iso", "7z", "zpaq", "rar", "rar5"] },
@@ -78,6 +84,9 @@ function App() {
   const busy = useRef(false);
   const creating = useRef(false);
   const activeCreateId = useRef<string | null>(null);
+  const extractionController = useExtraction();
+  const extraction = useRef(extractionController);
+  extraction.current = extractionController;
   const createDraft = useRef({ archive, files, format, outputPath, password, confirmPassword, splitSize, customSplitSize, compressionMethod, outputConfirmed, preparationMessage, resetDraft: draft.reset });
   createDraft.current = { archive, files, format, outputPath, password, confirmPassword, splitSize, customSplitSize, compressionMethod, outputConfirmed, preparationMessage, resetDraft: draft.reset };
 
@@ -196,39 +205,26 @@ function App() {
       setPreparationMessage("");
       setCompletedArchive(null);
     };
-    const extractCurrentArchive = async () => {
+    const extractCurrentArchive = (target: ExtractTarget) => () => {
       const current = createDraft.current.archive;
-      if (!current || busy.current) return;
-      busy.current = true;
-      try {
-        const folder = await open({ multiple: false, directory: true, title: "압축을 풀 폴더 선택" });
-        if (disposed || !folder || Array.isArray(folder)) return;
-        setLoading(true);
-        setError(null);
-        const result = await extractArchive(`extract-${Date.now()}`, current.path, folder, "", false, () => {});
-        if (!disposed) {
-          await ConfirmDialogService.confirm({
-            title: "압축 풀기",
-            message: `${result.extracted}개 항목을 풀었습니다.${result.skipped ? ` 이미 있는 ${result.skipped}개 항목은 건너뛰었습니다.` : ""}`,
-            confirmLabel: "확인",
-            hideCancel: true,
-          });
-        }
-      } catch (reason) {
-        if (!disposed) setError(String(reason));
-      } finally {
-        busy.current = false;
-        if (!disposed) setLoading(false);
-      }
+      if (current) void extraction.current.start(current.path, target);
     };
-    const unregisterExtract = CommandsRegistry.registerCommand("silkZip.file.extract", extractCurrentArchive);
+    const unregisterExtract = CommandsRegistry.registerCommand("silkZip.file.extract", extractCurrentArchive("ask"));
+    const unregisterExtractHere = CommandsRegistry.registerCommand("silkZip.file.extractHere", extractCurrentArchive("here"));
+    const unregisterExtractNamed = CommandsRegistry.registerCommand("silkZip.file.extractNamed", extractCurrentArchive("named"));
+    const mac = detectWorkbenchPlatform() === "mac";
+    const unregisterExtractKeys = [
+      KeybindingsRegistry.registerKeybinding("silkZip.file.extract", mac ? "Cmd+E" : "Ctrl+E"),
+      KeybindingsRegistry.registerKeybinding("silkZip.file.extractHere", mac ? "Cmd+Shift+C" : "Ctrl+Shift+C"),
+      KeybindingsRegistry.registerKeybinding("silkZip.file.extractNamed", mac ? "Cmd+Shift+S" : "Ctrl+Shift+S"),
+    ];
     const unregister = CommandsRegistry.registerCommand("silkZip.file.openArchive", openArchive);
     const unregisterNew = CommandsRegistry.registerCommand("silkZip.file.newArchive", newArchive);
     const unregisterKey = KeybindingsRegistry.registerKeybinding("silkZip.file.openArchive", detectWorkbenchPlatform() === "mac" ? "Cmd+O" : "Ctrl+O");
     const unregisterNewKey = KeybindingsRegistry.registerKeybinding("silkZip.file.newArchive", detectWorkbenchPlatform() === "mac" ? "Cmd+N" : "Ctrl+N");
     const onKeyDown = (event: KeyboardEvent) => { KeybindingsRegistry.handleKeyboardEvent(event); };
     window.addEventListener("keydown", onKeyDown);
-    return () => { disposed = true; recentArchives.stop(); unregisterNewKey(); unregisterNew(); unregisterExtract(); unregisterKey(); unregister(); window.removeEventListener("keydown", onKeyDown); };
+    return () => { disposed = true; recentArchives.stop(); unregisterNewKey(); unregisterNew(); unregisterExtract(); unregisterExtractHere(); unregisterExtractNamed(); unregisterExtractKeys.forEach((stop) => stop()); unregisterKey(); unregister(); window.removeEventListener("keydown", onKeyDown); };
   }, []);
   const addFiles = async () => {
     setAddMenuOpen(false);
@@ -412,6 +408,14 @@ function App() {
   return (
     <main className="zip-app">
       {detectWorkbenchPlatform() === "windows" ? <TitleBar /> : <div className="zip-menubar"><Menubar /></div>}
+      {SHOW_COMMAND_BAR ? (
+        <CommandBar
+          archivePath={archive?.path ?? null}
+          onOpen={() => { void CommandsRegistry.getCommand("silkZip.file.openArchive")?.handler(); }}
+          onNew={() => { void CommandsRegistry.getCommand("silkZip.file.newArchive")?.handler(); }}
+          onExtract={(target) => { if (archive) void extractionController.start(archive.path, target); }}
+        />
+      ) : null}
       <div className="zip-workbench">
         <div className="zip-activity-bar">
           <ActivityBar views={activityViews} />
@@ -419,10 +423,10 @@ function App() {
         <div className="zip-workbench__main">
           {loading ? <div className="zip-message" role="status">압축 파일을 읽고 있습니다…</div> : null}
           {error ? <div className="zip-message zip-message--error" role="alert">{error}</div> : null}
-          {archive ? <ArchiveExplorer archive={archive} /> : <div className="zip-start-workspace">
+          {archive ? <ArchiveExplorer archive={archive} onExtract={(target) => { void extractionController.start(archive.path, target); }} /> : <div className="zip-start-workspace">
           {layout.sidebar ? <aside className="zip-empty-explorer" style={{ width: layout.sidebarWidth }} aria-label="탐색기"><ViewPaneTitle title="탐색기" />{draft.tree}</aside> : null}
           <section className="zip-content zip-create-form">
-            <div className="zip-toolbar"><div><h1>새 압축 파일</h1><p>파일이나 폴더를 추가하고 압축 설정을 지정하세요.</p></div><div className="zip-toolbar__actions"><div className="zip-add-menu" ref={addMenuRef}><button className="zip-button" aria-haspopup="menu" aria-expanded={addMenuOpen} onClick={() => setAddMenuOpen((open) => !open)}>추가 <span className="codicon codicon-chevron-down" aria-hidden="true" /></button>{addMenuOpen ? <div className="zip-add-menu__popup" role="menu"><button role="menuitem" onClick={addFiles}>파일 추가</button><button role="menuitem" onClick={addFolder}>폴더 추가</button></div> : null}</div><button className="zip-button" onClick={draft.newFolder}>새 폴더</button><button className="zip-button" onClick={draft.remove} disabled={draft.selectedCount === 0}>제거</button></div></div>
+            <div className="zip-toolbar"><div><h1>새 압축 파일</h1><p>파일이나 폴더를 추가하고 압축 설정을 지정하세요.</p></div><div className="zip-toolbar__actions"><div className="zip-add-menu" ref={addMenuRef}><div className="zip-extract-split"><button className="zip-button zip-extract-split__main" title="파일 추가" onClick={addFiles}>추가</button><button className="zip-button zip-extract-split__arrow" aria-label="추가 옵션" aria-haspopup="menu" aria-expanded={addMenuOpen} onClick={() => setAddMenuOpen((open) => !open)}><span className="codicon codicon-chevron-down" aria-hidden="true" /></button></div>{addMenuOpen ? <div className="zip-add-menu__popup" role="menu"><button role="menuitem" onClick={addFiles}>파일 추가</button><button role="menuitem" onClick={addFolder}>폴더 추가</button></div> : null}</div><button className="zip-button" onClick={draft.newFolder}>새 폴더</button><button className="zip-button" onClick={draft.remove} disabled={draft.selectedCount === 0}>제거</button></div></div>
             <div className={`zip-drop${files.length ? " zip-drop--filled" : ""}${dragActive ? " zip-drop--dragging" : ""}`} onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragActive(false); }} onDrop={(event) => { event.preventDefault(); setDragActive(false); }}>
               {draft.list}
             </div>
@@ -463,6 +467,7 @@ function App() {
         </div>
       ) : null}
       <ConfirmDialog />
+      <ExtractDialog controller={extractionController} />
     </main>
   );
 }

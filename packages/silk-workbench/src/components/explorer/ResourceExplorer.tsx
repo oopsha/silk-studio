@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import WorkbenchSash from "../layout/WorkbenchSash";
 import { useWorkbenchSashDrag } from "../../services/layout/useWorkbenchSashDrag";
@@ -14,9 +14,13 @@ type Props = {
   onOpenFile?: (node: ResourceNode) => void;
   onSelectionChange?: (node: ResourceNode | null) => void;
   extraColumns?: readonly ResourceColumn[];
+  /** Content rendered above the address bar. */
+  header?: ReactNode;
+  onListContextMenu?: (event: MouseEvent<HTMLElement>) => void;
+  onTreeContextMenu?: (event: MouseEvent<HTMLElement>) => void;
 };
 
-export default function ResourceExplorer({ source, onOpenFile, onSelectionChange, extraColumns = [] }: Props) {
+export default function ResourceExplorer({ source, onOpenFile, onSelectionChange, extraColumns = [], header, onListContextMenu, onTreeContextMenu }: Props) {
   const [route, setRoute] = useState<readonly ResourceNode[]>([source.root]);
   const [nodes, setNodes] = useState<readonly ResourceNode[] | null>(null);
   const [error, setError] = useState("");
@@ -40,6 +44,7 @@ export default function ResourceExplorer({ source, onOpenFile, onSelectionChange
   const open = (node: ResourceNode) => node.directory ? setRoute([...route, node]) : onOpenFile?.(node);
   const pages = Math.max(1, Math.ceil((nodes?.length ?? 0) / 500));
   return <div className="resource-explorer">
+    {header}
     <nav className="resource-explorer__address" aria-label="현재 폴더 경로">
       {route.map((node, index) => <span className="resource-explorer__breadcrumb" key={node.id}>
         {index > 0 ? <Codicon name="chevron-right" /> : null}
@@ -47,14 +52,14 @@ export default function ResourceExplorer({ source, onOpenFile, onSelectionChange
       </span>)}
     </nav>
     <div className="resource-explorer__body" ref={body}>
-      <aside className="resource-explorer__tree" aria-label="폴더 탐색" style={{ width: layout.sidebarWidth, maxWidth: "50%" }}>
+      <aside className="resource-explorer__tree" aria-label="폴더 탐색" onContextMenu={onTreeContextMenu} style={{ width: layout.sidebarWidth, maxWidth: "50%" }}>
         <ResourceTree source={source} selectedId={current.id} expandedPath={expandedPath} directoriesOnly onSelect={(_, ancestors) => setRoute(ancestors)} />
       </aside>
       <WorkbenchSash orientation="vertical" onPointerDown={(event) => {
         const startX = event.clientX, startWidth = Math.min(layout.sidebarWidth, (body.current?.clientWidth ?? 520) / 2);
         startDrag({ orientation: "vertical", onResize: (x) => LayoutService.setSidebarWidth(Math.min((body.current?.clientWidth ?? 520) / 2, startWidth + x - startX)) });
       }} />
-      <div className="resource-explorer__list" aria-busy={nodes === null && !error}>
+      <div className="resource-explorer__list" aria-busy={nodes === null && !error} onContextMenu={onListContextMenu}>
         <table aria-label="현재 폴더의 파일 목록"><thead><tr><th>이름</th><th>종류</th><th>크기</th>{extraColumns.map((column) => <th key={column.id}>{column.title}</th>)}</tr></thead><tbody>
           {route.length > 1 ? <tr tabIndex={0} onDoubleClick={() => setRoute(route.slice(0, -1))} onKeyDown={(e) => { if (e.key === "Enter") setRoute(route.slice(0, -1)); }}><td className="resource-explorer__name"><Codicon name="folder" />..</td><td>상위 폴더</td><td />{extraColumns.map((column) => <td key={column.id} />)}</tr> : null}
           {(nodes ?? []).slice(page * 500, (page + 1) * 500).map((node) => <tr key={node.id} tabIndex={0} className={selectedId === node.id ? "resource-explorer__selected" : undefined} onClick={() => { setSelectedId(node.id); onSelectionChange?.(node); }} onDoubleClick={() => open(node)} onKeyDown={(e) => { if (e.key === "Enter") open(node); }}>
