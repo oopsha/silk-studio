@@ -5,28 +5,34 @@ import { useWorkbenchSashDrag } from "../../services/layout/useWorkbenchSashDrag
 import { LayoutService } from "../../services/layout/layoutService";
 import { useLayoutState } from "../../services/layout/useLayoutState";
 import ResourceTree from "./ResourceTree";
-import { resourceIcon, sortResources, type ResourceNode, type ResourceSource } from "./resourceExplorerTypes";
+import { resourceIcon, sortResources, type ResourceNode, type ResourceRowAction, type ResourceSource, type RowMenuHandler } from "./resourceExplorerTypes";
 import "./ResourceExplorer.css";
 
 export type ResourceColumn = { id: string; title: string; render: (node: ResourceNode) => ReactNode };
 type Props = {
   source: ResourceSource;
   onOpenFile?: (node: ResourceNode) => void;
-  onSelectionChange?: (node: ResourceNode | null) => void;
+  /** Called with the selected nodes of the current folder (empty when nothing is selected). */
+  onSelectionChange?: (nodes: readonly ResourceNode[]) => void;
   extraColumns?: readonly ResourceColumn[];
   /** Content rendered above the address bar. */
   header?: ReactNode;
   onListContextMenu?: (event: MouseEvent<HTMLElement>) => void;
+  /** Hover button shown on list and tree rows; clicking it calls `onRowMenu`. */
+  rowAction?: ResourceRowAction;
+  /** Called for the row button and for right-clicks on rows with the rows it applies to. */
+  onRowMenu?: RowMenuHandler;
   onTreeContextMenu?: (event: MouseEvent<HTMLElement>) => void;
 };
 
-export default function ResourceExplorer({ source, onOpenFile, onSelectionChange, extraColumns = [], header, onListContextMenu, onTreeContextMenu }: Props) {
+export default function ResourceExplorer({ source, onOpenFile, onSelectionChange, extraColumns = [], header, onListContextMenu, onTreeContextMenu, rowAction, onRowMenu }: Props) {
   const [route, setRoute] = useState<readonly ResourceNode[]>([source.root]);
   const [nodes, setNodes] = useState<readonly ResourceNode[] | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [page, setPage] = useState(0);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
+  const anchor = useRef(0);
   const expandedPath = useMemo(() => route.slice(0, -1).map((node) => node.id), [route]);
   const layout = useLayoutState();
   const { startDrag } = useWorkbenchSashDrag();
@@ -35,7 +41,7 @@ export default function ResourceExplorer({ source, onOpenFile, onSelectionChange
   useEffect(() => { setRoute([source.root]); }, [source]);
   useEffect(() => {
     let active = true;
-    setNodes(null); setError(""); setPage(0); setSelectedId(""); onSelectionChange?.(null);
+    setNodes(null); setError(""); setPage(0); setSelectedIds(new Set()); onSelectionChange?.([]);
     Promise.resolve().then(() => source.readChildren(current.id)).then((children) => {
       if (active) setNodes(sortResources(children));
     }).catch((cause) => { if (active) setError(String(cause)); });
@@ -43,6 +49,35 @@ export default function ResourceExplorer({ source, onOpenFile, onSelectionChange
   }, [source, current.id, revision, onSelectionChange]);
   const open = (node: ResourceNode) => node.directory ? setRoute([...route, node]) : onOpenFile?.(node);
   const pages = Math.max(1, Math.ceil((nodes?.length ?? 0) / 500));
+  const visible = (nodes ?? []).slice(page * 500, (page + 1) * 500);
+  const select = (ids: ReadonlySet<string>) => {
+    setSelectedIds(ids);
+    onSelectionChange?.(visible.filter((node) => ids.has(node.id)));
+  };
+  // The row menu applies to the whole selection when the row is part of it, else to that row.
+  const rowTargets = (node: ResourceNode, index: number) => {
+    if (selectedIds.has(node.id)) return visible.filter((item) => selectedIds.has(item.id));
+    anchor.current = index;
+    select(new Set([node.id]));
+    return [node];
+  };
+  // Click selects one row; Ctrl/Cmd toggles; Shift selects the range from the last plain click.
+  const clickRow = (event: MouseEvent<HTMLElement>, index: number) => {
+    const id = visible[index].id;
+    if (event.shiftKey) {
+      const next = new Set<string>(event.ctrlKey || event.metaKey ? selectedIds : []);
+      for (let i = Math.min(anchor.current, index); i <= Math.max(anchor.current, index); i += 1) next.add(visible[i].id);
+      select(next);
+    } else if (event.ctrlKey || event.metaKey) {
+      const next = new Set(selectedIds);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      anchor.current = index;
+      select(next);
+    } else {
+      anchor.current = index;
+      select(new Set([id]));
+    }
+  };
   return <div className="resource-explorer">
     {header}
     <nav className="resource-explorer__address" aria-label="현재 폴더 경로">
@@ -53,17 +88,17 @@ export default function ResourceExplorer({ source, onOpenFile, onSelectionChange
     </nav>
     <div className="resource-explorer__body" ref={body}>
       <aside className="resource-explorer__tree" aria-label="폴더 탐색" onContextMenu={onTreeContextMenu} style={{ width: layout.sidebarWidth, maxWidth: "50%" }}>
-        <ResourceTree source={source} selectedId={current.id} expandedPath={expandedPath} directoriesOnly onSelect={(_, ancestors) => setRoute(ancestors)} />
+        <ResourceTree source={source} selectedId={current.id} expandedPath={expandedPath} rowAction={rowAction} onRowMenu={onRowMenu} directoriesOnly onSelect={(_, ancestors) => setRoute(ancestors)} />
       </aside>
       <WorkbenchSash orientation="vertical" onPointerDown={(event) => {
         const startX = event.clientX, startWidth = Math.min(layout.sidebarWidth, (body.current?.clientWidth ?? 520) / 2);
         startDrag({ orientation: "vertical", onResize: (x) => LayoutService.setSidebarWidth(Math.min((body.current?.clientWidth ?? 520) / 2, startWidth + x - startX)) });
       }} />
-      <div className="resource-explorer__list" aria-busy={nodes === null && !error} onContextMenu={onListContextMenu}>
-        <table aria-label="현재 폴더의 파일 목록"><thead><tr><th>이름</th><th>종류</th><th>크기</th>{extraColumns.map((column) => <th key={column.id}>{column.title}</th>)}</tr></thead><tbody>
-          {route.length > 1 ? <tr tabIndex={0} onDoubleClick={() => setRoute(route.slice(0, -1))} onKeyDown={(e) => { if (e.key === "Enter") setRoute(route.slice(0, -1)); }}><td className="resource-explorer__name"><Codicon name="folder" />..</td><td>상위 폴더</td><td />{extraColumns.map((column) => <td key={column.id} />)}</tr> : null}
-          {(nodes ?? []).slice(page * 500, (page + 1) * 500).map((node) => <tr key={node.id} tabIndex={0} className={selectedId === node.id ? "resource-explorer__selected" : undefined} onClick={() => { setSelectedId(node.id); onSelectionChange?.(node); }} onDoubleClick={() => open(node)} onKeyDown={(e) => { if (e.key === "Enter") open(node); }}>
-            <td className="resource-explorer__name"><Codicon {...resourceIcon(node)} />{node.name}</td><td>{node.directory ? "폴더" : "파일"}</td><td>{node.directory || node.size == null ? "—" : `${node.size.toLocaleString()} B`}</td>{extraColumns.map((column) => <td key={column.id}>{column.render(node)}</td>)}
+      <div className="resource-explorer__list" aria-busy={nodes === null && !error} onContextMenu={onListContextMenu} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") { event.preventDefault(); select(new Set(visible.map((node) => node.id))); } }}>
+        <table aria-label="현재 폴더의 파일 목록"><thead><tr><th>이름</th><th>종류</th><th>크기</th>{extraColumns.map((column) => <th key={column.id}>{column.title}</th>)}{rowAction ? <th className="resource-explorer__action-cell" /> : null}</tr></thead><tbody>
+          {route.length > 1 ? <tr tabIndex={0} onDoubleClick={() => setRoute(route.slice(0, -1))} onKeyDown={(e) => { if (e.key === "Enter") setRoute(route.slice(0, -1)); }}><td className="resource-explorer__name"><Codicon name="folder" />..</td><td>상위 폴더</td><td />{extraColumns.map((column) => <td key={column.id} />)}{rowAction ? <td /> : null}</tr> : null}
+          {visible.map((node, index) => <tr key={node.id} tabIndex={0} aria-selected={selectedIds.has(node.id)} className={selectedIds.has(node.id) ? "resource-explorer__selected" : undefined} onClick={(event) => clickRow(event, index)} onContextMenu={(event) => { const targets = rowTargets(node, index); if (onRowMenu) { event.preventDefault(); event.stopPropagation(); onRowMenu(targets, { x: event.clientX, y: event.clientY }); } }} onDoubleClick={() => open(node)} onKeyDown={(e) => { if (e.key === "Enter") open(node); }}>
+            <td className="resource-explorer__name"><Codicon {...resourceIcon(node)} />{node.name}</td><td>{node.directory ? "폴더" : "파일"}</td><td>{node.directory || node.size == null ? "—" : `${node.size.toLocaleString()} B`}</td>{extraColumns.map((column) => <td key={column.id}>{column.render(node)}</td>)}{rowAction && onRowMenu ? <td className="resource-explorer__action-cell"><button type="button" className="resource-row-action" tabIndex={-1} title={rowAction.title} aria-label={rowAction.title} onClick={(event) => { event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); onRowMenu(rowTargets(node, index), { x: rect.left, y: rect.bottom + 2 }); }}><Codicon name={rowAction.icon} /></button></td> : null}
           </tr>)}
         </tbody></table>
         {error ? <div className="resource-explorer__message" role="alert">{error} <button onClick={() => setRevision(revision + 1)}>다시 시도</button></div> : nodes === null ? <div className="resource-explorer__message" role="status">불러오는 중…</div> : nodes.length === 0 ? <div className="resource-explorer__message">이 폴더는 비어 있습니다.</div> : null}

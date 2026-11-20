@@ -32,7 +32,7 @@ function formatBytes(bytes: number): string {
 /** Folder pick, progress, password prompt and cancel for one extraction at a time. */
 export function useExtraction() {
   const [state, setState] = useState<ExtractState>(null);
-  const job = useRef<{ operationId: string; archivePath: string; outputDir: string } | null>(null);
+  const job = useRef<{ operationId: string; archivePath: string; outputDir: string; entries: string[] } | null>(null);
   const active = useRef(false);
 
   const run = useCallback(async (password: string) => {
@@ -44,7 +44,7 @@ export function useExtraction() {
     try {
       const result = await extractArchive(current.operationId, current.archivePath, current.outputDir, password, false, (progress) => {
         setState((previous) => (previous?.phase === "running" ? { phase: "running", progress } : previous));
-      });
+      }, current.entries);
       rememberFolder(result.outputDir);
       setState({ phase: "done", result, elapsedMs: performance.now() - startedAt });
     } catch (reason) {
@@ -57,7 +57,7 @@ export function useExtraction() {
     }
   }, []);
 
-  const start = useCallback(async (archivePath: string, target: ExtractTarget = "ask") => {
+  const start = useCallback(async (archivePath: string, target: ExtractTarget = "ask", entries: string[] = []) => {
     if (active.current) return;
     let folder: string | string[] | null | undefined;
     if (target === "ask") {
@@ -66,7 +66,7 @@ export function useExtraction() {
       folder = resolveTargetFolder(target, archivePath);
     }
     if (!folder || Array.isArray(folder)) return;
-    job.current = { operationId: `extract-${Date.now()}`, archivePath, outputDir: folder };
+    job.current = { operationId: `extract-${Date.now()}`, archivePath, outputDir: folder, entries };
     await run("");
   }, [run]);
 

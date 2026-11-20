@@ -1,3 +1,7 @@
+/** A hover button on every row; `onRowMenu` also receives right-clicks on rows. */
+export type ResourceRowAction = { icon: string; title: string };
+export type RowMenuHandler = (nodes: readonly ResourceNode[], anchor: { x: number; y: number }) => void;
+
 export type ResourceNode = {
   id: string;
   name: string;

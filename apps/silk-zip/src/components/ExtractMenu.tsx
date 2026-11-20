@@ -3,17 +3,21 @@ import { archiveStem, folderLabel, loadRecentFolders, type ExtractTarget } from 
 
 export interface MenuAnchor { x: number; y: number }
 
+export type ExtractScope = "selection" | "all";
+
 interface ExtractMenuProps {
   archivePath: string;
   anchor: MenuAnchor;
-  onPick: (target: ExtractTarget) => void;
+  /** Label of the selected entries (e.g. "'a.txt'" or "3개 항목"); when set the menu also offers extracting just those. */
+  selectionLabel?: string;
+  onPick: (target: ExtractTarget, scope: ExtractScope) => void;
   onClose: () => void;
 }
 
 const MENU_WIDTH = 260;
 
 /** Folder templates for extraction, shown as a popup at a screen position (button or right-click). */
-export default function ExtractMenu({ archivePath, anchor, onPick, onClose }: ExtractMenuProps) {
+export default function ExtractMenu({ archivePath, anchor, selectionLabel, onPick, onClose }: ExtractMenuProps) {
   const [recent] = useState(loadRecentFolders);
   const menu = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState(anchor);
@@ -48,15 +52,24 @@ export default function ExtractMenu({ archivePath, anchor, onPick, onClose }: Ex
 
   return (
     <div className="zip-command-menu zip-command-menu--fixed" role="menu" ref={menu} style={{ left: position.x, top: position.y, width: MENU_WIDTH }}>
-      <button type="button" role="menuitem" onClick={() => onPick("named")}><span>{`'${archiveStem(archivePath)}' 폴더에 풀기`}</span><kbd>Ctrl+Shift+S</kbd></button>
-      <button type="button" role="menuitem" onClick={() => onPick("here")}><span>현재 폴더에 풀기</span><kbd>Ctrl+Shift+C</kbd></button>
-      <button type="button" role="menuitem" onClick={() => onPick("ask")}><span>폴더 선택…</span><kbd>Ctrl+E</kbd></button>
+      {selectionLabel ? (
+        <>
+          <div className="zip-command-menu__heading" title={selectionLabel}>{`선택한 ${selectionLabel} 풀기`}</div>
+          <button type="button" role="menuitem" onClick={() => onPick("here", "selection")}><span>현재 폴더에 풀기</span></button>
+          <button type="button" role="menuitem" onClick={() => onPick("ask", "selection")}><span>폴더 선택…</span></button>
+          <div className="zip-command-menu__separator" role="separator" />
+          <div className="zip-command-menu__heading">압축 파일 전체 풀기</div>
+        </>
+      ) : null}
+      <button type="button" role="menuitem" onClick={() => onPick("named", "all")}><span>{`'${archiveStem(archivePath)}' 폴더에 풀기`}</span><kbd>Ctrl+Shift+S</kbd></button>
+      <button type="button" role="menuitem" onClick={() => onPick("here", "all")}><span>현재 폴더에 풀기</span><kbd>Ctrl+Shift+C</kbd></button>
+      <button type="button" role="menuitem" onClick={() => onPick("ask", "all")}><span>폴더 선택…</span><kbd>Ctrl+E</kbd></button>
       {recent.length ? (
         <>
           <div className="zip-command-menu__separator" role="separator" />
-          <div className="zip-command-menu__heading">최근 사용한 폴더</div>
+          <div className="zip-command-menu__heading">최근 사용한 폴더에 풀기</div>
           {recent.map((folder) => (
-            <button type="button" role="menuitem" key={folder} title={folder} onClick={() => onPick({ dir: folder })}>
+            <button type="button" role="menuitem" key={folder} title={folder} onClick={() => onPick({ dir: folder }, "all")}>
               <span>{folderLabel(folder)}</span>
             </button>
           ))}

@@ -57,6 +57,7 @@ export function extractArchive(
   password: string,
   overwrite: boolean,
   onProgress: (progress: CreateProgress) => void,
+  entries: string[] = [],
 ): Promise<ExtractResult> {
   const channel = new Channel<CreateProgress>();
   channel.onmessage = onProgress;
@@ -66,6 +67,7 @@ export function extractArchive(
     outputDir,
     password: password || null,
     overwrite,
+    entries: entries.length ? entries : null,
     onProgress: channel,
   });
 }

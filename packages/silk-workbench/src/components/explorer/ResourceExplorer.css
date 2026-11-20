@@ -22,6 +22,14 @@
 .resource-explorer__list tbody tr:focus-visible { outline:1px solid var(--color-focus-border); outline-offset:-1px; }
 .resource-tree__toggle { flex:0 0 16px; height:22px; display:flex; align-items:center; justify-content:center; color:var(--color-description); }
 .resource-tree__toggle .codicon { font-size:12px; }
+.resource-row-action { flex:none; display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; margin-left:auto; padding:0; border:0; border-radius:4px; background:transparent; color:inherit; cursor:pointer; visibility:hidden; }
+.resource-tree__row:hover .resource-row-action,
+.resource-tree__row:focus-visible .resource-row-action,
+.resource-explorer__list tbody tr:hover .resource-row-action,
+.resource-explorer__list tbody tr:focus-visible .resource-row-action,
+.resource-explorer__list tbody tr.resource-explorer__selected .resource-row-action { visibility:visible; }
+.resource-row-action:hover { background:var(--color-toolbar-hover-background); }
+.resource-explorer__action-cell { width:32px; padding:0 4px !important; text-align:right; }
 .resource-tree__name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .resource-icon--folder { color:#dcb67a; }
 .resource-icon--archive { color:#cca700; }
@@ -54,7 +62,7 @@
   border-bottom:1px solid var(--color-border); text-align:left;
 }
 .resource-explorer__list td { height:22px; padding:0 10px; border:0; white-space:nowrap; }
-.resource-explorer__list tbody tr { height:22px; }
+.resource-explorer__list tbody tr { height:22px; user-select:none; }
 .resource-explorer__list tbody tr[tabindex] { cursor:default; }
 .resource-explorer__list tbody tr:focus-visible { outline-offset:-1px; }
 .resource-explorer__name { display:flex; align-items:center; gap:6px; min-width:180px; }

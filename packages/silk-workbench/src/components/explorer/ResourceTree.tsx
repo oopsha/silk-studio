@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import { resourceIcon, sortResources, type ResourceNode, type ResourceSource } from "./resourceExplorerTypes";
+import { resourceIcon, sortResources, type ResourceNode, type ResourceRowAction, type ResourceSource, type RowMenuHandler } from "./resourceExplorerTypes";
 import "./ResourceExplorer.css";
 
 type Props = {
@@ -9,9 +9,11 @@ type Props = {
   directoriesOnly?: boolean;
   expandedPath?: readonly string[];
   onSelect: (node: ResourceNode, ancestors: readonly ResourceNode[]) => void;
+  rowAction?: ResourceRowAction;
+  onRowMenu?: RowMenuHandler;
 };
 
-function Branch({ source, node, depth, selectedId, directoriesOnly, expandedPath, onSelect, ancestors = [] }: Props & { node: ResourceNode; depth: number; ancestors?: readonly ResourceNode[] }) {
+function Branch({ source, node, depth, selectedId, directoriesOnly, expandedPath, onSelect, rowAction, onRowMenu, ancestors = [] }: Props & { node: ResourceNode; depth: number; ancestors?: readonly ResourceNode[] }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const [children, setChildren] = useState<readonly ResourceNode[] | null>(null);
   const [error, setError] = useState("");
@@ -34,7 +36,9 @@ function Branch({ source, node, depth, selectedId, directoriesOnly, expandedPath
     <button type="button" className={`resource-tree__row${selectedId === node.id ? " resource-tree__row--selected" : ""}`}
       style={{ paddingLeft: 8 + depth * 16 }} role="treeitem" aria-level={depth + 1}
       aria-expanded={node.directory ? expanded : undefined} aria-selected={selectedId === node.id}
-      data-resource-id={node.id} tabIndex={selectedId === node.id || (!selectedId && depth === 0) ? 0 : -1}
+      data-resource-id={node.id}
+      onContextMenu={onRowMenu && depth > 0 ? (event) => { event.preventDefault(); event.stopPropagation(); onRowMenu([node], { x: event.clientX, y: event.clientY }); } : undefined}
+      tabIndex={selectedId === node.id || (!selectedId && depth === 0) ? 0 : -1}
       onClick={() => { onSelect(node, [...ancestors, node]); if (node.directory) setExpanded(true); }}
       onKeyDown={(event) => {
         if (event.key === "ArrowRight" && node.directory) {
@@ -52,11 +56,15 @@ function Branch({ source, node, depth, selectedId, directoriesOnly, expandedPath
       </span>
       <Codicon name={node.directory && expanded ? "folder-opened" : icon.name} className={icon.className} />
       <span className="resource-tree__name" title={node.name}>{node.name}</span>
+      {rowAction && onRowMenu ? <span role="button" tabIndex={-1} className="resource-row-action" title={rowAction.title} aria-label={rowAction.title}
+        onClick={(event) => { event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); onRowMenu([node], { x: rect.left, y: rect.bottom + 2 }); }}>
+        <Codicon name={rowAction.icon} />
+      </span> : null}
     </button>
     {node.directory && expanded ? <ul role="group">
       {error ? <li role="none" className="resource-explorer__message" ><span role="alert">{error}</span><button type="button" onClick={() => setRevision(revision + 1)}>다시 시도</button></li>
         : children === null ? <li role="none" className="resource-explorer__message">불러오는 중…</li>
-        : children.filter((child) => !directoriesOnly || child.directory).map((child) => <Branch key={child.id} source={source} node={child} depth={depth + 1} selectedId={selectedId} directoriesOnly={directoriesOnly} expandedPath={expandedPath} onSelect={onSelect} ancestors={[...ancestors, node]} />)}
+        : children.filter((child) => !directoriesOnly || child.directory).map((child) => <Branch key={child.id} source={source} node={child} depth={depth + 1} selectedId={selectedId} directoriesOnly={directoriesOnly} expandedPath={expandedPath} onSelect={onSelect} rowAction={rowAction} onRowMenu={onRowMenu} ancestors={[...ancestors, node]} />)}
     </ul> : null}
   </li>;
 }

@@ -29,3 +29,21 @@ export function createArchiveSource(archive: ArchiveListing): ResourceSource {
     return entries;
   } };
 }
+
+/** Archive-relative path ("a/b/c") of a listed node, or null for the archive root. */
+export function archiveNodePath(archive: ArchiveListing, node: ResourceNode): string | null {
+  const clean = (path: string) => path.replace(/\\/g, "/").split("/").filter((part) => part !== "" && part !== ".").join("/");
+  if (node.id.startsWith("directory:")) {
+    try {
+      const segments: unknown = JSON.parse(node.id.slice("directory:".length));
+      return Array.isArray(segments) && segments.length ? clean(segments.join("/")) : null;
+    } catch {
+      return null;
+    }
+  }
+  if (node.id.startsWith("entry:")) {
+    const entry = archive.entries[Number(node.id.slice("entry:".length))];
+    return entry ? clean(entry.path) || null : null;
+  }
+  return null;
+}
