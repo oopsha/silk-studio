@@ -659,6 +659,37 @@ HRESULT open_detected(IInStream *stream, const UString &file_name, IArchiveOpenC
   return S_FALSE;
 }
 
+#ifdef _WIN32
+// Zip names without the UTF-8 flag are decoded with the OEM code page, which turns
+// UTF-8 names written by many tools into garbage (or names Windows rejects). When
+// every name is valid UTF-8, decode them as UTF-8; otherwise keep the OEM default.
+static void prefer_utf8_zip_names(IInArchive *archive, UInt32 items) {
+  CMyComPtr<ISetProperties> setter;
+  if (archive->QueryInterface(IID_ISetProperties, reinterpret_cast<void **>(&setter)) != S_OK ||
+      !setter)
+    return;
+  const wchar_t *names[] = {L"cp"};
+  NWindows::NCOM::CPropVariant value;
+  value = static_cast<UInt32>(65001);
+  PROPVARIANT variant = value;
+  if (setter->SetProperties(names, &variant, 1) != S_OK) return;
+  bool non_ascii = false;
+  bool valid = true;
+  for (UInt32 i = 0; i < items && valid; ++i) {
+    CPropVariant path;
+    if (archive->GetProperty(i, kpidPath, &path) != S_OK || path.vt != VT_BSTR) continue;
+    for (const wchar_t *c = path.bstrVal; *c; ++c) {
+      if (*c == 0xFFFD) { valid = false; break; }
+      if (*c > 0x7F) non_ascii = true;
+    }
+  }
+  if (valid && non_ascii) return;
+  value = static_cast<UInt32>(CP_OEMCP);
+  variant = value;
+  setter->SetProperties(names, &variant, 1);
+}
+#endif
+
 class SilkExtractCallback final : public IArchiveExtractCallback,
                                   public ICryptoGetTextPassword,
                                   public CMyUnknownImp {
@@ -892,6 +923,9 @@ extern "C" int silk_7zip_extract(const char *archive_path, const char *output_di
   UInt32 items = 0;
   result = opened.archive->GetNumberOfItems(&items);
   if (result != S_OK) return static_cast<int>(result);
+#ifdef _WIN32
+  if (opened.format.IsEqualTo_Ascii_NoCase("zip")) prefer_utf8_zip_names(opened.archive, items);
+#endif
   UString fallback = file_name;
   const int dot = fallback.ReverseFind(L'.');
   if (dot > 0) fallback.DeleteFrom(static_cast<unsigned>(dot));

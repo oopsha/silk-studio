@@ -170,6 +170,30 @@ pub fn extract_archive<F: FnMut(CreateProgress)>(
     };
     report(&mut on_progress, "preparing");
 
+    // Only single-stream compressors can wrap a tar, so everything else is written
+    // straight into place. (Moving thousands of staged files took tens of seconds.)
+    let name = archive.file_name().map(|name| name.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let may_wrap_tar = [".gz", ".tgz", ".bz2", ".tbz", ".tbz2", ".xz", ".txz", ".lzma", ".zst", ".tzst", ".z", ".taz"]
+        .iter()
+        .any(|suffix| name.ends_with(suffix));
+    if !may_wrap_tar {
+        let (format, extracted, skipped) =
+            extract_once(archive, &output_dir, password, overwrite, cancelled, &mut on_progress)?;
+        on_progress(CreateProgress {
+            phase: "finalizing".into(),
+            completed_bytes: 1,
+            total_bytes: 1,
+            completed_entries: extracted as usize,
+            total_entries: (extracted + skipped) as usize,
+        });
+        return Ok(ExtractResult {
+            output_dir: display_dir,
+            format,
+            extracted: extracted as usize,
+            skipped: skipped as usize,
+        });
+    }
+
     // First pass into a stage folder when the archive may be a compressed tar.
     let stage = StageDirectory(output_dir.join(format!(
         ".silk-zip-extract-{}-{}",
