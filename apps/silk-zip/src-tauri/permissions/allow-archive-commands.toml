@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "allow-archive-commands"
-description = "Allows reading and creating archives and opening their output folder."
-commands.allow = ["archive_list", "archive_create", "archive_cancel", "open_output_folder"]
+description = "Allows archive operations and recording local progress diagnostics."
+commands.allow = ["archive_list", "archive_create", "archive_extract", "archive_progress_diagnostic", "archive_cancel", "open_output_folder"]

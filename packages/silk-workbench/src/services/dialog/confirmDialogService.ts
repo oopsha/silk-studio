@@ -4,6 +4,8 @@ export type ConfirmDialogRequest = {
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
+  /** Show only the confirm button, for notices that need no decision. */
+  hideCancel?: boolean;
 };
 
 type ConfirmDialogListener = () => void;

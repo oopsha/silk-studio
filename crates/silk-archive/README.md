@@ -16,7 +16,7 @@ vcpkg는 저장소의 `.local/vcpkg` 또는 `VCPKG_ROOT`에 준비합니다.
 git clone https://github.com/microsoft/vcpkg.git .local/vcpkg
 git -C .local/vcpkg checkout af2c387aa62cf2d0909cd50f4049f2bee1ab682b
 .local/vcpkg/bootstrap-vcpkg.bat -disableMetrics
-.local/vcpkg/vcpkg.exe install "7zip:x64-windows-static-md" "libarchive[core,bzip2,lzma,lz4,zstd,xar]:x64-windows-static-md"
+.local/vcpkg/vcpkg.exe install "7zip:x64-windows-static-md" "zlib-ng:x64-windows-static-md" "libarchive[core,bzip2,lzma,lz4,zstd,xar]:x64-windows-static-md"
 cargo test -p silk-archive
 ```
 
@@ -32,7 +32,7 @@ git clone https://github.com/microsoft/vcpkg.git .local/vcpkg
 git -C .local/vcpkg checkout af2c387aa62cf2d0909cd50f4049f2bee1ab682b
 .local/vcpkg/bootstrap-vcpkg.sh -disableMetrics
 VCPKG_TRIPLET=arm64-osx # Apple Silicon; use x64-osx for Intel
-.local/vcpkg/vcpkg install "7zip:${VCPKG_TRIPLET}" --disable-metrics
+.local/vcpkg/vcpkg install "7zip:${VCPKG_TRIPLET}" "zlib-ng:${VCPKG_TRIPLET}" --disable-metrics
 export VCPKG_ROOT="$PWD/.local/vcpkg"
 export PKG_CONFIG_PATH="$(brew --prefix libarchive)/lib/pkgconfig:${PKG_CONFIG_PATH}"
 cargo test -p silk-archive

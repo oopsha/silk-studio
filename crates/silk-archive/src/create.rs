@@ -10,11 +10,12 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
-    time::UNIX_EPOCH,
+    time::{Instant, UNIX_EPOCH},
 };
 
 unsafe extern "C" {
-    fn silk_7zip_create_zip(
+    fn silk_7zip_create_archive(
+        format: u32,
         output_path: *const c_char,
         inputs: *const SdkInput,
         input_count: u32,
@@ -23,7 +24,71 @@ unsafe extern "C" {
         total_bytes: u64,
         progress: Option<SdkProgressCallback>,
         progress_context: *mut c_void,
+        timings: *mut SdkFileTiming,
     ) -> c_int;
+    fn silk_7zip_gzip_file(
+        input_path: *const c_char,
+        output_path: *const c_char,
+        name: *const c_char,
+        modified_seconds: i64,
+        level: u32,
+        total_bytes: u64,
+        progress: Option<SdkProgressCallback>,
+        progress_context: *mut c_void,
+    ) -> c_int;
+}
+
+/// Archive container written by the creation API.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ArchiveFormat {
+    #[default]
+    Zip,
+    /// Uncompressed POSIX tar.
+    Tar,
+    /// A single file compressed as one gzip member.
+    Gz,
+    /// A tar stream compressed with gzip.
+    Tgz,
+    /// A single file compressed as one xz stream (LZMA2).
+    Xz,
+    /// A 7z archive (LZMA2, optional AES-256 with encrypted file names).
+    #[serde(rename = "7z")]
+    SevenZip,
+}
+
+impl ArchiveFormat {
+    fn sdk_id(self) -> u32 {
+        match self {
+            Self::Zip => 0,
+            Self::Tar => 1,
+            Self::Xz => 2,
+            Self::SevenZip => 3,
+            Self::Gz | Self::Tgz => unreachable!("gzip formats do not use the SDK container writer"),
+        }
+    }
+
+    fn extension(self) -> &'static str {
+        match self {
+            Self::Zip => "zip",
+            Self::Tar => "tar",
+            Self::Gz => "gz",
+            Self::Tgz => "tgz",
+            Self::Xz => "xz",
+            Self::SevenZip => "7z",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Zip => "ZIP",
+            Self::Tar => "TAR",
+            Self::Gz => "GZ",
+            Self::Tgz => "TGZ",
+            Self::Xz => "XZ",
+            Self::SevenZip => "7Z",
+        }
+    }
 }
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -35,6 +100,29 @@ struct SdkInput {
     size: u64,
     modified_seconds: i64,
     is_directory: c_int,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct SdkFileTiming {
+    opened_us: u64,
+    released_us: u64,
+}
+
+pub struct ZipFileTiming {
+    pub index: usize,
+    pub size: u64,
+    pub opened_us: u64,
+    pub released_us: Option<u64>,
+}
+
+#[derive(Default)]
+pub struct ZipDiagnostics {
+    pub sdk_started_at: Option<Instant>,
+    pub files: usize,
+    pub folders: usize,
+    pub empty_files: usize,
+    pub timings: Vec<ZipFileTiming>,
 }
 
 type SdkProgressCallback = unsafe extern "C" fn(u64, u64, u32, u32, *mut c_void) -> c_int;
@@ -80,7 +168,7 @@ impl Drop for TemporaryDirectory {
     }
 }
 
-fn c_string(value: &str, message: &str) -> Result<CString, String> {
+pub(crate) fn c_string(value: &str, message: &str) -> Result<CString, String> {
     CString::new(value).map_err(|_| message.to_string())
 }
 
@@ -1175,12 +1263,12 @@ fn convert_zip_to_pkware_split(
     Ok(())
 }
 
-struct SdkProgressContext<'a, F> {
-    cancelled: &'a AtomicBool,
-    on_progress: &'a mut F,
+pub(crate) struct SdkProgressContext<'a, F> {
+    pub(crate) cancelled: &'a AtomicBool,
+    pub(crate) on_progress: &'a mut F,
 }
 
-unsafe extern "C" fn sdk_progress<F: FnMut(CreateProgress)>(
+pub(crate) unsafe extern "C" fn sdk_progress<F: FnMut(CreateProgress)>(
     completed_bytes: u64,
     total_bytes: u64,
     completed_entries: u32,
@@ -1202,6 +1290,7 @@ unsafe extern "C" fn sdk_progress<F: FnMut(CreateProgress)>(
 }
 
 fn create_with_7zip_sdk<F: FnMut(CreateProgress)>(
+    format: ArchiveFormat,
     sources: &[SourceEntry],
     temporary_path: &Path,
     compression_level: u8,
@@ -1209,6 +1298,7 @@ fn create_with_7zip_sdk<F: FnMut(CreateProgress)>(
     total_bytes: u64,
     cancelled: &AtomicBool,
     on_progress: &mut F,
+    diagnostics: Option<&mut ZipDiagnostics>,
 ) -> Result<(), String> {
     let output_path = c_string(
         temporary_path
@@ -1260,11 +1350,17 @@ fn create_with_7zip_sdk<F: FnMut(CreateProgress)>(
         cancelled,
         on_progress,
     };
+    let input_count = u32::try_from(inputs.len()).map_err(|_| "압축 항목 수가 너무 많습니다.")?;
+    let mut timings = diagnostics
+        .as_ref()
+        .map(|_| vec![SdkFileTiming::default(); inputs.len()]);
+    let sdk_started_at = Instant::now();
     let status = unsafe {
-        silk_7zip_create_zip(
+        silk_7zip_create_archive(
+            format.sdk_id(),
             output_path.as_ptr(),
             inputs.as_ptr(),
-            u32::try_from(inputs.len()).map_err(|_| "압축 항목 수가 너무 많습니다.")?,
+            input_count,
             compression_level as u32,
             password
                 .as_ref()
@@ -1272,14 +1368,35 @@ fn create_with_7zip_sdk<F: FnMut(CreateProgress)>(
             total_bytes,
             Some(sdk_progress::<F>),
             (&mut context as *mut SdkProgressContext<'_, F>).cast(),
+            timings.as_mut().map_or(std::ptr::null_mut(), Vec::as_mut_ptr),
         )
     };
+    if let (Some(diagnostics), Some(timings)) = (diagnostics, timings) {
+        diagnostics.sdk_started_at = Some(sdk_started_at);
+        for (index, (input, timing)) in inputs.iter().zip(timings).enumerate() {
+            if input.is_directory != 0 {
+                diagnostics.folders += 1;
+                continue;
+            }
+            diagnostics.files += 1;
+            diagnostics.empty_files += usize::from(input.size == 0);
+            if timing.opened_us != 0 {
+                diagnostics.timings.push(ZipFileTiming {
+                    index: index + 1,
+                    size: input.size,
+                    opened_us: timing.opened_us,
+                    released_us: (timing.released_us != 0).then_some(timing.released_us),
+                });
+            }
+        }
+    }
     if status != 0 {
         return Err(if cancelled.load(Ordering::Relaxed) {
             "압축 작업이 취소되었습니다.".into()
         } else {
             format!(
-                "7-Zip SDK에서 ZIP 생성에 실패했습니다 (HRESULT 0x{:08X}).",
+                "7-Zip SDK에서 {} 생성에 실패했습니다 (HRESULT 0x{:08X}).",
+                format.label(),
                 status as u32
             )
         });
@@ -1311,6 +1428,7 @@ fn write_split_zip<F: FnMut(CreateProgress)>(
     total_bytes: u64,
     cancelled: &Arc<AtomicBool>,
     mut on_progress: F,
+    diagnostics: Option<&mut ZipDiagnostics>,
 ) -> Result<CreateResult, String> {
     let stage = temporary_directory(output_path)?;
     let staged_zip = stage.0.join(format!(
@@ -1318,6 +1436,7 @@ fn write_split_zip<F: FnMut(CreateProgress)>(
         TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
     create_with_7zip_sdk(
+        ArchiveFormat::Zip,
         &sources,
         &staged_zip,
         compression_level,
@@ -1325,6 +1444,7 @@ fn write_split_zip<F: FnMut(CreateProgress)>(
         total_bytes,
         cancelled,
         &mut on_progress,
+        diagnostics,
     )?;
     for source in sources.iter().filter(|source| !source.directory) {
         if fs::metadata(&source.path)
@@ -1358,6 +1478,183 @@ fn write_split_zip<F: FnMut(CreateProgress)>(
     })
 }
 
+/// Existing `name` and `name.NNN` files next to a 7z output.
+fn seven_zip_volume_targets(output: &Path) -> Result<Vec<PathBuf>, String> {
+    let parent = output
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let output_name = output
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("저장 파일 이름을 UTF-8로 처리할 수 없습니다.")?
+        .to_lowercase();
+    let mut targets = Vec::new();
+    for item in fs::read_dir(parent).map_err(|error| error.to_string())? {
+        let path = item.map_err(|error| error.to_string())?.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let lower = name.to_lowercase();
+        let is_volume = lower.strip_prefix(&output_name).is_some_and(|rest| {
+            rest.is_empty()
+                || rest.strip_prefix('.').is_some_and(|number| {
+                    !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
+                })
+        });
+        if is_volume {
+            if !path.is_file() {
+                return Err(format!(
+                    "분할 압축 저장 경로에 파일이 아닌 항목이 있습니다: {}",
+                    path.display()
+                ));
+            }
+            targets.push(path);
+        }
+    }
+    Ok(targets)
+}
+
+/// Split `archive` into `<output name>.001`, `.002`, ... inside `stage`.
+fn split_file_into_volumes(
+    archive: &Path,
+    stage: &Path,
+    output_name: &str,
+    split_size: u64,
+    cancelled: &AtomicBool,
+) -> Result<Vec<PathBuf>, String> {
+    use std::io::{Read, Write};
+    let mut input = fs::File::open(archive).map_err(|error| error.to_string())?;
+    let mut buffer = vec![0u8; 1024 * 1024];
+    let mut volumes = Vec::new();
+    loop {
+        let number = volumes.len() + 1;
+        if number > 9999 {
+            return Err("분할 파일이 너무 많습니다. 분할 크기를 늘려 주세요.".into());
+        }
+        let path = stage.join(format!("{output_name}.{number:03}"));
+        let mut output = fs::File::create(&path).map_err(|error| error.to_string())?;
+        volumes.push(path);
+        let mut written = 0u64;
+        while written < split_size {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err("압축 작업이 취소되었습니다.".into());
+            }
+            let want = (split_size - written).min(buffer.len() as u64) as usize;
+            let read = input.read(&mut buffer[..want]).map_err(|error| error.to_string())?;
+            if read == 0 {
+                break;
+            }
+            output.write_all(&buffer[..read]).map_err(|error| error.to_string())?;
+            written += read as u64;
+        }
+        output.flush().map_err(|error| error.to_string())?;
+        if written < split_size {
+            if written == 0 && volumes.len() > 1 {
+                let empty = volumes.pop().unwrap();
+                let _ = fs::remove_file(empty);
+            }
+            return Ok(volumes);
+        }
+    }
+}
+
+fn write_split_seven_zip<F: FnMut(CreateProgress)>(
+    sources: Vec<SourceEntry>,
+    output_path: &Path,
+    compression_level: u8,
+    password: Option<&str>,
+    split_size: u64,
+    total_bytes: u64,
+    cancelled: &Arc<AtomicBool>,
+    mut on_progress: F,
+) -> Result<CreateResult, String> {
+    let output_name = output_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("저장 파일 이름을 UTF-8로 처리할 수 없습니다.")?
+        .to_string();
+    let stage = temporary_directory(output_path)?;
+    let staged = stage.0.join(format!(
+        "source-{}.7z",
+        TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    create_with_7zip_sdk(
+        ArchiveFormat::SevenZip,
+        &sources,
+        &staged,
+        compression_level,
+        password,
+        total_bytes,
+        cancelled,
+        &mut on_progress,
+        None,
+    )?;
+    for source in sources.iter().filter(|source| !source.directory) {
+        if fs::metadata(&source.path)
+            .map_err(|error| error.to_string())?
+            .len()
+            != source.metadata.as_ref().map_or(0, Metadata::len)
+        {
+            return Err(format!(
+                "압축 중 파일 크기가 변경되었습니다: {}",
+                source.path.display()
+            ));
+        }
+    }
+    on_progress(CreateProgress {
+        phase: "finalizing".into(),
+        completed_bytes: total_bytes,
+        total_bytes,
+        completed_entries: sources.len(),
+        total_entries: sources.len(),
+    });
+    let volumes = split_file_into_volumes(&staged, &stage.0, &output_name, split_size, cancelled)?;
+    let _ = fs::remove_file(&staged);
+    let total_size = volumes
+        .iter()
+        .try_fold(0u64, |total, path| total.checked_add(fs::metadata(path).ok()?.len()))
+        .ok_or("분할 압축 파일 크기를 계산하지 못했습니다.")?;
+
+    let parent = output_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let backup = stage.0.join(".previous-output");
+    fs::create_dir(&backup).map_err(|error| error.to_string())?;
+    let mut backed_up = Vec::<(PathBuf, PathBuf)>::new();
+    let restore = |backed_up: &[(PathBuf, PathBuf)]| {
+        for (original, saved) in backed_up.iter().rev() {
+            let _ = fs::rename(saved, original);
+        }
+    };
+    for target in seven_zip_volume_targets(output_path)? {
+        let backup_path = backup.join(target.file_name().ok_or("기존 파일 이름을 읽지 못했습니다.")?);
+        if let Err(error) = fs::rename(&target, &backup_path) {
+            restore(&backed_up);
+            return Err(format!("기존 분할 압축 파일을 보관하지 못했습니다: {error}"));
+        }
+        backed_up.push((target, backup_path));
+    }
+    let mut installed = Vec::<(PathBuf, PathBuf)>::new();
+    for volume in volumes {
+        let destination = parent.join(volume.file_name().ok_or("분할 파일 이름을 읽지 못했습니다.")?);
+        if let Err(error) = fs::rename(&volume, &destination) {
+            for (original, destination) in installed.iter().rev() {
+                let _ = fs::rename(destination, original);
+            }
+            restore(&backed_up);
+            return Err(format!("분할 압축 파일을 저장하지 못했습니다: {error}"));
+        }
+        installed.push((volume, destination));
+    }
+    Ok(CreateResult {
+        path: parent.join(format!("{output_name}.001")).to_string_lossy().into_owned(),
+        entries: sources.len(),
+        size: total_size,
+    })
+}
+
 /// Create a ZIP archive. Input files are stored by basename; selected folders
 /// keep their top-level directory and relative contents.
 pub fn create_zip<F>(
@@ -1372,7 +1669,8 @@ where
     F: FnMut(CreateProgress),
 {
     let sources = collect_sources(input_paths, cancelled)?;
-    write_zip(
+    write_archive(
+        ArchiveFormat::Zip,
         sources,
         output_path,
         compression_level,
@@ -1380,6 +1678,7 @@ where
         None,
         cancelled,
         on_progress,
+        None,
     )
 }
 
@@ -1419,6 +1718,50 @@ pub fn create_zip_entries_with_split<F: FnMut(CreateProgress)>(
     cancelled: &Arc<AtomicBool>,
     on_progress: F,
 ) -> Result<CreateResult, String> {
+    create_zip_entries_with_diagnostics(
+        inputs, output_path, compression_level, password, split_size, cancelled, on_progress, None,
+    )
+}
+
+pub fn create_zip_entries_with_diagnostics<F: FnMut(CreateProgress)>(
+    inputs: &[CreateInput],
+    output_path: &Path,
+    compression_level: u8,
+    password: Option<&str>,
+    split_size: Option<u64>,
+    cancelled: &Arc<AtomicBool>,
+    on_progress: F,
+    diagnostics: Option<&mut ZipDiagnostics>,
+) -> Result<CreateResult, String> {
+    create_archive_entries(
+        ArchiveFormat::Zip,
+        inputs,
+        output_path,
+        compression_level,
+        password,
+        split_size,
+        cancelled,
+        on_progress,
+        diagnostics,
+    )
+}
+
+/// Create an archive of `format` from explicit entries. TAR stores data
+/// uncompressed and supports neither passwords nor splitting.
+pub fn create_archive_entries<F: FnMut(CreateProgress)>(
+    format: ArchiveFormat,
+    inputs: &[CreateInput],
+    output_path: &Path,
+    compression_level: u8,
+    password: Option<&str>,
+    split_size: Option<u64>,
+    cancelled: &Arc<AtomicBool>,
+    on_progress: F,
+    mut diagnostics: Option<&mut ZipDiagnostics>,
+) -> Result<CreateResult, String> {
+    if let Some(diagnostics) = diagnostics.as_mut() {
+        **diagnostics = ZipDiagnostics::default();
+    }
     let mut sources = Vec::new();
     let mut names = HashSet::new();
     for input in inputs {
@@ -1476,7 +1819,8 @@ pub fn create_zip_entries_with_split<F: FnMut(CreateProgress)>(
             parent = prefix;
         }
     }
-    write_zip(
+    write_archive(
+        format,
         sources,
         output_path,
         compression_level,
@@ -1484,10 +1828,171 @@ pub fn create_zip_entries_with_split<F: FnMut(CreateProgress)>(
         split_size,
         cancelled,
         on_progress,
+        diagnostics,
     )
 }
 
-fn write_zip<F: FnMut(CreateProgress)>(
+fn output_extension_matches(format: ArchiveFormat, output_path: &Path) -> bool {
+    let name = output_path
+        .file_name()
+        .map(|value| value.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    match format {
+        ArchiveFormat::Tgz => name.ends_with(".tgz") || name.ends_with(".tar.gz"),
+        _ => name.ends_with(&format!(".{}", format.extension())),
+    }
+}
+
+fn gzip_file<F: FnMut(CreateProgress)>(
+    input: &Path,
+    output: &Path,
+    name: Option<&str>,
+    modified_seconds: i64,
+    level: u8,
+    total_bytes: u64,
+    cancelled: &AtomicBool,
+    on_progress: &mut F,
+) -> Result<(), String> {
+    let input_path = c_string(
+        input.to_str().ok_or("입력 경로를 UTF-8로 처리할 수 없습니다.")?,
+        "입력 경로가 올바르지 않습니다.",
+    )?;
+    let output_path = c_string(
+        output.to_str().ok_or("저장 경로를 UTF-8로 처리할 수 없습니다.")?,
+        "저장 경로가 올바르지 않습니다.",
+    )?;
+    let name = name
+        .map(|value| c_string(value, "압축 항목 이름이 올바르지 않습니다."))
+        .transpose()?;
+    let mut context = SdkProgressContext {
+        cancelled,
+        on_progress,
+    };
+    let status = unsafe {
+        silk_7zip_gzip_file(
+            input_path.as_ptr(),
+            output_path.as_ptr(),
+            name.as_ref().map_or(std::ptr::null(), |value| value.as_ptr()),
+            modified_seconds,
+            level as u32,
+            total_bytes,
+            Some(sdk_progress::<F>),
+            (&mut context as *mut SdkProgressContext<'_, F>).cast(),
+        )
+    };
+    if cancelled.load(Ordering::Relaxed) {
+        return Err("압축 작업이 취소되었습니다.".into());
+    }
+    if status != 0 {
+        return Err(format!("GZ 압축에 실패했습니다 (HRESULT 0x{:08X}).", status as u32));
+    }
+    Ok(())
+}
+
+fn write_gzip<F: FnMut(CreateProgress)>(
+    format: ArchiveFormat,
+    sources: Vec<SourceEntry>,
+    output_path: &Path,
+    compression_level: u8,
+    total_bytes: u64,
+    cancelled: &Arc<AtomicBool>,
+    mut on_progress: F,
+) -> Result<CreateResult, String> {
+    let temporary = temporary_path(output_path)?;
+    let cleanup = TemporaryOutput(temporary.clone());
+    let entries = sources.len();
+    if format == ArchiveFormat::Gz {
+        let source = &sources[0];
+        let name = source.archive_path.rsplit('/').next().unwrap_or(&source.archive_path);
+        let modified_seconds = source
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.modified().ok())
+            .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+            .map_or(0, |value| value.as_secs().min(i64::MAX as u64) as i64);
+        gzip_file(
+            &source.path,
+            &temporary,
+            Some(name),
+            modified_seconds,
+            compression_level,
+            total_bytes,
+            cancelled,
+            &mut on_progress,
+        )?;
+        if fs::metadata(&source.path).map_err(|error| error.to_string())?.len()
+            != source.metadata.as_ref().map_or(0, Metadata::len)
+        {
+            return Err(format!(
+                "압축 중 파일 크기가 변경되었습니다: {}",
+                source.path.display()
+            ));
+        }
+    } else {
+        let stage = temporary_directory(output_path)?;
+        let tar = stage.0.join("source.tar");
+        // Reading the sources into the tar stage is the cheap first fifth of the work.
+        let tar_share = total_bytes / 5;
+        create_with_7zip_sdk(
+            ArchiveFormat::Tar,
+            &sources,
+            &tar,
+            compression_level,
+            None,
+            total_bytes,
+            cancelled,
+            &mut |progress: CreateProgress| {
+                on_progress(CreateProgress {
+                    completed_bytes: progress.completed_bytes / 5,
+                    ..progress
+                })
+            },
+            None,
+        )?;
+        let tar_size = fs::metadata(&tar).map_err(|error| error.to_string())?.len();
+        gzip_file(
+            &tar,
+            &temporary,
+            None,
+            0,
+            compression_level,
+            tar_size,
+            cancelled,
+            &mut |progress: CreateProgress| {
+                let compressed = (u128::from(progress.completed_bytes)
+                    * u128::from(total_bytes - tar_share)
+                    / u128::from(progress.total_bytes.max(1))) as u64;
+                on_progress(CreateProgress {
+                    completed_bytes: tar_share + compressed,
+                    total_bytes,
+                    completed_entries: entries,
+                    total_entries: entries,
+                    ..progress
+                })
+            },
+        )?;
+    }
+    on_progress(CreateProgress {
+        phase: "finalizing".into(),
+        completed_bytes: total_bytes,
+        total_bytes,
+        completed_entries: entries,
+        total_entries: entries,
+    });
+    replace_output(&temporary, output_path)?;
+    drop(cleanup);
+    let size = fs::metadata(output_path)
+        .map_err(|error| error.to_string())?
+        .len();
+    Ok(CreateResult {
+        path: output_path.to_string_lossy().into_owned(),
+        entries,
+        size,
+    })
+}
+
+fn write_archive<F: FnMut(CreateProgress)>(
+    format: ArchiveFormat,
     sources: Vec<SourceEntry>,
     output_path: &Path,
     compression_level: u8,
@@ -1495,19 +2000,30 @@ fn write_zip<F: FnMut(CreateProgress)>(
     split_size: Option<u64>,
     cancelled: &Arc<AtomicBool>,
     mut on_progress: F,
+    diagnostics: Option<&mut ZipDiagnostics>,
 ) -> Result<CreateResult, String> {
-    if !matches!(compression_level, 1 | 6 | 9) {
-        return Err("지원하지 않는 ZIP 압축 수준입니다.".into());
+    if format != ArchiveFormat::Tar && !matches!(compression_level, 1 | 6 | 9) {
+        return Err("지원하지 않는 압축 수준입니다.".into());
+    }
+    if !matches!(format, ArchiveFormat::Zip | ArchiveFormat::SevenZip)
+        && password.is_some_and(|value| !value.is_empty())
+    {
+        return Err(format!("{} 형식은 암호를 지원하지 않습니다.", format.label()));
+    }
+    if !matches!(format, ArchiveFormat::Zip | ArchiveFormat::SevenZip) {
+        if split_size.is_some() {
+            return Err(format!("{} 형식은 분할 압축을 지원하지 않습니다.", format.label()));
+        }
     }
     if split_size.is_some_and(|size| size < 64 * 1024 || size > i64::MAX as u64) {
         return Err("분할 크기는 64KB 이상이어야 합니다.".into());
     }
-    if !output_path
-        .extension()
-        .and_then(|value| value.to_str())
-        .is_some_and(|value| value.eq_ignore_ascii_case("zip"))
-    {
-        return Err("현재 생성할 수 있는 형식은 ZIP입니다.".into());
+    if !output_extension_matches(format, output_path) {
+        return Err(format!(
+            "{} 파일의 확장자는 .{}이어야 합니다.",
+            format.label(),
+            format.extension()
+        ));
     }
     let output_parent = output_path
         .parent()
@@ -1529,6 +2045,14 @@ fn write_zip<F: FnMut(CreateProgress)>(
     if sources.is_empty() {
         return Err("압축할 파일이 없습니다.".into());
     }
+    if matches!(format, ArchiveFormat::Gz | ArchiveFormat::Xz)
+        && (sources.len() != 1 || sources[0].directory)
+    {
+        return Err(format!(
+            "{}는 파일 하나만 압축할 수 있습니다. 여러 파일이나 폴더는 TGZ 또는 TAR을 사용하세요.",
+            format.label()
+        ));
+    }
     if output_path.exists() {
         let output_canonical = fs::canonicalize(output_path).map_err(|error| error.to_string())?;
         if sources
@@ -1539,7 +2063,12 @@ fn write_zip<F: FnMut(CreateProgress)>(
         }
     }
     if split_size.is_some() {
-        for target in existing_split_targets(output_path)? {
+        let targets = if format == ArchiveFormat::SevenZip {
+            seven_zip_volume_targets(output_path)?
+        } else {
+            existing_split_targets(output_path)?
+        };
+        for target in targets {
             let target_canonical = fs::canonicalize(&target).map_err(|error| error.to_string())?;
             if sources
                 .iter()
@@ -1570,8 +2099,20 @@ fn write_zip<F: FnMut(CreateProgress)>(
         total_entries: sources.len(),
     });
 
-    if let Some(split_size) = split_size {
-        return write_split_zip(
+    if matches!(format, ArchiveFormat::Gz | ArchiveFormat::Tgz) {
+        return write_gzip(
+            format,
+            sources,
+            output_path,
+            compression_level,
+            total_bytes,
+            cancelled,
+            on_progress,
+        );
+    }
+
+    if let (Some(split_size), ArchiveFormat::SevenZip) = (split_size, format) {
+        return write_split_seven_zip(
             sources,
             output_path,
             compression_level,
@@ -1583,12 +2124,27 @@ fn write_zip<F: FnMut(CreateProgress)>(
         );
     }
 
+    if let Some(split_size) = split_size {
+        return write_split_zip(
+            sources,
+            output_path,
+            compression_level,
+            password,
+            split_size,
+            total_bytes,
+            cancelled,
+            on_progress,
+            diagnostics,
+        );
+    }
+
     let temporary = temporary_path(output_path)?;
     let cleanup = TemporaryOutput(temporary.clone());
     if cancelled.load(Ordering::Relaxed) {
         return Err("압축 작업이 취소되었습니다.".into());
     }
     create_with_7zip_sdk(
+        format,
         &sources,
         &temporary,
         compression_level,
@@ -1596,6 +2152,7 @@ fn write_zip<F: FnMut(CreateProgress)>(
         total_bytes,
         cancelled,
         &mut on_progress,
+        diagnostics,
     )?;
     on_progress(CreateProgress {
         phase: "finalizing".into(),

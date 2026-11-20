@@ -49,17 +49,20 @@ function ConfirmDialog() {
           <p>{request.message}</p>
         </div>
         <footer className="workbench-confirm-dialog__footer">
-          <button
-            type="button"
-            className="workbench-confirm-dialog__button"
-            autoFocus
-            onClick={() => close(false)}
-          >
-            {request.cancelLabel ?? t("common.cancel")}
-          </button>
+          {request.hideCancel ? null : (
+            <button
+              type="button"
+              className="workbench-confirm-dialog__button"
+              autoFocus
+              onClick={() => close(false)}
+            >
+              {request.cancelLabel ?? t("common.cancel")}
+            </button>
+          )}
           <button
             type="button"
             className={`workbench-confirm-dialog__button workbench-confirm-dialog__button--${request.danger ? "danger" : "primary"}`}
+            autoFocus={request.hideCancel}
             onClick={() => close(true)}
           >
             {request.confirmLabel ?? t("common.delete")}

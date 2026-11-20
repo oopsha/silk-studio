@@ -25,7 +25,9 @@ export function listArchive(path: string): Promise<ArchiveListing> {
 export function createArchive(
   operationId: string,
   inputs: { sourcePath: string | null; archivePath: string }[],
+  inputEntrySizes: number[],
   outputPath: string,
+  format: string,
   compressionLevel: number,
   password: string,
   splitSizeBytes: number | null,
@@ -36,11 +38,54 @@ export function createArchive(
   return invoke("archive_create", {
     operationId,
     inputs,
+    inputEntrySizes,
     outputPath,
+    format,
     compressionLevel,
     password: password || null,
     splitSizeBytes,
     onProgress: channel,
+  });
+}
+
+export type ExtractResult = { outputDir: string; format: string; extracted: number; skipped: number };
+
+export function extractArchive(
+  operationId: string,
+  archivePath: string,
+  outputDir: string,
+  password: string,
+  overwrite: boolean,
+  onProgress: (progress: CreateProgress) => void,
+): Promise<ExtractResult> {
+  const channel = new Channel<CreateProgress>();
+  channel.onmessage = onProgress;
+  return invoke("archive_extract", {
+    operationId,
+    archivePath,
+    outputDir,
+    password: password || null,
+    overwrite,
+    onProgress: channel,
+  });
+}
+
+export function reportArchiveProgressDiagnostic(
+  operationId: string,
+  sample: {
+    receivedCount: number;
+    receivedSinceLastSample: number;
+    sampleIntervalMs: number;
+    completedBytes: number;
+    totalBytes: number;
+    completedEntries: number;
+    totalEntries: number;
+    lastMessageAgeMs: number;
+  },
+): Promise<void> {
+  return invoke("archive_progress_diagnostic", {
+    operationId,
+    ...sample,
   });
 }
 

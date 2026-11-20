@@ -1,5 +1,6 @@
 //! Shared, UI-independent archive inspection backed by libarchive.
 pub mod create;
+pub mod extract;
 
 use serde::Serialize;
 use std::ffi::CString;
@@ -59,9 +60,11 @@ pub struct ArchiveListing {
     pub warnings: Vec<String>,
 }
 
+pub use extract::{extract_archive, ExtractResult};
 pub use create::{
-    create_zip, create_zip_entries, create_zip_entries_with_split, CreateInput, CreateProgress,
-    CreateResult,
+    create_archive_entries, create_zip, create_zip_entries, create_zip_entries_with_diagnostics,
+    create_zip_entries_with_split, ArchiveFormat, CreateInput, CreateProgress, CreateResult, ZipDiagnostics,
+    ZipFileTiming,
 };
 
 type SplitZipEntryCallback = unsafe extern "C" fn(

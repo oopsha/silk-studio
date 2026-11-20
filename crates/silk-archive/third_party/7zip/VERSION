@@ -1,0 +1,6 @@
+7-Zip 26.06 (ip7z/7zip tag 26.06), copied from vcpkg port 7zip 26.6
+Source list derived from the vcpkg port CMakeLists (non-asm fallbacks).
+Pruned to the extraction scope: removed disk-image, filesystem, executable and
+installer handlers (APFS/APM/DMG/FAT/GPT/HFS/MBR/NTFS/QCOW/SquashFS/UEFI/VDI/VHD/VHDX/VMDK/XAR,
+PE/ELF/Mach-O/MUB/SWF/FLV, NSIS/CHM, COM/Base64/IHEX/MSLZ/PPMD/Cramfs/Sparse).
+ExtHandler stays because HandlerCont.cpp (used by ISO/RAR/RPM) references it.

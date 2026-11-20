@@ -102,6 +102,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             archive::archive_list,
             archive::archive_create,
+            archive::archive_extract,
+            archive::archive_progress_diagnostic,
             archive::archive_cancel,
             archive::open_output_folder,
             file_sizes,
