@@ -730,6 +730,7 @@ class SilkExtractCallback final : public IArchiveExtractCallback,
 
   // Normalised ("/" separators, no trailing slash) archive paths chosen for extraction.
   std::vector<UString> selections;
+  bool test_only = false;
 
   Z7_COM7F_IMF(SetTotal(UInt64 total)) { total_ = total; return S_OK; }
 
@@ -747,6 +748,13 @@ class SilkExtractCallback final : public IArchiveExtractCallback,
     out_stream_.Release();
     skipped_item_ = false;
     is_dir_ = false;
+    if (test_only) {
+      // Integrity test: no output stream, the data is only decoded and checked.
+      CPropVariant dir_value;
+      archive_->GetProperty(index, kpidIsDir, &dir_value);
+      skipped_item_ = dir_value.vt == VT_BOOL && dir_value.boolVal != VARIANT_FALSE;
+      return S_OK;
+    }
     if (mode != NArchive::NExtract::NAskMode::kExtract) {
       skipped_item_ = true;
       return S_OK;
@@ -930,7 +938,7 @@ class SilkExtractCallback final : public IArchiveExtractCallback,
 // Extracts every item of `archive_path` into `output_dir`. Detects the format,
 // handles numbered split volumes (.001) and encrypted headers/data.
 extern "C" int silk_7zip_extract(const char *archive_path, const char *output_dir,
-                                  const char *password, int overwrite,
+                                  const char *password, int overwrite, int test_only,
                                   const char *const *only, std::uint32_t only_count,
                                   SilkZipProgress progress, void *progress_context,
                                   SilkExtractResult *out) {
@@ -942,7 +950,7 @@ extern "C" int silk_7zip_extract(const char *archive_path, const char *output_di
   const FString native_archive = file_system_path(archive_path);
   FString destination = file_system_path(output_dir);
   while (destination.Len() > 1 && IS_PATH_SEPAR(destination.Back())) destination.DeleteBack();
-  NWindows::NFile::NDir::CreateComplexDir(destination);
+  if (!test_only) NWindows::NFile::NDir::CreateComplexDir(destination);
 
   CInFileStream *input_spec = new CInFileStream;
   CMyComPtr<IInStream> input = input_spec;
@@ -996,11 +1004,12 @@ extern "C" int silk_7zip_extract(const char *archive_path, const char *output_di
       overwrite != 0, only_count > 0 ? static_cast<UInt32>(indices.size()) : items, progress,
       progress_context, out);
   callback_spec->selections = selections;
+  callback_spec->test_only = test_only != 0;
   CMyComPtr<IArchiveExtractCallback> callback = callback_spec;
   result = opened.archive->Extract(indices.empty() ? nullptr : indices.data(),
                                    indices.empty() ? static_cast<UInt32>(-1)
                                                    : static_cast<UInt32>(indices.size()),
-                                   0, callback);
+                                   test_only ? 1 : 0, callback);
   opened.archive->Close();
   return static_cast<int>(result);
 }

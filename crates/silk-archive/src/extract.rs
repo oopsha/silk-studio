@@ -28,6 +28,7 @@ unsafe extern "C" {
         output_dir: *const c_char,
         password: *const c_char,
         overwrite: c_int,
+        test_only: c_int,
         only: *const *const c_char,
         only_count: u32,
         progress: Option<SdkProgressCallback>,
@@ -43,6 +44,37 @@ pub struct ExtractResult {
     pub format: String,
     pub extracted: usize,
     pub skipped: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestResult {
+    pub format: String,
+    pub tested: usize,
+}
+
+/// Decodes every entry without writing anything and reports whether the archive is intact.
+/// Errors name the problem (wrong password, damaged data, missing volume).
+pub fn test_archive<F: FnMut(CreateProgress)>(
+    archive: &Path,
+    password: Option<&str>,
+    cancelled: &AtomicBool,
+    mut on_progress: F,
+) -> Result<TestResult, String> {
+    crate::locale::ensure_utf8();
+    if !archive.is_file() {
+        return Err("압축 파일을 찾을 수 없습니다.".into());
+    }
+    on_progress(CreateProgress {
+        phase: "preparing".into(),
+        completed_bytes: 0,
+        total_bytes: 0,
+        completed_entries: 0,
+        total_entries: 0,
+    });
+    let (format, tested, _) =
+        extract_once(archive, Path::new(""), password, false, true, &[], cancelled, &mut on_progress)?;
+    Ok(TestResult { format, tested: tested as usize })
 }
 
 static EXTRACT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -65,6 +97,7 @@ fn extract_once<F: FnMut(CreateProgress)>(
     output_dir: &Path,
     password: Option<&str>,
     overwrite: bool,
+    test_only: bool,
     only: &[CString],
     cancelled: &AtomicBool,
     on_progress: &mut F,
@@ -98,6 +131,7 @@ fn extract_once<F: FnMut(CreateProgress)>(
             output_c.as_ptr(),
             password_c.as_ref().map_or(std::ptr::null(), |value| value.as_ptr()),
             c_int::from(overwrite),
+            c_int::from(test_only),
             if only_pointers.is_empty() { std::ptr::null() } else { only_pointers.as_ptr() },
             only_pointers.len() as u32,
             Some(sdk_progress::<F>),
@@ -136,8 +170,12 @@ fn extract_once<F: FnMut(CreateProgress)>(
                 _ => "",
             },
         };
-        let reason = if reason.is_empty() { "일부 항목을 풀지 못했습니다." } else { reason };
-        return Err(format!("{}개 항목을 풀지 못했습니다. {reason}", result.failed));
+        let reason = if reason.is_empty() { "일부 항목을 처리하지 못했습니다." } else { reason };
+        return Err(if test_only {
+            format!("{}개 항목에 문제가 있습니다. {reason}", result.failed)
+        } else {
+            format!("{}개 항목을 풀지 못했습니다. {reason}", result.failed)
+        });
     }
     Ok((text(&result.format), result.extracted, result.skipped))
 }
@@ -216,7 +254,7 @@ pub fn extract_entries<F: FnMut(CreateProgress)>(
         .any(|suffix| name.ends_with(suffix));
     if !may_wrap_tar {
         let (format, extracted, skipped) =
-            extract_once(archive, &output_dir, password, overwrite, &only, cancelled, &mut on_progress)?;
+            extract_once(archive, &output_dir, password, overwrite, false, &only, cancelled, &mut on_progress)?;
         on_progress(CreateProgress {
             phase: "finalizing".into(),
             completed_bytes: 1,
@@ -240,7 +278,7 @@ pub fn extract_entries<F: FnMut(CreateProgress)>(
     )));
     fs::create_dir(&stage.0).map_err(|error| error.to_string())?;
     let (format, extracted, skipped) =
-        extract_once(archive, &stage.0, password, true, &[], cancelled, &mut on_progress)?;
+        extract_once(archive, &stage.0, password, true, false, &[], cancelled, &mut on_progress)?;
 
     let staged: Vec<PathBuf> = fs::read_dir(&stage.0)
         .map_err(|error| error.to_string())?
@@ -250,7 +288,7 @@ pub fn extract_entries<F: FnMut(CreateProgress)>(
         let name = staged[0].file_name().unwrap().to_string_lossy().to_lowercase();
         if name.ends_with(".tar") || looks_like_tar(&staged[0]) {
             let (_, extracted, skipped) =
-                extract_once(&staged[0], &output_dir, None, overwrite, &only, cancelled, &mut on_progress)?;
+                extract_once(&staged[0], &output_dir, None, overwrite, false, &only, cancelled, &mut on_progress)?;
             return Ok(ExtractResult {
                 output_dir: display_dir,
                 format: format!("{format}+tar"),

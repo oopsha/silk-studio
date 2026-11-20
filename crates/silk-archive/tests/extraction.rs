@@ -1,4 +1,4 @@
-use silk_archive::{create_archive_entries, extract_archive, extract_entries, ArchiveFormat, CreateInput};
+use silk_archive::{create_archive_entries, extract_archive, extract_entries, test_archive, ArchiveFormat, CreateInput};
 use std::{
     fs,
     path::PathBuf,
@@ -152,4 +152,33 @@ fn extracts_only_selected_entries_without_their_parent_folders() {
         let error = extract_entries(&archive, &none, None, false, &["missing".into()], &cancelled, |_| {}).unwrap_err();
         assert!(error.contains("찾지 못"), "{name}: {error}");
     }
+}
+
+#[test]
+fn tests_archives_without_writing_and_reports_damage() {
+    let workspace = Workspace::new();
+    let inputs = sample(&workspace);
+    let cancelled = Arc::new(AtomicBool::new(false));
+    for (format, name) in [(ArchiveFormat::Zip, "t.zip"), (ArchiveFormat::SevenZip, "t.7z"), (ArchiveFormat::Tgz, "t.tgz")] {
+        let archive = workspace.0.join(name);
+        create_archive_entries(format, &inputs, &archive, 6, None, None, &cancelled, |_| {}, None).unwrap();
+        let result = test_archive(&archive, None, &cancelled, |_| {}).unwrap();
+        assert!(result.tested >= 1, "{name}: {result:?}");
+        // Flip bytes inside the compressed data of a damaged copy.
+        let mut bytes = fs::read(&archive).unwrap();
+        let middle = bytes.len() / 2;
+        for byte in &mut bytes[middle..middle + 8] {
+            *byte ^= 0xFF;
+        }
+        let damaged = workspace.0.join(format!("damaged-{name}"));
+        fs::write(&damaged, bytes).unwrap();
+        let error = test_archive(&damaged, None, &cancelled, |_| {}).unwrap_err();
+        assert!(error.contains("문제") || error.contains("손상") || error.contains("지원하지"), "{name}: {error}");
+    }
+    let locked = workspace.0.join("locked.7z");
+    create_archive_entries(ArchiveFormat::SevenZip, &inputs, &locked, 6, Some("pw"), None, &cancelled, |_| {}, None).unwrap();
+    assert!(test_archive(&locked, None, &cancelled, |_| {}).unwrap_err().contains("암호"));
+    assert!(test_archive(&locked, Some("pw"), &cancelled, |_| {}).is_ok());
+    let only_test = workspace.0.join("only-test");
+    assert!(!only_test.exists());
 }
