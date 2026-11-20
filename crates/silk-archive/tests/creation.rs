@@ -82,15 +82,15 @@ fn writes_virtual_folders_and_files_at_explicit_archive_paths() {
     assert!(listing
         .entries
         .iter()
-        .any(|entry| entry.path == "새 폴더/" && entry.directory));
+        .any(|entry| entry.path == "새 폴더/" && entry.directory), "{:?}", listing.entries);
     assert!(listing
         .entries
         .iter()
-        .any(|entry| entry.path == "빈 폴더/" && entry.directory));
+        .any(|entry| entry.path == "빈 폴더/" && entry.directory), "{:?}", listing.entries);
     assert!(listing
         .entries
         .iter()
-        .any(|entry| entry.path == "새 폴더/renamed.txt" && entry.size == Some(5)));
+        .any(|entry| entry.path == "새 폴더/renamed.txt" && entry.size == Some(5)), "{:?}", listing.entries);
     assert!(!workspace.0.join("새 폴더").exists());
 }
 
