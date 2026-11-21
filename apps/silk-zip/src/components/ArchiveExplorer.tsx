@@ -51,7 +51,7 @@ export default function ArchiveExplorer({ archive, onExtract, onTest, onRename, 
   const layout = useLayoutState();
   const activeView = useActiveView();
   const [locate, setLocate] = useState<ResourceLocate | undefined>(undefined);
-  const { extractTarget } = useZipSettings();
+  const { extractTarget, viewMode } = useZipSettings();
   const source = useMemo(() => createArchiveSource(archive), [archive]);
   const [menu, setMenu] = useState<(MenuAnchor & { selection?: { label: string; paths: string[] }; rename?: RenameEntry; reveal?: boolean }) | null>(null);
   const selected = useRef<readonly ResourceNode[]>([]);
@@ -142,6 +142,7 @@ export default function ArchiveExplorer({ archive, onExtract, onTest, onRename, 
         onSelectionChange={onSelectionChange}
         extraColumns={columns}
         header={header}
+        viewMode={viewMode}
         locate={locate}
         sidebar={activeView === "search" ? <ArchiveSearchView archive={archive} folder={folder} onReveal={(item: SearchItem) => setLocate((previous) => ({ route: archiveRoute(archive, item.parent), select: item.id, nonce: (previous?.nonce ?? 0) + 1 }))} /> : undefined}
         addressExtra={<button type="button" className="zip-path-copy" title="경로 복사" aria-label="경로 복사" aria-haspopup="menu" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setPathMenu({ x: rect.right, y: rect.bottom + 2 }); }}><Codicon name="copy" /></button>}

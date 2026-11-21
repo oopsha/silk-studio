@@ -1,5 +1,6 @@
 mod archive;
 mod clipboard;
+mod settings;
 mod window_layout;
 
 use tauri::Manager;
@@ -138,6 +139,8 @@ pub fn run() {
             archive::new_window,
             archive::exit_app,
             archive::archive_save_as,
+            settings::settings_load,
+            settings::settings_save,
             clipboard::clipboard_prepare_dir,
             clipboard::clipboard_copy_dir,
             clipboard::clipboard_read_files,
@@ -150,6 +153,7 @@ pub fn run() {
             window_layout::window_layout_apply_and_show,
             window_layout::window_layout_show,
             window_layout::window_layout_file_exists,
+            window_layout::window_layout_load,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

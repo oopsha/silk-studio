@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { ContextKeyService } from "../../platform/context/contextKeyService";
 import { loadLayoutState, saveLayoutState } from "./layoutStorage";
 
@@ -296,10 +297,23 @@ class LayoutServiceImpl {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * Applies a layout loaded from the desktop layout file. The file is the only store in the
+   * desktop app, so this does not write anything back.
+   */
+  restoreState(stored: Partial<LayoutState>): void {
+    this.applyStored(stored);
+    this.updateContextKeys();
+    this.fireDidChange();
+  }
+
+  /** Reads the browser copy: the only store in a plain browser, and the migration source on desktop. */
   private restoreFromStorage(): void {
     const stored = loadLayoutState();
-    if (!stored) return;
+    if (stored) this.applyStored(stored);
+  }
 
+  private applyStored(stored: Partial<LayoutState>): void {
     if (typeof stored.sidebar === "boolean") {
       this.sidebarVisible = stored.sidebar;
     }
@@ -359,7 +373,8 @@ class LayoutServiceImpl {
 
   private commit(): void {
     this.updateContextKeys();
-    saveLayoutState(this.getState());
+    // The desktop app saves the layout to its file (see windowLayoutSync); localStorage is for browsers.
+    if (!isTauri()) saveLayoutState(this.getState());
     this.fireDidChange();
   }
 

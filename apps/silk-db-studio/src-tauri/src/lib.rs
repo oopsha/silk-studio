@@ -716,6 +716,7 @@ pub fn run() {
             window_layout::window_layout_apply_and_show,
             window_layout::window_layout_show,
             window_layout::window_layout_file_exists,
+            window_layout::window_layout_load,
             app_log::app_log_write,
             app_log::app_runtime_info,
             app_log::app_log_open_folder,

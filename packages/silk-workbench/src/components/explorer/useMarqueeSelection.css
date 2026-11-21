@@ -1,0 +1,1 @@
+.workbench-marquee { position:absolute; z-index:3; box-sizing:border-box; pointer-events:none; border:1px solid var(--color-focus-border, #007fd4); background:color-mix(in srgb, var(--color-focus-border, #007fd4) 20%, transparent); }

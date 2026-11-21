@@ -25,6 +25,10 @@ pub struct WindowLayoutState {
     pub window_height: f64,
     #[serde(rename = "windowMaximized")]
     pub window_maximized: bool,
+    /// The rest of the workbench layout (sidebar/panel visibility and sizes, ...), owned by the
+    /// frontend and stored next to the geometry as is.
+    #[serde(flatten)]
+    pub workbench: serde_json::Map<String, serde_json::Value>,
 }
 
 fn layout_file_path(app: &AppHandle) -> tauri::Result<PathBuf> {
@@ -38,6 +42,7 @@ fn normalize_layout(layout: &WindowLayoutState) -> WindowLayoutState {
         window_width: layout.window_width.round().max(MIN_WIDTH),
         window_height: layout.window_height.round().max(MIN_HEIGHT),
         window_maximized: layout.window_maximized,
+        workbench: layout.workbench.clone(),
     }
 }
 
@@ -184,7 +189,37 @@ pub fn window_layout_show(window: WebviewWindow) -> Result<(), String> {
     Ok(())
 }
 
+/// The saved layout, or `None` when no file exists yet.
+pub fn window_layout_load(app: AppHandle) -> Result<Option<WindowLayoutState>, String> {
+    Ok(load_window_layout(&app))
+}
+
 pub fn window_layout_file_exists(app: AppHandle) -> Result<bool, String> {
     let path = layout_file_path(&app).map_err(|error| error.to_string())?;
     Ok(path.is_file())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keeps_workbench_fields_next_to_the_geometry() {
+        let raw = r#"{"windowX":10.4,"windowY":20.0,"windowWidth":900.0,"windowHeight":700.0,"windowMaximized":false,"sidebarWidth":312,"sidebar":true,"panelPosition":"right"}"#;
+        let layout: WindowLayoutState = serde_json::from_str(raw).unwrap();
+        let normalized = normalize_layout(&layout);
+        assert_eq!(normalized.window_x, 10.0);
+        let saved: serde_json::Value = serde_json::to_value(&normalized).unwrap();
+        assert_eq!(saved["sidebarWidth"], 312);
+        assert_eq!(saved["panelPosition"], "right");
+        assert_eq!(saved["sidebar"], true);
+    }
+
+    #[test]
+    fn reads_files_saved_before_the_workbench_fields_existed() {
+        let raw = r#"{"windowX":0,"windowY":0,"windowWidth":800,"windowHeight":600,"windowMaximized":true}"#;
+        let layout: WindowLayoutState = serde_json::from_str(raw).unwrap();
+        assert!(layout.workbench.is_empty());
+        assert!(layout.window_maximized);
+    }
 }

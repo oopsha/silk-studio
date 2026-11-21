@@ -602,9 +602,13 @@ pub async fn archive_save_as(source: String, target: String) -> Result<(), Strin
     .map_err(|_| "저장을 실행하지 못했습니다.".to_string())?
 }
 
-/// Quits the whole app.
+/// Quits the whole app (all windows).
 #[tauri::command]
 pub fn exit_app(app: AppHandle) {
+    // Closing the web views first lets WebView2 tear down its windows before the process ends.
+    for window in app.webview_windows().into_values() {
+        let _ = window.destroy();
+    }
     app.exit(0);
 }
 

@@ -1,3 +1,4 @@
+import { readBrowserCopy, syncStored, writeStored } from "./fileStore";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
@@ -5,9 +6,9 @@ import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegist
 const STORAGE_KEY = "silk-zip.recent-archives.v1";
 const MAX_RECENT = 10;
 
-function readRecent(): string[] {
+function parseRecent(text: string | null): string[] {
   try {
-    const value: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+    const value: unknown = JSON.parse(text ?? "[]");
     return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
   } catch {
     return [];
@@ -24,7 +25,8 @@ export function startRecentArchives(openArchive: (path: string) => void): {
   stop: () => void;
 } {
   let disposers: (() => void)[] = [];
-  let entries = readRecent();
+  let stopped = false;
+  let entries = parseRecent(readBrowserCopy(STORAGE_KEY));
 
   const renderMenu = () => {
     disposers.forEach((dispose) => dispose());
@@ -50,7 +52,7 @@ export function startRecentArchives(openArchive: (path: string) => void): {
     const clearId = "silkZip.recent.clear";
     disposers.push(CommandsRegistry.registerCommand(clearId, () => {
       entries = [];
-      localStorage.removeItem(STORAGE_KEY);
+      writeStored("recent-archives", STORAGE_KEY, "[]");
       renderMenu();
     }));
     disposers.push(MenuRegistry.appendMenuItem(MenuId.MenubarRecentZipMenu, {
@@ -61,12 +63,14 @@ export function startRecentArchives(openArchive: (path: string) => void): {
   };
 
   renderMenu();
+  void syncStored("recent-archives", () => readBrowserCopy(STORAGE_KEY), (text) => { if (stopped) return; entries = parseRecent(text); renderMenu(); });
   return {
     record(path) {
+      if (stopped) return;
       entries = [path, ...entries.filter((entry) => entry !== path)].slice(0, MAX_RECENT);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+      writeStored("recent-archives", STORAGE_KEY, JSON.stringify(entries));
       renderMenu();
     },
-    stop() { disposers.forEach((dispose) => dispose()); },
+    stop() { stopped = true; disposers.forEach((dispose) => dispose()); },
   };
 }

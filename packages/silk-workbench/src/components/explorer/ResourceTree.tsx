@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import { resourceIcon, sortResources, type ResourceNode, type ResourceRowAction, type ResourceSource, type RowMenuHandler } from "./resourceExplorerTypes";
+import ResourceIconView from "./ResourceIconView";
+import { sortResources, type ResourceNode, type ResourceRowAction, type ResourceSource, type RowMenuHandler } from "./resourceExplorerTypes";
 import "./ResourceExplorer.css";
 
 type Props = {
@@ -31,7 +32,6 @@ function Branch({ source, node, depth, selectedId, directoriesOnly, expandedPath
     return () => { active = false; };
   }, [source, node.id, node.directory, expanded, revision]);
 
-  const icon = resourceIcon(node);
   return <li role="none">
     <button type="button" className={`resource-tree__row${selectedId === node.id ? " resource-tree__row--selected" : ""}`}
       style={{ paddingLeft: 8 + depth * 16 }} role="treeitem" aria-level={depth + 1}
@@ -54,7 +54,7 @@ function Branch({ source, node, depth, selectedId, directoriesOnly, expandedPath
       <span className="resource-tree__toggle" aria-hidden onClick={(event) => { if (node.directory) { event.stopPropagation(); setExpanded(!expanded); } }}>
         {node.directory ? <Codicon name={expanded ? "chevron-down" : "chevron-right"} /> : null}
       </span>
-      <Codicon name={node.directory && expanded ? "folder-opened" : icon.name} className={icon.className} />
+      <ResourceIconView node={node} open={expanded} />
       <span className="resource-tree__name" title={node.name}>{node.name}</span>
       {rowAction && onRowMenu ? <span role="button" tabIndex={-1} className="resource-row-action" title={rowAction.title} aria-label={rowAction.title}
         onClick={(event) => { event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); onRowMenu([node], { x: rect.left, y: rect.bottom + 2 }); }}>

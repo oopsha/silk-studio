@@ -1,9 +1,20 @@
 import { useSyncExternalStore } from "react";
+import { readBrowserCopy, syncStored, writeStored } from "./fileStore";
 
 /** How "압축 풀기" picks its destination when no folder is chosen explicitly. */
 export type ExtractDefaultTarget = "ask" | "named" | "here";
 
+export type ZipViewMode = "large-icons" | "icons" | "list" | "details";
+export const ZIP_VIEW_MODES: readonly { id: ZipViewMode; title: string }[] = [
+  { id: "large-icons", title: "큰 아이콘" },
+  { id: "icons", title: "아이콘" },
+  { id: "list", title: "목록" },
+  { id: "details", title: "자세히" },
+];
+
 export interface ZipSettings {
+  /** How the opened archive's files are laid out (보기 > 보기 형식). */
+  viewMode: ZipViewMode;
   extractTarget: ExtractDefaultTarget;
   /** Replace files that already exist in the destination instead of skipping them. */
   overwrite: boolean;
@@ -12,13 +23,15 @@ export interface ZipSettings {
 }
 
 const STORAGE_KEY = "silkZip.settings";
-const DEFAULTS: ZipSettings = { extractTarget: "ask", overwrite: false, openFolderAfter: false };
+const DEFAULTS: ZipSettings = { viewMode: "details", extractTarget: "ask", overwrite: false, openFolderAfter: false };
 
-function load(): ZipSettings {
+/** Reads settings text; unknown or broken content falls back to the defaults. */
+function parse(text: string | null): ZipSettings {
   try {
-    const stored: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    const stored: unknown = JSON.parse(text ?? "{}");
     const value = (stored && typeof stored === "object" ? stored : {}) as Partial<ZipSettings>;
     return {
+      viewMode: ZIP_VIEW_MODES.some((mode) => mode.id === value.viewMode) ? (value.viewMode as ZipViewMode) : DEFAULTS.viewMode,
       extractTarget: value.extractTarget === "named" || value.extractTarget === "here" ? value.extractTarget : DEFAULTS.extractTarget,
       overwrite: typeof value.overwrite === "boolean" ? value.overwrite : DEFAULTS.overwrite,
       openFolderAfter: typeof value.openFolderAfter === "boolean" ? value.openFolderAfter : DEFAULTS.openFolderAfter,
@@ -28,8 +41,13 @@ function load(): ZipSettings {
   }
 }
 
-let current = load();
+// The browser copy is the store in a plain browser and the migration source in the desktop app.
+let current = parse(readBrowserCopy(STORAGE_KEY));
 const listeners = new Set<() => void>();
+void syncStored("settings", () => readBrowserCopy(STORAGE_KEY) ?? JSON.stringify(current), (text) => {
+  current = parse(text);
+  listeners.forEach((listener) => listener());
+});
 
 export function getZipSettings(): ZipSettings {
   return current;
@@ -37,11 +55,7 @@ export function getZipSettings(): ZipSettings {
 
 export function updateZipSettings(patch: Partial<ZipSettings>): void {
   current = { ...current, ...patch };
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
-  } catch {
-    // Settings still apply for this session when storage is unavailable.
-  }
+  writeStored("settings", STORAGE_KEY, JSON.stringify(current));
   listeners.forEach((listener) => listener());
 }
 

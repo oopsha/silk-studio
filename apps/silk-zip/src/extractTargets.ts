@@ -1,3 +1,5 @@
+import { readBrowserCopy, syncStored, writeStored } from "./fileStore";
+
 /** Where an extraction writes: asked from the user, next to the archive, or a fixed folder. */
 export type ExtractTarget = "ask" | "here" | "named" | { dir: string };
 
@@ -33,23 +35,27 @@ export function folderLabel(path: string): string {
   return name || trimmed;
 }
 
-export function loadRecentFolders(): string[] {
+function parseFolders(text: string | null): string[] {
   try {
-    const value: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+    const value: unknown = JSON.parse(text ?? "[]");
     return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").slice(0, RECENT_LIMIT) : [];
   } catch {
     return [];
   }
 }
 
+let recentFolders = parseFolders(readBrowserCopy(RECENT_KEY));
+void syncStored("recent-folders", () => readBrowserCopy(RECENT_KEY), (text) => { recentFolders = parseFolders(text); });
+
+export function loadRecentFolders(): string[] {
+  return recentFolders;
+}
+
 export function rememberFolder(path: string): void {
-  try {
-    const key = path.replace(/[\\/]+$/, "").toLowerCase();
-    const others = loadRecentFolders().filter((item) => item.replace(/[\\/]+$/, "").toLowerCase() !== key);
-    localStorage.setItem(RECENT_KEY, JSON.stringify([path, ...others].slice(0, RECENT_LIMIT)));
-  } catch {
-    // Remembering folders is a convenience; ignore storage failures.
-  }
+  const key = path.replace(/[\\/]+$/, "").toLowerCase();
+  const others = recentFolders.filter((item) => item.replace(/[\\/]+$/, "").toLowerCase() !== key);
+  recentFolders = [path, ...others].slice(0, RECENT_LIMIT);
+  writeStored("recent-folders", RECENT_KEY, JSON.stringify(recentFolders));
 }
 
 export function resolveTargetFolder(target: Exclude<ExtractTarget, "ask">, archivePath: string): string | undefined {

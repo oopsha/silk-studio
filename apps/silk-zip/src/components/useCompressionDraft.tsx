@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useMarqueeSelection } from "@silk-studio/workbench/components/explorer/useMarqueeSelection.tsx";
 import { invoke } from "@tauri-apps/api/core";
 import ResourceTree from "@silk-studio/workbench/components/explorer/ResourceTree.tsx";
 import type { ResourceSource } from "@silk-studio/workbench/components/explorer/resourceExplorerTypes.ts";
@@ -23,6 +24,7 @@ export function useCompressionDraft(rootName: string) {
   const [newFolder, setNewFolder] = useState<string | null>(null);
   const anchor = useRef(0);
   const drag = useRef<{ anchor: number; base: Set<string> } | null>(null);
+  const marquee = useMarqueeSelection({ idAt: (index) => visible[index]?.archivePath, selected, onSelect: setSelected, fromItems: false });
   const revision = useRef(0);
   const dropHighlight = useRef<HTMLElement | null>(null);
   const clearDropTarget = useCallback(() => {
@@ -102,12 +104,12 @@ export function useCompressionDraft(rootName: string) {
     {newFolder !== null ? <form className="zip-draft-folder" onSubmit={(event) => { event.preventDefault(); createFolder(); }}><input autoFocus aria-label="새 폴더 이름" value={newFolder} onChange={(event) => setNewFolder(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setNewFolder(null); }} /><button className="zip-button" type="submit">만들기</button><button className="zip-button" type="button" onClick={() => setNewFolder(null)}>취소</button></form> : null}
     {error ? <p role="alert">{error}</p> : null}
     {pending ? <p role="status">추가할 파일과 폴더를 읽고 있습니다…</p> : null}
-    <div className="zip-file-table"><div className="zip-file-header" aria-hidden="true"><span /><span>이름</span><span>파일 크기</span><span>경로</span></div><div className="zip-file-list" role="listbox" aria-label="압축할 파일 목록" aria-multiselectable="true" onMouseUp={() => { drag.current = null; }} onMouseLeave={() => { drag.current = null; }} onKeyDown={(event) => {
+    <div className="zip-file-table"><div className="zip-file-header" aria-hidden="true"><span /><span>이름</span><span>파일 크기</span><span>경로</span></div><div className="zip-file-list" role="listbox" onPointerDown={marquee.onPointerDown} aria-label="압축할 파일 목록" aria-multiselectable="true" onMouseUp={() => { drag.current = null; }} onMouseLeave={() => { drag.current = null; }} onKeyDown={(event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") { event.preventDefault(); setSelected(new Set(visible.map((entry) => entry.archivePath))); }
       if (event.key === "Delete") { event.preventDefault(); remove(); }
     }}>
       {current ? <div className="zip-file" data-zip-draft-folder={parentOf(current)} tabIndex={0} onDoubleClick={() => navigate(parentOf(current))} onKeyDown={(event) => { if (event.key === "Enter") navigate(parentOf(current)); }}><span className="codicon codicon-folder" /><span>..</span></div> : null}
-      {visible.map((entry, index) => <div className={`zip-file${selected.has(entry.archivePath) ? " zip-file--selected" : ""}`} key={entry.archivePath} data-zip-draft-folder={entry.directory ? entry.archivePath : undefined} tabIndex={0} role="option" aria-selected={selected.has(entry.archivePath)} onDoubleClick={() => { if (entry.directory) navigate(entry.archivePath); }} onKeyDown={(event) => { if (event.key === "Enter" && entry.directory) navigate(entry.archivePath); else if (event.key === " ") { event.preventDefault(); setSelected(new Set([entry.archivePath])); } }} onMouseDown={(event) => {
+      {visible.map((entry, index) => <div className={`zip-file${selected.has(entry.archivePath) ? " zip-file--selected" : ""}`} key={entry.archivePath} data-zip-draft-folder={entry.directory ? entry.archivePath : undefined} tabIndex={0} role="option" data-index={index} aria-selected={selected.has(entry.archivePath)} onDoubleClick={() => { if (entry.directory) navigate(entry.archivePath); }} onKeyDown={(event) => { if (event.key === "Enter" && entry.directory) navigate(entry.archivePath); else if (event.key === " ") { event.preventDefault(); setSelected(new Set([entry.archivePath])); } }} onMouseDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault(); event.currentTarget.focus();
         const additive = event.ctrlKey || event.metaKey;
@@ -125,6 +127,7 @@ export function useCompressionDraft(rootName: string) {
         for (let i = Math.min(drag.current.anchor, index); i <= Math.max(drag.current.anchor, index); i++) next.add(visible[i].archivePath);
         setSelected(next);
       }}><span className={`codicon ${entry.directory ? "codicon-folder" : "codicon-file"}`} /><span className="zip-file__name" title={basename(entry.archivePath)}>{basename(entry.archivePath)}</span><span className="zip-file__size">{entry.directory ? "폴더" : sizeLabel(entry.size)}</span><span className="zip-file__path" title={entry.sourcePath ?? "압축 내부 폴더"}>{entry.sourcePath ?? "압축 내부 폴더"}</span></div>)}
+      {marquee.overlay}
       {!visible.length ? <div className="zip-draft-empty"><strong>파일이나 폴더를 여기로 끌어오세요</strong><span>또는 추가를 눌러 선택</span></div> : null}
     </div></div>
   </>;

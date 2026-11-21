@@ -24,11 +24,13 @@ import ZipSettingsPage from "./components/ZipSettingsPage";
 import ZipKeybindingsPage from "./components/ZipKeybindingsPage";
 import { HistoryService } from "@silk-studio/editor/services/history/historyService.ts";
 import { UserKeybindingsService } from "@silk-studio/workbench/platform/keybinding/userKeybindingsService.ts";
-import { getZipSettings, setPage, usePage, type ZipPage } from "./zipSettings";
+import { getZipSettings, setPage, updateZipSettings, useZipSettings, usePage, ZIP_VIEW_MODES, type ZipPage } from "./zipSettings";
 import ArchiveExplorer, { type RenameEntry } from "./components/ArchiveExplorer";
 import { FOCUS_SEARCH_EVENT } from "./components/ArchiveSearchView";
 import { ViewService } from "@silk-studio/workbench/services/view/viewService.ts";
 import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
+import WorkbenchSash from "@silk-studio/workbench/components/layout/WorkbenchSash/index.ts";
+import { useWorkbenchSashDrag } from "@silk-studio/workbench/services/layout/useWorkbenchSashDrag.ts";
 import { useActiveView } from "@silk-studio/workbench/services/view/useActiveView.ts";
 import RenameDialog from "./components/RenameDialog";
 import { siblingNames } from "./archiveSource";
@@ -74,6 +76,8 @@ function formatElapsedTime(elapsedMs: number): string {
 function App() {
   const layout = useLayoutState();
   const activeView = useActiveView();
+  const { startDrag } = useWorkbenchSashDrag();
+  const { viewMode } = useZipSettings();
   useEffect(() => startWindowLayoutSync(), []);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
@@ -175,6 +179,10 @@ function App() {
   }, [archive, page, compressionProgress, draft.selectedCount, pending.editable]);
 
   useEffect(() => {
+    for (const mode of ZIP_VIEW_MODES) ContextKeyService.set(`silkZip.viewMode.${mode.id}`, viewMode === mode.id);
+  }, [viewMode]);
+
+  useEffect(() => {
     ContextKeyService.set("hasOpenArchive", archive !== null);
     ContextKeyService.set("hasArchiveEntrySelection", false);
   }, [archive]);
@@ -222,6 +230,10 @@ function App() {
     return () => { cancelled = true; setDragActive(false); draft.clearDropTarget(); unlisten?.(); };
   }, [archive, draft.add, draft.resolveDropTarget, draft.clearDropTarget]);
 
+  const recentRef = useRef<ReturnType<typeof startRecentArchives> | null>(null);
+  // The recent list follows use: whichever way an archive gets opened, it moves to the top.
+  useEffect(() => { if (archive) recentRef.current?.record(archive.path); }, [archive?.path]);
+
   useEffect(() => {
     let disposed = false;
     const recentArchives = startRecentArchives(async (path) => {
@@ -240,6 +252,7 @@ function App() {
         if (!disposed) setLoading(false);
       }
     });
+    recentRef.current = recentArchives;
     const confirmDiscard = async (): Promise<boolean> => {
       if (!pendingRef.current.dirty) return true;
       return ConfirmDialogService.confirm({
@@ -260,7 +273,7 @@ function App() {
         setLoading(true);
         setError(null);
         const result = await listArchive(path);
-        if (!disposed) { setArchive(result); recentArchives.record(path); }
+        if (!disposed) setArchive(result);
       } catch (reason) {
         if (!disposed) setError(String(reason));
       } finally {
@@ -357,7 +370,7 @@ ${target}
             setLoading(true);
             setError(null);
             const result = await listArchive(target);
-            if (!disposed) { setArchive(result); recentArchives.record(target); }
+            if (!disposed) setArchive(result);
           } catch (reason) {
             if (!disposed) setError(String(reason));
           } finally {
@@ -399,6 +412,7 @@ ${target}
       }),
       KeybindingsRegistry.registerKeybinding("silkZip.edit.find", "Ctrl+F"),
       KeybindingsRegistry.registerKeybinding("silkZip.edit.find", "Ctrl+Shift+F"),
+      ...ZIP_VIEW_MODES.map((mode) => CommandsRegistry.registerCommand(`silkZip.viewMode.${mode.id}`, () => updateZipSettings({ viewMode: mode.id }))),
       CommandsRegistry.registerCommand("silkZip.edit.copy", () => addActions.current.copy()),
       KeybindingsRegistry.registerKeybinding("silkZip.edit.copy", "Ctrl+C"),
       CommandsRegistry.registerCommand("silkZip.edit.paste", () => addActions.current.paste()),
@@ -723,6 +737,10 @@ ${target}
           {error ? <div className="zip-message zip-message--error" role="alert">{error}</div> : null}
           {archive ? <ArchiveExplorer archive={pending.view ?? archive} folderRef={folderRef} selectedPathsRef={selectedPathsRef} editor={{ canEdit: pending.editable, addFiles: () => { void addFiles(); }, addFolder: () => { void addFolder(); }, newFolder: (folder) => setFolderPrompt({ folder, siblings: siblingNames(pending.view ?? archive, `${folder ? `${folder}/` : ""}x`) }), remove: (paths) => pending.remove(paths), pendingCount: pending.count, apply: applyPending, discard: pending.discard }} onExtract={(target, entries) => { void extractionController.start(archive.path, target, entries); }} onTest={() => { void extractionController.startTest(archive.path); }} onRename={(entry) => setRenameTarget({ entry, siblings: siblingNames(archive, entry.path), inArchive: true })} selectionRef={archiveSelection} /> : <div className="zip-start-workspace">
           {layout.sidebar ? <aside className="zip-empty-explorer" style={{ width: layout.sidebarWidth }} aria-label={activeView === "search" ? "검색" : "탐색기"}>{activeView === "search" ? <><ViewPaneTitle title="검색" /><p className="zip-search__summary">열린 압축 파일이 없습니다.</p></> : <><ViewPaneTitle title="탐색기" />{draft.tree}</>}</aside> : null}
+          {layout.sidebar ? <WorkbenchSash orientation="vertical" onPointerDown={(event) => {
+            const startX = event.clientX, startWidth = layout.sidebarWidth;
+            startDrag({ orientation: "vertical", onResize: (x) => LayoutService.setSidebarWidth(Math.min(window.innerWidth / 2, startWidth + x - startX)) });
+          }} /> : null}
           <section className="zip-content zip-create-form">
             <div className="zip-toolbar"><div><h1>새 압축 만들기</h1><p>파일이나 폴더를 추가하고 압축 설정을 지정하세요.</p></div><div className="zip-toolbar__actions"><div className="zip-add-menu" ref={addMenuRef}><div className="zip-extract-split"><button className="zip-button zip-extract-split__main" title="파일 추가" onClick={addFiles}>추가</button><button className="zip-button zip-extract-split__arrow" aria-label="추가 옵션" aria-haspopup="menu" aria-expanded={addMenuOpen} onClick={() => setAddMenuOpen((open) => !open)}><span className="codicon codicon-chevron-down" aria-hidden="true" /></button></div>{addMenuOpen ? <div className="zip-add-menu__popup" role="menu"><button role="menuitem" onClick={addFiles}>파일 추가</button><button role="menuitem" onClick={addFolder}>폴더 추가</button></div> : null}</div><button className="zip-button" onClick={draft.newFolder}>새 폴더</button><button className="zip-button" onClick={draft.remove} disabled={draft.selectedCount === 0}>제거</button></div></div>
             <div className={`zip-drop${files.length ? " zip-drop--filled" : ""}${dragActive ? " zip-drop--dragging" : ""}`} onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragActive(false); }} onDrop={(event) => { event.preventDefault(); setDragActive(false); }}>

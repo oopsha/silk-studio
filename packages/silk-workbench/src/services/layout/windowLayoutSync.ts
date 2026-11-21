@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   LayoutService,
   WINDOW_LAYOUT_MIN,
+  type LayoutState,
   type WindowLayoutState,
 } from "./layoutService";
 
@@ -29,7 +30,7 @@ async function captureWindowLayout(): Promise<WindowLayoutState | null> {
   }
 }
 
-async function saveWindowLayoutFile(layout: WindowLayoutState): Promise<void> {
+async function saveWindowLayoutFile(layout: WindowLayoutState & Partial<LayoutState>): Promise<void> {
   try {
     await invoke("window_layout_save", { layout });
   } catch {
@@ -70,7 +71,8 @@ async function persistWindowLayout(): Promise<void> {
 
   const toSave = resolveLayoutToPersist(layout);
   LayoutService.setWindowLayout(toSave);
-  await saveWindowLayoutFile(toSave);
+  // One file holds the window geometry and the rest of the workbench layout.
+  await saveWindowLayoutFile({ ...LayoutService.getState(), ...toSave });
 }
 
 /**
@@ -85,6 +87,20 @@ export function startWindowLayoutSync(): () => void {
   let suppressPersistUntil = 0;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   const unlisteners: Array<() => void> = [];
+
+  /** Layout without the window geometry; a change of it (sidebar, panel, ...) saves the file too. */
+  const workbenchKey = () => {
+    const { windowX, windowY, windowWidth, windowHeight, windowMaximized, ...rest } = LayoutService.getState();
+    void windowX; void windowY; void windowWidth; void windowHeight; void windowMaximized;
+    return JSON.stringify(rest);
+  };
+  let savedWorkbenchKey = workbenchKey();
+  unlisteners.push(LayoutService.onDidChange(() => {
+    const key = workbenchKey();
+    if (key === savedWorkbenchKey) return;
+    savedWorkbenchKey = key;
+    schedulePersist();
+  }));
 
   const schedulePersist = () => {
     if (disposed || Date.now() < suppressPersistUntil) return;
@@ -103,6 +119,20 @@ export function startWindowLayoutSync(): () => void {
       hasLayoutFile = await invoke<boolean>("window_layout_file_exists");
     } catch {
       hasLayoutFile = false;
+    }
+
+    // The layout file holds the whole workbench layout in the desktop app.
+    if (hasLayoutFile) {
+      try {
+        const saved = await invoke<Partial<LayoutState> | null>("window_layout_load");
+        if (saved && !disposed) {
+          suppressPersistUntil = Date.now() + STARTUP_SUPPRESS_MS;
+          LayoutService.restoreState(saved);
+          savedWorkbenchKey = workbenchKey();
+        }
+      } catch {
+        // Keep the layout read from localStorage.
+      }
     }
 
     // One-shot migration: localStorage → app-specific file (Rust clamps + shows).
@@ -127,6 +157,8 @@ export function startWindowLayoutSync(): () => void {
       unlisteners.push(await win.onResized(schedulePersist));
       unlisteners.push(await win.onMoved(schedulePersist));
       unlisteners.push(await win.onScaleChanged(schedulePersist));
+      // Save once so a layout that came from localStorage or an older file lives in the file from now on.
+      setTimeout(() => { if (!disposed) void persistWindowLayout(); }, STARTUP_SUPPRESS_MS);
     } catch {
       if (!disposed) await ensureWindowVisible();
     }

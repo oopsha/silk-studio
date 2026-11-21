@@ -21,6 +21,11 @@ pub fn window_layout_show(window: WebviewWindow) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn window_layout_load(app: AppHandle) -> Result<Option<WindowLayoutState>, String> {
+    silk_window_state::window_layout_load(app)
+}
+
+#[tauri::command]
 pub fn window_layout_file_exists(app: AppHandle) -> Result<bool, String> {
     silk_window_state::window_layout_file_exists(app)
 }

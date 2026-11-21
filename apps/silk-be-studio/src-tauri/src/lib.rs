@@ -65,6 +65,7 @@ pub fn run() {
             window_layout::window_layout_apply_and_show,
             window_layout::window_layout_show,
             window_layout::window_layout_file_exists,
+            window_layout::window_layout_load,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

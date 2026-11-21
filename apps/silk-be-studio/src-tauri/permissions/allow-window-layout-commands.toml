@@ -6,4 +6,5 @@ commands.allow = [
   "window_layout_apply_and_show",
   "window_layout_show",
   "window_layout_file_exists",
+  "window_layout_load",
 ]

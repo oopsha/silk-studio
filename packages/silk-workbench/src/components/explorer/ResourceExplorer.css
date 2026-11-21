@@ -37,6 +37,15 @@
 .resource-icon--pdf { color:#f48771; }
 .resource-icon--code { color:#75beff; }
 .resource-icon--text { color:var(--color-description); }
+.resource-icon--audio { color:#c586c0; }
+.resource-icon--video { color:#e07be0; }
+.resource-icon--word { color:#4a8fe0; }
+.resource-icon--excel { color:#3fa66a; }
+.resource-icon--ppt { color:#e0734b; }
+.resource-icon--data { color:#cca700; }
+.resource-icon--config { color:var(--color-description); }
+.resource-icon--exe { color:#3f9bd0; }
+.resource-icon--binary { color:#8a8f98; }
 
 .resource-explorer { display:flex; flex-direction:column; flex:1; min-height:0; min-width:0; color:var(--color-foreground); }
 .resource-explorer__address {
@@ -76,3 +85,27 @@
 }
 .resource-explorer__pager button { padding:2px 7px; color:inherit; background:transparent; border:1px solid var(--color-border); font:inherit; }
 .resource-explorer__pager button:disabled { opacity:.45; }
+
+/* Non-table views: names in columns (list) or icon grids. */
+.resource-explorer__grid { margin:0; padding:6px; list-style:none; box-sizing:border-box; }
+.resource-explorer__item { display:flex; align-items:center; gap:6px; min-width:0; padding:3px 6px; border-radius:3px; font-size:13px; cursor:default; }
+.resource-explorer__item:hover { background:var(--color-list-hover); }
+.resource-explorer__item.resource-explorer__selected { background:var(--resource-selection-background, #04395e); color:var(--resource-selection-foreground, #fff); }
+:root[data-color-theme="light"] .resource-explorer__item.resource-explorer__selected { --resource-selection-background:#cce8ff; --resource-selection-foreground:#202020; }
+.resource-explorer__item:focus-visible { outline:1px solid var(--color-focus-border); outline-offset:-1px; }
+.resource-explorer__item-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.resource-explorer__grid--list { height:100%; display:grid; grid-auto-flow:column; grid-template-rows:repeat(auto-fill, 26px); grid-auto-columns:minmax(180px, 240px); align-content:start; }
+.resource-explorer__grid--icons, .resource-explorer__grid--large-icons { display:grid; align-content:start; gap:4px; }
+.resource-explorer__grid--icons { grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); }
+.resource-explorer__grid--large-icons { grid-template-columns:repeat(auto-fill, minmax(132px, 1fr)); }
+.resource-explorer__grid--icons .resource-explorer__item, .resource-explorer__grid--large-icons .resource-explorer__item { flex-direction:column; justify-content:flex-start; gap:4px; padding:8px 4px; text-align:center; }
+.resource-explorer__grid--icons .resource-explorer__item .codicon { flex:none; width:32px; height:32px; font-size:32px; line-height:32px; }
+.resource-explorer__grid--large-icons .resource-explorer__item .codicon { flex:none; width:56px; height:56px; font-size:56px; line-height:56px; }
+.resource-explorer__grid--icons .resource-explorer__item .codicon--svg svg, .resource-explorer__grid--icons .resource-explorer__item .codicon--svg img, .resource-explorer__grid--large-icons .resource-explorer__item .codicon--svg svg, .resource-explorer__grid--large-icons .resource-explorer__item .codicon--svg img { width:100%; height:100%; }
+.resource-explorer__list { position:relative; user-select:none; }
+.resource-explorer__grid--icons .resource-explorer__item-name, .resource-explorer__grid--large-icons .resource-explorer__item-name { max-width:100%; white-space:normal; word-break:break-all; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+
+/* Format badge (ZIP, 7Z, ...) used in place of a codicon; it scales with the surrounding icon size. */
+.resource-badge { flex:none; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; width:16px; height:16px; border-radius:3px; color:#fff; font:700 6px/1 var(--font-family, sans-serif); letter-spacing:-0.2px; user-select:none; }
+.resource-explorer__grid--icons .resource-explorer__item .resource-badge { width:32px; height:32px; border-radius:5px; font-size:11px; }
+.resource-explorer__grid--large-icons .resource-explorer__item .resource-badge { width:56px; height:56px; border-radius:8px; font-size:19px; }

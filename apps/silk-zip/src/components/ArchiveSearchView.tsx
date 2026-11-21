@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import { resourceIcon } from "@silk-studio/workbench/components/explorer/resourceExplorerTypes.ts";
+import ResourceIconView from "@silk-studio/workbench/components/explorer/ResourceIconView.tsx";
 import type { ArchiveListing } from "../archive";
 import { buildSearchIndex, type SearchItem } from "../archiveSource";
 
@@ -67,10 +67,9 @@ export default function ArchiveSearchView({ archive, folder, onReveal }: Archive
       {searching ? <p className="zip-search__summary" role="status">{total === 0 ? "일치하는 항목이 없습니다." : total > RESULT_LIMIT ? `${total.toLocaleString()}개 중 처음 ${RESULT_LIMIT.toLocaleString()}개를 표시합니다.` : `${total.toLocaleString()}개 항목`}</p> : null}
       <ul className="zip-search__results" aria-label="검색 결과">
         {results.map((item) => {
-          const icon = resourceIcon(item);
           return <li key={item.id}>
             <button type="button" className={activeId === item.id ? "zip-search__result zip-search__result--active" : "zip-search__result"} title={item.path} onClick={() => { setActiveId(item.id); onReveal(item); }}>
-              <Codicon name={icon.name} className={icon.className} />
+              <ResourceIconView node={item} />
               <span className="zip-search__name">{item.name}</span>
               <span className="zip-search__path">{item.parent}</span>
             </button>

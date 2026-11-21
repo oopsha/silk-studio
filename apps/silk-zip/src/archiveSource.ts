@@ -1,12 +1,20 @@
+import { resourceIcon } from "@silk-studio/workbench/components/explorer/resourceExplorerTypes.ts";
 import type { ResourceNode, ResourceSource } from "@silk-studio/workbench/components/explorer/resourceExplorerTypes.ts";
 import type { ArchiveListing } from "./archive";
+
+/** The archive itself is the root of the tree; it shows as an archive, not as a folder. */
+function archiveIcon(archive: ArchiveListing) {
+  const file = archive.path.split(/[\\/]/).pop() ?? archive.path;
+  // "a.7z.001" and "a.z01" are parts of a split archive: show the format, not the part number.
+  return resourceIcon({ id: "", name: file.replace(/\.(?:\d{3}|z\d{2})$/i, ""), directory: false });
+}
 
 const statusLabel = (status: "added" | "renamed" | undefined) => (status === "added" ? "추가됨" : status === "renamed" ? "이름 변경됨" : undefined);
 
 /** Build virtual directories, including folders absent from the archive headers.
  * IDs are opaque and are never used as filesystem paths or extraction targets. */
 export function createArchiveSource(archive: ArchiveListing): ResourceSource {
-  const root: ResourceNode = { id: "directory:[]", name: archive.path.split(/[\\/]/).pop() || archive.path, directory: true };
+  const root: ResourceNode = { id: "directory:[]", name: archive.path.split(/[\\/]/).pop() || archive.path, directory: true, icon: archiveIcon(archive) };
   const children = new Map<string, ResourceNode[]>([[root.id, []]]);
   archive.entries.forEach((entry, index) => {
     const segments = entry.path.replace(/\\/g, "/").split("/").filter((part) => part !== "" && part !== ".");
@@ -62,7 +70,7 @@ export function buildSearchIndex(archive: ArchiveListing): SearchItem[] {
 /** Folder chain (root first) down to `folder`, matching the nodes of `createArchiveSource`. */
 export function archiveRoute(archive: ArchiveListing, folder: string): ResourceNode[] {
   const segments = splitPath(folder);
-  const route: ResourceNode[] = [{ id: "directory:[]", name: archive.path.split(/[\\/]/).pop() || archive.path, directory: true }];
+  const route: ResourceNode[] = [{ id: "directory:[]", name: archive.path.split(/[\\/]/).pop() || archive.path, directory: true, icon: archiveIcon(archive) }];
   segments.forEach((name, depth) => route.push({ id: `directory:${JSON.stringify(segments.slice(0, depth + 1))}`, name, directory: true }));
   return route;
 }

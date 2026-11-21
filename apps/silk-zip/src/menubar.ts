@@ -1,3 +1,4 @@
+import { ZIP_VIEW_MODES } from "./zipSettings";
 import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
 import { detectWorkbenchPlatform } from "@silk-studio/ui/platform/fonts.ts";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
@@ -150,9 +151,10 @@ for (const [menuId, labels] of otherMenus) {
   });
 }
 
-["큰 아이콘", "아이콘", "목록", "자세히"].forEach((title, order) => {
+ZIP_VIEW_MODES.forEach(({ id, title }, order) => {
   MenuRegistry.appendMenuItem(MenuId.MenubarSelectionMenu, {
-    command: { id: `silkZip.viewMode.${order}`, title },
+    command: { id: `silkZip.viewMode.${id}`, title },
+    checkedWhen: `silkZip.viewMode.${id}`,
     group: "1_viewModes",
     order: order + 1,
   });
