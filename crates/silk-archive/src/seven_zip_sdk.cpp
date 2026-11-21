@@ -1013,3 +1013,286 @@ extern "C" int silk_7zip_extract(const char *archive_path, const char *output_di
   opened.archive->Close();
   return static_cast<int>(result);
 }
+
+namespace {
+// Update of an existing archive: kept entries are copied as they are (newData = 0) and the
+// added ones are written with the same item/stream logic as archive creation.
+class SilkUpdateCallback final : public IArchiveUpdateCallback2,
+                                 public ICryptoGetTextPassword2,
+                                 public CMyUnknownImp {
+  Z7_COM_UNKNOWN_IMP_2(IArchiveUpdateCallback2, ICryptoGetTextPassword2)
+
+ public:
+  SilkUpdateCallback(IInArchive *archive, std::vector<UInt32> kept,
+                     std::vector<UString> kept_new_paths, std::vector<bool> kept_renamed,
+                     std::vector<ZipItem> *added, UString password, SilkZipProgress progress,
+                     void *progress_context)
+      : archive_(archive), kept_(std::move(kept)), kept_new_paths_(std::move(kept_new_paths)),
+        kept_renamed_(std::move(kept_renamed)), added_(added), password_(password),
+        progress_(progress), progress_context_(progress_context) {
+    inner_spec_ = new SilkZipUpdateCallback(added_, password_, 0, nullptr, nullptr, nullptr);
+    inner_ = inner_spec_;
+  }
+
+  UInt32 total_items() const { return static_cast<UInt32>(kept_.size() + added_->size()); }
+
+  Z7_COM7F_IMF(SetTotal(UInt64 total)) { total_ = total; return S_OK; }
+
+  Z7_COM7F_IMF(SetCompleted(const UInt64 *completed)) {
+    completed_ = completed ? *completed : 0;
+    if (progress_ && progress_(completed_, total_, done_, total_items(), progress_context_))
+      return E_ABORT;
+    return S_OK;
+  }
+
+  Z7_COM7F_IMF(GetUpdateItemInfo(UInt32 index, Int32 *new_data, Int32 *new_properties,
+                                 UInt32 *index_in_archive)) {
+    if (index < kept_.size()) {
+      if (new_data) *new_data = 0;
+      if (new_properties) *new_properties = kept_renamed_[index] ? 1 : 0;
+      if (index_in_archive) *index_in_archive = kept_[index];
+      return S_OK;
+    }
+    if (new_data) *new_data = 1;
+    if (new_properties) *new_properties = 1;
+    if (index_in_archive) *index_in_archive = static_cast<UInt32>(-1);
+    return S_OK;
+  }
+
+  Z7_COM7F_IMF(GetProperty(UInt32 index, PROPID property, PROPVARIANT *value)) {
+    if (index < kept_.size()) {
+      if (!value) return E_INVALIDARG;
+      // Only renamed entries are asked for properties: the new path, everything else as stored.
+      if (property == kpidIsAnti) {
+        CPropVariant anti;
+        anti = false;
+        anti.Detach(value);
+        return S_OK;
+      }
+      if (property == kpidPath) {
+        CPropVariant path;
+        path = kept_new_paths_[index];
+        path.Detach(value);
+        return S_OK;
+      }
+      return archive_->GetProperty(kept_[index], property, value);
+    }
+    return inner_->GetProperty(index - static_cast<UInt32>(kept_.size()), property, value);
+  }
+
+  Z7_COM7F_IMF(GetStream(UInt32 index, ISequentialInStream **stream)) {
+    if (index < kept_.size()) {
+      if (stream) *stream = nullptr;
+      return S_OK;
+    }
+    return inner_->GetStream(index - static_cast<UInt32>(kept_.size()), stream);
+  }
+
+  Z7_COM7F_IMF(SetOperationResult(Int32 result)) {
+    if (result != 0) return E_FAIL;
+    ++done_;
+    if (progress_ && progress_(completed_, total_, done_, total_items(), progress_context_))
+      return E_ABORT;
+    return S_OK;
+  }
+
+  Z7_COM7F_IMF(GetVolumeSize(UInt32, UInt64 *)) { return S_FALSE; }
+  Z7_COM7F_IMF(GetVolumeStream(UInt32, ISequentialOutStream **)) { return E_NOTIMPL; }
+
+  Z7_COM7F_IMF(CryptoGetTextPassword2(Int32 *password_is_defined, BSTR *password)) {
+    if (!password_is_defined || !password) return E_INVALIDARG;
+    *password_is_defined = password_.IsEmpty() ? 0 : 1;
+    *password = nullptr;
+    if (password_.IsEmpty()) return S_OK;
+    return StringToBstr(password_, password);
+  }
+
+ private:
+  IInArchive *archive_;
+  std::vector<UInt32> kept_;
+  std::vector<UString> kept_new_paths_;
+  std::vector<bool> kept_renamed_;
+  std::vector<ZipItem> *added_;
+  UString password_;
+  SilkZipUpdateCallback *inner_spec_ = nullptr;
+  CMyComPtr<IArchiveUpdateCallback2> inner_;
+  SilkZipProgress progress_;
+  void *progress_context_;
+  UInt64 total_ = 0;
+  UInt64 completed_ = 0;
+  UInt32 done_ = 0;
+};
+}  // namespace
+
+// Rewrites `archive_path` into `output_path`. `change_kinds[i]` (0 = delete, 1 = rename from
+// `change_from[i]` to `change_to[i]`) are applied to the existing entries in order, a folder path
+// covering everything below it; then the `adds` (already in their final paths) are appended.
+// Supports zip, 7z and tar. message codes: "unsupported_format", "duplicate" (two entries end up
+// with the same path), "no_match" (nothing changed).
+extern "C" int silk_7zip_update_archive(const char *archive_path, const char *output_path,
+                                         const char *password, const int *change_kinds,
+                                         const char *const *change_from, const char *const *change_to,
+                                         std::uint32_t change_count, const SilkZipSdkInput *adds,
+                                         std::uint32_t add_count, SilkZipProgress progress,
+                                         void *progress_context, SilkExtractResult *out) {
+  if (!archive_path || !output_path || !out || (change_count == 0 && add_count == 0) ||
+      (add_count != 0 && !adds) || (change_count != 0 && (!change_kinds || !change_from)))
+    return static_cast<int>(E_INVALIDARG);
+  memset(out, 0, sizeof(*out));
+  static std::once_flag crc_initialized;
+  std::call_once(crc_initialized, CrcGenerateTable);
+
+  const FString native_archive = file_system_path(archive_path);
+  CInFileStream *input_spec = new CInFileStream;
+  CMyComPtr<IInStream> input = input_spec;
+  if (!input_spec->Open(native_archive)) return static_cast<int>(E_FAIL);
+  SilkZipOpenCallback *open_spec = new SilkZipOpenCallback(native_archive);
+  CMyComPtr<IArchiveOpenCallback> open_callback = open_spec;
+  open_spec->password = from_utf8(password ? password : "");
+
+  int separator = -1;
+  for (unsigned i = 0; i < native_archive.Len(); ++i)
+    if (IS_PATH_SEPAR(native_archive[i])) separator = static_cast<int>(i);
+  UString file_name = fs2us(FString(native_archive.Ptr() + (separator >= 0 ? separator + 1 : 0)));
+  OpenedArchive opened;
+  HRESULT result = open_detected(input, file_name, open_callback, false, opened);
+  if (open_spec->password_requested) out->need_password = 1;
+  if (result != S_OK) return static_cast<int>(result);
+  strncpy(out->format, opened.format.Ptr(), sizeof(out->format) - 1);
+  AString format = opened.format;
+  format.MakeLower_Ascii();
+  if (format != "zip" && format != "7z" && format != "tar") {
+    strncpy(out->message, "unsupported_format", sizeof(out->message) - 1);
+    opened.archive->Close();
+    return 0;
+  }
+
+  UInt32 items = 0;
+  result = opened.archive->GetNumberOfItems(&items);
+  if (result != S_OK) return static_cast<int>(result);
+#ifdef _WIN32
+  if (format == "zip") prefer_utf8_zip_names(opened.archive, items);
+#endif
+
+  struct Change { int kind; UString from; UString to; };
+  std::vector<Change> changes;
+  for (std::uint32_t i = 0; i < change_count; ++i) {
+    UString from = normalize_archive_path(from_utf8(change_from[i]));
+    UString to = change_kinds[i] == 1 && change_to && change_to[i]
+                     ? normalize_archive_path(from_utf8(change_to[i])) : UString();
+    if (from.IsEmpty() || (change_kinds[i] == 1 && to.IsEmpty())) return static_cast<int>(E_INVALIDARG);
+    changes.push_back(Change{change_kinds[i], from, to});
+  }
+  std::vector<UInt32> kept;
+  std::vector<UString> kept_new_paths;
+  std::vector<bool> kept_renamed;
+  std::vector<UString> kept_paths;
+  UInt32 removed = 0;
+  UInt32 renamed_count = 0;
+  for (UInt32 i = 0; i < items; ++i) {
+    CPropVariant path;
+    opened.archive->GetProperty(i, kpidPath, &path);
+    const UString original = path.vt == VT_BSTR ? UString(path.bstrVal) : UString();
+    UString current = normalize_archive_path(original);
+    bool deleted = false;
+    bool moved = false;
+    for (const Change &change : changes) {
+      std::vector<UString> one(1, change.from);
+      if (selection_index(one, current) < 0) continue;
+      if (change.kind == 0) { deleted = true; break; }
+      UString updated = change.to;
+      updated += current.Ptr(change.from.Len());
+      current = updated;
+      moved = true;
+    }
+    if (deleted) { ++removed; continue; }
+    if (moved) ++renamed_count;
+    kept.push_back(i);
+    kept_new_paths.push_back(moved ? current : original);
+    kept_renamed.push_back(moved);
+    UString key = normalize_archive_path(current);
+    key.MakeLower_Ascii();
+    for (const UString &other : kept_paths) {
+      if (other == key) {
+        strncpy(out->message, "duplicate", sizeof(out->message) - 1);
+        opened.archive->Close();
+        return 0;
+      }
+    }
+    kept_paths.push_back(key);
+  }
+
+  std::vector<ZipItem> added;
+  for (std::uint32_t i = 0; i < add_count; ++i) {
+    UString archive_entry = normalize_archive_path(from_utf8(adds[i].archive_path));
+    if (archive_entry.IsEmpty()) return static_cast<int>(E_INVALIDARG);
+    UString key = archive_entry;
+    key.MakeLower_Ascii();
+    for (const UString &existing : kept_paths) {
+      if (existing == key) {
+        strncpy(out->message, "duplicate", sizeof(out->message) - 1);
+        opened.archive->Close();
+        return 0;
+      }
+    }
+    for (const ZipItem &other : added) {
+      UString other_key = other.archive_path;
+      other_key.MakeLower_Ascii();
+      if (other_key == key) {
+        strncpy(out->message, "duplicate", sizeof(out->message) - 1);
+        opened.archive->Close();
+        return 0;
+      }
+    }
+    added.push_back(ZipItem{std::move(archive_entry), file_system_path(adds[i].source_path),
+                            adds[i].size, adds[i].modified_seconds, adds[i].is_directory != 0});
+  }
+  if (removed == 0 && renamed_count == 0 && added.empty()) {
+    strncpy(out->message, "no_match", sizeof(out->message) - 1);
+    opened.archive->Close();
+    return 0;
+  }
+
+  CMyComPtr<IOutArchive> out_archive;
+  if (opened.archive->QueryInterface(IID_IOutArchive, reinterpret_cast<void **>(&out_archive)) != S_OK ||
+      !out_archive) {
+    strncpy(out->message, "unsupported_format", sizeof(out->message) - 1);
+    opened.archive->Close();
+    return 0;
+  }
+  const UString password_string = from_utf8(password ? password : "");
+  CMyComPtr<ISetProperties> set_properties;
+  if (out_archive->QueryInterface(IID_ISetProperties, reinterpret_cast<void **>(&set_properties)) == S_OK &&
+      set_properties) {
+    if (format == "zip") {
+      const wchar_t *names[] = {L"m", L"x", L"cu", L"em"};
+      CPropVariant values[4];
+      values[0] = L"Deflate";
+      values[1] = static_cast<UInt32>(6);
+      values[2] = true;
+      values[3] = L"ZipCrypto";
+      set_properties->SetProperties(names, values, password_string.IsEmpty() ? 3 : 4);
+    } else if (format == "7z") {
+      const wchar_t *names[] = {L"x", L"he"};
+      CPropVariant values[2];
+      values[0] = static_cast<UInt32>(6);
+      values[1] = true;  // keep file names hidden in an archive whose headers were encrypted
+      set_properties->SetProperties(names, values, password_string.IsEmpty() ? 1 : 2);
+    }
+  }
+
+  COutFileStream *output_spec = new COutFileStream;
+  CMyComPtr<IOutStream> output_stream = output_spec;
+  if (!output_spec->Create_ALWAYS(file_system_path(output_path))) return static_cast<int>(E_FAIL);
+  SilkUpdateCallback *callback_spec = new SilkUpdateCallback(
+      opened.archive, kept, kept_new_paths, kept_renamed, &added, password_string, progress,
+      progress_context);
+  CMyComPtr<IArchiveUpdateCallback> callback = callback_spec;
+  result = out_archive->UpdateItems(output_stream, callback_spec->total_items(), callback);
+  if (result == S_OK && output_spec->Close() != S_OK) result = E_FAIL;
+  opened.archive->Close();
+  out->extracted = removed;
+  out->skipped = static_cast<std::uint32_t>(added.size());
+  out->failed = renamed_count;
+  return static_cast<int>(result);
+}

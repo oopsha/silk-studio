@@ -22,7 +22,30 @@ struct SdkExtractResult {
 
 type SdkProgressCallback = unsafe extern "C" fn(u64, u64, u32, u32, *mut c_void) -> c_int;
 
+#[repr(C)]
+struct SdkAddInput {
+    source_path: *const c_char,
+    archive_path: *const c_char,
+    size: u64,
+    modified_seconds: i64,
+    is_directory: c_int,
+}
+
 unsafe extern "C" {
+    fn silk_7zip_update_archive(
+        archive_path: *const c_char,
+        output_path: *const c_char,
+        password: *const c_char,
+        change_kinds: *const c_int,
+        change_from: *const *const c_char,
+        change_to: *const *const c_char,
+        change_count: u32,
+        adds: *const SdkAddInput,
+        add_count: u32,
+        progress: Option<SdkProgressCallback>,
+        progress_context: *mut c_void,
+        result: *mut SdkExtractResult,
+    ) -> c_int;
     fn silk_7zip_extract(
         archive_path: *const c_char,
         output_dir: *const c_char,
@@ -355,4 +378,199 @@ fn looks_like_tar(path: &Path) -> bool {
         .and_then(|mut file| file.read_exact(&mut header))
         .is_ok()
         && &header[257..262] == b"ustar"
+}
+
+/// Interprets the result of a rewrite (rename/update) and swaps the new archive in; keeps the
+/// original until the new file is in place.
+fn finish_rewrite(
+    status: c_int,
+    result: &SdkExtractResult,
+    password: Option<&str>,
+    cancelled: &AtomicBool,
+    archive: &Path,
+    temporary: &Path,
+    backup: &Path,
+    action: &str,
+) -> Result<(), String> {
+    if cancelled.load(Ordering::Relaxed) {
+        return Err(format!("{action}가 취소되었습니다."));
+    }
+    if result.need_password != 0 {
+        return Err(if password.is_some_and(|value| !value.is_empty()) {
+            "암호가 올바르지 않습니다.".into()
+        } else {
+            "암호가 필요한 압축 파일입니다.".into()
+        });
+    }
+    match text(&result.message).as_str() {
+        "unsupported_format" => {
+            return Err("이 형식은 압축 파일 안의 변경을 지원하지 않습니다. (zip, 7z, tar만 가능)".into())
+        }
+        "no_match" => return Err("변경할 항목을 압축 파일에서 찾지 못했습니다.".into()),
+        "duplicate" => return Err("같은 이름의 항목이 이미 있습니다.".into()),
+        _ => {}
+    }
+    if status == 1 {
+        return Err("지원하지 않는 형식이거나 손상된 압축 파일입니다.".into());
+    }
+    if status != 0 {
+        return Err(format!("{action}에 실패했습니다 (HRESULT 0x{:08X}).", status as u32));
+    }
+    let _ = fs::remove_file(backup);
+    if let Err(error) = fs::rename(archive, backup) {
+        return Err(format!("원본 압축 파일을 교체하지 못했습니다: {error}"));
+    }
+    if let Err(error) = fs::rename(temporary, archive) {
+        let _ = fs::rename(backup, archive);
+        return Err(format!("압축 파일을 교체하지 못했습니다: {error}"));
+    }
+    let _ = fs::remove_file(backup);
+    Ok(())
+}
+
+/// One pending change to existing entries; applied in order. A folder path covers everything
+/// below it.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum EntryChange {
+    Delete { path: String },
+    Rename { from: String, to: String },
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateResult {
+    pub removed: usize,
+    pub renamed: usize,
+    pub added: usize,
+}
+
+/// Applies deletes and renames to existing entries (in order) and appends new ones to a
+/// zip, 7z or tar archive, rewriting it once. A `CreateInput` without a source adds an empty folder; a source that
+/// is a folder adds just that folder entry (callers expand its contents).
+pub fn update_archive<F: FnMut(CreateProgress)>(
+    archive: &Path,
+    changes: &[EntryChange],
+    adds: &[crate::create::CreateInput],
+    password: Option<&str>,
+    cancelled: &AtomicBool,
+    mut on_progress: F,
+) -> Result<UpdateResult, String> {
+    use std::time::UNIX_EPOCH;
+    use unicode_normalization::UnicodeNormalization;
+    crate::locale::ensure_utf8();
+    if !archive.is_file() {
+        return Err("압축 파일을 찾을 수 없습니다.".into());
+    }
+    if changes.is_empty() && adds.is_empty() {
+        return Err("변경할 항목이 없습니다.".into());
+    }
+    // The listing shows NFC names while an archive may store NFD; also match the NFD form.
+    let mut kinds: Vec<c_int> = Vec::new();
+    let mut from_list: Vec<CString> = Vec::new();
+    let mut to_list: Vec<CString> = Vec::new();
+    for change in changes {
+        let (kind, from, to) = match change {
+            EntryChange::Delete { path } => (0, path.as_str(), ""),
+            EntryChange::Rename { from, to } => (1, from.as_str(), to.as_str()),
+        };
+        for form in [from.to_string(), from.nfc().collect::<String>(), from.nfd().collect::<String>()] {
+            kinds.push(kind);
+            from_list.push(c_string(&form, "항목 경로가 올바르지 않습니다.")?);
+            to_list.push(c_string(to, "새 이름이 올바르지 않습니다.")?);
+        }
+    }
+    let from_pointers: Vec<*const c_char> = from_list.iter().map(|value| value.as_ptr()).collect();
+    let to_pointers: Vec<*const c_char> = to_list.iter().map(|value| value.as_ptr()).collect();
+
+    let mut source_paths: Vec<CString> = Vec::new();
+    let mut entry_paths: Vec<CString> = Vec::new();
+    let mut shapes: Vec<(u64, i64, bool)> = Vec::new();
+    for input in adds {
+        let (path_text, size, modified, directory) = match &input.source_path {
+            Some(path) => {
+                let metadata = fs::metadata(path)
+                    .map_err(|error| format!("파일을 읽지 못했습니다: {}: {error}", path.display()))?;
+                let modified = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+                    .map_or(0, |value| value.as_secs().min(i64::MAX as u64) as i64);
+                (
+                    path.to_str().ok_or("입력 경로를 UTF-8로 처리할 수 없습니다.")?.to_string(),
+                    metadata.len(),
+                    modified,
+                    metadata.is_dir(),
+                )
+            }
+            None => (String::new(), 0, 0, true),
+        };
+        source_paths.push(c_string(&path_text, "입력 경로가 올바르지 않습니다.")?);
+        entry_paths.push(c_string(&input.archive_path, "항목 이름이 올바르지 않습니다.")?);
+        shapes.push((size, modified, directory));
+    }
+    let sdk_adds: Vec<SdkAddInput> = (0..adds.len())
+        .map(|index| SdkAddInput {
+            source_path: source_paths[index].as_ptr(),
+            archive_path: entry_paths[index].as_ptr(),
+            size: if shapes[index].2 { 0 } else { shapes[index].0 },
+            modified_seconds: shapes[index].1,
+            is_directory: c_int::from(shapes[index].2),
+        })
+        .collect();
+
+    let name = archive.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    let temporary = archive.with_file_name(format!(".{name}.silk-update"));
+    let backup = archive.with_file_name(format!(".{name}.silk-backup"));
+    let _ = fs::remove_file(&temporary);
+    let cleanup = |error: String| {
+        let _ = fs::remove_file(&temporary);
+        Err(error)
+    };
+
+    let archive_c = c_string(
+        archive.to_str().ok_or("압축 파일 경로를 UTF-8로 처리할 수 없습니다.")?,
+        "압축 파일 경로가 올바르지 않습니다.",
+    )?;
+    let temporary_c = c_string(
+        temporary.to_str().ok_or("임시 파일 경로를 UTF-8로 처리할 수 없습니다.")?,
+        "임시 파일 경로가 올바르지 않습니다.",
+    )?;
+    let password_c = password
+        .filter(|value| !value.is_empty())
+        .map(|value| c_string(value, "암호가 올바르지 않습니다."))
+        .transpose()?;
+    let mut context = SdkProgressContext { cancelled, on_progress: &mut on_progress };
+    let mut result = SdkExtractResult {
+        extracted: 0,
+        skipped: 0,
+        failed: 0,
+        first_error: 0,
+        need_password: 0,
+        format: [0; 32],
+        message: [0; 256],
+    };
+    let status = unsafe {
+        silk_7zip_update_archive(
+            archive_c.as_ptr(),
+            temporary_c.as_ptr(),
+            password_c.as_ref().map_or(std::ptr::null(), |value| value.as_ptr()),
+            if kinds.is_empty() { std::ptr::null() } else { kinds.as_ptr() },
+            if from_pointers.is_empty() { std::ptr::null() } else { from_pointers.as_ptr() },
+            if to_pointers.is_empty() { std::ptr::null() } else { to_pointers.as_ptr() },
+            kinds.len() as u32,
+            if sdk_adds.is_empty() { std::ptr::null() } else { sdk_adds.as_ptr() },
+            sdk_adds.len() as u32,
+            Some(sdk_progress::<F>),
+            (&mut context as *mut SdkProgressContext<'_, F>).cast(),
+            &mut result,
+        )
+    };
+    finish_rewrite(status, &result, password, cancelled, archive, &temporary, &backup, "변경")
+        .or_else(|error| cleanup(error))?;
+    Ok(UpdateResult {
+        removed: result.extracted as usize,
+        added: result.skipped as usize,
+        renamed: result.failed as usize,
+    })
 }

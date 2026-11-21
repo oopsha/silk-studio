@@ -62,7 +62,7 @@ pub struct ArchiveListing {
     pub warnings: Vec<String>,
 }
 
-pub use extract::{extract_archive, extract_entries, test_archive, ExtractResult, TestResult};
+pub use extract::{extract_archive, extract_entries, test_archive, update_archive, EntryChange, ExtractResult, TestResult, UpdateResult};
 pub use create::{
     create_archive_entries, create_zip, create_zip_entries, create_zip_entries_with_diagnostics,
     create_zip_entries_with_split, ArchiveFormat, CreateInput, CreateProgress, CreateResult, ZipDiagnostics,

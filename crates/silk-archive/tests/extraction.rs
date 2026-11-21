@@ -1,4 +1,4 @@
-use silk_archive::{create_archive_entries, extract_archive, extract_entries, test_archive, ArchiveFormat, CreateInput};
+use silk_archive::{create_archive_entries, extract_archive, extract_entries, test_archive, update_archive, EntryChange, ArchiveFormat, CreateInput};
 use std::{
     fs,
     path::PathBuf,
@@ -181,4 +181,64 @@ fn tests_archives_without_writing_and_reports_damage() {
     assert!(test_archive(&locked, Some("pw"), &cancelled, |_| {}).is_ok());
     let only_test = workspace.0.join("only-test");
     assert!(!only_test.exists());
+}
+
+#[test]
+fn updates_archives_in_one_pass() {
+    let workspace = Workspace::new();
+    let inputs = sample(&workspace);
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let extra = workspace.0.join("extra.txt");
+    fs::write(&extra, "added later").unwrap();
+    let rename = |from: &str, to: &str| EntryChange::Rename { from: from.into(), to: to.into() };
+    let delete = |path: &str| EntryChange::Delete { path: path.into() };
+    let added = |source: Option<&std::path::Path>, path: &str| CreateInput { source_path: source.map(|p| p.to_path_buf()), archive_path: path.into() };
+
+    for (format, name) in [(ArchiveFormat::Zip, "u.zip"), (ArchiveFormat::SevenZip, "u.7z"), (ArchiveFormat::Tar, "u.tar")] {
+        let archive = workspace.0.join(name);
+        create_archive_entries(format, &inputs, &archive, 6, None, None, &cancelled, |_| {}, None).unwrap();
+
+        // Rename a folder, then a file inside it (new names), delete a file, add a file and an empty folder.
+        let result = update_archive(
+            &archive,
+            &[rename("dir", "folder2"), rename("folder2/한글.txt", "folder2/새 이름.txt"), delete("b.bin")],
+            &[added(Some(&extra), "folder2/added.txt"), added(None, "newdir")],
+            None,
+            &cancelled,
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!((result.removed, result.added), (1, 2), "{name}: {result:?}");
+        assert!(result.renamed >= 1, "{name}: {result:?}");
+        let out = workspace.0.join(format!("out-{name}"));
+        extract_archive(&archive, &out, None, false, &cancelled, |_| {}).unwrap();
+        assert_eq!(fs::read_to_string(out.join("folder2/새 이름.txt")).unwrap(), "한글 내용 hello hello hello", "{name}");
+        assert_eq!(fs::read_to_string(out.join("folder2/added.txt")).unwrap(), "added later", "{name}");
+        assert!(out.join("newdir").is_dir() && out.join("empty").is_dir(), "{name}");
+        assert!(!out.join("b.bin").exists() && !out.join("dir").exists(), "{name}");
+        assert!(test_archive(&archive, None, &cancelled, |_| {}).is_ok(), "{name}");
+
+        // Two entries ending up with one path, and nothing to do.
+        let duplicate = update_archive(&archive, &[], &[added(Some(&extra), "folder2/added.txt")], None, &cancelled, |_| {}).unwrap_err();
+        assert!(duplicate.contains("이미 있습니다"), "{name}: {duplicate}");
+        let nothing = update_archive(&archive, &[delete("missing")], &[], None, &cancelled, |_| {}).unwrap_err();
+        assert!(nothing.contains("찾지 못"), "{name}: {nothing}");
+        // No leftovers next to the archive.
+        assert!(fs::read_dir(&workspace.0).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().contains("silk-")), "{name}");
+    }
+    let tgz = workspace.0.join("u.tgz");
+    create_archive_entries(ArchiveFormat::Tgz, &inputs, &tgz, 6, None, None, &cancelled, |_| {}, None).unwrap();
+    let error = update_archive(&tgz, &[delete("b.bin")], &[], None, &cancelled, |_| {}).unwrap_err();
+    assert!(error.contains("지원하지 않습니다"), "{error}");
+
+    // Encrypted 7z: names are hidden, so the password is needed to change anything.
+    let locked = workspace.0.join("locked.7z");
+    create_archive_entries(ArchiveFormat::SevenZip, &inputs, &locked, 6, Some("pw"), None, &cancelled, |_| {}, None).unwrap();
+    assert!(update_archive(&locked, &[rename("b.bin", "c.bin")], &[], None, &cancelled, |_| {}).unwrap_err().contains("암호"));
+    update_archive(&locked, &[rename("b.bin", "c.bin")], &[added(Some(&extra), "added.txt")], Some("pw"), &cancelled, |_| {}).unwrap();
+    let out = workspace.0.join("out-locked");
+    extract_archive(&locked, &out, Some("pw"), false, &cancelled, |_| {}).unwrap();
+    assert_eq!(fs::read(out.join("c.bin")).unwrap().len(), 70_000);
+    assert_eq!(fs::read_to_string(out.join("added.txt")).unwrap(), "added later");
+    assert!(extract_archive(&locked, &workspace.0.join("nope"), None, false, &cancelled, |_| {}).unwrap_err().contains("암호"));
 }
