@@ -1,6 +1,8 @@
 import type { ResourceNode, ResourceSource } from "@silk-studio/workbench/components/explorer/resourceExplorerTypes.ts";
 import type { ArchiveListing } from "./archive";
 
+const statusLabel = (status: "added" | "renamed" | undefined) => (status === "added" ? "추가됨" : status === "renamed" ? "이름 변경됨" : undefined);
+
 /** Build virtual directories, including folders absent from the archive headers.
  * IDs are opaque and are never used as filesystem paths or extraction targets. */
 export function createArchiveSource(archive: ArchiveListing): ResourceSource {
@@ -15,18 +17,17 @@ export function createArchiveSource(archive: ArchiveListing): ResourceSource {
       if (directory) {
         if (!children.has(id)) {
           children.set(id, []);
-          children.get(parentId)!.push({ id, name, directory: true });
+          children.get(parentId)!.push({ id, name, directory: true, status: depth === segments.length - 1 ? statusLabel(entry.status) : undefined });
         }
       } else {
-        children.get(parentId)!.push({ id, name, directory: false, size: entry.size, encrypted: entry.encrypted });
+        children.get(parentId)!.push({ id, name, directory: false, size: entry.size, encrypted: entry.encrypted, status: statusLabel(entry.status) });
       }
       parentId = id;
     });
   });
   return { root, readChildren: async (id) => {
-    const entries = children.get(id);
-    if (!entries) throw new Error("압축 파일 안의 폴더를 찾을 수 없습니다.");
-    return entries;
+    // A folder removed by a pending change simply shows as empty.
+    return children.get(id) ?? [];
   } };
 }
 
@@ -46,4 +47,16 @@ export function archiveNodePath(archive: ArchiveListing, node: ResourceNode): st
     return entry ? clean(entry.path) || null : null;
   }
   return null;
+}
+
+/** Names of the entries that share a parent folder with `path` (including `path` itself). */
+export function siblingNames(archive: ArchiveListing, path: string): string[] {
+  const parts = path.split("/");
+  const parent = parts.slice(0, -1).join("/");
+  const names = new Set<string>();
+  for (const entry of archive.entries) {
+    const segments = entry.path.replace(/\\/g, "/").split("/").filter((part) => part !== "" && part !== ".");
+    if (segments.length > parts.length - 1 && segments.slice(0, parts.length - 1).join("/") === parent) names.add(segments[parts.length - 1]);
+  }
+  return [...names];
 }

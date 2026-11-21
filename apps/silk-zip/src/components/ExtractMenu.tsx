@@ -13,6 +13,8 @@ interface ExtractMenuProps {
   onPick: (target: ExtractTarget, scope: ExtractScope) => void;
   /** When set, a "압축 파일 위치 열기" item is appended. */
   onRevealArchive?: () => void;
+  /** When set, an "이름 바꾸기" item is added at the top (single selected entry). */
+  onRename?: () => void;
   /** When set, a "압축 파일 테스트" item is added above it. */
   onTestArchive?: () => void;
   onClose: () => void;
@@ -21,7 +23,7 @@ interface ExtractMenuProps {
 const MENU_WIDTH = 260;
 
 /** Folder templates for extraction, shown as a popup at a screen position (button or right-click). */
-export default function ExtractMenu({ archivePath, anchor, selectionLabel, onPick, onRevealArchive, onTestArchive, onClose }: ExtractMenuProps) {
+export default function ExtractMenu({ archivePath, anchor, selectionLabel, onPick, onRevealArchive, onTestArchive, onRename, onClose }: ExtractMenuProps) {
   const [recent] = useState(loadRecentFolders);
   const menu = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState(anchor);
@@ -56,6 +58,12 @@ export default function ExtractMenu({ archivePath, anchor, selectionLabel, onPic
 
   return (
     <div className="zip-command-menu zip-command-menu--fixed" role="menu" ref={menu} style={{ left: position.x, top: position.y, width: MENU_WIDTH }}>
+      {onRename ? (
+        <>
+          <button type="button" role="menuitem" onClick={onRename}><span>이름 바꾸기</span><kbd>F2</kbd></button>
+          <div className="zip-command-menu__separator" role="separator" />
+        </>
+      ) : null}
       {selectionLabel ? (
         <>
           <div className="zip-command-menu__heading" title={selectionLabel}>{`선택한 ${selectionLabel} 풀기`}</div>

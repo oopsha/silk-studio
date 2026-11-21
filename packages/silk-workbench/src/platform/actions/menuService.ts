@@ -229,6 +229,7 @@ class MenuServiceImpl {
         return "hasDirtyFiles";
       // Silk Zip archive commands are enabled only while an archive is open.
       case "silkZip.file.closeArchive":
+      case "silkZip.file.saveAs":
       case "silkZip.file.openFolder":
       case "silkZip.file.test":
       case "silkZip.file.extract":
@@ -243,6 +244,13 @@ class MenuServiceImpl {
       case "silkZip.placeholder.MenubarHelpMenu.4":
       case "silkZip.placeholder.MenubarHelpMenu.5":
         return "silkZipHelpLinksEnabled";
+      case "silkZip.edit.rename":
+        return "canRenameEntry";
+      case "silkZip.edit.delete":
+        return "canRemoveEntries";
+      case "silkZip.edit.addFiles":
+      case "silkZip.edit.addFolder":
+        return "canAddEntries";
       case "silkZip.placeholder.MenubarEditMenu.0":
       case "silkZip.placeholder.MenubarEditMenu.5":
       case "silkZip.placeholder.MenubarEditMenu.7":

@@ -45,7 +45,7 @@ function MenuDropdown({ groups, onSelect }: MenuDropdownProps) {
                     role="menuitem"
                     aria-haspopup="menu"
                     aria-expanded={isOpen}
-                    onClick={() => setOpenSubmenuId(isOpen ? null : item.menuId.id)}
+                    onClick={() => setOpenSubmenuId(item.menuId.id)}
                   >
                     <span className="menu-dropdown__label">{item.label}</span>
                     <span className="menu-dropdown__submenu-arrow" aria-hidden="true">

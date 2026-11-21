@@ -23,9 +23,13 @@ type Props = {
   /** Called for the row button and for right-clicks on rows with the rows it applies to. */
   onRowMenu?: RowMenuHandler;
   onTreeContextMenu?: (event: MouseEvent<HTMLElement>) => void;
+  /** Changing this (not `source`) sends the view back to the root; lets a source update in place. */
+  resetKey?: string;
+  /** Called with the folder chain (root first) whenever the shown folder changes. */
+  onRouteChange?: (route: readonly ResourceNode[]) => void;
 };
 
-export default function ResourceExplorer({ source, onOpenFile, onSelectionChange, extraColumns = [], header, onListContextMenu, onTreeContextMenu, rowAction, onRowMenu }: Props) {
+export default function ResourceExplorer({ source, onOpenFile, onSelectionChange, extraColumns = [], header, onListContextMenu, onTreeContextMenu, rowAction, onRowMenu, resetKey, onRouteChange }: Props) {
   const [route, setRoute] = useState<readonly ResourceNode[]>([source.root]);
   const [nodes, setNodes] = useState<readonly ResourceNode[] | null>(null);
   const [error, setError] = useState("");
@@ -38,7 +42,8 @@ export default function ResourceExplorer({ source, onOpenFile, onSelectionChange
   const { startDrag } = useWorkbenchSashDrag();
   const body = useRef<HTMLDivElement>(null);
   const current = route[route.length - 1];
-  useEffect(() => { setRoute([source.root]); }, [source]);
+  useEffect(() => { setRoute([source.root]); }, [resetKey ?? source]);
+  useEffect(() => { onRouteChange?.(route); }, [route, onRouteChange]);
   useEffect(() => {
     let active = true;
     setNodes(null); setError(""); setPage(0); setSelectedIds(new Set()); onSelectionChange?.([]);

@@ -26,9 +26,10 @@ const fileItems = [
   { id: "silkZip.file.recent", title: "최근 파일 열기", submenu: MenuId.MenubarRecentZipMenu, group: "1_open", order: 20 },
   { id: "silkZip.file.newArchive", title: "새 압축 만들기", group: "1_open", order: 30, shortcut: "Ctrl+N" },
   { id: "silkZip.file.closeArchive", title: "압축 파일 닫기", group: "2_archive", order: 10, shortcut: "F4" },
+  { id: "silkZip.file.saveAs", title: "다른 이름으로 저장...", group: "2_archive", order: 20 },
   { id: "silkZip.file.openFolder", title: "압축 파일 위치 열기", group: "2_archive", order: 50 },
   { id: "silkZip.file.test", title: "압축 파일 테스트", group: "2_archive", order: 60, shortcut: "Ctrl+T" },
-  { id: "silkZip.file.extract", title: "압축 풀기", group: "2_archive", order: 80, shortcut: "Ctrl+E" },
+  { id: "silkZip.file.extract", title: "압축 풀기...", group: "2_archive", order: 80, shortcut: "Ctrl+E" },
   { id: "silkZip.file.extractHere", title: "현재 폴더에 풀기", group: "2_archive", order: 81, shortcut: "Ctrl+Shift+C" },
   { id: "silkZip.file.extractNamed", title: "압축 파일 이름 폴더에 풀기", group: "2_archive", order: 82, shortcut: "Ctrl+Shift+S" },
   { id: "silkZip.file.newFolder", title: "새 창 열기", group: "3_window", order: 10, shortcut: "Ctrl+Shift+N" },
@@ -74,7 +75,7 @@ MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
 });
 
 const otherMenus = [
-  [MenuId.MenubarEditMenu, ["이름 바꾸기|F2", "파일 추가|Ins", "파일 삭제|Del", "압축 파일 설명 편집|Ctrl+Shift+M", "|", "클립보드로 파일 복사|Ctrl+C", "클립보드에서 파일 붙여넣기|Ctrl+V", "파일의 경로명을 클립보드로 복사", "|", "찾기...|Ctrl+F"]],
+  [MenuId.MenubarEditMenu, ["이름 바꾸기|F2", "파일 추가|Ins", "제거|Del", "압축 파일 설명 편집|Ctrl+Shift+M", "|", "클립보드로 파일 복사|Ctrl+C", "클립보드에서 파일 붙여넣기|Ctrl+V", "파일의 경로명을 클립보드로 복사", "|", "찾기...|Ctrl+F"]],
   [MenuId.MenubarViewMenu, ["보기 형식", "표시할 열", "테마"]],
   [MenuId.MenubarToolsMenu, ["손상된 압축 파일 복구...", "압축 파일 암호 복구..."]],
   [MenuId.MenubarHelpMenu, ["정보|F1", "프로그램 설치 폴더 열기", "|", "도움말 페이지 열기", "토론 게시판 열기", "홈페이지 열기"]],
@@ -108,6 +109,23 @@ for (const [menuId, labels] of otherMenus) {
         group: `group-${labels.slice(0, order).filter((label) => label === "|").length}`,
         order,
       });
+      return;
+    }
+    if (menuId === MenuId.MenubarEditMenu && order === 0) {
+      MenuRegistry.appendMenuItem(menuId, {
+        command: { id: "silkZip.edit.rename", title: "이름 바꾸기" },
+        group: "group-0",
+        order,
+      });
+      return;
+    }
+    if (menuId === MenuId.MenubarEditMenu && order === 1) {
+      MenuRegistry.appendMenuItem(menuId, { command: { id: "silkZip.edit.addFiles", title: "파일 추가" }, group: "group-0", order });
+      MenuRegistry.appendMenuItem(menuId, { command: { id: "silkZip.edit.addFolder", title: "폴더 추가" }, group: "group-0", order: order + 0.5 });
+      return;
+    }
+    if (menuId === MenuId.MenubarEditMenu && order === 2) {
+      MenuRegistry.appendMenuItem(menuId, { command: { id: "silkZip.edit.delete", title: "제거" }, group: "group-0", order });
       return;
     }
     const [title, shortcut] = entry.split("|");

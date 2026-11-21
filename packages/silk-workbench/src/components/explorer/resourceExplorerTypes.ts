@@ -8,6 +8,8 @@ export type ResourceNode = {
   directory: boolean;
   size?: number | null;
   encrypted?: boolean;
+  /** Short note shown by apps in a status column (e.g. a pending change). */
+  status?: string;
 };
 
 /** The source owns paths and I/O; views only use opaque node IDs. */

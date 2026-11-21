@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import { cancelArchive, extractArchive, openOutputFolder, testArchive, type CreateProgress, type ExtractResult } from "../archive.ts";
+import { cancelArchive, extractArchive, openOutputFolder, testArchive, updateArchive, type EntryChange, type NewEntry, type CreateProgress, type ExtractResult } from "../archive.ts";
 import { getZipSettings } from "../zipSettings.ts";
 import { parentFolder, rememberFolder, resolveTargetFolder, type ExtractTarget } from "../extractTargets.ts";
 
@@ -34,7 +34,7 @@ function formatBytes(bytes: number): string {
 /** Folder pick, progress, password prompt and cancel for one extraction at a time. */
 export function useExtraction() {
   const [state, setState] = useState<ExtractState>(null);
-  const job = useRef<{ operationId: string; archivePath: string; outputDir: string; entries: string[]; test?: boolean } | null>(null);
+  const job = useRef<{ operationId: string; archivePath: string; outputDir: string; entries: string[]; test?: boolean; update?: { changes: EntryChange[]; adds: NewEntry[]; onDone: () => void } } | null>(null);
   const active = useRef(false);
 
   const run = useCallback(async (password: string) => {
@@ -47,7 +47,11 @@ export function useExtraction() {
       const onProgress = (progress: CreateProgress) => {
         setState((previous) => (previous?.phase === "running" ? { phase: "running", progress } : previous));
       };
-      if (current.test) {
+      if (current.update) {
+        await updateArchive(current.operationId, current.archivePath, current.update.changes, current.update.adds, password, onProgress);
+        setState(null);
+        current.update.onDone();
+      } else if (current.test) {
         const result = await testArchive(current.operationId, current.archivePath, password, onProgress);
         setState({ phase: "done", kind: "test", tested: result.tested, elapsedMs: performance.now() - startedAt });
       } else {
@@ -85,13 +89,20 @@ export function useExtraction() {
     await run("");
   }, [run]);
 
+  /** Writes pending changes into the archive in one pass; `onDone` runs once it was rewritten. */
+  const startUpdate = useCallback(async (archivePath: string, changes: EntryChange[], adds: NewEntry[], onDone: () => void) => {
+    if (active.current) return;
+    job.current = { operationId: `update-${Date.now()}`, archivePath, outputDir: "", entries: [], update: { changes, adds, onDone } };
+    await run("");
+  }, [run]);
+
   const cancel = useCallback(() => {
     if (job.current) void cancelArchive(job.current.operationId);
   }, []);
 
   const close = useCallback(() => { if (!active.current) setState(null); }, []);
 
-  return { state, start, startTest, submitPassword: run, cancel, close, isTest: () => job.current?.test === true, outputDir: () => job.current?.outputDir ?? "" };
+  return { state, start, startTest, startUpdate, submitPassword: run, cancel, close, isTest: () => job.current?.test === true, isUpdate: () => job.current?.update !== undefined, outputDir: () => job.current?.outputDir ?? "" };
 }
 
 type ExtractionController = ReturnType<typeof useExtraction>;
@@ -111,10 +122,11 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
       : progress.totalEntries > 0 ? Math.min(99, Math.floor(progress.completedEntries / progress.totalEntries * 100)) : 0
     : 0;
   const testing = controller.isTest();
+  const updating = controller.isUpdate();
   const title = state.phase === "done" ? (state.kind === "test" ? "테스트 완료" : "압축 풀기 완료")
     : state.phase === "password" ? "암호 입력"
-    : state.phase === "error" ? (testing ? "압축 파일 테스트 실패" : "압축 풀기 실패")
-    : testing ? "압축 파일 테스트 중" : "압축 푸는 중";
+    : state.phase === "error" ? (updating ? "변경 적용 실패" : testing ? "압축 파일 테스트 실패" : "압축 풀기 실패")
+    : updating ? "변경 적용 중" : testing ? "압축 파일 테스트 중" : "압축 푸는 중";
   const canDismiss = state.phase !== "running";
 
   return (

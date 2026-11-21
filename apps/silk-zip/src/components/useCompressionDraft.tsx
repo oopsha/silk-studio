@@ -73,6 +73,21 @@ export function useCompressionDraft(rootName: string) {
     setEntries((items) => items.filter((entry) => ![...selected].some((path) => entry.archivePath === path || entry.archivePath.startsWith(`${path}/`))));
     setSelected(new Set());
   };
+  /** The single selected entry, if exactly one, with the names next to it. */
+  const renameTarget = () => {
+    if (selected.size !== 1) return null;
+    const path = [...selected][0];
+    const entry = entries.find((item) => item.archivePath === path);
+    if (!entry) return null;
+    return { path, name: basename(path), directory: entry.directory, siblings: entries.filter((item) => parentOf(item.archivePath) === parentOf(path)).map((item) => basename(item.archivePath)) };
+  };
+  const rename = (path: string, name: string) => {
+    const parent = parentOf(path);
+    const next = parent ? `${parent}/${name}` : name;
+    setEntries((items) => items.map((entry) => entry.archivePath === path ? { ...entry, archivePath: next } : entry.archivePath.startsWith(`${path}/`) ? { ...entry, archivePath: next + entry.archivePath.slice(path.length) } : entry));
+    setSelected(new Set([next]));
+    setError("");
+  };
   const reset = () => { revision.current += 1; setEntries([]); navigate(""); setError(""); };
   const createFolder = () => {
     const name = newFolder?.trim() ?? "";
@@ -113,5 +128,5 @@ export function useCompressionDraft(rootName: string) {
       {!visible.length ? <div className="zip-draft-empty"><strong>파일이나 폴더를 여기로 끌어오세요</strong><span>또는 추가를 눌러 선택</span></div> : null}
     </div></div>
   </>;
-  return { entries, add, resolveDropTarget, clearDropTarget, remove, reset, pending, selectedCount: selected.size, newFolder: () => setNewFolder("새 폴더"), list, tree: <div data-zip-draft-tree><ResourceTree source={source} selectedId={current} directoriesOnly expandedPath={["", ...current.split("/").map((_, index, parts) => parts.slice(0, index + 1).join("/"))]} onSelect={(node) => navigate(node.id)} /></div> };
+  return { entries, add, resolveDropTarget, clearDropTarget, remove, reset, pending, selectedCount: selected.size, renameTarget, rename, newFolder: () => setNewFolder("새 폴더"), list, tree: <div data-zip-draft-tree><ResourceTree source={source} selectedId={current} directoriesOnly expandedPath={["", ...current.split("/").map((_, index, parts) => parts.slice(0, index + 1).join("/"))]} onSelect={(node) => navigate(node.id)} /></div> };
 }

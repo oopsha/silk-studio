@@ -17,7 +17,7 @@ import { ContextKeyService } from "@silk-studio/workbench/platform/context/conte
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
 import ConfirmDialog from "@silk-studio/workbench/components/dialogs/ConfirmDialog.tsx";
 import { ConfirmDialogService } from "@silk-studio/workbench/services/dialog/confirmDialogService.ts";
-import { cancelArchive, createArchive, listArchive, openOutputFolder, revealInFolder, openNewWindow, isElevated, reportArchiveProgressDiagnostic, type ArchiveListing, type CreateProgress, type CreateResult } from "./archive";
+import { cancelArchive, createArchive, listArchive, openOutputFolder, revealInFolder, openNewWindow, exitApp, saveArchiveAs, isElevated, reportArchiveProgressDiagnostic, type ArchiveListing, type CreateProgress, type CreateResult } from "./archive";
 import { startNativeMenubar } from "@silk-studio/workbench/services/nativeMenubar/nativeMenubarService.ts";
 import CommandPalette from "@silk-studio/workbench/components/commands/index.ts";
 import ZipSettingsPage from "./components/ZipSettingsPage";
@@ -25,7 +25,10 @@ import ZipKeybindingsPage from "./components/ZipKeybindingsPage";
 import { HistoryService } from "@silk-studio/editor/services/history/historyService.ts";
 import { UserKeybindingsService } from "@silk-studio/workbench/platform/keybinding/userKeybindingsService.ts";
 import { getZipSettings, setPage, usePage, type ZipPage } from "./zipSettings";
-import ArchiveExplorer from "./components/ArchiveExplorer";
+import ArchiveExplorer, { type RenameEntry } from "./components/ArchiveExplorer";
+import RenameDialog from "./components/RenameDialog";
+import { siblingNames } from "./archiveSource";
+import { usePendingChanges } from "./pendingChanges";
 import CommandBar from "./components/CommandBar";
 import { ExtractDialog, useExtraction } from "./components/ExtractDialog";
 import { useCompressionDraft } from "./components/useCompressionDraft";
@@ -89,10 +92,23 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [elevated, setElevated] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{ entry: RenameEntry; siblings: string[]; inArchive: boolean } | null>(null);
+  const archiveSelection = useRef<RenameEntry | null>(null);
+  const folderRef = useRef("");
+  const selectedPathsRef = useRef<string[]>([]);
+  const pending = usePendingChanges(archive);
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+  const [folderPrompt, setFolderPrompt] = useState<{ folder: string; siblings: string[] } | null>(null);
+  const addActions = useRef({ files: () => {}, folder: () => {} });
   const page = usePage();
   const busy = useRef(false);
   const creating = useRef(false);
   const activeCreateId = useRef<string | null>(null);
+  const removeDraft = useRef<() => void>(() => {});
+  removeDraft.current = draft.remove;
+  const renameDraft = useRef<() => ReturnType<typeof draft.renameTarget>>(() => null);
+  renameDraft.current = draft.renameTarget;
   const extractionController = useExtraction();
   const extraction = useRef(extractionController);
   extraction.current = extractionController;
@@ -147,8 +163,32 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!archive) ContextKeyService.set("canRenameEntry", draft.selectedCount === 1);
+    ContextKeyService.set("canAddEntries", page === null && (archive ? pending.editable : compressionProgress === null));
+    if (!archive) ContextKeyService.set("canRemoveEntries", draft.selectedCount > 0);
+  }, [archive, page, compressionProgress, draft.selectedCount, pending.editable]);
+
+  useEffect(() => {
     ContextKeyService.set("hasOpenArchive", archive !== null);
     ContextKeyService.set("hasArchiveEntrySelection", false);
+  }, [archive]);
+
+  // Files dropped onto an opened archive are added as pending changes in the shown folder.
+  useEffect(() => {
+    if (!isTauri() || archive === null) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWebview().onDragDropEvent((event) => {
+      if (event.payload.type !== "drop") return;
+      const paths = event.payload.paths ?? [];
+      if (!paths.length) return;
+      if (!pendingRef.current.editable) { setError("이 형식의 압축 파일은 수정할 수 없습니다. (zip, 7z, tar만 가능)"); return; }
+      void pendingRef.current.add(paths, folderRef.current).then((message) => { if (message) setError(message); }).catch((reason) => setError(String(reason)));
+    }).then((stop) => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    }).catch((reason) => console.warn("[silkZip.fileDrop] 드롭 이벤트 연결 실패:", reason));
+    return () => { cancelled = true; unlisten?.(); };
   }, [archive]);
 
   useEffect(() => {
@@ -180,6 +220,7 @@ function App() {
     let disposed = false;
     const recentArchives = startRecentArchives(async (path) => {
       if (busy.current) return;
+      if (!(await confirmDiscard())) return;
       busy.current = true;
       try {
         setLoading(true);
@@ -193,12 +234,23 @@ function App() {
         if (!disposed) setLoading(false);
       }
     });
+    const confirmDiscard = async (): Promise<boolean> => {
+      if (!pendingRef.current.dirty) return true;
+      return ConfirmDialogService.confirm({
+        title: "변경 사항이 적용되지 않았습니다",
+        message: `대기 중인 변경 ${pendingRef.current.count.toLocaleString()}개가 압축 파일에 아직 반영되지 않았습니다. 버리고 계속할까요?`,
+        confirmLabel: "버리고 계속",
+        cancelLabel: "취소",
+        danger: true,
+      });
+    };
     const openArchive = async () => {
       if (busy.current) return;
       busy.current = true;
       try {
         const path = await open({ multiple: false, directory: false, filters: ARCHIVE_FILE_FILTERS });
         if (disposed || !path || Array.isArray(path)) return;
+        if (!(await confirmDiscard())) return;
         setLoading(true);
         setError(null);
         const result = await listArchive(path);
@@ -212,6 +264,7 @@ function App() {
     };
     const newArchive = async () => {
       if (creating.current) return;
+      if (!(await confirmDiscard())) return;
       const draft = createDraft.current;
       const hasUnsavedWork = draft.files.length > 0
         || draft.format !== "zip"
@@ -249,8 +302,9 @@ function App() {
       const current = createDraft.current.archive;
       if (current) void extraction.current.start(current.path, target);
     };
-    const closeArchive = () => {
+    const closeArchive = async () => {
       if (!createDraft.current.archive || busy.current) return;
+      if (!(await confirmDiscard())) return;
       setArchive(null);
       setError(null);
     };
@@ -276,6 +330,85 @@ function App() {
       KeybindingsRegistry.registerKeybinding("silkZip.file.newFolder", detectWorkbenchPlatform() === "mac" ? "Cmd+Shift+N" : "Ctrl+Shift+N"),
       ...(detectWorkbenchPlatform() === "windows" ? [KeybindingsRegistry.registerKeybinding("silkZip.file.newFolderAdmin", "Ctrl+Alt+N")] : []),
     ];
+    const saveArchiveCopy = async () => {
+      const current = createDraft.current.archive;
+      if (!current) return;
+      const extension = /\.([^.\\/]+)$/.exec(current.path)?.[1];
+      const target = await save({
+        defaultPath: current.path,
+        filters: extension ? [{ name: extension.toUpperCase(), extensions: [extension] }, { name: "모든 파일", extensions: ["*"] }] : undefined,
+      });
+      if (!target) return;
+      try {
+        await saveArchiveAs(current.path, target);
+        const openSaved = await ConfirmDialogService.confirm({ title: "다른 이름으로 저장", message: `저장했습니다.
+${target}
+
+저장한 파일을 열까요?`, confirmLabel: "열기", cancelLabel: "닫기" });
+        if (openSaved && !busy.current) {
+          busy.current = true;
+          try {
+            setLoading(true);
+            setError(null);
+            const result = await listArchive(target);
+            if (!disposed) { setArchive(result); recentArchives.record(target); }
+          } catch (reason) {
+            if (!disposed) setError(String(reason));
+          } finally {
+            busy.current = false;
+            if (!disposed) setLoading(false);
+          }
+        }
+      } catch (reason) {
+        await ConfirmDialogService.confirm({ title: "저장 실패", message: String(reason), confirmLabel: "확인", hideCancel: true });
+      }
+    };
+    const unregisterSaveAs = CommandsRegistry.registerCommand("silkZip.file.saveAs", saveArchiveCopy);
+    const quit = async () => {
+      if (!(await confirmDiscard())) return;
+      const busyNow = creating.current || extraction.current.state?.phase === "running";
+      if (busyNow) {
+        const confirmed = await ConfirmDialogService.confirm({
+          title: "종료",
+          message: "작업이 진행 중입니다. 지금 종료하면 작업이 중단됩니다. 종료할까요?",
+          confirmLabel: "종료",
+          cancelLabel: "취소",
+          danger: true,
+        });
+        if (!confirmed) return;
+      }
+      try { await exitApp(); }
+      catch (reason) { setError(String(reason)); }
+    };
+    const unregisterExit = CommandsRegistry.registerCommand("silkZip.file.exit", quit);
+    const unregisterExitKey = KeybindingsRegistry.registerKeybinding("silkZip.file.exit", detectWorkbenchPlatform() === "mac" ? "Cmd+W" : "Ctrl+W");
+    const unregisterAdd = [
+      CommandsRegistry.registerCommand("silkZip.edit.addFiles", () => addActions.current.files()),
+      CommandsRegistry.registerCommand("silkZip.edit.addFolder", () => addActions.current.folder()),
+      KeybindingsRegistry.registerKeybinding("silkZip.edit.addFiles", "Insert"),
+    ];
+    const removeSelected = () => {
+      if (createDraft.current.archive) {
+        if (pendingRef.current.editable && selectedPathsRef.current.length) pendingRef.current.remove(selectedPathsRef.current);
+      } else {
+        removeDraft.current();
+      }
+    };
+    const unregisterDelete = [
+      CommandsRegistry.registerCommand("silkZip.edit.delete", removeSelected),
+      KeybindingsRegistry.registerKeybinding("silkZip.edit.delete", "Delete"),
+    ];
+    const unregisterRename = CommandsRegistry.registerCommand("silkZip.edit.rename", () => {
+      const current = createDraft.current.archive;
+      if (current) {
+        const entry = archiveSelection.current;
+        if (entry && pendingRef.current.editable) setRenameTarget({ entry, siblings: siblingNames(pendingRef.current.view ?? current, entry.path), inArchive: true });
+        return;
+      }
+      const target = renameDraft.current();
+      if (target) setRenameTarget({ entry: { path: target.path, name: target.name, directory: target.directory }, siblings: target.siblings, inArchive: false });
+    });
+    const unregisterRenameKey = KeybindingsRegistry.registerKeybinding("silkZip.edit.rename", "F2");
     const unregisterClose = CommandsRegistry.registerCommand("silkZip.file.closeArchive", closeArchive);
     const unregisterCloseKey = KeybindingsRegistry.registerKeybinding("silkZip.file.closeArchive", "F4");
     const unregisterExtract = CommandsRegistry.registerCommand("silkZip.file.extract", () => extractCurrentArchive(getZipSettings().extractTarget)());
@@ -325,17 +458,38 @@ function App() {
     UserKeybindingsService.reapply();
     const onKeyDown = (event: KeyboardEvent) => { KeybindingsRegistry.handleKeyboardEvent(event); };
     window.addEventListener("keydown", onKeyDown);
-    return () => { disposed = true; recentArchives.stop(); unregisterNewKey(); unregisterNew(); stopHistory(); unregisterSettings.forEach((stop) => stop()); unregisterNewWindow(); unregisterNewWindowAdmin(); unregisterNewWindowKeys.forEach((stop) => stop()); unregisterTest(); unregisterTestKey(); unregisterOpenFolder(); unregisterClose(); unregisterCloseKey(); unregisterExtract(); unregisterExtractHere(); unregisterExtractNamed(); unregisterExtractKeys.forEach((stop) => stop()); unregisterKey(); unregister(); window.removeEventListener("keydown", onKeyDown); };
+    return () => { disposed = true; recentArchives.stop(); unregisterNewKey(); unregisterNew(); unregisterDelete.forEach((stop) => stop()); unregisterAdd.forEach((stop) => stop()); unregisterSaveAs(); unregisterRename(); unregisterRenameKey(); unregisterExit(); unregisterExitKey(); stopHistory(); unregisterSettings.forEach((stop) => stop()); unregisterNewWindow(); unregisterNewWindowAdmin(); unregisterNewWindowKeys.forEach((stop) => stop()); unregisterTest(); unregisterTestKey(); unregisterOpenFolder(); unregisterClose(); unregisterCloseKey(); unregisterExtract(); unregisterExtractHere(); unregisterExtractNamed(); unregisterExtractKeys.forEach((stop) => stop()); unregisterKey(); unregister(); window.removeEventListener("keydown", onKeyDown); };
   }, []);
+  const addToArchive = async (paths: string[]) => {
+    try {
+      const message = await pending.add(paths, folderRef.current);
+      if (message) setError(message);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
   const addFiles = async () => {
     setAddMenuOpen(false);
     const selected = await open({ multiple: true, directory: false });
-    if (selected) await draft.add(Array.isArray(selected) ? selected : [selected]);
+    if (!selected) return;
+    const paths = Array.isArray(selected) ? selected : [selected];
+    if (archive) await addToArchive(paths); else await draft.add(paths);
   };
+  addActions.current = { files: () => { void addFiles(); }, folder: () => { void addFolder(); } };
   const addFolder = async () => {
     setAddMenuOpen(false);
     const selected = await open({ multiple: true, directory: true });
-    if (selected) await draft.add(Array.isArray(selected) ? selected : [selected]);
+    if (!selected) return;
+    const paths = Array.isArray(selected) ? selected : [selected];
+    if (archive) await addToArchive(paths); else await draft.add(paths);
+  };
+  const applyPending = () => {
+    if (!archive) return;
+    const archivePath = archive.path;
+    const { changes, adds } = pending.request();
+    void extractionController.startUpdate(archivePath, changes, adds, () => {
+      void listArchive(archivePath).then((result) => { setArchive(result); setError(null); }).catch((reason) => setError(String(reason)));
+    });
   };
   const chooseOutputPath = async (): Promise<string | null> => {
     const selected = await save({
@@ -526,7 +680,7 @@ function App() {
           {elevated && !archive ? <div className="zip-message" role="note">관리자 권한으로 실행 중이라 일반 탐색기에서 이 창으로 파일을 끌어놓을 수 없습니다(끌 때 금지 표시가 나옵니다). 탐색기도 관리자 권한으로 실행하거나 '추가' 버튼을 사용하세요.</div> : null}
           {loading ? <div className="zip-message" role="status">압축 파일을 읽고 있습니다…</div> : null}
           {error ? <div className="zip-message zip-message--error" role="alert">{error}</div> : null}
-          {archive ? <ArchiveExplorer archive={archive} onExtract={(target, entries) => { void extractionController.start(archive.path, target, entries); }} onTest={() => { void extractionController.startTest(archive.path); }} /> : <div className="zip-start-workspace">
+          {archive ? <ArchiveExplorer archive={pending.view ?? archive} folderRef={folderRef} selectedPathsRef={selectedPathsRef} editor={{ canEdit: pending.editable, addFiles: () => { void addFiles(); }, addFolder: () => { void addFolder(); }, newFolder: (folder) => setFolderPrompt({ folder, siblings: siblingNames(pending.view ?? archive, `${folder ? `${folder}/` : ""}x`) }), remove: (paths) => pending.remove(paths), pendingCount: pending.count, apply: applyPending, discard: pending.discard }} onExtract={(target, entries) => { void extractionController.start(archive.path, target, entries); }} onTest={() => { void extractionController.startTest(archive.path); }} onRename={(entry) => setRenameTarget({ entry, siblings: siblingNames(archive, entry.path), inArchive: true })} selectionRef={archiveSelection} /> : <div className="zip-start-workspace">
           {layout.sidebar ? <aside className="zip-empty-explorer" style={{ width: layout.sidebarWidth }} aria-label="탐색기"><ViewPaneTitle title="탐색기" />{draft.tree}</aside> : null}
           <section className="zip-content zip-create-form">
             <div className="zip-toolbar"><div><h1>새 압축 만들기</h1><p>파일이나 폴더를 추가하고 압축 설정을 지정하세요.</p></div><div className="zip-toolbar__actions"><div className="zip-add-menu" ref={addMenuRef}><div className="zip-extract-split"><button className="zip-button zip-extract-split__main" title="파일 추가" onClick={addFiles}>추가</button><button className="zip-button zip-extract-split__arrow" aria-label="추가 옵션" aria-haspopup="menu" aria-expanded={addMenuOpen} onClick={() => setAddMenuOpen((open) => !open)}><span className="codicon codicon-chevron-down" aria-hidden="true" /></button></div>{addMenuOpen ? <div className="zip-add-menu__popup" role="menu"><button role="menuitem" onClick={addFiles}>파일 추가</button><button role="menuitem" onClick={addFolder}>폴더 추가</button></div> : null}</div><button className="zip-button" onClick={draft.newFolder}>새 폴더</button><button className="zip-button" onClick={draft.remove} disabled={draft.selectedCount === 0}>제거</button></div></div>
@@ -570,6 +724,21 @@ function App() {
           </section>
         </div>
       ) : null}
+      {renameTarget ? <RenameDialog request={{ name: renameTarget.entry.name, directory: renameTarget.entry.directory }} siblings={renameTarget.siblings} onCancel={() => setRenameTarget(null)} onSubmit={(name) => {
+        const target = renameTarget;
+        setRenameTarget(null);
+        if (target.inArchive) {
+          pending.rename(target.entry.path, name);
+        } else {
+          draft.rename(target.entry.path, name);
+        }
+      }} /> : null}
+      {folderPrompt ? <RenameDialog title="새 폴더" suggested request={{ name: "새 폴더", directory: true }} siblings={folderPrompt.siblings} onCancel={() => setFolderPrompt(null)} onSubmit={(name) => {
+        const target = folderPrompt;
+        setFolderPrompt(null);
+        const message = pending.newFolder(target.folder, name);
+        if (message) setError(message);
+      }} /> : null}
       <CommandPalette />
       <ConfirmDialog />
       <ExtractDialog controller={extractionController} />
