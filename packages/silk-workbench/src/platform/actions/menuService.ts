@@ -237,8 +237,7 @@ class MenuServiceImpl {
       case "silkZip.file.extractNamed":
       case "silkZip.placeholder.MenubarEditMenu.1":
       case "silkZip.placeholder.MenubarEditMenu.2":
-      case "silkZip.placeholder.MenubarEditMenu.3":
-      case "silkZip.placeholder.MenubarEditMenu.9":
+      case "silkZip.edit.find":
         return "hasOpenArchive";
       case "silkZip.placeholder.MenubarHelpMenu.3":
       case "silkZip.placeholder.MenubarHelpMenu.4":
@@ -252,9 +251,10 @@ class MenuServiceImpl {
       case "silkZip.edit.addFolder":
         return "canAddEntries";
       case "silkZip.placeholder.MenubarEditMenu.0":
-      case "silkZip.placeholder.MenubarEditMenu.5":
-      case "silkZip.placeholder.MenubarEditMenu.7":
+      case "silkZip.edit.copy":
         return "hasArchiveEntrySelection";
+      case "silkZip.edit.paste":
+        return "canAddEntries";
       // VS Code (editor/contrib/find/browser/findController.ts): Find/Replace require
       // editor focus or an open editor.
       case "silk.edit.find":

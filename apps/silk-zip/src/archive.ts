@@ -135,6 +135,18 @@ export function saveArchiveAs(source: string, target: string): Promise<void> {
   return invoke("archive_save_as", { source, target });
 }
 
+export function clipboardPrepareDir(): Promise<string> {
+  return invoke("clipboard_prepare_dir");
+}
+
+export function clipboardCopyDir(dir: string): Promise<number> {
+  return invoke("clipboard_copy_dir", { dir });
+}
+
+export function clipboardReadFiles(): Promise<string[]> {
+  return invoke("clipboard_read_files");
+}
+
 export function exitApp(): Promise<void> {
   return invoke("exit_app");
 }

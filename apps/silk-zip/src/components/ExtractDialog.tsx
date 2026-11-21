@@ -34,7 +34,7 @@ function formatBytes(bytes: number): string {
 /** Folder pick, progress, password prompt and cancel for one extraction at a time. */
 export function useExtraction() {
   const [state, setState] = useState<ExtractState>(null);
-  const job = useRef<{ operationId: string; archivePath: string; outputDir: string; entries: string[]; test?: boolean; update?: { changes: EntryChange[]; adds: NewEntry[]; onDone: () => void } } | null>(null);
+  const job = useRef<{ operationId: string; archivePath: string; outputDir: string; entries: string[]; test?: boolean; update?: { changes: EntryChange[]; adds: NewEntry[]; onDone: () => void }; copy?: { onDone: () => void } } | null>(null);
   const active = useRef(false);
 
   const run = useCallback(async (password: string) => {
@@ -47,7 +47,11 @@ export function useExtraction() {
       const onProgress = (progress: CreateProgress) => {
         setState((previous) => (previous?.phase === "running" ? { phase: "running", progress } : previous));
       };
-      if (current.update) {
+      if (current.copy) {
+        await extractArchive(current.operationId, current.archivePath, current.outputDir, password, true, onProgress, current.entries);
+        setState(null);
+        current.copy.onDone();
+      } else if (current.update) {
         await updateArchive(current.operationId, current.archivePath, current.update.changes, current.update.adds, password, onProgress);
         setState(null);
         current.update.onDone();
@@ -96,13 +100,20 @@ export function useExtraction() {
     await run("");
   }, [run]);
 
+  /** Extracts entries into `outputDir` (a fresh temporary folder); `onDone` runs once they are there. */
+  const startCopy = useCallback(async (archivePath: string, outputDir: string, entries: string[], onDone: () => void) => {
+    if (active.current) return;
+    job.current = { operationId: `copy-${Date.now()}`, archivePath, outputDir, entries, copy: { onDone } };
+    await run("");
+  }, [run]);
+
   const cancel = useCallback(() => {
     if (job.current) void cancelArchive(job.current.operationId);
   }, []);
 
   const close = useCallback(() => { if (!active.current) setState(null); }, []);
 
-  return { state, start, startTest, startUpdate, submitPassword: run, cancel, close, isTest: () => job.current?.test === true, isUpdate: () => job.current?.update !== undefined, outputDir: () => job.current?.outputDir ?? "" };
+  return { state, start, startTest, startUpdate, startCopy, submitPassword: run, cancel, close, isTest: () => job.current?.test === true, isUpdate: () => job.current?.update !== undefined, isCopy: () => job.current?.copy !== undefined, outputDir: () => job.current?.outputDir ?? "" };
 }
 
 type ExtractionController = ReturnType<typeof useExtraction>;
@@ -123,10 +134,11 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
     : 0;
   const testing = controller.isTest();
   const updating = controller.isUpdate();
+  const copying = controller.isCopy();
   const title = state.phase === "done" ? (state.kind === "test" ? "테스트 완료" : "압축 풀기 완료")
     : state.phase === "password" ? "암호 입력"
-    : state.phase === "error" ? (updating ? "변경 적용 실패" : testing ? "압축 파일 테스트 실패" : "압축 풀기 실패")
-    : updating ? "변경 적용 중" : testing ? "압축 파일 테스트 중" : "압축 푸는 중";
+    : state.phase === "error" ? (copying ? "복사 실패" : updating ? "변경 적용 실패" : testing ? "압축 파일 테스트 실패" : "압축 풀기 실패")
+    : copying ? "복사 준비 중" : updating ? "변경 적용 중" : testing ? "압축 파일 테스트 중" : "압축 푸는 중";
   const canDismiss = state.phase !== "running";
 
   return (

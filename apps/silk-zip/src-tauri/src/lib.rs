@@ -1,4 +1,5 @@
 mod archive;
+mod clipboard;
 mod window_layout;
 
 use tauri::Manager;
@@ -137,6 +138,9 @@ pub fn run() {
             archive::new_window,
             archive::exit_app,
             archive::archive_save_as,
+            clipboard::clipboard_prepare_dir,
+            clipboard::clipboard_copy_dir,
+            clipboard::clipboard_read_files,
             archive::is_elevated,
             archive::reveal_in_folder,
             file_sizes,

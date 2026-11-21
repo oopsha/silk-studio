@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type CSSProperties, type MouseEvent } from "react";
-import ResourceExplorer, { type ResourceColumn } from "@silk-studio/workbench/components/explorer/ResourceExplorer.tsx";
+import ResourceExplorer, { type ResourceColumn, type ResourceLocate } from "@silk-studio/workbench/components/explorer/ResourceExplorer.tsx";
 import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import type { ResourceNode } from "@silk-studio/workbench/components/explorer/resourceExplorerTypes.ts";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { revealInFolder, type ArchiveListing } from "../archive";
 import { ConfirmDialogService } from "@silk-studio/workbench/services/dialog/confirmDialogService.ts";
-import { archiveNodePath, createArchiveSource } from "../archiveSource";
+import { archiveNodePath, archiveRoute, createArchiveSource, type SearchItem } from "../archiveSource";
+import ArchiveSearchView from "./ArchiveSearchView";
+import { useActiveView } from "@silk-studio/workbench/services/view/useActiveView.ts";
 import type { ExtractTarget } from "../extractTargets";
 import { useZipSettings } from "../zipSettings";
 import ExtractMenu, { type MenuAnchor } from "./ExtractMenu";
@@ -47,12 +49,15 @@ export interface ArchiveEditor {
 
 export default function ArchiveExplorer({ archive, onExtract, onTest, onRename, selectionRef, folderRef, selectedPathsRef, editor }: ArchiveExplorerProps) {
   const layout = useLayoutState();
+  const activeView = useActiveView();
+  const [locate, setLocate] = useState<ResourceLocate | undefined>(undefined);
   const { extractTarget } = useZipSettings();
   const source = useMemo(() => createArchiveSource(archive), [archive]);
   const [menu, setMenu] = useState<(MenuAnchor & { selection?: { label: string; paths: string[] }; rename?: RenameEntry; reveal?: boolean }) | null>(null);
   const selected = useRef<readonly ResourceNode[]>([]);
   const [folder, setFolder] = useState("");
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [pathMenu, setPathMenu] = useState<{ x: number; y: number } | null>(null);
   const [selectedCount, setSelectedCount] = useState(0);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const onSelectionChange = useCallback((nodes: readonly ResourceNode[]) => {
@@ -129,7 +134,7 @@ export default function ArchiveExplorer({ archive, onExtract, onTest, onRename, 
       <span className="zip-pending-bar__actions"><button type="button" className="zip-button" onClick={editor.discard}>모두 취소</button><button type="button" className="zip-button primary" onClick={editor.apply}>적용</button></span>
     </div> : null}
     <div className="zip-explorer-content" style={{ "--zip-sidebar-width": layout.sidebar ? `${layout.sidebarWidth}px` : "0px" } as CSSProperties}>
-      {layout.sidebar ? <div className="zip-explorer-title"><ViewPaneTitle title="탐색기" /></div> : null}
+      {layout.sidebar ? <div className="zip-explorer-title"><ViewPaneTitle title={activeView === "search" ? "검색" : "탐색기"} /></div> : null}
       <ResourceExplorer
         source={source}
         resetKey={archive.path}
@@ -137,12 +142,34 @@ export default function ArchiveExplorer({ archive, onExtract, onTest, onRename, 
         onSelectionChange={onSelectionChange}
         extraColumns={columns}
         header={header}
+        locate={locate}
+        sidebar={activeView === "search" ? <ArchiveSearchView archive={archive} folder={folder} onReveal={(item: SearchItem) => setLocate((previous) => ({ route: archiveRoute(archive, item.parent), select: item.id, nonce: (previous?.nonce ?? 0) + 1 }))} /> : undefined}
+        addressExtra={<button type="button" className="zip-path-copy" title="경로 복사" aria-label="경로 복사" aria-haspopup="menu" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setPathMenu({ x: rect.right, y: rect.bottom + 2 }); }}><Codicon name="copy" /></button>}
         onListContextMenu={openContextMenu}
         onTreeContextMenu={openContextMenu}
         rowAction={{ icon: "export", title: "압축 풀기" }}
         onRowMenu={(nodes, at) => setMenu({ ...at, selection: currentSelection(nodes), rename: nodes.length === 1 && editor.canEdit ? selectionRef.current ?? undefined : undefined, reveal: true })}
       />
     </div>
+    {pathMenu ? <PathCopyMenu anchor={pathMenu} archivePath={archive.path} folder={folder} onClose={() => setPathMenu(null)} /> : null}
     {menu ? <ExtractMenu archivePath={archive.path} anchor={menu} onClose={closeMenu} selectionLabel={menu.selection?.label} onRename={menu.rename ? () => { const entry = menu.rename!; setMenu(null); onRename(entry); } : undefined} onTestArchive={menu.reveal ? () => { setMenu(null); onTest(); } : undefined} onRevealArchive={menu.reveal ? () => { setMenu(null); void revealInFolder(archive.path).catch((reason) => ConfirmDialogService.confirm({ title: "압축 파일 위치 열기", message: String(reason), confirmLabel: "확인", hideCancel: true })); } : undefined} onPick={(target, scope) => { const entries = scope === "selection" && menu.selection ? menu.selection.paths : undefined; setMenu(null); onExtract(target, entries); }} /> : null}
   </section>;
+}
+
+/** Small popup next to the address bar that copies the archive or the shown folder path as text. */
+function PathCopyMenu({ anchor, archivePath, folder, onClose }: { anchor: { x: number; y: number }; archivePath: string; folder: string; onClose: () => void }) {
+  useEffect(() => {
+    const close = () => onClose();
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("blur", close);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("mousedown", close); window.removeEventListener("blur", close); window.removeEventListener("keydown", onKey); };
+  }, [onClose]);
+  const copy = (text: string) => { onClose(); void navigator.clipboard.writeText(text).catch((reason) => console.warn("[silkZip.copyPath]", reason)); };
+  const separator = archivePath.includes("\\") ? "\\" : "/";
+  return <div className="zip-path-menu" role="menu" style={{ left: anchor.x, top: anchor.y }} onMouseDown={(event) => event.stopPropagation()}>
+    <button role="menuitem" onClick={() => copy(archivePath)}>압축 파일 경로 복사</button>
+    {folder ? <button role="menuitem" onClick={() => copy(`${archivePath}${separator}${folder.replace(/\//g, separator)}`)}>현재 폴더 경로 복사</button> : null}
+  </div>;
 }

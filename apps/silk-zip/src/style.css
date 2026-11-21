@@ -138,3 +138,28 @@ button, select { font:inherit; color:inherit; }
 .zip-pending-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 16px; border-bottom:1px solid var(--color-border); background:var(--color-toolbar-hover-background); font-size:12px; }
 .zip-pending-bar__actions { display:inline-flex; gap:8px; flex:none; }
 .zip-pending-bar .zip-button { padding:3px 12px; }
+
+.zip-path-copy { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border:0; border-radius:3px; color:var(--color-foreground); background:transparent; cursor:pointer; }
+.zip-path-copy:hover { color:var(--color-foreground); background:var(--color-toolbar-hover-background); }
+.zip-path-menu { position:fixed; z-index:30; transform:translateX(-100%); min-width:160px; padding:4px; border:1px solid var(--color-menu-border); border-radius:4px; background:var(--color-menu-background); color:var(--color-menu-foreground); box-shadow:0 4px 12px #0003; }
+.zip-path-menu button { display:block; width:100%; border:0; border-radius:3px; padding:6px 10px; text-align:left; color:inherit; background:transparent; cursor:pointer; white-space:nowrap; }
+.zip-path-menu button:hover, .zip-path-menu button:focus-visible { outline:none; background:var(--color-menu-selection-background); }
+/* The sidebar divider highlight runs up through the archive header and address bar. */
+.zip-explorer-content .resource-explorer__body > .workbench-sash--vertical { margin-top:calc(-1 * (var(--zip-archive-header-height) + 35px)); }
+
+.zip-search { display:flex; flex-direction:column; gap:8px; height:100%; min-height:0; padding:8px 10px; box-sizing:border-box; }
+.zip-search__field { display:flex; align-items:center; gap:4px; }
+.zip-search__field input { flex:1; min-width:0; height:26px; padding:0 8px; box-sizing:border-box; color:var(--color-foreground); background:var(--color-input-background, transparent); border:1px solid var(--color-border); border-radius:4px; font:inherit; }
+.zip-search__field input:focus { outline:1px solid var(--color-focus-border); }
+.zip-search__toggle { flex:none; display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border:1px solid transparent; border-radius:4px; color:var(--color-description); background:transparent; cursor:pointer; }
+.zip-search__toggle:hover { background:var(--color-toolbar-hover-background); color:var(--color-foreground); }
+.zip-search__toggle--on { border-color:var(--color-focus-border); color:var(--color-foreground); }
+.zip-search__option { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--color-description); }
+.zip-search__summary { margin:0; padding:4px 10px; font-size:12px; color:var(--color-description); }
+.zip-search .zip-search__summary { padding:0; }
+.zip-search__results { flex:1; min-height:0; margin:0; padding:0; overflow:auto; list-style:none; }
+.zip-search__result { display:flex; align-items:center; gap:6px; width:100%; padding:3px 6px; border:0; border-radius:3px; text-align:left; color:inherit; background:transparent; cursor:pointer; font:inherit; }
+.zip-search__result:hover { background:var(--color-toolbar-hover-background); }
+.zip-search__result--active { background:var(--color-list-active-selection-background, var(--color-toolbar-hover-background)); }
+.zip-search__name { flex:none; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.zip-search__path { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--color-description); }

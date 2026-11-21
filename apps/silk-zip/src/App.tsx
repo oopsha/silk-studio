@@ -17,7 +17,7 @@ import { ContextKeyService } from "@silk-studio/workbench/platform/context/conte
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
 import ConfirmDialog from "@silk-studio/workbench/components/dialogs/ConfirmDialog.tsx";
 import { ConfirmDialogService } from "@silk-studio/workbench/services/dialog/confirmDialogService.ts";
-import { cancelArchive, createArchive, listArchive, openOutputFolder, revealInFolder, openNewWindow, exitApp, saveArchiveAs, isElevated, reportArchiveProgressDiagnostic, type ArchiveListing, type CreateProgress, type CreateResult } from "./archive";
+import { cancelArchive, createArchive, listArchive, openOutputFolder, revealInFolder, openNewWindow, exitApp, saveArchiveAs, clipboardPrepareDir, clipboardCopyDir, clipboardReadFiles, isElevated, reportArchiveProgressDiagnostic, type ArchiveListing, type CreateProgress, type CreateResult } from "./archive";
 import { startNativeMenubar } from "@silk-studio/workbench/services/nativeMenubar/nativeMenubarService.ts";
 import CommandPalette from "@silk-studio/workbench/components/commands/index.ts";
 import ZipSettingsPage from "./components/ZipSettingsPage";
@@ -26,6 +26,10 @@ import { HistoryService } from "@silk-studio/editor/services/history/historyServ
 import { UserKeybindingsService } from "@silk-studio/workbench/platform/keybinding/userKeybindingsService.ts";
 import { getZipSettings, setPage, usePage, type ZipPage } from "./zipSettings";
 import ArchiveExplorer, { type RenameEntry } from "./components/ArchiveExplorer";
+import { FOCUS_SEARCH_EVENT } from "./components/ArchiveSearchView";
+import { ViewService } from "@silk-studio/workbench/services/view/viewService.ts";
+import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
+import { useActiveView } from "@silk-studio/workbench/services/view/useActiveView.ts";
 import RenameDialog from "./components/RenameDialog";
 import { siblingNames } from "./archiveSource";
 import { usePendingChanges } from "./pendingChanges";
@@ -45,6 +49,7 @@ const ARCHIVE_FILE_FILTERS = [
 
 const activityViews: readonly ActivityViewContribution[] = [
   { id: "explorer", icon: "files", label: "탐색기", render: () => null },
+  { id: "search", icon: "search", label: "검색", render: () => null },
 ];
 
 function formatFileSize(bytes: number): string {
@@ -68,6 +73,7 @@ function formatElapsedTime(elapsedMs: number): string {
 
 function App() {
   const layout = useLayoutState();
+  const activeView = useActiveView();
   useEffect(() => startWindowLayoutSync(), []);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
@@ -100,7 +106,7 @@ function App() {
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
   const [folderPrompt, setFolderPrompt] = useState<{ folder: string; siblings: string[] } | null>(null);
-  const addActions = useRef({ files: () => {}, folder: () => {} });
+  const addActions = useRef({ files: () => {}, folder: () => {}, paste: () => {}, copy: () => {} });
   const page = usePage();
   const busy = useRef(false);
   const creating = useRef(false);
@@ -386,6 +392,17 @@ ${target}
       CommandsRegistry.registerCommand("silkZip.edit.addFiles", () => addActions.current.files()),
       CommandsRegistry.registerCommand("silkZip.edit.addFolder", () => addActions.current.folder()),
       KeybindingsRegistry.registerKeybinding("silkZip.edit.addFiles", "Insert"),
+      CommandsRegistry.registerCommand("silkZip.edit.find", () => {
+        // Opens the search view; when it is already shown, only moves focus to its input.
+        if (ViewService.getActiveViewId() !== "search" || !LayoutService.isSidebarVisible()) ViewService.openView("search");
+        setTimeout(() => window.dispatchEvent(new Event(FOCUS_SEARCH_EVENT)), 0);
+      }),
+      KeybindingsRegistry.registerKeybinding("silkZip.edit.find", "Ctrl+F"),
+      KeybindingsRegistry.registerKeybinding("silkZip.edit.find", "Ctrl+Shift+F"),
+      CommandsRegistry.registerCommand("silkZip.edit.copy", () => addActions.current.copy()),
+      KeybindingsRegistry.registerKeybinding("silkZip.edit.copy", "Ctrl+C"),
+      CommandsRegistry.registerCommand("silkZip.edit.paste", () => addActions.current.paste()),
+      KeybindingsRegistry.registerKeybinding("silkZip.edit.paste", "Ctrl+V"),
     ];
     const removeSelected = () => {
       if (createDraft.current.archive) {
@@ -475,7 +492,31 @@ ${target}
     const paths = Array.isArray(selected) ? selected : [selected];
     if (archive) await addToArchive(paths); else await draft.add(paths);
   };
-  addActions.current = { files: () => { void addFiles(); }, folder: () => { void addFolder(); } };
+  /** Selected archive entries go to the clipboard as real files (extracted into a temporary folder). */
+  const copyToClipboard = async () => {
+    if (!archive || page !== null || !selectedPathsRef.current.length) return;
+    try {
+      const dir = await clipboardPrepareDir();
+      await extractionController.startCopy(archive.path, dir, selectedPathsRef.current, () => {
+        clipboardCopyDir(dir).catch((reason) => setError(String(reason)));
+      });
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
+  /** Files on the clipboard are added like dropped files. */
+  const pasteFromClipboard = async () => {
+    if (page !== null) return;
+    if (archive && !pending.editable) { setError("이 형식의 압축 파일은 수정할 수 없습니다. (zip, 7z, tar만 가능)"); return; }
+    try {
+      const paths = await clipboardReadFiles();
+      if (!paths.length) { setError("클립보드에 붙여넣을 파일이 없습니다."); return; }
+      if (archive) await addToArchive(paths); else await draft.add(paths);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
+  addActions.current = { files: () => { void addFiles(); }, folder: () => { void addFolder(); }, paste: () => { void pasteFromClipboard(); }, copy: () => { void copyToClipboard(); } };
   const addFolder = async () => {
     setAddMenuOpen(false);
     const selected = await open({ multiple: true, directory: true });
@@ -681,7 +722,7 @@ ${target}
           {loading ? <div className="zip-message" role="status">압축 파일을 읽고 있습니다…</div> : null}
           {error ? <div className="zip-message zip-message--error" role="alert">{error}</div> : null}
           {archive ? <ArchiveExplorer archive={pending.view ?? archive} folderRef={folderRef} selectedPathsRef={selectedPathsRef} editor={{ canEdit: pending.editable, addFiles: () => { void addFiles(); }, addFolder: () => { void addFolder(); }, newFolder: (folder) => setFolderPrompt({ folder, siblings: siblingNames(pending.view ?? archive, `${folder ? `${folder}/` : ""}x`) }), remove: (paths) => pending.remove(paths), pendingCount: pending.count, apply: applyPending, discard: pending.discard }} onExtract={(target, entries) => { void extractionController.start(archive.path, target, entries); }} onTest={() => { void extractionController.startTest(archive.path); }} onRename={(entry) => setRenameTarget({ entry, siblings: siblingNames(archive, entry.path), inArchive: true })} selectionRef={archiveSelection} /> : <div className="zip-start-workspace">
-          {layout.sidebar ? <aside className="zip-empty-explorer" style={{ width: layout.sidebarWidth }} aria-label="탐색기"><ViewPaneTitle title="탐색기" />{draft.tree}</aside> : null}
+          {layout.sidebar ? <aside className="zip-empty-explorer" style={{ width: layout.sidebarWidth }} aria-label={activeView === "search" ? "검색" : "탐색기"}>{activeView === "search" ? <><ViewPaneTitle title="검색" /><p className="zip-search__summary">열린 압축 파일이 없습니다.</p></> : <><ViewPaneTitle title="탐색기" />{draft.tree}</>}</aside> : null}
           <section className="zip-content zip-create-form">
             <div className="zip-toolbar"><div><h1>새 압축 만들기</h1><p>파일이나 폴더를 추가하고 압축 설정을 지정하세요.</p></div><div className="zip-toolbar__actions"><div className="zip-add-menu" ref={addMenuRef}><div className="zip-extract-split"><button className="zip-button zip-extract-split__main" title="파일 추가" onClick={addFiles}>추가</button><button className="zip-button zip-extract-split__arrow" aria-label="추가 옵션" aria-haspopup="menu" aria-expanded={addMenuOpen} onClick={() => setAddMenuOpen((open) => !open)}><span className="codicon codicon-chevron-down" aria-hidden="true" /></button></div>{addMenuOpen ? <div className="zip-add-menu__popup" role="menu"><button role="menuitem" onClick={addFiles}>파일 추가</button><button role="menuitem" onClick={addFolder}>폴더 추가</button></div> : null}</div><button className="zip-button" onClick={draft.newFolder}>새 폴더</button><button className="zip-button" onClick={draft.remove} disabled={draft.selectedCount === 0}>제거</button></div></div>
             <div className={`zip-drop${files.length ? " zip-drop--filled" : ""}${dragActive ? " zip-drop--dragging" : ""}`} onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragActive(false); }} onDrop={(event) => { event.preventDefault(); setDragActive(false); }}>

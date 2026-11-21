@@ -31,6 +31,42 @@ export function createArchiveSource(archive: ArchiveListing): ResourceSource {
   } };
 }
 
+/** One searchable item: a listed file or folder (including folders implied by file paths). */
+export interface SearchItem {
+  id: string;
+  name: string;
+  directory: boolean;
+  /** Folder that holds the item ("" for the root). */
+  parent: string;
+  /** Full archive path ("a/b/c"). */
+  path: string;
+}
+
+const splitPath = (path: string) => path.replace(/\\/g, "/").split("/").filter((part) => part !== "" && part !== ".");
+
+/** Flat list of every item, with the same node IDs `createArchiveSource` uses. */
+export function buildSearchIndex(archive: ArchiveListing): SearchItem[] {
+  const items = new Map<string, SearchItem>();
+  archive.entries.forEach((entry, index) => {
+    const segments = splitPath(entry.path);
+    segments.forEach((name, depth) => {
+      const directory = depth < segments.length - 1 || entry.directory;
+      const id = directory ? `directory:${JSON.stringify(segments.slice(0, depth + 1))}` : `entry:${index}`;
+      if (items.has(id)) return;
+      items.set(id, { id, name, directory, parent: segments.slice(0, depth).join("/"), path: segments.slice(0, depth + 1).join("/") });
+    });
+  });
+  return [...items.values()];
+}
+
+/** Folder chain (root first) down to `folder`, matching the nodes of `createArchiveSource`. */
+export function archiveRoute(archive: ArchiveListing, folder: string): ResourceNode[] {
+  const segments = splitPath(folder);
+  const route: ResourceNode[] = [{ id: "directory:[]", name: archive.path.split(/[\\/]/).pop() || archive.path, directory: true }];
+  segments.forEach((name, depth) => route.push({ id: `directory:${JSON.stringify(segments.slice(0, depth + 1))}`, name, directory: true }));
+  return route;
+}
+
 /** Archive-relative path ("a/b/c") of a listed node, or null for the archive root. */
 export function archiveNodePath(archive: ArchiveListing, node: ResourceNode): string | null {
   const clean = (path: string) => path.replace(/\\/g, "/").split("/").filter((part) => part !== "" && part !== ".").join("/");

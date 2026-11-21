@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "allow-archive-commands"
 description = "Allows archive operations and recording local progress diagnostics."
-commands.allow = ["archive_list", "archive_create", "archive_extract", "archive_test", "archive_update", "archive_progress_diagnostic", "archive_cancel", "open_output_folder", "new_window", "exit_app", "archive_save_as", "is_elevated", "reveal_in_folder"]
+commands.allow = ["archive_list", "archive_create", "archive_extract", "archive_test", "archive_update", "archive_progress_diagnostic", "archive_cancel", "open_output_folder", "new_window", "exit_app", "archive_save_as", "clipboard_prepare_dir", "clipboard_copy_dir", "clipboard_read_files", "is_elevated", "reveal_in_folder"]
