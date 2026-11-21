@@ -326,7 +326,7 @@ final class SqliteDialect implements DbDialect {
 
   @Override
   public String wrapPagedQuery(String innerSql, String whereFragment, String orderByFragment, int offset, int limit) {
-    StringBuilder sql = new StringBuilder("SELECT * FROM (").append(innerSql).append(") sq");
+    StringBuilder sql = new StringBuilder("SELECT * FROM (").append(innerSql).append("\n) sq");
     if (whereFragment != null && !whereFragment.isBlank()) sql.append(" WHERE ").append(whereFragment);
     if (orderByFragment != null && !orderByFragment.isBlank()) sql.append(" ORDER BY ").append(orderByFragment);
     return sql.append(" LIMIT ").append(limit).append(" OFFSET ").append(offset).toString();

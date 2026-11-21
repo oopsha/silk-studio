@@ -198,15 +198,14 @@ function extractArchive(archivePath, destDir) {
   mkdirSync(destDir, { recursive: true });
   if (archivePath.endsWith(".zip")) {
     if (process.platform === "win32") {
-      execFileSync(
-        "powershell.exe",
-        [
-          "-NoProfile",
-          "-Command",
-          `Expand-Archive -LiteralPath '${archivePath.replace(/'/g, "''")}' -DestinationPath '${destDir.replace(/'/g, "''")}' -Force`,
-        ],
-        { stdio: "inherit" },
-      );
+      // Windows' built-in bsdtar (System32\tar.exe) extracts zips. Expand-Archive broke on CI when
+      // the Windows PowerShell 5.1 child process loaded PowerShell 7's Archive module (it calls a
+      // .NET Core-only ExtractToDirectory overload). The absolute path also avoids Git's GNU tar
+      // (which can't read zips) if it comes first on PATH.
+      const systemTar = `${process.env.SystemRoot ?? "C:\\Windows"}\\System32\\tar.exe`;
+      execFileSync(systemTar, ["-xf", archivePath, "-C", destDir], {
+        stdio: "inherit",
+      });
     } else {
       execFileSync("unzip", ["-q", archivePath, "-d", destDir], {
         stdio: "inherit",

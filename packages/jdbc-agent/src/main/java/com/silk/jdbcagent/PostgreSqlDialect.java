@@ -849,7 +849,7 @@ final class PostgreSqlDialect implements DbDialect {
   @Override
   public String wrapPagedQuery(
       String innerSql, String whereFragment, String orderByFragment, int offset, int limit) {
-    StringBuilder sql = new StringBuilder("SELECT * FROM (").append(innerSql).append(") sq");
+    StringBuilder sql = new StringBuilder("SELECT * FROM (").append(innerSql).append("\n) sq");
     if (whereFragment != null && !whereFragment.isBlank()) {
       sql.append(" WHERE ").append(whereFragment);
     }
