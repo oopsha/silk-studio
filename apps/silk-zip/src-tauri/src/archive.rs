@@ -183,6 +183,55 @@ pub async fn archive_test(
 }
 
 #[tauri::command]
+pub async fn archive_update(
+    tasks: State<'_, CreateTasks>,
+    operation_id: String,
+    archive_path: String,
+    changes: Vec<silk_archive::EntryChange>,
+    adds: Vec<silk_archive::CreateInput>,
+    password: Option<String>,
+    on_progress: Channel<silk_archive::CreateProgress>,
+) -> Result<silk_archive::UpdateResult, String> {
+    if operation_id.is_empty() {
+        return Err("변경 작업 식별자가 없습니다.".into());
+    }
+    let cancellation = Arc::new(AtomicBool::new(false));
+    {
+        let mut active = tasks
+            .0
+            .lock()
+            .map_err(|_| "작업 상태를 읽지 못했습니다.")?;
+        if active.contains_key(&operation_id) {
+            return Err("이미 실행 중인 작업입니다.".into());
+        }
+        active.insert(operation_id.clone(), Arc::clone(&cancellation));
+    }
+    let worker_cancel = Arc::clone(&cancellation);
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let mut last_sent = Instant::now() - PROGRESS_CHANNEL_INTERVAL;
+        silk_archive::update_archive(
+            std::path::Path::new(&archive_path),
+            &changes,
+            &adds,
+            password.as_deref(),
+            &worker_cancel,
+            |progress| {
+                if last_sent.elapsed() >= PROGRESS_CHANNEL_INTERVAL || progress.phase != "writing" {
+                    last_sent = Instant::now();
+                    let _ = on_progress.send(progress);
+                }
+            },
+        )
+    })
+    .await
+    .map_err(|_| "변경을 실행하지 못했습니다.".to_string());
+    if let Ok(mut active) = tasks.0.lock() {
+        active.remove(&operation_id);
+    }
+    result?
+}
+
+#[tauri::command]
 pub async fn archive_create(
     app: AppHandle,
     tasks: State<'_, CreateTasks>,
@@ -516,6 +565,47 @@ pub fn reveal_in_folder(path: String) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("폴더를 열지 못했습니다: {error}"))
+}
+
+/// Saves a copy of an archive under another name. The copy is written next to the target
+/// first and renamed into place, so a failed copy never leaves a partial archive.
+#[tauri::command]
+pub async fn archive_save_as(source: String, target: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let source = PathBuf::from(source);
+        let target = PathBuf::from(target);
+        if !source.is_file() {
+            return Err("압축 파일을 찾을 수 없습니다.".to_string());
+        }
+        if source.to_string_lossy().to_lowercase().ends_with(".001") {
+            return Err("분할 압축 파일은 다른 이름으로 저장할 수 없습니다.".into());
+        }
+        if let (Ok(a), Ok(b)) = (std::fs::canonicalize(&source), std::fs::canonicalize(&target)) {
+            if a == b {
+                return Err("원본과 같은 위치에는 저장할 수 없습니다.".into());
+            }
+        }
+        let name = target
+            .file_name()
+            .ok_or("저장할 파일 이름이 올바르지 않습니다.")?
+            .to_string_lossy()
+            .into_owned();
+        let temporary = target.with_file_name(format!(".{name}.silk-save"));
+        let result = std::fs::copy(&source, &temporary).and_then(|_| std::fs::rename(&temporary, &target));
+        if let Err(error) = result {
+            let _ = std::fs::remove_file(&temporary);
+            return Err(format!("저장하지 못했습니다: {error}"));
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| "저장을 실행하지 못했습니다.".to_string())?
+}
+
+/// Quits the whole app.
+#[tauri::command]
+pub fn exit_app(app: AppHandle) {
+    app.exit(0);
 }
 
 /// Command line flag of a second window; it is shifted so it does not hide the first one.
