@@ -1,3 +1,5 @@
+import { readBrowserCopy, syncStored, writeStored } from "../../services/storage/fileStore";
+
 export type KeybindingOverride = {
   commandId: string;
   /** Full replacement set of key labels for this command; empty means "unbound". */
@@ -6,9 +8,8 @@ export type KeybindingOverride = {
 
 const STORAGE_KEY = "silk-workbench.keybindingOverrides";
 
-export function loadKeybindingOverrides(): KeybindingOverride[] {
+function parseOverrides(raw: string | null): KeybindingOverride[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -25,10 +26,17 @@ export function loadKeybindingOverrides(): KeybindingOverride[] {
   }
 }
 
+/** Overrides read from the browser copy (synchronous, so the keys work from the first keypress). */
+export function loadKeybindingOverrides(): KeybindingOverride[] {
+  return parseOverrides(readBrowserCopy(STORAGE_KEY));
+}
+
+/** Saved to the app's file; localStorage mirrors it for the next start. */
 export function saveKeybindingOverrides(overrides: KeybindingOverride[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides));
-  } catch {
-    // Ignore quota or private-mode errors.
-  }
+  writeStored("keybindings", STORAGE_KEY, JSON.stringify(overrides), { cache: true });
+}
+
+/** Desktop app: hands over the overrides saved in the file (first run: writes the browser copy into it). */
+export function syncKeybindingOverrides(apply: (overrides: KeybindingOverride[]) => void): void {
+  void syncStored("keybindings", () => readBrowserCopy(STORAGE_KEY), (text) => apply(parseOverrides(text)));
 }

@@ -1,5 +1,5 @@
 import { estimateAiCostUsd } from "./aiAuditLogPricing";
-import { loadAiAuditLog, saveAiAuditLog } from "./aiAuditLogStorage";
+import { loadAiAuditLog, saveAiAuditLog, syncAiAuditLog } from "./aiAuditLogStorage";
 import type {
   AiAuditLogEntry,
   AiAuditLogRecordInput,
@@ -10,6 +10,13 @@ type AiAuditLogListener = () => void;
 class AiAuditLogServiceImpl {
   private entries: AiAuditLogEntry[] = loadAiAuditLog();
   private readonly listeners = new Set<AiAuditLogListener>();
+
+  constructor() {
+    syncAiAuditLog((entries) => {
+      this.entries = entries;
+      this.fireDidChange();
+    });
+  }
 
   getEntries(): AiAuditLogEntry[] {
     return this.entries;

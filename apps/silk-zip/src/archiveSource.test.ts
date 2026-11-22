@@ -37,7 +37,8 @@ describe("archive resource source", () => {
     const nodes = await tree.readChildren(tree.root.id);
     expect(nodes[0].name).toBe("폴더");
     expect((await tree.readChildren(nodes[0].id))[0].name).toBe("파일.txt");
-    await expect(tree.readChildren("not-a-directory")).rejects.toThrow();
+    // A folder that no longer exists (e.g. removed by a pending change) just shows as empty.
+    expect(await tree.readChildren("not-a-directory")).toEqual([]);
   });
 
   it("keeps traversal-like archive names as virtual nodes without resolving paths", async () => {

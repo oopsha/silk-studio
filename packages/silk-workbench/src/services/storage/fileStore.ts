@@ -15,8 +15,12 @@ export function readBrowserCopy(key: string): string | null {
   }
 }
 
-/** Saves `text` as the value called `name` (file in the desktop app, `key` in a browser). */
-export function writeStored(name: string, key: string, text: string): void {
+/**
+ * Saves `text` as the value called `name` (file in the desktop app, `key` in a browser).
+ * With `cache`, a desktop app also mirrors it into localStorage so the next start can read it
+ * synchronously (e.g. the theme, to avoid a flash before the file is loaded).
+ */
+export function writeStored(name: string, key: string, text: string, options: { cache?: boolean } = {}): void {
   const saveToBrowser = () => {
     try {
       localStorage.setItem(key, text);
@@ -24,8 +28,10 @@ export function writeStored(name: string, key: string, text: string): void {
       // The value still applies for this session when storage is unavailable.
     }
   };
-  if (isTauri()) void invoke("settings_save", { name, text }).catch(saveToBrowser);
-  else saveToBrowser();
+  if (isTauri()) {
+    void invoke("settings_save", { name, text }).catch(saveToBrowser);
+    if (options.cache) saveToBrowser();
+  } else saveToBrowser();
 }
 
 /**

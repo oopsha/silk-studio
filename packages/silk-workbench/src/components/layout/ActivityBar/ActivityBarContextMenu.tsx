@@ -211,6 +211,7 @@ function ActivityBarContextMenu({
             {action.keybinding}
           </span>
         ) : null}
+        {action.checked ? <span className="activity-bar-context-menu__check" aria-hidden="true">✓</span> : null}
       </button>
     );
   }

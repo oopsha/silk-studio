@@ -2,6 +2,7 @@ import { KeybindingsRegistry } from "./keybindingRegistry";
 import {
   loadKeybindingOverrides,
   saveKeybindingOverrides,
+  syncKeybindingOverrides,
 } from "./keybindingOverridesStorage";
 
 /**
@@ -21,6 +22,17 @@ class UserKeybindingsServiceImpl {
       this.overrides.set(override.commandId, override.keys);
       KeybindingsRegistry.setBindings(override.commandId, override.keys);
     }
+    // The file is the source of truth: when it differs from the browser copy, it wins.
+    syncKeybindingOverrides((saved) => {
+      const next = new Map(saved.map((override) => [override.commandId, override.keys] as const));
+      for (const commandId of this.overrides.keys()) {
+        if (!next.has(commandId)) {
+          KeybindingsRegistry.setBindings(commandId, KeybindingsRegistry.getDefaultKeybindings(commandId));
+        }
+      }
+      this.overrides = next;
+      for (const [commandId, keys] of next) KeybindingsRegistry.setBindings(commandId, keys);
+    });
   }
 
   /** Applies the loaded overrides again; for apps that register defaults after `initialize()`

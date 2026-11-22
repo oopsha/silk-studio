@@ -2,6 +2,7 @@ import { COLOR_THEMES } from "@silk-studio/workbench/platform/configuration/colo
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
+import { themeCheckKey } from "@silk-studio/workbench/platform/configuration/themeMenuChecks.ts";
 import { ConfigurationService } from "@silk-studio/workbench/platform/configuration/configurationService.ts";
 
 const registrationState = globalThis as typeof globalThis & {
@@ -57,6 +58,7 @@ if (!registrationState.__silkZipActivityMenuRegistered) {
     });
     MenuRegistry.appendMenuItem(MenuId.GlobalActivityThemesSubmenu, {
       command: { id, title: theme.label },
+      checkedWhen: themeCheckKey(theme.id),
       group: "1_themes",
       order: index + 1,
     });

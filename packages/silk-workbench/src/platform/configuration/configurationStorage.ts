@@ -1,3 +1,4 @@
+import { readBrowserCopy, syncStored, writeStored } from "../../services/storage/fileStore";
 import {
   CONFIGURATION_DEFAULTS,
   type ConfigurationKey,
@@ -16,18 +17,29 @@ export function loadConfiguration(): Partial<WorkbenchConfiguration> | null {
   }
 }
 
+/**
+ * The desktop app keeps the configuration in its own file; localStorage then only mirrors it so the
+ * next start can apply the saved theme before the file has been read.
+ */
 export function saveConfiguration(
   configuration: WorkbenchConfiguration,
 ): void {
-  try {
-    const payload: Record<string, unknown> = {};
-    for (const key of Object.keys(CONFIGURATION_DEFAULTS) as ConfigurationKey[]) {
-      payload[key] = configuration[key];
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  } catch {
-    // Ignore quota or private-mode errors.
+  const payload: Record<string, unknown> = {};
+  for (const key of Object.keys(CONFIGURATION_DEFAULTS) as ConfigurationKey[]) {
+    payload[key] = configuration[key];
   }
+  writeStored("configuration", STORAGE_KEY, JSON.stringify(payload), { cache: true });
+}
+
+/** Desktop app: loads the configuration file (first run: writes the localStorage copy into it). */
+export function syncConfigurationFile(apply: (stored: Partial<WorkbenchConfiguration> | null) => void): void {
+  void syncStored("configuration", () => readBrowserCopy(STORAGE_KEY), (text) => {
+    try {
+      apply(JSON.parse(text) as Partial<WorkbenchConfiguration>);
+    } catch {
+      // Keep the values read from localStorage.
+    }
+  });
 }
 
 /**

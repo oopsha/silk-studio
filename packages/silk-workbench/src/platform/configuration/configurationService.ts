@@ -6,7 +6,7 @@ import {
 } from "./configurationDefaults";
 import { applyWorkbenchConfiguration } from "./applyConfiguration";
 import { COLOR_THEMES } from "./colorThemes";
-import { loadConfiguration, saveConfiguration } from "./configurationStorage";
+import { loadConfiguration, saveConfiguration, syncConfigurationFile } from "./configurationStorage";
 import { resolveAiModelForProvider } from "../../services/settings/aiSettingsConstants";
 import { detectDefaultLocale, isLocaleId } from "../i18n/locale";
 
@@ -19,6 +19,12 @@ class ConfigurationServiceImpl {
   constructor() {
     this.restoreFromStorage();
     applyWorkbenchConfiguration(this.values);
+    // Desktop app: the configuration file is the source of truth.
+    syncConfigurationFile((stored) => {
+      this.values = this.mergeAndValidate(stored);
+      applyWorkbenchConfiguration(this.values);
+      this.fireDidChange();
+    });
     // "system" resolves at apply-time (see applyWorkbenchConfiguration), so an OS-level flip
     // while the app is running needs its own trigger — the stored `workbench.colorTheme` value
     // itself never changes, only what it resolves to.

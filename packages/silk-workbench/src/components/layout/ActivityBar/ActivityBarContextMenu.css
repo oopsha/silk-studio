@@ -125,3 +125,5 @@
   top: auto;
   bottom: 0;
 }
+
+.activity-bar-context-menu__check { margin-left:auto; padding-left:16px; flex:none; }

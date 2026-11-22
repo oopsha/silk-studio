@@ -1,4 +1,4 @@
-import { readBrowserCopy, syncStored, writeStored } from "./fileStore";
+import { readBrowserCopy, syncStored, writeStored } from "@silk-studio/workbench/services/storage/fileStore.ts";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";

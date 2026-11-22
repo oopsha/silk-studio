@@ -1,3 +1,4 @@
+import { readBrowserCopy, syncStored, writeStored } from "../storage/fileStore";
 import { EditorGroupsService } from "@silk-studio/editor/services/editor/editorGroupsService.ts";
 import type { EditorGroupId } from "@silk-studio/editor/services/editor/editorGroupTypes.ts";
 import { ContextKeyService } from "../../platform/context/contextKeyService";
@@ -29,9 +30,8 @@ function loadPersistedPanelSize(): number | null {
   }
 }
 
-function loadPersistedEditorPanelSizes(): Map<string, number> {
+function parseEditorPanelSizes(raw: string | null): Map<string, number> {
   try {
-    const raw = localStorage.getItem(EDITOR_PANEL_SIZES_STORAGE_KEY);
     if (!raw) return new Map();
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -48,13 +48,29 @@ function loadPersistedEditorPanelSizes(): Map<string, number> {
   }
 }
 
+function loadPersistedEditorPanelSizes(): Map<string, number> {
+  return parseEditorPanelSizes(readBrowserCopy(EDITOR_PANEL_SIZES_STORAGE_KEY));
+}
+
 class GroupPanelStateServiceImpl {
   private readonly states = new Map<EditorGroupId, InternalPanelState>();
   private readonly listeners = new Set<GroupPanelChangeListener>();
   private readonly initialPanelSize = loadPersistedPanelSize() ?? LAYOUT_DEFAULTS.panelSize;
   private readonly editorPanelSizes = loadPersistedEditorPanelSizes();
 
+  /** Saved to the app's file; localStorage mirrors it for the next start. */
+  private persistEditorPanelSizes(): void {
+    writeStored("editor-panel-sizes", EDITOR_PANEL_SIZES_STORAGE_KEY, JSON.stringify(Object.fromEntries(this.editorPanelSizes)), { cache: true });
+  }
+
   constructor() {
+    // Sizes found only in the file (e.g. after the browser copy was cleared) are added; no notification,
+    // a pane reads its size when it is shown.
+    void syncStored("editor-panel-sizes", () => readBrowserCopy(EDITOR_PANEL_SIZES_STORAGE_KEY), (text) => {
+      for (const [tabId, size] of parseEditorPanelSizes(text)) {
+        if (!this.editorPanelSizes.has(tabId)) this.editorPanelSizes.set(tabId, size);
+      }
+    });
     for (const id of EditorGroupsService.getGroupIds()) {
       this.seed(id);
     }
@@ -141,14 +157,7 @@ class GroupPanelStateServiceImpl {
     if (next === currentSize) return;
     if (resolvedEditorTabId) {
       this.editorPanelSizes.set(resolvedEditorTabId, next);
-      try {
-        localStorage.setItem(
-          EDITOR_PANEL_SIZES_STORAGE_KEY,
-          JSON.stringify(Object.fromEntries(this.editorPanelSizes)),
-        );
-      } catch {
-        // Keep the in-memory size when storage is unavailable.
-      }
+      this.persistEditorPanelSizes();
     } else {
       state.size = next;
     }
@@ -172,14 +181,7 @@ class GroupPanelStateServiceImpl {
         const { size, editorTabId: restoreEditorTabId } = state.sizeBeforeMaximize;
         if (restoreEditorTabId) {
           this.editorPanelSizes.set(restoreEditorTabId, size);
-          try {
-            localStorage.setItem(
-              EDITOR_PANEL_SIZES_STORAGE_KEY,
-              JSON.stringify(Object.fromEntries(this.editorPanelSizes)),
-            );
-          } catch {
-            // Keep the in-memory size when storage is unavailable.
-          }
+          this.persistEditorPanelSizes();
         } else {
           state.size = size;
         }

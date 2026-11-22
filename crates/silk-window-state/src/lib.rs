@@ -194,6 +194,42 @@ pub fn window_layout_load(app: AppHandle) -> Result<Option<WindowLayoutState>, S
     Ok(load_window_layout(&app))
 }
 
+/// Path of a named value file (`<name>.json`) in the app data folder.
+fn stored_value_path(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
+    if name.is_empty() || !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+        return Err("올바르지 않은 설정 이름입니다.".into());
+    }
+    app.path()
+        .app_data_dir()
+        .map(|dir| dir.join(format!("{name}.json")))
+        .map_err(|error| error.to_string())
+}
+
+/// Saved text of the value `name`, or `None` when nothing was saved yet.
+pub fn stored_value_load(app: AppHandle, name: String) -> Result<Option<String>, String> {
+    let path = stored_value_path(&app, &name)?;
+    match fs::read_to_string(&path) {
+        Ok(text) => Ok(Some(text)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("설정을 읽지 못했습니다: {error}")),
+    }
+}
+
+/// Saves the text of the value `name`; written next to the target first so a failure never leaves a partial file.
+pub fn stored_value_save(app: AppHandle, name: String, text: String) -> Result<(), String> {
+    let path = stored_value_path(&app, &name)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| format!("설정을 저장하지 못했습니다: {error}"))?;
+    }
+    let temporary = path.with_extension("json.tmp");
+    fs::write(&temporary, text)
+        .and_then(|_| fs::rename(&temporary, &path))
+        .map_err(|error| {
+            let _ = fs::remove_file(&temporary);
+            format!("설정을 저장하지 못했습니다: {error}")
+        })
+}
+
 pub fn window_layout_file_exists(app: AppHandle) -> Result<bool, String> {
     let path = layout_file_path(&app).map_err(|error| error.to_string())?;
     Ok(path.is_file())

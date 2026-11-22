@@ -7,4 +7,6 @@ commands.allow = [
   "window_layout_show",
   "window_layout_file_exists",
   "window_layout_load",
+  "settings_load",
+  "settings_save",
 ]

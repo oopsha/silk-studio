@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { readBrowserCopy, syncStored, writeStored } from "./fileStore";
+import { readBrowserCopy, syncStored, writeStored } from "@silk-studio/workbench/services/storage/fileStore.ts";
 
 /** How "압축 풀기" picks its destination when no folder is chosen explicitly. */
 export type ExtractDefaultTarget = "ask" | "named" | "here";

@@ -1,3 +1,4 @@
+import { readBrowserCopy, syncStored, writeStored } from "../storage/fileStore";
 import {
   AiProviderError,
   type AiTokenUsage,
@@ -25,9 +26,8 @@ function createId(): string {
   return crypto.randomUUID();
 }
 
-function loadPersistedMessages(): AiChatUiMessage[] {
+function parsePersistedMessages(raw: string | null): AiChatUiMessage[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -50,13 +50,14 @@ function loadPersistedMessages(): AiChatUiMessage[] {
   }
 }
 
+function loadPersistedMessages(): AiChatUiMessage[] {
+  return parsePersistedMessages(readBrowserCopy(STORAGE_KEY));
+}
+
+/** Saved to the app's file; localStorage mirrors it for the next start. */
 function persistMessages(messages: AiChatUiMessage[]): void {
-  try {
-    const durable = messages.filter((message) => message.status !== "streaming");
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(durable));
-  } catch {
-    // Quota / private mode — ignore.
-  }
+  const durable = messages.filter((message) => message.status !== "streaming");
+  writeStored("ai-chat-session", STORAGE_KEY, JSON.stringify(durable), { cache: true });
 }
 
 function mergeUsage(
@@ -101,6 +102,15 @@ class AiChatServiceImpl {
   private abortController: AbortController | null = null;
   private readonly listeners = new Set<AiChatListener>();
   private readonly focusListeners = new Set<FocusListener>();
+
+  constructor() {
+    // The file is the source of truth; it only replaces the session while nothing new happened yet.
+    void syncStored("ai-chat-session", () => readBrowserCopy(STORAGE_KEY), (text) => {
+      if (this.streaming || this.messages.length > 0) return;
+      this.messages = parsePersistedMessages(text);
+      this.fireDidChange();
+    });
+  }
 
   getState(): AiChatSessionState {
     return {

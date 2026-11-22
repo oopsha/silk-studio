@@ -1,4 +1,4 @@
-import { readBrowserCopy, syncStored, writeStored } from "./fileStore";
+import { readBrowserCopy, syncStored, writeStored } from "@silk-studio/workbench/services/storage/fileStore.ts";
 
 /** Where an extraction writes: asked from the user, next to the archive, or a fixed folder. */
 export type ExtractTarget = "ask" | "here" | "named" | { dir: string };

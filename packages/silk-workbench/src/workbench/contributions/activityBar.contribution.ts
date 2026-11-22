@@ -1,3 +1,4 @@
+import { themeCheckKey } from "../../platform/configuration/themeMenuChecks";
 import { MenuId } from "../../platform/actions/menuId";
 import { MenuRegistry } from "../../platform/actions/menuRegistry";
 import { CommandsRegistry } from "../../platform/commands/commandRegistry";
@@ -95,6 +96,7 @@ COLOR_THEMES.forEach((theme, index) => {
       id: commandId,
       title: theme.label,
     },
+    checkedWhen: themeCheckKey(theme.id),
     group: "1_themes",
     order: index + 1,
   });

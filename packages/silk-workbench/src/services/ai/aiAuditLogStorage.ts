@@ -1,3 +1,4 @@
+import { readBrowserCopy, syncStored, writeStored } from "../storage/fileStore";
 import type { AiProviderId } from "../../platform/configuration/configurationDefaults";
 import type { AiProviderErrorCode } from "./aiProviderTypes";
 import type {
@@ -71,9 +72,8 @@ function normalizeEntry(value: unknown): AiAuditLogEntry | null {
   return entry;
 }
 
-export function loadAiAuditLog(): AiAuditLogEntry[] {
+function parseAiAuditLog(raw: string | null): AiAuditLogEntry[] {
   try {
-    const raw = localStorage.getItem(AI_AUDIT_LOG_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -86,13 +86,16 @@ export function loadAiAuditLog(): AiAuditLogEntry[] {
   }
 }
 
+export function loadAiAuditLog(): AiAuditLogEntry[] {
+  return parseAiAuditLog(readBrowserCopy(AI_AUDIT_LOG_STORAGE_KEY));
+}
+
+/** Saved to the app's file; localStorage mirrors it for the next start. */
 export function saveAiAuditLog(entries: AiAuditLogEntry[]): void {
-  try {
-    localStorage.setItem(
-      AI_AUDIT_LOG_STORAGE_KEY,
-      JSON.stringify(entries.slice(0, MAX_AI_AUDIT_LOG)),
-    );
-  } catch {
-    // Quota / private mode — ignore.
-  }
+  writeStored("ai-audit-log", AI_AUDIT_LOG_STORAGE_KEY, JSON.stringify(entries.slice(0, MAX_AI_AUDIT_LOG)), { cache: true });
+}
+
+/** Desktop app: hands over the log saved in the file (first run: writes the browser copy into it). */
+export function syncAiAuditLog(apply: (entries: AiAuditLogEntry[]) => void): void {
+  void syncStored("ai-audit-log", () => readBrowserCopy(AI_AUDIT_LOG_STORAGE_KEY), (text) => apply(parseAiAuditLog(text)));
 }

@@ -6,6 +6,7 @@ mod secrets;
 mod ssh_tunnel;
 mod ssm_tunnel;
 mod startup_theme;
+mod settings;
 mod window_layout;
 
 use serde_json::Value;
@@ -717,6 +718,8 @@ pub fn run() {
             window_layout::window_layout_show,
             window_layout::window_layout_file_exists,
             window_layout::window_layout_load,
+            settings::settings_load,
+            settings::settings_save,
             app_log::app_log_write,
             app_log::app_runtime_info,
             app_log::app_log_open_folder,

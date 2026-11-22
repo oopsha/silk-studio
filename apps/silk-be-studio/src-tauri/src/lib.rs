@@ -1,6 +1,7 @@
 mod ai_http;
 mod spring_initializr;
 mod startup_theme;
+mod settings;
 mod window_layout;
 
 use tauri::Manager;
@@ -66,6 +67,8 @@ pub fn run() {
             window_layout::window_layout_show,
             window_layout::window_layout_file_exists,
             window_layout::window_layout_load,
+            settings::settings_load,
+            settings::settings_save,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
