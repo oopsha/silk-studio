@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { cancelArchive, extractArchive, openOutputFolder, resolveExtractConflict, type ConflictAction, type ExtractConflict, repairArchive, revealInFolder, testArchive, updateArchive, type EntryChange, type NewEntry, type CreateProgress, type ExtractResult, type RepairResult } from "../archive.ts";
 import { getZipSettings } from "../zipSettings.ts";
+import { pickExtractFolder } from "../pickExtractFolder.ts";
 import { parentFolder, rememberFolder, resolveTargetFolder, type ExtractTarget } from "../extractTargets.ts";
+
+/** One archive of a multi-archive extraction, for the summary. */
+type BatchItem = { archivePath: string; outputDir: string; extracted: number; skipped: number; error?: string };
+type Batch = { target: ExtractTarget; queue: string[]; items: BatchItem[]; total: number; startedAt: number };
 
 type ExtractState =
   | null
+  | { phase: "done"; kind: "batch"; items: BatchItem[]; notRun: number; elapsedMs: number }
   | { phase: "running"; progress: CreateProgress | null }
   | { phase: "password"; message: string }
   | { phase: "conflict"; conflict: ExtractConflict }
@@ -35,6 +40,10 @@ function formatStamp(seconds: number): string {
   return new Date(seconds * 1000).toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "numeric", minute: "2-digit", second: "2-digit" });
 }
 
+function fileName(path: string): string {
+  return path.slice(Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/")) + 1);
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KB", "MB", "GB", "TB"];
@@ -47,12 +56,52 @@ function formatBytes(bytes: number): string {
 /** Folder pick, progress, password prompt and cancel for one extraction at a time. */
 export function useExtraction() {
   const [state, setState] = useState<ExtractState>(null);
-  const job = useRef<{ operationId: string; archivePath: string; outputDir: string; entries: string[]; test?: boolean; update?: { changes: EntryChange[]; adds: NewEntry[]; onDone: () => void }; copy?: { onDone: () => void }; repair?: { output: string; onOpen: (path: string) => void } } | null>(null);
+  const job = useRef<{ operationId: string; archivePath: string; outputDir: string; entries: string[]; test?: boolean; update?: { changes: EntryChange[]; adds: NewEntry[]; onDone: () => void }; copy?: { onDone: () => void }; repair?: { output: string; onOpen: (path: string) => void }; batch?: Batch; remember?: string } | null>(null);
   const active = useRef(false);
+
+  /**
+   * Extracts the current archive and then the queued ones, and shows one summary at the end.
+   * A password prompt pauses it; a failed archive is noted and the next one still runs.
+   */
+  const runBatch = useCallback(async (password: string, batch: Batch) => {
+    active.current = true;
+    const finish = () => setState({ phase: "done", kind: "batch", items: [...batch.items], notRun: batch.total - batch.items.length, elapsedMs: performance.now() - batch.startedAt });
+    try {
+      while (job.current) {
+        const current = job.current;
+        setState({ phase: "running", progress: null });
+        const item: BatchItem = { archivePath: current.archivePath, outputDir: current.outputDir, extracted: 0, skipped: 0 };
+        try {
+          const result = await extractArchive(current.operationId, current.archivePath, current.outputDir, password, getZipSettings().existing, (progress) => {
+            setState((previous) => (previous?.phase === "running" ? { phase: "running", progress } : previous));
+          }, current.entries, (conflict) => setState({ phase: "conflict", conflict }));
+          rememberFolder(typeof batch.target === "object" ? batch.target.dir : result.outputDir);
+          if (getZipSettings().openFolderAfter) void openOutputFolder(`${result.outputDir.replace(/[\\/]+$/, "")}/_`);
+          batch.items.push({ ...item, outputDir: result.outputDir, extracted: result.extracted, skipped: result.skipped });
+        } catch (reason) {
+          const message = String(reason);
+          if (message.includes("취소")) { finish(); return; }
+          if (message.includes("암호")) {
+            setState({ phase: "password", message: `${fileName(current.archivePath)}: ${message.includes("필요") ? "암호를 입력하세요." : message}` });
+            return;
+          }
+          batch.items.push({ ...item, error: message });
+        }
+        password = "";
+        const next = batch.queue.shift();
+        const folder = next && batch.target !== "ask" ? resolveTargetFolder(batch.target, next) : undefined;
+        if (!next || !folder) { finish(); return; }
+        job.current = { operationId: `extract-${Date.now()}-${batch.items.length}`, archivePath: next, outputDir: folder, entries: [], batch };
+      }
+    } finally {
+      active.current = false;
+    }
+  }, []);
 
   const run = useCallback(async (password: string) => {
     const current = job.current;
     if (!current) return;
+    if (current.batch) return runBatch(password, current.batch);
     active.current = true;
     setState({ phase: "running", progress: null });
     const startedAt = performance.now();
@@ -76,7 +125,7 @@ export function useExtraction() {
         setState({ phase: "done", kind: "test", tested: result.tested, elapsedMs: performance.now() - startedAt });
       } else {
         const result = await extractArchive(current.operationId, current.archivePath, current.outputDir, password, getZipSettings().existing, onProgress, current.entries, (conflict) => setState({ phase: "conflict", conflict }));
-        rememberFolder(result.outputDir);
+        rememberFolder(current.remember ?? result.outputDir);
         if (getZipSettings().openFolderAfter) void openOutputFolder(`${result.outputDir.replace(/[\\/]+$/, "")}/_`);
         setState({ phase: "done", kind: "extract", result, elapsedMs: performance.now() - startedAt });
       }
@@ -88,18 +137,38 @@ export function useExtraction() {
     } finally {
       active.current = false;
     }
-  }, []);
+  }, [runBatch]);
+
+  /** Like `start` for several archives (not for "ask"), with one summary for all of them. */
+  const startMany = useCallback(async (archivePaths: string[], target: Exclude<ExtractTarget, "ask">) => {
+    if (active.current || archivePaths.length === 0) return;
+    const [first, ...queue] = archivePaths;
+    const folder = resolveTargetFolder(target, first);
+    if (!folder) return;
+    const batch: Batch | undefined = queue.length ? { target, queue, items: [], total: archivePaths.length, startedAt: performance.now() } : undefined;
+    job.current = { operationId: `extract-${Date.now()}-0`, archivePath: first, outputDir: folder, entries: [], batch, remember: typeof target === "object" ? target.dir : undefined };
+    await run("");
+  }, [run]);
 
   const start = useCallback(async (archivePath: string, target: ExtractTarget = "ask", entries: string[] = []) => {
     if (active.current) return;
-    let folder: string | string[] | null | undefined;
+    let chosen: Exclude<ExtractTarget, "ask">;
     if (target === "ask") {
-      folder = await open({ multiple: false, directory: true, title: "압축을 풀 폴더 선택", defaultPath: parentFolder(archivePath) });
+      let picked;
+      try {
+        picked = await pickExtractFolder(archivePath);
+      } catch (reason) {
+        setState({ phase: "error", message: String(reason) });
+        return;
+      }
+      if (!picked) return;
+      chosen = picked;
     } else {
-      folder = resolveTargetFolder(target, archivePath);
+      chosen = target;
     }
-    if (!folder || Array.isArray(folder)) return;
-    job.current = { operationId: `extract-${Date.now()}`, archivePath, outputDir: folder, entries };
+    const folder = resolveTargetFolder(chosen, archivePath);
+    if (!folder) return;
+    job.current = { operationId: `extract-${Date.now()}`, archivePath, outputDir: folder, entries, remember: typeof chosen === "object" ? chosen.dir : undefined };
     await run("");
   }, [run]);
 
@@ -143,7 +212,13 @@ export function useExtraction() {
 
   const close = useCallback(() => { if (!active.current) setState(null); }, []);
 
-  return { state, start, startTest, startUpdate, startCopy, startRepair, submitPassword: run, cancel, close, resolveConflict, isTest: () => job.current?.test === true, isUpdate: () => job.current?.update !== undefined, isCopy: () => job.current?.copy !== undefined, isRepair: () => job.current?.repair !== undefined, repairOpen: () => job.current?.repair?.onOpen, outputDir: () => job.current?.outputDir ?? "" };
+  /** "2/3 · name.zip" while several archives are being extracted. */
+  const batchLabel = () => {
+    const current = job.current;
+    return current?.batch ? `${current.batch.items.length + 1}/${current.batch.total} · ${fileName(current.archivePath)}` : "";
+  };
+
+  return { state, start, startMany, batchLabel, startTest, startUpdate, startCopy, startRepair, submitPassword: run, cancel, close, resolveConflict, isTest: () => job.current?.test === true, isUpdate: () => job.current?.update !== undefined, isCopy: () => job.current?.copy !== undefined, isRepair: () => job.current?.repair !== undefined, repairOpen: () => job.current?.repair?.onOpen, outputDir: () => job.current?.outputDir ?? "" };
 }
 
 type ExtractionController = ReturnType<typeof useExtraction>;
@@ -200,7 +275,7 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
   const updating = controller.isUpdate();
   const copying = controller.isCopy();
   const repairing = controller.isRepair();
-  const title = state.phase === "done" ? (state.kind === "test" ? "테스트 완료" : state.kind === "repair" ? "압축 파일 복구 완료" : "압축 풀기 완료")
+  const title = state.phase === "done" ? (state.kind === "test" ? "테스트 완료" : state.kind === "repair" ? "압축 파일 복구 완료" : state.kind === "batch" && (state.notRun > 0 || state.items.some((item) => item.error)) ? "압축 풀기 결과" : "압축 풀기 완료")
     : state.phase === "password" ? "암호 입력"
     : state.phase === "error" ? (repairing ? "압축 파일 복구 실패" : copying ? "복사 실패" : updating ? "변경 적용 실패" : testing ? "압축 파일 테스트 실패" : "압축 풀기 실패")
     : repairing ? "압축 파일 복구 중" : copying ? "복사 준비 중" : updating ? "변경 적용 중" : testing ? "압축 파일 테스트 중" : "압축 푸는 중";
@@ -216,6 +291,7 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
         <div className="workbench-confirm-dialog__body zip-extract-body">
           {state.phase === "running" ? (
             <>
+              {controller.batchLabel() ? <p>{controller.batchLabel()}</p> : null}
               <div className="zip-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><div style={{ width: `${percent}%` }} /></div>
               <p className="zip-progress-detail">
                 {progress && progress.phase !== "preparing"
@@ -238,6 +314,21 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
           {state.phase === "done" && state.kind === "extract" ? (
             <p>{`${state.result.extracted.toLocaleString()}개 항목을 풀었습니다.${state.result.skipped ? `\n이미 있는 ${state.result.skipped.toLocaleString()}개 항목은 건너뛰었습니다.` : ""}\n소요 시간: ${formatDuration(state.elapsedMs)}\n${state.result.outputDir}`}</p>
           ) : null}
+          {state.phase === "done" && state.kind === "batch" ? (
+            <>
+              <p>{`압축 파일 ${(state.items.length + state.notRun).toLocaleString()}개 중 ${state.items.filter((item) => !item.error).length.toLocaleString()}개를 풀었습니다. (${formatDuration(state.elapsedMs)})${state.notRun ? `\n취소하여 풀지 않은 파일: ${state.notRun.toLocaleString()}개` : ""}`}</p>
+              <ul className="zip-batch">
+                {state.items.map((item) => (
+                  <li key={item.archivePath}>
+                    <strong>{fileName(item.archivePath)}</strong>
+                    {item.error
+                      ? <span className="zip-batch__error">{item.error}</span>
+                      : <span>{`${item.extracted.toLocaleString()}개 항목${item.skipped ? `, ${item.skipped.toLocaleString()}개 건너뜀` : ""} → ${plainPath(item.outputDir)}`}</span>}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
           {state.phase === "done" && state.kind === "repair" ? (
             <p>{`${state.result.recovered.toLocaleString()}개 항목을 복구했습니다.${state.result.lost ? `\n읽을 수 없어 복구하지 못한 항목: ${state.result.lost.toLocaleString()}개` : ""}\n소요 시간: ${formatDuration(state.elapsedMs)}\n${state.result.outputPath}`}</p>
           ) : null}
@@ -255,6 +346,18 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
           {state.phase === "done" && state.kind === "extract" ? (
             <>
               <button type="button" className="workbench-confirm-dialog__button" onClick={() => { void openOutputFolder(`${state.result.outputDir.replace(/[\\/]+$/, "")}/_`); close(); }}>폴더 열기</button>
+              <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>확인</button>
+            </>
+          ) : null}
+          {state.phase === "done" && state.kind === "batch" ? (
+            <>
+              {state.items.some((item) => !item.error) ? <button type="button" className="workbench-confirm-dialog__button" onClick={() => {
+                // One folder when they all went to the same place, otherwise the folder that holds them.
+                const folders = state.items.filter((item) => !item.error).map((item) => item.outputDir.replace(/[\\/]+$/, ""));
+                const shared = folders.every((folder) => folder === folders[0]) ? folders[0] : parentFolder(folders[0]) ?? folders[0];
+                void openOutputFolder(`${shared}/_`);
+                close();
+              }}>폴더 열기</button> : null}
               <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>확인</button>
             </>
           ) : null}

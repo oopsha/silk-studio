@@ -1,0 +1,6 @@
+[package]
+name = "silk-zip-menu"
+version = "0.1.0"
+description = "Silk Zip Explorer menu entries and names, without Windows calls"
+authors = ["oopsha"]
+edition = "2021"

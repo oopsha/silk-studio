@@ -4868,14 +4868,30 @@ name = "silk-zip"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "silk-archive",
  "silk-window-state",
+ "silk-zip-menu",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-window-controls",
+ "windows 0.61.3",
  "windows-sys 0.59.0",
  "winreg",
+]
+
+[[package]]
+name = "silk-zip-menu"
+version = "0.1.0"
+
+[[package]]
+name = "silk-zip-shell"
+version = "0.1.0"
+dependencies = [
+ "silk-zip-menu",
+ "windows 0.61.3",
+ "windows-core 0.61.2",
 ]
 
 [[package]]

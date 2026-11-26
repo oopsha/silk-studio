@@ -1,6 +1,7 @@
 //! What the app was asked to do when it was started, e.g. from an Explorer or Finder menu:
 //! `silk-zip --action=extract-here <path>...`. A bare list of paths means "open it".
 use serde::Serialize;
+use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 use tauri::State;
 
@@ -21,19 +22,23 @@ const ACTIONS: &[&str] = &[
 pub struct LaunchRequest {
     pub action: String,
     pub paths: Vec<String>,
+    /// All paths came in one process (the Explorer extension), so there is no burst to collect.
+    #[serde(skip)]
+    pub batch: bool,
 }
 
 #[derive(Default)]
 pub struct LaunchState(pub Mutex<Option<LaunchRequest>>);
 
-/// True while the app runs only to do one Explorer-menu job: it shows a small window with the
+/// `.0`: true while the app runs only to do one Explorer-menu job: it shows a small window with the
 /// progress and result, and leaves the saved window layout alone.
+/// `.1`: the job window stays hidden until the start-up folder dialog has been answered.
 #[derive(Default)]
-pub struct QuickMode(pub bool);
+pub struct QuickMode(pub bool, pub AtomicBool);
 
-/// Actions that run straight away without the main window.
+/// Actions that run without the main window.
 pub fn is_quick(action: &str) -> bool {
-    matches!(action, "extract-here" | "extract-folder" | "compress-zip" | "compress-7z" | "compress-each")
+    matches!(action, "extract-here" | "extract-folder" | "extract-dialog" | "compress-zip" | "compress-7z" | "compress-each")
 }
 
 /// Reads the request out of the command line (without the program name); `None` when no
@@ -41,6 +46,7 @@ pub fn is_quick(action: &str) -> bool {
 pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<LaunchRequest> {
     let mut action = String::from("open");
     let mut paths = Vec::new();
+    let mut batch = false;
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
         if let Some(value) = arg.strip_prefix("--action=") {
@@ -49,6 +55,8 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<LaunchReque
             if let Some(value) = args.next() {
                 action = value;
             }
+        } else if arg == "--batch" {
+            batch = true;
         } else if arg.starts_with("--") {
             continue;
         } else if !arg.is_empty() {
@@ -61,7 +69,7 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<LaunchReque
     if !ACTIONS.contains(&action.as_str()) {
         action = "open".into();
     }
-    Some(LaunchRequest { action, paths })
+    Some(LaunchRequest { action, paths, batch })
 }
 
 /// Explorer starts the app once per selected item. The first process of a burst (the one that
@@ -99,15 +107,18 @@ fn gather(request: LaunchRequest) -> Option<LaunchRequest> {
     let _ = std::fs::remove_file(&list);
     let _ = std::fs::remove_file(&lock);
     if paths.is_empty() {
-        paths = request.paths;
+        paths = request.paths.clone();
     }
-    Some(LaunchRequest { action: request.action, paths })
+    Some(LaunchRequest { paths, ..request })
 }
 
 /// The request from the command line. `None` for a plain start; the process exits right away
 /// when it only handed its paths to the process that collects the burst.
 pub fn from_environment() -> Option<LaunchRequest> {
     let request = parse_args(std::env::args().skip(1))?;
+    if request.batch {
+        return Some(request);
+    }
     match gather(request) {
         Some(merged) => Some(merged),
         None => std::process::exit(0),
@@ -165,6 +176,8 @@ mod tests {
         assert_eq!(request.paths, vec!["a.txt", "dir"]);
         let spaced = parse(&["--action", "extract-folder", "x.7z"]).unwrap();
         assert_eq!(spaced.action, "extract-folder");
+        assert!(!spaced.batch);
+        assert!(parse(&["--action=extract-here", "--batch", "x.7z"]).unwrap().batch);
     }
 
     #[test]

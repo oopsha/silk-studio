@@ -22,13 +22,16 @@ pub fn window_layout_apply_and_show(
     layout: WindowLayoutState,
 ) -> Result<(), String> {
     if quick.0 {
-        return silk_window_state::window_layout_show(window);
+        return window_layout_show(quick, window);
     }
     silk_window_state::window_layout_apply_and_show(app, window, layout)
 }
 
 #[tauri::command]
-pub fn window_layout_show(window: WebviewWindow) -> Result<(), String> {
+pub fn window_layout_show(quick: State<'_, QuickMode>, window: WebviewWindow) -> Result<(), String> {
+    if quick.1.load(std::sync::atomic::Ordering::SeqCst) {
+        return Ok(()); // shown by `wait_extract_folder` once a folder was chosen
+    }
     silk_window_state::window_layout_show(window)
 }
 

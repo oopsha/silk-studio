@@ -18,7 +18,7 @@ import { AboutDialogService } from "@silk-studio/workbench/services/diagnostics/
 import ConfirmDialog from "@silk-studio/workbench/components/dialogs/ConfirmDialog.tsx";
 import { ConfirmDialogService } from "@silk-studio/workbench/services/dialog/confirmDialogService.ts";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { cancelArchive, createArchive, openInstallFolder, listArchive, openOutputFolder, revealInFolder, openNewWindow, exitApp, saveArchiveAs, clipboardPrepareDir, clipboardCopyDir, clipboardReadFiles, isElevated, reportArchiveProgressDiagnostic, takeLaunchRequest, uniquePath, type ArchiveListing, type CreateProgress, type CreateResult } from "./archive";
+import { cancelArchive, createArchive, openInstallFolder, listArchive, openOutputFolder, revealInFolder, openNewWindow, exitApp, saveArchiveAs, clipboardPrepareDir, clipboardCopyDir, clipboardReadFiles, isElevated, reportArchiveProgressDiagnostic, takeLaunchRequest, uniquePath, waitExtractFolder, type ArchiveListing, type CreateProgress, type CreateResult } from "./archive";
 import { startNativeMenubar } from "@silk-studio/workbench/services/nativeMenubar/nativeMenubarService.ts";
 import CommandPalette from "@silk-studio/workbench/components/commands/index.ts";
 import ZipSettingsPage from "./components/ZipSettingsPage";
@@ -40,6 +40,8 @@ import { useCompressionDraft } from "./components/useCompressionDraft";
 import { startRecentArchives } from "./recentArchives";
 import { archiveStem, joinPath, parentFolder, type ExtractTarget } from "./extractTargets";
 import { quickArchivePath } from "./launchRequest";
+import { pickExtractFolder } from "./pickExtractFolder";
+import { dialogContentHeight } from "./dialogContentHeight";
 
 /** The icon toolbar under the menu bar is kept but hidden; extraction lives in the explorer title row. */
 const SHOW_COMMAND_BAR = false;
@@ -720,16 +722,28 @@ ${target}
     if (!quickMode) return;
     if (quickDialogOpen) { quickSeen.current = true; return; }
     if (!quickSeen.current) return;
-    const timer = window.setTimeout(() => { void exitApp(); }, 400);
-    return () => window.clearTimeout(timer);
+    // Hide first so nothing of the window stays on screen while the app shuts down.
+    void getCurrentWindow().hide().catch(() => undefined).finally(() => { void exitApp(); });
   }, [quickMode, quickDialogOpen]);
   // The "file already exists" question needs more room than the small job window has.
+  // The summary of a multi-archive extraction gets exactly the height its list needs.
   const quickConflict = extractionController.state?.phase === "conflict";
+  const quickSummary = extractionController.state?.phase === "done" && extractionController.state.kind === "batch";
   useEffect(() => {
     if (!quickMode) return;
-    const window = getCurrentWindow();
-    void window.setSize(quickConflict ? new LogicalSize(520, 440) : new LogicalSize(460, 230)).then(() => window.center()).catch(() => undefined);
-  }, [quickMode, quickConflict]);
+    const appWindow = getCurrentWindow();
+    const resize = async () => {
+      await appWindow.setSize(quickConflict || quickSummary ? new LogicalSize(520, 440) : new LogicalSize(460, 230));
+      if (quickSummary) {
+        // Measure after the new width has been laid out: long paths wrap.
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+        const height = dialogContentHeight();
+        if (height) await appWindow.setSize(new LogicalSize(520, Math.min(520, Math.max(180, height))));
+      }
+      await appWindow.center();
+    };
+    void resize().catch(() => undefined);
+  }, [quickMode, quickConflict, quickSummary]);
   // Started from an Explorer/Finder menu: do what was asked with the given paths.
   useEffect(() => {
     let cancelled = false;
@@ -746,9 +760,19 @@ ${target}
         return;
       }
       if (action === "open") { await openPathRef.current(paths[0]); return; }
-      if (action === "extract-here" || action === "extract-folder" || action === "extract-dialog") {
-        const target: ExtractTarget = action === "extract-here" ? "here" : action === "extract-folder" ? "named" : "ask";
-        for (const path of paths) await extraction.current.start(path, target);
+      if (action === "extract-dialog") {
+        setQuickMode(true);
+        // On Windows the folder dialog opened with the process, before this page; elsewhere it opens now.
+        const windows = detectWorkbenchPlatform() === "windows";
+        const picked: Exclude<ExtractTarget, string> | null = await (windows ? waitExtractFolder() : pickExtractFolder(paths[0], paths.length))
+          .catch((reason) => { console.warn("[silkZip.launch] 폴더 선택 실패:", reason); return null; });
+        if (picked && windows) updateZipSettings({ extractNamedFolder: picked.named });
+        if (!picked) { await exitApp(); return; }
+        await extraction.current.startMany(paths, picked);
+        return;
+      }
+      if (action === "extract-here" || action === "extract-folder") {
+        await extraction.current.startMany(paths, action === "extract-here" ? "here" : "named");
         return;
       }
       if (action === "compress-zip" || action === "compress-7z" || action === "compress-dialog") {

@@ -1,6 +1,8 @@
 [workspace]
 members = [
   "crates/silk-archive",
+  "crates/silk-zip-menu",
+  "crates/silk-zip-shell",
   "apps/silk-db-studio/src-tauri",
   "apps/silk-be-studio/src-tauri",
   "apps/silk-zip/src-tauri",

@@ -38,10 +38,12 @@ export interface ZipSettings {
   existing: ExistingFilePolicy;
   /** Open the destination folder once extraction finishes. */
   openFolderAfter: boolean;
+  /** The folder dialog's "make a folder named after the archive" check box. */
+  extractNamedFolder: boolean;
 }
 
 const STORAGE_KEY = "silkZip.settings";
-const DEFAULTS: ZipSettings = { visibleColumns: DEFAULT_COLUMNS, viewMode: "details", extractTarget: "ask", existing: "ask", openFolderAfter: false };
+const DEFAULTS: ZipSettings = { visibleColumns: DEFAULT_COLUMNS, viewMode: "details", extractTarget: "ask", existing: "ask", openFolderAfter: false, extractNamedFolder: true };
 
 /** Reads settings text; unknown or broken content falls back to the defaults. */
 function parse(text: string | null): ZipSettings {
@@ -59,6 +61,7 @@ function parse(text: string | null): ZipSettings {
         // Settings saved before "ask" existed stored a plain true/false; false was the untouched default.
         : (value as { overwrite?: unknown }).overwrite === true ? "overwrite" : DEFAULTS.existing,
       openFolderAfter: typeof value.openFolderAfter === "boolean" ? value.openFolderAfter : DEFAULTS.openFolderAfter,
+      extractNamedFolder: typeof value.extractNamedFolder === "boolean" ? value.extractNamedFolder : DEFAULTS.extractNamedFolder,
     };
   } catch {
     return DEFAULTS;

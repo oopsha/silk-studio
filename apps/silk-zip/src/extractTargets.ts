@@ -1,7 +1,7 @@
 import { readBrowserCopy, syncStored, writeStored } from "@silk-studio/workbench/services/storage/fileStore.ts";
 
 /** Where an extraction writes: asked from the user, next to the archive, or a fixed folder. */
-export type ExtractTarget = "ask" | "here" | "named" | { dir: string };
+export type ExtractTarget = "ask" | "here" | "named" | { dir: string; named?: boolean };
 
 const RECENT_KEY = "silkZip.recentExtractFolders";
 const RECENT_LIMIT = 5;
@@ -59,7 +59,7 @@ export function rememberFolder(path: string): void {
 }
 
 export function resolveTargetFolder(target: Exclude<ExtractTarget, "ask">, archivePath: string): string | undefined {
-  if (typeof target === "object") return target.dir;
+  if (typeof target === "object") return target.named ? joinPath(target.dir, archiveStem(archivePath)) : target.dir;
   const parent = parentFolder(archivePath);
   if (!parent) return undefined;
   return target === "named" ? joinPath(parent, archiveStem(archivePath)) : parent;

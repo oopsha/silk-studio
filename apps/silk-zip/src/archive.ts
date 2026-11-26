@@ -194,6 +194,11 @@ export function revealInFolder(path: string): Promise<void> {
 /** What the app was started to do (from an Explorer/Finder menu); null for a plain start. */
 export type LaunchRequest = { action: string; paths: string[] };
 
+/** The answer of the folder dialog Windows shows at start-up; `null` when cancelled. */
+export function waitExtractFolder(): Promise<{ dir: string; named: boolean } | null> {
+  return invoke("wait_extract_folder");
+}
+
 export function takeLaunchRequest(): Promise<LaunchRequest | null> {
   return invoke("take_launch_request");
 }

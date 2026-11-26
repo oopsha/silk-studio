@@ -1,5 +1,6 @@
 mod archive;
 mod clipboard;
+mod folder_picker;
 mod launch;
 #[cfg(windows)]
 mod shell_menu;
@@ -134,13 +135,21 @@ pub fn run() {
         return;
     }
     let request = launch::from_environment();
+    // The folder dialog opens at once; the app starts hidden behind it meanwhile.
+    let mut pending = folder_picker::PendingFolder::default();
+    #[cfg(windows)]
+    if let Some(job) = request.as_ref().filter(|job| job.action == "extract-dialog") {
+        pending = folder_picker::pick_in_background(&job.paths[0], job.paths.len(), settings::extract_named_folder());
+    }
+    let hidden = pending.0.lock().map(|receiver| receiver.is_some()).unwrap_or(false);
     let quick = request.as_ref().is_some_and(|request| launch::is_quick(&request.action));
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_controls::init())
         .manage(archive::CreateTasks::default())
         .manage(archive::ConflictWaiters::default())
-        .manage(launch::QuickMode(quick))
+        .manage(launch::QuickMode(quick, hidden.into()))
+        .manage(pending)
         .manage(launch::LaunchState(std::sync::Mutex::new(request)))
         .invoke_handler(tauri::generate_handler![
             archive::archive_list,
@@ -156,6 +165,8 @@ pub fn run() {
             archive::open_install_folder,
             launch::take_launch_request,
             launch::unique_path,
+            folder_picker::pick_extract_folder,
+            folder_picker::wait_extract_folder,
             archive::new_window,
             archive::exit_app,
             archive::archive_save_as,
@@ -188,8 +199,23 @@ pub fn run() {
                     let _ = window.set_min_size(None::<tauri::Size>);
                     let _ = window.set_size(tauri::LogicalSize::new(460.0, 230.0));
                     let _ = window.center();
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                    // No fade when the job window closes; it would linger on screen for a moment.
+                    #[cfg(windows)]
+                    if let Ok(handle) = window.hwnd() {
+                        let disable: windows::core::BOOL = true.into();
+                        unsafe {
+                            let _ = windows::Win32::Graphics::Dwm::DwmSetWindowAttribute(
+                                windows::Win32::Foundation::HWND(handle.0 as *mut _),
+                                windows::Win32::Graphics::Dwm::DWMWA_TRANSITIONS_FORCEDISABLED,
+                                &disable as *const _ as *const _,
+                                std::mem::size_of_val(&disable) as u32,
+                            );
+                        }
+                    }
+                    if !hidden {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
                 } else {
                     silk_window_state::restore_main_window(app.handle(), &window);
                 }

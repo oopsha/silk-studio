@@ -1,6 +1,8 @@
-//! Explorer's classic ("추가 옵션 표시") context menu: one top-level entry per action on every
-//! file and folder, written under HKCU so it needs no administrator rights. Each entry starts
-//! the app as `silk-zip --action=<action> <paths>` (see `launch.rs`).
+//! Explorer's classic ("추가 옵션 표시") context menu, written under HKCU so it needs no
+//! administrator rights. When the extension DLL (`crates/silk-zip-shell`) is next to the exe it
+//! is registered and builds the menu itself (file names, entries by selection count). Without it,
+//! fixed registry verbs are written instead. Either way an entry starts the app as
+//! `silk-zip --action=<action> <paths>` (see `launch.rs`).
 use std::io;
 use winreg::enums::{HKEY_CURRENT_USER, KEY_ALL_ACCESS};
 use winreg::RegKey;
@@ -8,6 +10,10 @@ use winreg::RegKey;
 const CLASSES: &str = r"Software\Classes";
 const TARGETS: &[&str] = &["*", "Directory"];
 const VERB_PREFIX: &str = "SilkZip.";
+const EXTENSION_DLL: &str = "silk_zip_shell.dll";
+/// Keep equal to `CLSID_MENU` in `crates/silk-zip-shell/src/com.rs`.
+const CLSID: &str = "{7B3E9A52-4C1D-4E8F-9A67-2D5B0C8F1E34}";
+const HANDLER: &str = r"shellex\ContextMenuHandlers\SilkZip";
 const ARCHIVE_EXTENSIONS: &[&str] = &[
     "zip", "zipx", "tar", "tgz", "taz", "gz", "gzip", "bz2", "xz", "txz", "lz", "lzma", "lzh", "lha", "iso", "7z", "zpaq", "rar", "rar5",
 ];
@@ -17,10 +23,11 @@ const ITEMS: &[(&str, &str, &str, bool, bool)] = &[
     ("01", "Silk Zip으로 열기(&O)", "open", true, true),
     ("02", "여기에 풀기(&X)", "extract-here", true, false),
     ("03", "파일명 폴더에 풀기(&E)", "extract-folder", true, false),
-    ("04", "ZIP으로 압축하기(&Z)", "compress-zip", false, true),
-    ("05", "7z로 압축하기(&7)", "compress-7z", false, false),
-    ("06", "각각 ZIP으로 압축하기(&U)", "compress-each", false, false),
-    ("07", "Silk Zip으로 압축하기(&L)...", "compress-dialog", false, false),
+    ("04", "Silk Zip으로 압축 풀기(&T)...", "extract-dialog", true, false),
+    ("05", "ZIP으로 압축하기(&Z)", "compress-zip", false, true),
+    ("06", "7z로 압축하기(&7)", "compress-7z", false, false),
+    ("07", "각각 ZIP으로 압축하기(&U)", "compress-each", false, false),
+    ("08", "Silk Zip으로 압축하기(&L)...", "compress-dialog", false, false),
 ];
 
 fn archive_filter() -> String {
@@ -34,8 +41,12 @@ fn archive_filter() -> String {
 pub fn register() -> io::Result<()> {
     unregister()?;
     let exe = std::env::current_exe()?;
-    let exe = exe.to_string_lossy();
     let classes = RegKey::predef(HKEY_CURRENT_USER).create_subkey(CLASSES)?.0;
+    let dll = exe.with_file_name(EXTENSION_DLL);
+    if dll.is_file() {
+        return register_extension(&classes, &dll);
+    }
+    let exe = exe.to_string_lossy();
     let filter = archive_filter();
     for target in TARGETS {
         for (order, label, action, archives_only, separator) in ITEMS {
@@ -60,12 +71,24 @@ pub fn register() -> io::Result<()> {
     Ok(())
 }
 
+fn register_extension(classes: &RegKey, dll: &std::path::Path) -> io::Result<()> {
+    let (server, _) = classes.create_subkey(format!(r"CLSID\{CLSID}\InprocServer32"))?;
+    server.set_value("", &dll.as_os_str())?;
+    server.set_value("ThreadingModel", &"Apartment")?;
+    for target in TARGETS {
+        let (handler, _) = classes.create_subkey(format!(r"{target}\{HANDLER}"))?;
+        handler.set_value("", &CLSID)?;
+    }
+    Ok(())
+}
+
 pub fn unregister() -> io::Result<()> {
     let classes = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(CLASSES, KEY_ALL_ACCESS)?;
     let mut keys = vec!["SilkZip.Menu".to_string(), r"*\shell\SilkZip".to_string(), r"Directory\shell\SilkZip".to_string()];
+    keys.push(format!(r"CLSID\{CLSID}"));
     for target in TARGETS {
-        // "07" was an entry of earlier versions.
-        for order in ITEMS.iter().map(|item| item.0).chain(["07"]) {
+        keys.push(format!(r"{target}\{HANDLER}"));
+        for order in ITEMS.iter().map(|item| item.0) {
             keys.push(format!(r"{target}\shell\{VERB_PREFIX}{order}"));
         }
     }
