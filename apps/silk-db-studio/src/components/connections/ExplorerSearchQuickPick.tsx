@@ -415,6 +415,29 @@ function ExplorerSearchQuickPick() {
   }
 
   const anyLoading = profiles.some(({ cache }) => cache.status === "loading");
+  // Schemas whose objects are still being fetched (e.g. the default schema preloaded right after
+  // connecting). Their objects aren't searchable yet, so say so instead of looking like "no match".
+  const indexingNames = profiles.flatMap(({ cache }) => [
+    ...cache.schemas
+      .filter((schema) => schema.status === "loading")
+      .map((schema) => schema.name),
+    ...cache.catalogs.flatMap((catalog) =>
+      catalog.status === "loading"
+        ? [catalog.name]
+        : catalog.schemas
+            .filter((schema) => schema.status === "loading")
+            .map((schema) => `${catalog.name}.${schema.name}`),
+    ),
+  ]);
+  const indexingMessage =
+    indexingNames.length > 0
+      ? t("app.explorer.searchIndexing").replace(
+          "{names}",
+          indexingNames.length > 3
+            ? `${indexingNames.slice(0, 3).join(", ")} +${indexingNames.length - 3}`
+            : indexingNames.join(", "),
+        )
+      : null;
   const anySchemasKnown = profiles.some(
     ({ cache }) => cache.catalogs.length > 0 || cache.schemas.length > 0,
   );
@@ -504,9 +527,9 @@ function ExplorerSearchQuickPick() {
         )}
       </div>
 
-      {statusMessage ? (
+      {statusMessage || indexingMessage ? (
         <div className="explorer-search-quick-pick__status" role="status">
-          {statusMessage}
+          {statusMessage ?? indexingMessage}
         </div>
       ) : null}
     </div>,

@@ -751,6 +751,7 @@ export const koMessages = {
       searchLiveAction: '전체 연결에서 "{term}" 포함하는 이름 찾기',
       searchLiveActionDescription: "실시간 조회 — 스키마가 크면 시간이 걸릴 수 있습니다",
       searchLiveSearching: "전체 연결에서 찾는 중…",
+      searchIndexing: "{names} 객체 불러오는 중… 끝나면 결과가 자동으로 갱신됩니다.",
       searchLiveNoMatches: "연결된 어떤 데이터베이스에서도 일치하는 항목을 찾지 못했습니다.",
       searchLiveFailed: "전체 연결 검색에 실패했습니다.",
       searchAllConnectionsLabel: '🔍 모든 연결에서 "{term}" 검색',

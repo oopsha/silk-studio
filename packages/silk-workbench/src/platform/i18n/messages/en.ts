@@ -753,6 +753,7 @@ export const enMessages = {
       searchLiveAction: 'Search all connections for names containing "{term}"',
       searchLiveActionDescription: "Live query — may take a moment on large schemas",
       searchLiveSearching: "Searching all connections…",
+      searchIndexing: "Loading objects for {names}… results update automatically when done.",
       searchLiveNoMatches: "No matches in any connected database for that search.",
       searchLiveFailed: "Search across connections failed.",
       searchAllConnectionsLabel: '🔍 Search all connections for "{term}"',
