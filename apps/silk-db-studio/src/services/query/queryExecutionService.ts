@@ -873,6 +873,7 @@ class QueryExecutionServiceImpl {
           });
         }
 
+        const batchStartedAt = performance.now();
         try {
           assertReadOnlyQueryAllowed(item.sql, readOnly);
           const payload = await this.invokeQuery(
@@ -913,7 +914,7 @@ class QueryExecutionServiceImpl {
               sql: item.sql,
               executedSql: item.bound.sql,
               binds: item.bound.binds,
-              output: payload.message,
+              output: `${payload.message} · ${formatQueryElapsed(performance.now() - batchStartedAt)}`,
               result: payload,
               status: "success",
               connectionId: connectionId!,
@@ -985,6 +986,12 @@ class QueryExecutionServiceImpl {
 
       const status: QueryResultTabStatus =
         errorCount > 0 ? "error" : "success";
+      appendMeta(
+        tKey("app.query.scriptElapsed").replace(
+          "{elapsed}",
+          formatQueryElapsed(performance.now() - startedAt),
+        ),
+      );
       const scriptLog = buildScriptLogLines();
 
       this.commitScriptOutcome(ownerId, {
@@ -1204,7 +1211,7 @@ class QueryExecutionServiceImpl {
         throw new Error("Explain completed without a plan result.");
       }
 
-      const output = capturedMessage || `${plan.label} completed.`;
+      const output = `${capturedMessage || `${plan.label} completed.`} · ${formatQueryElapsed(performance.now() - startedAt)}`;
       this.commitTab(ownerId, {
         sql: displaySql,
         executedSql: bound.sql,

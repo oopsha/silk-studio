@@ -43,7 +43,6 @@ type ActiveGrid = {
     all?: boolean;
   } | null;
   openValueEditor: () => void;
-  fetchAllRowsForExport?: (columns: string[], onProgress?: (rowCount: number | null) => void) => Promise<Array<Array<string | null>>>;
   /** Server-side streaming of the whole result into a file (large paged results). */
   streamExport?: StreamExport;
 };
@@ -51,7 +50,12 @@ type ActiveGrid = {
 export type ExportFormat = "csv" | "xlsx";
 
 export type StreamExport = {
-  /** False while local edits exist: the server result would not include them. */
+  /**
+   * Unsaved grid edits exist. Exports read the database, which does not have them yet, so both
+   * CSV and Excel are refused until the edits are saved or discarded.
+   */
+  hasPendingChanges: () => boolean;
+  /** The server-side stream can produce this format (Excel always; CSV for paged results). */
   canRun: (format: ExportFormat) => boolean;
   run: (request: {
     format: ExportFormat;
@@ -133,18 +137,17 @@ export class QueryResultGridController {
     columns: string[],
     nullDisplay: string,
     openValueEditor: () => void,
-    fetchAllRowsForExport?: (columns: string[], onProgress?: (rowCount: number | null) => void) => Promise<Array<Array<string | null>>>,
     profileId: string | null = null,
     streamExport?: StreamExport,
   ): void {
     const previous = this.active;
     if (previous?.api === api && previous.profileId === profileId &&
       previous.columns.length === columns.length && previous.columns.every((column, i) => column === columns[i])) {
-      Object.assign(previous, { columns, nullDisplay, openValueEditor, fetchAllRowsForExport, streamExport });
+      Object.assign(previous, { columns, nullDisplay, openValueEditor, streamExport });
       this.refreshSnapshot();
       return;
     }
-    this.active = { api, columns, nullDisplay, profileId, cellSelection: null, openValueEditor, fetchAllRowsForExport, streamExport };
+    this.active = { api, columns, nullDisplay, profileId, cellSelection: null, openValueEditor, streamExport };
     this.layoutDirty = false;
     this.restoreColumnLayout();
     this.refreshSnapshot();
@@ -396,6 +399,8 @@ export class QueryResultGridController {
   ): Promise<boolean> {
     const grid = this.active;
     if (!grid) return false;
+    // The database does not have unsaved edits yet; exporting would silently drop them.
+    if (grid.streamExport?.hasPendingChanges()) return false;
 
     const visible = this.collectVisibleMatrix(grid);
     if (grid.streamExport?.canRun(format) && isTauri()) {
@@ -423,11 +428,8 @@ export class QueryResultGridController {
     // Excel files are only produced by the server-side stream.
     if (format === "xlsx") return false;
 
-    const columns = visible.columns;
-    const rows = grid.fetchAllRowsForExport
-      ? await grid.fetchAllRowsForExport(columns, onProgress)
-      : visible.rows;
-    onProgress?.(null);
+    // The whole result is in the grid (not paged): export it as shown.
+    const { columns, rows } = visible;
     // File interchange uses empty fields for SQL NULL, independent of the grid display token.
     const csv = toCsv(columns, rows);
     const defaultName = `query-result-${formatTimestamp(new Date())}.csv`;

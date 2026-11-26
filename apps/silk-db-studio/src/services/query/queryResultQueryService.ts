@@ -29,6 +29,7 @@ export class QueryResultQueryServiceImpl {
   private readonly entries = new Map<string, Entry>();
   private readonly paused = new Map<string, number>();
   private readonly listeners = new Set<() => void>();
+  private readonly refreshGenerations = new Map<string, number>();
 
   constructor(private readonly fetchPage = fetchQueryResultPage) {}
 
@@ -57,7 +58,12 @@ export class QueryResultQueryServiceImpl {
   hasPendingEdits(connectionId: string): boolean {
     return [...this.entries].some(([id, entry]) => entry.connectionId === connectionId && QueryResultDirtyService.hasPendingChanges(id));
   }
-  removeTabs(tabIds: Iterable<string>): void { for (const id of tabIds) this.entries.delete(id); }
+  removeTabs(tabIds: Iterable<string>): void {
+    for (const id of tabIds) {
+      this.entries.delete(id);
+      this.refreshGenerations.delete(id);
+    }
+  }
 
   pauseConnection(connectionId: string): () => void {
     this.paused.set(connectionId, (this.paused.get(connectionId) ?? 0) + 1);
@@ -99,9 +105,18 @@ export class QueryResultQueryServiceImpl {
    * Re-fetches the shown page. A new filter/sort (`nextUi`) returns to the first page; a plain
    * refresh (after save, rollback…) stays on the current one.
    */
-  reload(tabId: string, nextUi?: GridUiState): Promise<QueryResultPayload | null> {
-    return this.load(tabId, nextUi, undefined);
+  async reload(tabId: string, nextUi?: GridUiState): Promise<QueryResultPayload | null> {
+    const payload = await this.load(tabId, nextUi, undefined);
+    if (payload && !nextUi) {
+      // A plain refresh (after save, rollback…) may change the row count: let the grid recount.
+      this.refreshGenerations.set(tabId, (this.refreshGenerations.get(tabId) ?? 0) + 1);
+      this.fire();
+    }
+    return payload;
   }
+
+  /** Bumped by every successful plain refresh (not filter changes or page moves). */
+  getRefreshGeneration(tabId: string): number { return this.refreshGenerations.get(tabId) ?? 0; }
 
   /** Paged results: shows page `pageIndex` (zero-based) with the committed filter/sort. */
   goToPage(tabId: string, pageIndex: number): Promise<QueryResultPayload | null> {

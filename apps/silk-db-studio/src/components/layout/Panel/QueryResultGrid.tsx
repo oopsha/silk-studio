@@ -29,7 +29,6 @@ import {
   type EffectiveColorThemeId,
 } from "@silk-studio/ui/platform/colorTheme.ts";
 import {
-  toQueryResultRows,
   isResultTruncated,
   getQueryResultRowIndex,
   QUERY_RESULT_ROW_NUMBER_COL_ID,
@@ -38,7 +37,6 @@ import {
 } from "../../../services/query/queryResult";
 import { QueryResultGridService, QueryResultGridController } from "../../../services/query/queryResultGridService";
 import ContextMenu, { type ContextMenuItem } from "../../common/ContextMenu";
-import { fetchQueryResultPage } from "../../../services/query/queryResultPaging";
 import { invoke } from "@tauri-apps/api/core";
 import { copyQueryResultAll, countQueryResultRows, streamQueryResultCsv } from "../../../services/query/queryResultExport";
 import type { StreamExport } from "../../../services/query/queryResultGridService";
@@ -264,16 +262,24 @@ function QueryResultGrid({
    * "stopped" = cancelled (to free the connection for scroll paging) or failed; click to retry.
    */
   const totalFilterKey = () => JSON.stringify(gridUiStateByTabId.get(tabId)?.filterModel ?? {});
-  // A remount (switching editor tabs) reuses the last count for the same filter.
+  const refreshGeneration = useSyncExternalStore(
+    (listener) => QueryResultQueryService.onDidChange(listener),
+    () => QueryResultQueryService.getRefreshGeneration(tabId),
+    () => 0,
+  );
+  // A remount (switching editor tabs) reuses the last count for the same filter and data.
   const [serverTotal, setServerTotal] = useState<
     { status: "counting" } | { status: "done"; count: number } | { status: "stopped" } | null
   >(() => {
     const cached = serverTotalByTabId.get(tabId);
-    return cached && cached.filterKey === totalFilterKey() ? cached.total : null;
+    return cached && cached.filterKey === totalFilterKey() &&
+      cached.refreshGeneration === QueryResultQueryService.getRefreshGeneration(tabId)
+      ? cached.total
+      : null;
   });
   useEffect(() => {
     if (serverTotal?.status === "done" || serverTotal?.status === "stopped") {
-      serverTotalByTabId.set(tabId, { filterKey: totalFilterKey(), total: serverTotal });
+      serverTotalByTabId.set(tabId, { filterKey: totalFilterKey(), refreshGeneration, total: serverTotal });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverTotal, tabId]);
@@ -756,9 +762,11 @@ function QueryResultGrid({
 
   // Count once the first page is on screen (and again after a server-side filter reload), but
   // not on every remount: switching editor tabs reuses the cached count for the same filter.
+  // A refresh (after save, rollback…) can change the row count, so it also invalidates the cache.
   useEffect(() => {
     const cached = serverTotalByTabId.get(tabId);
-    if (countGeneration === 0 && cached && cached.filterKey === totalFilterKey()) {
+    if (countGeneration === 0 && cached && cached.filterKey === totalFilterKey() &&
+      cached.refreshGeneration === refreshGeneration) {
       setServerTotal(cached.total);
     } else {
       void startServerCount();
@@ -768,7 +776,7 @@ function QueryResultGrid({
       countAbortRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabId, useIncrementalScroll, connectionId, countGeneration]);
+  }, [tabId, useIncrementalScroll, connectionId, countGeneration, refreshGeneration]);
 
   /** Scroll mode: loads the next block into the Client-Side Row Model (rows keep their index). */
   const loadNextPage = useCallback(async () => {
@@ -873,71 +881,14 @@ function QueryResultGrid({
     void performServerReshuffle(request);
   };
 
-  const fetchAllRowsForExport = useCallback(async (
-    visibleColumns: string[],
-    onProgress?: (rowCount: number | null) => void,
-  ) => {
-    if (!useIncrementalScroll || !connectionId) return null;
-    const api = apiRef.current;
-    if (!api) return null;
-    const filterModel = api.getFilterModel() as Record<string, unknown>;
-    const filterActive = Object.keys(filterModel).length > 0;
-    const sort = translateSortModel(
-      api.getColumnState()
-        .filter((column) => column.sort === "asc" || column.sort === "desc")
-        .sort((left, right) => (left.sortIndex ?? 0) - (right.sortIndex ?? 0))
-        .map((column) => ({ colId: column.colId, sort: column.sort! })),
-      result.columns,
-    );
-    const sortActive = sort.length > 0;
-    const filters = translateFilterModel(filterModel, result.columns);
-    const rows: QueryResultRow[] = [];
-    let offset = 0;
-    while (true) {
-      const payload = await fetchQueryResultPage(
-        connectionId,
-        executedSql ?? sql,
-        result.columns,
-        offset,
-        INCREMENTAL_SCROLL_PAGE_SIZE,
-        { binds, filters, sort },
-      );
-      const page = toQueryResultRows(payload.columns, payload.rows, offset);
-      rows.push(...page);
-      offset += page.length;
-      onProgress?.(offset);
-      if (page.length < INCREMENTAL_SCROLL_PAGE_SIZE) break;
-    }
-    if (!filterActive && !sortActive) {
-      const loadedByIndex = new Map<number, QueryResultRow>();
-      api.forEachNode((node) => {
-        if (node.data) loadedByIndex.set(getQueryResultRowIndex(node.data), node.data);
-      });
-      rows.forEach((row, index) => {
-        const loaded = loadedByIndex.get(index);
-        if (loaded) Object.assign(row, loaded);
-      });
-    }
-    const exported = rows
-      .filter((_, index) => filterActive || sortActive || !QueryResultDirtyService.isRowDeleted(tabId, index))
-      .map((row) => visibleColumns.map((column) => row[column] ?? null));
-    if (!filterActive && !sortActive) {
-      api.forEachNode((node) => {
-        if (node.data && getQueryResultRowIndex(node.data) < 0) {
-          exported.push(visibleColumns.map((column) => node.data?.[column] ?? null));
-        }
-      });
-    }
-    return exported;
-  }, [binds, connectionId, executedSql, result.columns, sql, tabId, useIncrementalScroll]);
-
   const streamExport = useMemo<StreamExport | undefined>(() => {
     if (!connectionId) return undefined;
     return {
-      // Local edits only exist in the grid, so those exports keep the in-memory path (CSV).
-      // Excel always streams from the server; CSV streams only for large paged results.
-      canRun: (format) =>
-        !QueryResultDirtyService.hasPendingChanges(tabId) && (format === "xlsx" || useIncrementalScroll),
+      // Exports read the database, which does not have unsaved edits yet: refuse until saved.
+      hasPendingChanges: () => QueryResultDirtyService.hasPendingChanges(tabId),
+      // Excel always streams from the server; CSV streams for paged results (otherwise the
+      // whole result is already in the grid and is written as shown).
+      canRun: (format) => format === "xlsx" || useIncrementalScroll,
       run: ({ format, path, columns, signal, onProgress }) => {
         const api = apiRef.current;
         const filterModel = (api?.getFilterModel() ?? {}) as Record<string, unknown>;
@@ -974,14 +925,13 @@ function QueryResultGrid({
       result.columns,
       nullDisplay,
       openValueEditor,
-      useIncrementalScroll ? async (columns, onProgress) => (await fetchAllRowsForExport(columns, onProgress)) ?? [] : undefined,
       connectionId ?? null,
       streamExport,
     );
     gridController.autoSizeToContent(root);
     autoSizePendingRef.current = false;
     restoreGridViewport();
-  }, [connectionId, gridController, fetchAllRowsForExport, streamExport, nullDisplay, openValueEditor, result.columns, useIncrementalScroll, restoreGridViewport]);
+  }, [connectionId, gridController, streamExport, nullDisplay, openValueEditor, result.columns, restoreGridViewport]);
 
   useEffect(() => {
     autoSizePendingRef.current = true;
@@ -1624,8 +1574,8 @@ function QueryResultGrid({
 
   const runExport = async (format: "csv" | "xlsx") => {
     if (exportingRef.current) return;
-    if (format === "xlsx" && QueryResultDirtyService.hasPendingChanges(tabId)) {
-      flashMessage(t("app.query.xlsxNeedsSave"));
+    if (QueryResultDirtyService.hasPendingChanges(tabId)) {
+      flashMessage(t("app.query.exportNeedsSave"));
       return;
     }
     exportingRef.current = true;

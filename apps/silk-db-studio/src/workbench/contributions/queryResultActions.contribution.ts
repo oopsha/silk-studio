@@ -107,7 +107,7 @@ MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
 MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.queryResult.copyAll",
-    title: "Copy All Filtered Rows",
+    title: "Copy All Rows",
   },
   group: "6_result",
   order: 82,
@@ -116,7 +116,7 @@ MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
 MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.queryResult.exportCsv",
-    title: "Export CSV (Filtered)",
+    title: "Export CSV",
   },
   group: "6_result",
   order: 83,
@@ -125,7 +125,7 @@ MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
 MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   command: {
     id: "silk.queryResult.exportXlsx",
-    title: "Export Excel (Filtered)",
+    title: "Export Excel",
   },
   group: "6_result",
   order: 83.5,

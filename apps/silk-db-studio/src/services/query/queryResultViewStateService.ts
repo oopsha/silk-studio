@@ -28,6 +28,8 @@ export const gridViewStateByTabId = new Map<string, GridViewState>();
  */
 export const serverTotalByTabId = new Map<string, {
   filterKey: string;
+  /** `QueryResultQueryService.getRefreshGeneration` when counted (a save/refresh recounts). */
+  refreshGeneration: number;
   total: { status: "done"; count: number } | { status: "stopped" };
 }>();
 
