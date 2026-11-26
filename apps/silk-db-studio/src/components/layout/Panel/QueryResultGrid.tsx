@@ -39,6 +39,8 @@ import {
 import { QueryResultGridService, QueryResultGridController } from "../../../services/query/queryResultGridService";
 import ContextMenu, { type ContextMenuItem } from "../../common/ContextMenu";
 import { fetchQueryResultPage } from "../../../services/query/queryResultPaging";
+import { streamQueryResultCsv } from "../../../services/query/queryResultExport";
+import type { StreamExport } from "../../../services/query/queryResultGridService";
 import { translateFilterModel, translateSortModel } from "../../../services/query/filterModelTranslator";
 import { QueryResultDirtyService } from "../../../services/query/queryResultDirtyService";
 import { formatErrorMessage } from "../../../services/formatErrorMessage";
@@ -237,7 +239,16 @@ function QueryResultGrid({
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [exportProgressRows, setExportProgressRows] = useState<number | null>(null);
   const [exportInProgress, setExportInProgress] = useState(false);
+  const [exportMenu, setExportMenu] = useState<{ top: number; left: number } | null>(null);
   const exportingRef = useRef(false);
+  const exportAbortRef = useRef<AbortController | null>(null);
+  const exportStartedAtRef = useRef<number | null>(null);
+  const [exportNow, setExportNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (exportProgressRows === null) return;
+    const timer = window.setInterval(() => setExportNow(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [exportProgressRows === null]);
   const actionTimerRef = useRef<number | null>(null);
   const [saveBlockedReason, setSaveBlockedReason] = useState<string | null>(null);
   const [preview, setPreview] = useState<UpdatePreview | null>(null);
@@ -747,6 +758,40 @@ function QueryResultGrid({
     return exported;
   }, [binds, connectionId, executedSql, result.columns, sql, tabId, useIncrementalScroll]);
 
+  const streamExport = useMemo<StreamExport | undefined>(() => {
+    if (!connectionId) return undefined;
+    return {
+      // Local edits only exist in the grid, so those exports keep the in-memory path (CSV).
+      // Excel always streams from the server; CSV streams only for large paged results.
+      canRun: (format) =>
+        !QueryResultDirtyService.hasPendingChanges(tabId) && (format === "xlsx" || useIncrementalScroll),
+      run: ({ format, path, columns, signal, onProgress }) => {
+        const api = apiRef.current;
+        const filterModel = (api?.getFilterModel() ?? {}) as Record<string, unknown>;
+        const sort = translateSortModel(
+          (api?.getColumnState() ?? [])
+            .filter((column) => column.sort === "asc" || column.sort === "desc")
+            .sort((left, right) => (left.sortIndex ?? 0) - (right.sortIndex ?? 0))
+            .map((column) => ({ colId: column.colId, sort: column.sort! })),
+          result.columns,
+        );
+        return streamQueryResultCsv({
+          connectionId,
+          sql: executedSql ?? sql,
+          knownColumns: result.columns,
+          columns,
+          path,
+          format,
+          binds,
+          filters: translateFilterModel(filterModel, result.columns),
+          sort,
+          signal,
+          onProgress,
+        });
+      },
+    };
+  }, [binds, connectionId, executedSql, result.columns, sql, tabId, useIncrementalScroll]);
+
   const sizeVisibleGrid = useCallback(() => {
     const api = apiRef.current;
     const root = gridRootRef.current;
@@ -758,11 +803,12 @@ function QueryResultGrid({
       openValueEditor,
       useIncrementalScroll ? async (columns, onProgress) => (await fetchAllRowsForExport(columns, onProgress)) ?? [] : undefined,
       connectionId ?? null,
+      streamExport,
     );
     gridController.autoSizeToContent(root);
     autoSizePendingRef.current = false;
     restoreGridViewport();
-  }, [connectionId, gridController, fetchAllRowsForExport, nullDisplay, openValueEditor, result.columns, useIncrementalScroll, restoreGridViewport]);
+  }, [connectionId, gridController, fetchAllRowsForExport, streamExport, nullDisplay, openValueEditor, result.columns, useIncrementalScroll, restoreGridViewport]);
 
   useEffect(() => {
     autoSizePendingRef.current = true;
@@ -1306,20 +1352,39 @@ function QueryResultGrid({
     }
   };
 
-  const handleExportCsv = async () => {
+  const handleExportCsv = () => runExport("csv");
+  const handleExportXlsx = () => runExport("xlsx");
+
+  const runExport = async (format: "csv" | "xlsx") => {
     if (exportingRef.current) return;
+    if (format === "xlsx" && QueryResultDirtyService.hasPendingChanges(tabId)) {
+      flashMessage(t("app.query.xlsxNeedsSave"));
+      return;
+    }
     exportingRef.current = true;
     setExportInProgress(true);
-    if (useIncrementalScroll) setExportProgressRows(result.rows.length);
+    const abort = new AbortController();
+    exportAbortRef.current = abort;
     try {
-      const ok = await gridController.exportCsv((rowCount) => {
+      const onProgress = (rowCount: number | null) => {
+        if (rowCount !== null && exportStartedAtRef.current === null) {
+          exportStartedAtRef.current = Date.now();
+          setExportNow(Date.now());
+        }
         setExportProgressRows(rowCount);
-      });
-      flashMessage(ok ? t("app.query.csvExported") : t("app.query.exportCancelled"));
+      };
+      const ok = format === "xlsx"
+        ? await gridController.exportXlsx(onProgress, abort.signal)
+        : await gridController.exportCsv(onProgress, abort.signal);
+      flashMessage(ok
+        ? t(format === "xlsx" ? "app.query.xlsxExported" : "app.query.csvExported")
+        : t("app.query.exportCancelled"));
     } catch (error) {
       console.warn("[query-result] csv export failed", error);
       flashMessage(t("app.query.exportFailed"));
     } finally {
+      exportAbortRef.current = null;
+      exportStartedAtRef.current = null;
       exportingRef.current = false;
       setExportInProgress(false);
       setExportProgressRows(null);
@@ -1377,6 +1442,11 @@ function QueryResultGrid({
       label: t("app.query.exportCsv"),
       enabled: true,
       separator: true,
+    },
+    {
+      id: "exportXlsx",
+      label: t("app.query.exportXlsx"),
+      enabled: !!connectionId,
     },
     {
       id: "clearFilters",
@@ -1499,6 +1569,9 @@ function QueryResultGrid({
       case "copyAll":
         void handleCopyAll();
         return;
+      case "exportXlsx":
+        void handleExportXlsx();
+        break;
       case "exportCsv":
         void handleExportCsv();
         return;
@@ -1930,10 +2003,14 @@ function QueryResultGrid({
           <button
             type="button"
             className="query-result-grid__action"
-            title={t("app.query.exportCsvTitle")}
-            aria-label={t("app.query.exportCsv")}
+            title={t("app.query.exportMenuTitle")}
+            aria-label={t("app.query.exportMenuTitle")}
+            aria-haspopup="menu"
             disabled={exportInProgress}
-            onClick={() => void handleExportCsv()}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              setExportMenu({ top: rect.bottom + 2, left: rect.left });
+            }}
           >
             <Codicon name="export" />
           </button>
@@ -2148,6 +2225,20 @@ function QueryResultGrid({
         />
       </div>
 
+      {exportMenu ? (
+        <ContextMenu
+          anchor={exportMenu}
+          items={[
+            { id: "exportCsv", label: t("app.query.exportCsv"), enabled: true },
+            { id: "exportXlsx", label: t("app.query.exportXlsx"), enabled: !!connectionId },
+          ]}
+          onClose={() => setExportMenu(null)}
+          onSelect={(item) => {
+            setExportMenu(null);
+            void (item.id === "exportXlsx" ? handleExportXlsx() : handleExportCsv());
+          }}
+        />
+      ) : null}
       {contextMenu ? (
         <ContextMenu
           anchor={{ top: contextMenu.y, left: contextMenu.x }}
@@ -2243,7 +2334,26 @@ function QueryResultGrid({
                 </div>
                 <span>{t("app.query.csvExportProgressRows").replace("{n}", exportProgressRows.toLocaleString())}</span>
               </div>
+              {exportStartedAtRef.current !== null ? (() => {
+                const seconds = Math.max(0, Math.floor((exportNow - exportStartedAtRef.current) / 1000));
+                const elapsed = seconds >= 60
+                  ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
+                  : `${seconds}s`;
+                const rate = seconds > 0 ? Math.round(exportProgressRows / seconds) : 0;
+                return (
+                  <p className="query-result-update-dialog__hint">
+                    {t("app.query.csvExportProgressStats")
+                      .replace("{elapsed}", elapsed)
+                      .replace("{rate}", rate.toLocaleString())}
+                  </p>
+                );
+              })() : null}
             </div>
+            <footer className="query-result-update-dialog__footer">
+              <button type="button" onClick={() => exportAbortRef.current?.abort()}>
+                {t("app.query.csvExportCancel")}
+              </button>
+            </footer>
           </section>
         </div>
       ) : null}

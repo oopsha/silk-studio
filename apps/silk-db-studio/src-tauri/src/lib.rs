@@ -112,6 +112,12 @@ async fn query_import_rows(connection_id: String, params: Value, app: tauri::App
 }
 
 #[tauri::command]
+async fn query_export_result(connection_id: String, params: Value, app: tauri::AppHandle) -> Result<Value, String> {
+    require_connection_id(&connection_id)?;
+    run_blocking(move || app.state::<AppState>().jdbc_agent.export_result(&connection_id, params)).await
+}
+
+#[tauri::command]
 async fn query_import_status(connection_id: String, operation_id: String, cancel: bool, app: tauri::AppHandle) -> Result<Value, String> {
     require_connection_id(&connection_id)?;
     run_blocking(move || app.state::<AppState>().jdbc_agent.import_status(&connection_id, &operation_id, cancel)).await
@@ -669,6 +675,7 @@ pub fn run() {
             query_execute_paged,
             query_import_rows,
             query_import_status,
+            query_export_result,
             query_cancel,
             connection_commit,
             connection_rollback,

@@ -204,6 +204,7 @@ class MenuServiceImpl {
       case "silk.queryResult.copyRows":
       case "silk.queryResult.copyAll":
       case "silk.queryResult.exportCsv":
+      case "silk.queryResult.exportXlsx":
       case "silk.queryResult.clearFilters":
       case "silk.queryResult.saveColumnLayout":
       case "silk.queryResult.resetColumnLayout":

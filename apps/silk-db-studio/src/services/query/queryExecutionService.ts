@@ -122,6 +122,14 @@ const INITIAL_STATE: QueryExecutionState = {
   activeTabId: null,
 };
 
+/** Wall-clock time from sending a statement to receiving its first result page. */
+function formatQueryElapsed(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(2)} s`;
+  const seconds = Math.round(ms / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
 const ORPHAN_OWNER_ID = "__orphan__";
 const OPEN_DATA_OWNER_PREFIX = "open-data:";
 
@@ -582,7 +590,7 @@ class QueryExecutionServiceImpl {
             sql: item.sql,
             executedSql: item.bound.sql,
             binds: item.bound.binds,
-            output: payload.message,
+            output: `${payload.message} · ${formatQueryElapsed(performance.now() - startedAt)}`,
             result: payload,
             status: "success",
             relationKind: options?.relationKind,

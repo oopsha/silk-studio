@@ -53,6 +53,15 @@ CommandsRegistry.registerCommand("silk.queryResult.exportCsv", async () => {
   }
 });
 
+CommandsRegistry.registerCommand("silk.queryResult.exportXlsx", async () => {
+  if (!QueryResultGridService.isAttached()) return;
+  try {
+    await QueryResultGridService.exportXlsx();
+  } catch (error) {
+    console.warn("[silk.queryResult.exportXlsx] failed", error);
+  }
+});
+
 CommandsRegistry.registerCommand("silk.queryResult.clearFilters", () => {
   if (!QueryResultGridService.isAttached()) return;
   QueryResultGridService.clearFiltersAndSort();
@@ -111,6 +120,15 @@ MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
   },
   group: "6_result",
   order: 83,
+});
+
+MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {
+  command: {
+    id: "silk.queryResult.exportXlsx",
+    title: "Export Excel (Filtered)",
+  },
+  group: "6_result",
+  order: 83.5,
 });
 
 MenuRegistry.appendMenuItem(MenuId.MenubarRunMenu, {

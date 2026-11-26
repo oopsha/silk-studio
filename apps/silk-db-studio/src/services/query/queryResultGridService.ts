@@ -42,6 +42,22 @@ type ActiveGrid = {
   } | null;
   openValueEditor: () => void;
   fetchAllRowsForExport?: (columns: string[], onProgress?: (rowCount: number | null) => void) => Promise<Array<Array<string | null>>>;
+  /** Server-side streaming of the whole result into a file (large paged results). */
+  streamExport?: StreamExport;
+};
+
+export type ExportFormat = "csv" | "xlsx";
+
+export type StreamExport = {
+  /** False while local edits exist: the server result would not include them. */
+  canRun: (format: ExportFormat) => boolean;
+  run: (request: {
+    format: ExportFormat;
+    path: string;
+    columns: string[];
+    signal?: AbortSignal;
+    onProgress?: (rowCount: number) => void;
+  }) => Promise<{ rowCount: number; cancelled: boolean }>;
 };
 
 type SnapshotListener = () => void;
@@ -117,15 +133,16 @@ export class QueryResultGridController {
     openValueEditor: () => void,
     fetchAllRowsForExport?: (columns: string[], onProgress?: (rowCount: number | null) => void) => Promise<Array<Array<string | null>>>,
     profileId: string | null = null,
+    streamExport?: StreamExport,
   ): void {
     const previous = this.active;
     if (previous?.api === api && previous.profileId === profileId &&
       previous.columns.length === columns.length && previous.columns.every((column, i) => column === columns[i])) {
-      Object.assign(previous, { columns, nullDisplay, openValueEditor, fetchAllRowsForExport });
+      Object.assign(previous, { columns, nullDisplay, openValueEditor, fetchAllRowsForExport, streamExport });
       this.refreshSnapshot();
       return;
     }
-    this.active = { api, columns, nullDisplay, profileId, cellSelection: null, openValueEditor, fetchAllRowsForExport };
+    this.active = { api, columns, nullDisplay, profileId, cellSelection: null, openValueEditor, fetchAllRowsForExport, streamExport };
     this.layoutDirty = false;
     this.restoreColumnLayout();
     this.refreshSnapshot();
@@ -334,11 +351,54 @@ export class QueryResultGridController {
     this.active.cellSelection = null;
   }
 
-  async exportCsv(onProgress?: (rowCount: number | null) => void): Promise<boolean> {
+  async exportCsv(
+    onProgress?: (rowCount: number | null) => void,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    return this.exportFile("csv", onProgress, signal);
+  }
+
+  async exportXlsx(
+    onProgress?: (rowCount: number | null) => void,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    return this.exportFile("xlsx", onProgress, signal);
+  }
+
+  private async exportFile(
+    format: ExportFormat,
+    onProgress?: (rowCount: number | null) => void,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
     const grid = this.active;
     if (!grid) return false;
 
     const visible = this.collectVisibleMatrix(grid);
+    if (grid.streamExport?.canRun(format) && isTauri()) {
+      // Pick the destination first, then stream the result straight into it.
+      const path = await save({
+        title: format === "xlsx" ? "Export Excel" : "Export CSV",
+        defaultPath: `query-result-${formatTimestamp(new Date())}.${format}`,
+        filters: [{ name: format === "xlsx" ? "Excel" : "CSV", extensions: [format] }],
+      });
+      if (!path) return false;
+      onProgress?.(0);
+      try {
+        const result = await grid.streamExport.run({
+          format,
+          path,
+          columns: visible.columns,
+          signal,
+          onProgress,
+        });
+        return !result.cancelled;
+      } finally {
+        onProgress?.(null);
+      }
+    }
+    // Excel files are only produced by the server-side stream.
+    if (format === "xlsx") return false;
+
     const columns = visible.columns;
     const rows = grid.fetchAllRowsForExport
       ? await grid.fetchAllRowsForExport(columns, onProgress)
@@ -641,8 +701,17 @@ export class QueryResultGridCommandRouter {
   }
   openValueEditor(): void { this.target()?.openValueEditor(); }
   async copy(mode: QueryResultCopyMode): Promise<boolean> { return this.target()?.copy(mode) ?? false; }
-  async exportCsv(onProgress?: (rowCount: number | null) => void): Promise<boolean> {
-    return this.target()?.exportCsv(onProgress) ?? false;
+  async exportCsv(
+    onProgress?: (rowCount: number | null) => void,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    return this.target()?.exportCsv(onProgress, signal) ?? false;
+  }
+  async exportXlsx(
+    onProgress?: (rowCount: number | null) => void,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    return this.target()?.exportXlsx(onProgress, signal) ?? false;
   }
   clearFiltersAndSort(): void { this.target()?.clearFiltersAndSort(); }
   saveColumnLayoutNow(): boolean { return this.target()?.saveColumnLayoutNow() ?? false; }
