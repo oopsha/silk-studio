@@ -122,6 +122,14 @@ const INITIAL_STATE: QueryExecutionState = {
   activeTabId: null,
 };
 
+/** Wall-clock time from sending a statement to receiving its first result page. */
+function formatQueryElapsed(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(2)} s`;
+  const seconds = Math.round(ms / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
 const ORPHAN_OWNER_ID = "__orphan__";
 const OPEN_DATA_OWNER_PREFIX = "open-data:";
 
@@ -582,7 +590,7 @@ class QueryExecutionServiceImpl {
             sql: item.sql,
             executedSql: item.bound.sql,
             binds: item.bound.binds,
-            output: payload.message,
+            output: `${payload.message} · ${formatQueryElapsed(performance.now() - startedAt)}`,
             result: payload,
             status: "success",
             relationKind: options?.relationKind,
@@ -865,6 +873,7 @@ class QueryExecutionServiceImpl {
           });
         }
 
+        const batchStartedAt = performance.now();
         try {
           assertReadOnlyQueryAllowed(item.sql, readOnly);
           const payload = await this.invokeQuery(
@@ -905,7 +914,7 @@ class QueryExecutionServiceImpl {
               sql: item.sql,
               executedSql: item.bound.sql,
               binds: item.bound.binds,
-              output: payload.message,
+              output: `${payload.message} · ${formatQueryElapsed(performance.now() - batchStartedAt)}`,
               result: payload,
               status: "success",
               connectionId: connectionId!,
@@ -977,6 +986,12 @@ class QueryExecutionServiceImpl {
 
       const status: QueryResultTabStatus =
         errorCount > 0 ? "error" : "success";
+      appendMeta(
+        tKey("app.query.scriptElapsed").replace(
+          "{elapsed}",
+          formatQueryElapsed(performance.now() - startedAt),
+        ),
+      );
       const scriptLog = buildScriptLogLines();
 
       this.commitScriptOutcome(ownerId, {
@@ -1196,7 +1211,7 @@ class QueryExecutionServiceImpl {
         throw new Error("Explain completed without a plan result.");
       }
 
-      const output = capturedMessage || `${plan.label} completed.`;
+      const output = `${capturedMessage || `${plan.label} completed.`} · ${formatQueryElapsed(performance.now() - startedAt)}`;
       this.commitTab(ownerId, {
         sql: displaySql,
         executedSql: bound.sql,
@@ -1381,6 +1396,7 @@ class QueryExecutionServiceImpl {
       QueryResultQueryService.register(tab.id, {
         connectionId, sql: input.executedSql ?? input.sql, columns: input.result.columns, binds: input.binds,
         paged: isResultTruncated(input.result, ConfigurationService.getValue("queryResult.maxRows")),
+        pagingMode: ConfigurationService.getValue("queryResult.pagingMode"),
         prepare: async () => {
           assertReadOnlyQueryAllowed(input.sql, ConfigurationService.getValue("database.readOnly"));
           await ensureExecutionConnection(connectionId);

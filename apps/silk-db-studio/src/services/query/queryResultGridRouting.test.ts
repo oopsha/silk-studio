@@ -65,8 +65,8 @@ function setup() {
   const router = new QueryResultGridCommandRouter();
   const a = new QueryResultGridController(); const b = new QueryResultGridController();
   const gridA = grid("A"); const gridB = grid("B");
-  a.attach(gridA.api, ["value"], "NULL", () => {}, undefined, "profile-a");
-  b.attach(gridB.api, ["value"], "NULL", () => {}, undefined, "profile-b");
+  a.attach(gridA.api, ["value"], "NULL", () => {}, "profile-a");
+  b.attach(gridB.api, ["value"], "NULL", () => {}, "profile-b");
   cleanups.push(router.register(a, { groupId: "left", ownerId: "table-a", eligible: true }));
   cleanups.push(router.register(b, { groupId: "right", ownerId: "table-b", eligible: true }));
   cleanups.push(() => a.detach(gridA.api), () => b.detach(gridB.api));
@@ -76,7 +76,7 @@ function setup() {
 describe("grid-local actions and focused-group command routing", () => {
   it("routes commands by the focused group regardless of background attachments and updates", async () => {
     const { router, b, gridB } = setup();
-    b.attach(gridB.api, ["value"], "NULL", () => {}, undefined, "profile-b");
+    b.attach(gridB.api, ["value"], "NULL", () => {}, "profile-b");
     b.refreshSnapshot();
     await router.copy("selection");
     expect(state.writeText).toHaveBeenLastCalledWith("A");
@@ -110,7 +110,7 @@ describe("grid-local actions and focused-group command routing", () => {
     const { a, gridA } = setup();
     a.setCellSelection(["value"], 0, 1);
     a.markColumnLayoutDirty();
-    a.attach(gridA.api, ["value"], "NULL", () => {}, undefined, "profile-a");
+    a.attach(gridA.api, ["value"], "NULL", () => {}, "profile-a");
     expect(a.getSnapshot().layoutDirty).toBe(true);
     a.autoSizeToContent();
     expect(gridA.calls.autoSizeColumns).not.toHaveBeenCalled();
@@ -149,13 +149,31 @@ describe("grid-local actions and focused-group command routing", () => {
   it("keeps an asynchronous export bound to the grid selected when the command started", async () => {
     state.desktop = true;
     const { router, a, gridA } = setup();
-    let complete!: (rows: Array<Array<string | null>>) => void;
-    a.attach(gridA.api, ["value"], "NULL", () => {},
-      () => new Promise((resolve) => { complete = resolve; }), "profile-a");
+    let complete!: () => void;
+    const run = vi.fn(() => new Promise<{ rowCount: number; cancelled: boolean }>((resolve) => {
+      complete = () => resolve({ rowCount: 2, cancelled: false });
+    }));
+    a.attach(gridA.api, ["value"], "NULL", () => {}, "profile-a",
+      { hasPendingChanges: () => false, canRun: () => true, run });
     const exporting = router.exportCsv();
+    await vi.waitFor(() => expect(run).toHaveBeenCalled());
     state.focused = "right";
-    complete([["export-from-A"]]);
-    await exporting;
-    expect(state.writeFile).toHaveBeenCalledWith("result.csv", expect.stringContaining("export-from-A"));
+    complete();
+    expect(await exporting).toBe(true);
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ path: "result.csv", columns: ["value"] }));
+    expect(state.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("refuses to export while the grid has unsaved changes", async () => {
+    state.desktop = true;
+    const { router, a, gridA } = setup();
+    const run = vi.fn();
+    a.attach(gridA.api, ["value"], "NULL", () => {}, "profile-a",
+      { hasPendingChanges: () => true, canRun: () => true, run });
+    expect(await router.exportCsv()).toBe(false);
+    expect(await router.exportXlsx()).toBe(false);
+    expect(run).not.toHaveBeenCalled();
+    expect(state.saveFile).not.toHaveBeenCalled();
+    expect(state.writeFile).not.toHaveBeenCalled();
   });
 });

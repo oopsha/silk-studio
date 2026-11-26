@@ -79,9 +79,16 @@ class QueryResultDirtyServiceImpl {
   }
 
   /** Atomically replaces the authoritative baseline and discards edits for the old row positions. */
-  replaceOriginalRows(tabId: string, columns: string[], rows: Array<Array<string | null>>): void {
+  replaceOriginalRows(
+    tabId: string,
+    columns: string[],
+    rows: Array<Array<string | null>>,
+    /** Result-wide index of `rows[0]` (a later page of a paged result). */
+    offset = 0,
+  ): void {
     if (!this.stores.has(tabId)) {
       this.initTab(tabId, columns, rows);
+      if (offset !== 0) QueryResultDataService.replace(tabId, columns, rows, offset);
       return;
     }
     const store = this.stores.get(tabId)!;
@@ -91,7 +98,7 @@ class QueryResultDirtyServiceImpl {
     store.newRows.clear();
     store.newRowValues.clear();
     store.truncateBeforeImport = false;
-    QueryResultDataService.replace(tabId, columns, rows);
+    QueryResultDataService.replace(tabId, columns, rows, offset);
     this.emit(tabId);
   }
 
@@ -402,7 +409,7 @@ class QueryResultDirtyServiceImpl {
     const cached = this.displayedRows.get(tabId);
     if (cached) return cached;
     const store = this.stores.get(tabId);
-    const ordered = store?.truncateBeforeImport ? [] : QueryResultDataService.getRows(tabId).map((_, index) => index);
+    const ordered = store?.truncateBeforeImport ? [] : QueryResultDataService.getRowIndexes(tabId);
     if (store) {
       // Insertion order keeps newly inserted rows immediately after their recorded anchor.
       for (const [index, anchor] of store.newRows) {
