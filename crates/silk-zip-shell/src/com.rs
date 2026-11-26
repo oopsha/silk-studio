@@ -20,7 +20,7 @@ use windows::Win32::System::LibraryLoader::{
     GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
 };
 use windows::Win32::System::Ole::{ReleaseStgMedium, CF_HDROP};
-use windows::Win32::System::Registry::HKEY;
+use windows::Win32::System::Registry::{RegGetValueW, HKEY, HKEY_CURRENT_USER, RRF_RT_REG_SZ};
 use windows::Win32::UI::Shell::Common::ITEMIDLIST;
 use windows::Win32::UI::Shell::{
     DragQueryFileW, ExtractIconExW, IContextMenu, IContextMenu_Impl, IShellExtInit, IShellExtInit_Impl, CMF_DEFAULTONLY,
@@ -42,6 +42,37 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// `silk-zip.exe` next to this DLL.
 fn app_path() -> Option<PathBuf> {
+    registered_app().or_else(app_beside_dll)
+}
+
+/// `App` under this class's key, written by `silk-zip --register-shell`: the registered DLL is a
+/// copy in the user's app data, not next to the exe.
+fn registered_app() -> Option<PathBuf> {
+    let key = wide(r"Software\Classes\CLSID\{7B3E9A52-4C1D-4E8F-9A67-2D5B0C8F1E34}");
+    let name = wide("App");
+    let mut buffer = [0u16; 32_768];
+    let mut size = (buffer.len() * 2) as u32;
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            PCWSTR(key.as_ptr()),
+            PCWSTR(name.as_ptr()),
+            RRF_RT_REG_SZ,
+            None,
+            Some(buffer.as_mut_ptr().cast()),
+            Some(&mut size),
+        )
+    };
+    if status.is_err() {
+        return None;
+    }
+    let length = (size as usize / 2).saturating_sub(1);
+    let path = PathBuf::from(OsString::from_wide(buffer.get(..length)?));
+    path.is_file().then_some(path)
+}
+
+/// Without a registration value (a DLL registered by hand), the app is looked for beside it.
+fn app_beside_dll() -> Option<PathBuf> {
     let mut module = HMODULE::default();
     let mut buffer = [0u16; 32_768];
     let length = unsafe {

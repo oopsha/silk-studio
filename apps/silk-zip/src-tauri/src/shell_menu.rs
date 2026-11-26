@@ -1,6 +1,6 @@
 //! Explorer's classic ("추가 옵션 표시") context menu, written under HKCU so it needs no
-//! administrator rights. When the extension DLL (`crates/silk-zip-shell`) is next to the exe it
-//! is registered and builds the menu itself (file names, entries by selection count). Without it,
+//! administrator rights. When the extension DLL (`crates/silk-zip-shell`) is next to the exe, a
+//! copy of it is registered and builds the menu itself (file names, entries by selection count). Without it,
 //! fixed registry verbs are written instead. Either way an entry starts the app as
 //! `silk-zip --action=<action> <paths>` (see `launch.rs`).
 use std::io;
@@ -44,7 +44,7 @@ pub fn register() -> io::Result<()> {
     let classes = RegKey::predef(HKEY_CURRENT_USER).create_subkey(CLASSES)?.0;
     let dll = exe.with_file_name(EXTENSION_DLL);
     if dll.is_file() {
-        return register_extension(&classes, &dll);
+        return register_extension(&classes, &dll, &exe);
     }
     let exe = exe.to_string_lossy();
     let filter = archive_filter();
@@ -71,9 +71,33 @@ pub fn register() -> io::Result<()> {
     Ok(())
 }
 
-fn register_extension(classes: &RegKey, dll: &std::path::Path) -> io::Result<()> {
-    let (server, _) = classes.create_subkey(format!(r"CLSID\{CLSID}\InprocServer32"))?;
-    server.set_value("", &dll.as_os_str())?;
+/// Folder of the registered DLL copies: `%LOCALAPPDATA%\com.oopsha.silk-zip\shell`.
+fn copies_folder() -> Option<std::path::PathBuf> {
+    Some(std::path::PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("com.oopsha.silk-zip").join("shell"))
+}
+
+/// Deletes the copies Explorer no longer has loaded; the loaded one stays until it is restarted.
+fn remove_old_copies() {
+    let Some(entries) = copies_folder().and_then(|folder| std::fs::read_dir(folder).ok()) else { return };
+    for entry in entries.flatten() {
+        let _ = std::fs::remove_file(entry.path());
+    }
+}
+
+/// Explorer keeps a loaded extension open until it exits, so registering the built or installed
+/// DLL itself would lock that file against the next build or update. A copy with a new name is
+/// registered instead; the DLL finds the app through the `App` value written here.
+fn register_extension(classes: &RegKey, dll: &std::path::Path, exe: &std::path::Path) -> io::Result<()> {
+    remove_old_copies();
+    let folder = copies_folder().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "LOCALAPPDATA가 없습니다."))?;
+    std::fs::create_dir_all(&folder)?;
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|time| time.as_millis()).unwrap_or(0);
+    let copy = folder.join(format!("silk_zip_shell-{stamp}.dll"));
+    std::fs::copy(dll, &copy)?;
+    let (class, _) = classes.create_subkey(format!(r"CLSID\{CLSID}"))?;
+    class.set_value("App", &exe.as_os_str())?;
+    let (server, _) = class.create_subkey("InprocServer32")?;
+    server.set_value("", &copy.as_os_str())?;
     server.set_value("ThreadingModel", &"Apartment")?;
     for target in TARGETS {
         let (handler, _) = classes.create_subkey(format!(r"{target}\{HANDLER}"))?;
@@ -98,6 +122,7 @@ pub fn unregister() -> io::Result<()> {
             _ => {}
         }
     }
+    remove_old_copies();
     Ok(())
 }
 
