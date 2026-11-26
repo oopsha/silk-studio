@@ -41,6 +41,8 @@ export interface ISubmenuItem {
   group?: string;
   order?: number;
   when?: string;
+  /** Context key that must be true for the submenu to be usable; otherwise it is shown greyed out. */
+  enabledWhen?: string;
 }
 
 export function isMenuItem(item: IMenuItem | ISubmenuItem): item is IMenuItem {

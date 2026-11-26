@@ -36,6 +36,11 @@ unsafe extern "C" {
     fn archive_entry_size_is_set(e: *mut c_void) -> c_int;
     fn archive_entry_filetype(e: *mut c_void) -> ArchiveMode;
     fn archive_entry_is_encrypted(e: *mut c_void) -> c_int;
+    fn silk_7zip_list_details(
+        archive_path: *const c_char,
+        callback: Option<DetailCallback>,
+        context: *mut c_void,
+    ) -> c_int;
     fn silk_7zip_list_split_zip(
         archive_path: *const c_char,
         entry_callback: Option<SplitZipEntryCallback>,
@@ -50,6 +55,29 @@ pub struct ArchiveEntry {
     pub size: Option<u64>,
     pub directory: bool,
     pub encrypted: bool,
+    /// Size inside the archive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub packed_size: Option<u64>,
+    /// Modification time, seconds since 1970-01-01 UTC.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub crc: Option<u32>,
+    /// Compression method as reported by the format (e.g. "Deflate", "LZMA2:24").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+    /// "ZipCrypto" or "AES-256" and so on, when the entry is encrypted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encryption: Option<String>,
+    /// File attributes: Windows flags in the low bits, a Unix mode in the high 16 bits.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<u32>,
+}
+
+impl ArchiveEntry {
+    fn basic(path: String, size: Option<u64>, directory: bool, encrypted: bool) -> Self {
+        Self { path, size, directory, encrypted, packed_size: None, modified: None, crc: None, method: None, encryption: None, attributes: None }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -62,7 +90,7 @@ pub struct ArchiveListing {
     pub warnings: Vec<String>,
 }
 
-pub use extract::{extract_archive, extract_entries, test_archive, update_archive, EntryChange, ExtractResult, TestResult, UpdateResult};
+pub use extract::{extract_archive, extract_entries, extract_entries_ask, ConflictAnswer, ConflictHandler, ConflictQuery, repair_archive, test_archive, update_archive, EntryChange, ExtractResult, RepairResult, TestResult, UpdateResult};
 pub use create::{
     create_archive_entries, create_zip, create_zip_entries, create_zip_entries_with_diagnostics,
     create_zip_entries_with_split, ArchiveFormat, CreateInput, CreateProgress, CreateResult, ZipDiagnostics,
@@ -161,13 +189,95 @@ unsafe extern "C" fn collect_split_zip_entry(
         );
         return 1;
     }
-    context.entries.push(ArchiveEntry {
-        path: name,
-        size: (size_is_set != 0).then_some(size),
-        directory: is_directory != 0,
-        encrypted: is_encrypted != 0,
+    context.entries.push(ArchiveEntry::basic(name, (size_is_set != 0).then_some(size), is_directory != 0, is_encrypted != 0));
+    0
+}
+
+type DetailCallback = unsafe extern "C" fn(
+    path: *const c_char,
+    packed_size: u64,
+    packed_set: c_int,
+    modified: i64,
+    modified_set: c_int,
+    crc: u32,
+    crc_set: c_int,
+    method: *const c_char,
+    attributes: u32,
+    attributes_set: c_int,
+    context: *mut c_void,
+) -> c_int;
+
+struct EntryDetail {
+    packed_size: Option<u64>,
+    modified: Option<i64>,
+    crc: Option<u32>,
+    method: Option<String>,
+    attributes: Option<u32>,
+}
+
+/// Same spelling for a name read by libarchive and by the 7-Zip SDK.
+fn detail_key(path: &str) -> String {
+    let path = path.replace('\\', "/");
+    path.trim_start_matches("./").trim_end_matches('/').nfc().collect()
+}
+
+unsafe extern "C" fn collect_detail(
+    path: *const c_char,
+    packed_size: u64,
+    packed_set: c_int,
+    modified: i64,
+    modified_set: c_int,
+    crc: u32,
+    crc_set: c_int,
+    method: *const c_char,
+    attributes: u32,
+    attributes_set: c_int,
+    context: *mut c_void,
+) -> c_int {
+    let details = &mut *context.cast::<std::collections::HashMap<String, std::collections::VecDeque<EntryDetail>>>();
+    let Some(path) = string(path) else { return 0 };
+    let method = string(method).filter(|method| !method.is_empty());
+    details.entry(detail_key(&path)).or_default().push_back(EntryDetail {
+        packed_size: (packed_set != 0).then_some(packed_size),
+        modified: (modified_set != 0).then_some(modified),
+        crc: (crc_set != 0).then_some(crc),
+        method,
+        attributes: (attributes_set != 0).then_some(attributes),
     });
     0
+}
+
+/// The encryption method is part of the method text, e.g. "ZipCrypto Deflate" or "AES-256 LZMA2".
+fn encryption_of(method: &str) -> Option<String> {
+    method
+        .split_whitespace()
+        .find(|part| part.starts_with("ZipCrypto") || part.starts_with("AES") || part.starts_with("7zAES") || part.starts_with("RAR"))
+        .map(|part| part.to_string())
+}
+
+/// Adds compressed size, time, CRC, method and attributes from the 7-Zip SDK. A format or file the SDK
+/// cannot read keeps the entries as they are.
+fn add_details(path: &Path, entries: &mut [ArchiveEntry]) {
+    let Some(path_string) = path.to_str() else { return };
+    let Ok(path_c) = CString::new(path_string) else { return };
+    let mut details: std::collections::HashMap<String, std::collections::VecDeque<EntryDetail>> = std::collections::HashMap::new();
+    let status = unsafe {
+        silk_7zip_list_details(path_c.as_ptr(), Some(collect_detail), (&mut details as *mut std::collections::HashMap<String, std::collections::VecDeque<EntryDetail>>).cast())
+    };
+    if status != 0 && details.is_empty() {
+        return;
+    }
+    for entry in entries {
+        let Some(detail) = details.get_mut(&detail_key(&entry.path)).and_then(|queue| queue.pop_front()) else { continue };
+        entry.packed_size = detail.packed_size;
+        entry.modified = detail.modified;
+        entry.crc = detail.crc;
+        if entry.encrypted {
+            entry.encryption = detail.method.as_deref().and_then(encryption_of);
+        }
+        entry.method = detail.method;
+        entry.attributes = detail.attributes;
+    }
 }
 
 fn list_split_zip(path: &Path) -> Result<ArchiveListing, String> {
@@ -276,16 +386,17 @@ pub fn list_archive(path: &Path) -> Result<ArchiveListing, String> {
                 .filter(|size| *size >= 0)
                 .map(|size| size as u64)
         };
-        entries.push(ArchiveEntry {
-            path: name,
+        entries.push(ArchiveEntry::basic(
+            name,
             size,
-            directory: unsafe { archive_entry_filetype(entry) == 0o040000 },
-            encrypted: unsafe { archive_entry_is_encrypted(entry) > 0 },
-        });
+            unsafe { archive_entry_filetype(entry) == 0o040000 },
+            unsafe { archive_entry_is_encrypted(entry) > 0 },
+        ));
         if unsafe { archive_read_data_skip(reader.0) } < 0 {
             return Err(reader.error());
         }
     }
+    add_details(path, &mut entries);
     Ok(ArchiveListing {
         path: path.to_string_lossy().into_owned(),
         format: unsafe {

@@ -33,6 +33,7 @@ export type ResolvedMenuSubmenu = {
   mnemonic?: string;
   group: string;
   order: number;
+  enabled: boolean;
 };
 
 export type ResolvedMenuEntry = ResolvedMenuAction | ResolvedMenuSubmenu;
@@ -152,6 +153,7 @@ class MenuServiceImpl {
       mnemonic,
       group: item.group ?? "",
       order: item.order ?? 0,
+      enabled: item.enabledWhen ? ContextKeyService.get(item.enabledWhen) : true,
     };
   }
 
@@ -238,6 +240,14 @@ class MenuServiceImpl {
       case "silkZip.placeholder.MenubarEditMenu.1":
       case "silkZip.placeholder.MenubarEditMenu.2":
       case "silkZip.edit.find":
+      case "silkZip.column.packed":
+      case "silkZip.column.size":
+      case "silkZip.column.kind":
+      case "silkZip.column.modified":
+      case "silkZip.column.method":
+      case "silkZip.column.encryption":
+      case "silkZip.column.crc":
+      case "silkZip.column.attributes":
         return "hasOpenArchive";
       case "silkZip.placeholder.MenubarHelpMenu.3":
       case "silkZip.placeholder.MenubarHelpMenu.4":

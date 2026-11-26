@@ -18,6 +18,22 @@ const PROGRESS_CHANNEL_INTERVAL: Duration = Duration::from_millis(100);
 #[derive(Default)]
 pub struct CreateTasks(Mutex<HashMap<String, Arc<AtomicBool>>>);
 
+/// The user's answer to a "file already exists" question, keyed by operation.
+#[derive(Default)]
+pub struct ConflictWaiters(Mutex<HashMap<String, std::sync::mpsc::Sender<(String, bool)>>>);
+
+/// Called by the front end with `skip`, `overwrite`, `rename` or `cancel`; `apply_all` repeats
+/// the answer for every further existing file of the same extraction.
+#[tauri::command]
+pub fn archive_resolve_conflict(waiters: State<'_, ConflictWaiters>, operation_id: String, action: String, apply_all: bool) -> bool {
+    waiters
+        .0
+        .lock()
+        .ok()
+        .and_then(|map| map.get(&operation_id).cloned())
+        .is_some_and(|sender| sender.send((action, apply_all)).is_ok())
+}
+
 #[derive(Clone, Copy, Default)]
 struct ProgressSnapshot {
     sdk_callbacks: u64,
@@ -89,13 +105,16 @@ pub async fn archive_list(path: String) -> Result<silk_archive::ArchiveListing, 
 #[tauri::command]
 pub async fn archive_extract(
     tasks: State<'_, CreateTasks>,
+    waiters: State<'_, ConflictWaiters>,
     operation_id: String,
     archive_path: String,
     output_dir: String,
     password: Option<String>,
     overwrite: bool,
+    ask_existing: bool,
     entries: Option<Vec<String>>,
     on_progress: Channel<silk_archive::CreateProgress>,
+    on_conflict: Channel<silk_archive::ConflictQuery>,
 ) -> Result<silk_archive::ExtractResult, String> {
     if operation_id.is_empty() {
         return Err("압축 풀기 작업 식별자가 없습니다.".into());
@@ -112,9 +131,47 @@ pub async fn archive_extract(
         active.insert(operation_id.clone(), Arc::clone(&cancellation));
     }
     let worker_cancel = Arc::clone(&cancellation);
+    let (reply_sender, reply_receiver) = std::sync::mpsc::channel::<(String, bool)>();
+    if ask_existing {
+        if let Ok(mut map) = waiters.0.lock() {
+            map.insert(operation_id.clone(), reply_sender);
+        }
+    }
     let result = tauri::async_runtime::spawn_blocking(move || {
+        use silk_archive::ConflictAnswer;
         let mut last_sent = Instant::now() - PROGRESS_CHANNEL_INTERVAL;
-        silk_archive::extract_entries(
+        let mut sticky: Option<ConflictAnswer> = None;
+        let ask_cancel = Arc::clone(&worker_cancel);
+        let mut handler = |query: &silk_archive::ConflictQuery| -> ConflictAnswer {
+            if let Some(answer) = sticky {
+                return answer;
+            }
+            if on_conflict.send(query.clone()).is_err() {
+                return ConflictAnswer::Skip;
+            }
+            loop {
+                if ask_cancel.load(Ordering::Relaxed) {
+                    return ConflictAnswer::Cancel;
+                }
+                match reply_receiver.recv_timeout(Duration::from_millis(200)) {
+                    Ok((action, apply_all)) => {
+                        let answer = match action.as_str() {
+                            "overwrite" => ConflictAnswer::Overwrite,
+                            "rename" => ConflictAnswer::Rename,
+                            "cancel" => ConflictAnswer::Cancel,
+                            _ => ConflictAnswer::Skip,
+                        };
+                        if apply_all && answer != ConflictAnswer::Cancel {
+                            sticky = Some(answer);
+                        }
+                        return answer;
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(_) => return ConflictAnswer::Skip,
+                }
+            }
+        };
+        silk_archive::extract_entries_ask(
             std::path::Path::new(&archive_path),
             std::path::Path::new(&output_dir),
             password.as_deref(),
@@ -127,12 +184,16 @@ pub async fn archive_extract(
                     let _ = on_progress.send(progress);
                 }
             },
+            if ask_existing { Some(&mut handler) } else { None },
         )
     })
     .await
     .map_err(|_| "압축 풀기를 실행하지 못했습니다.".to_string());
     if let Ok(mut active) = tasks.0.lock() {
         active.remove(&operation_id);
+    }
+    if let Ok(mut map) = waiters.0.lock() {
+        map.remove(&operation_id);
     }
     result?
 }
@@ -225,6 +286,53 @@ pub async fn archive_update(
     })
     .await
     .map_err(|_| "변경을 실행하지 못했습니다.".to_string());
+    if let Ok(mut active) = tasks.0.lock() {
+        active.remove(&operation_id);
+    }
+    result?
+}
+
+#[tauri::command]
+pub async fn archive_repair(
+    tasks: State<'_, CreateTasks>,
+    operation_id: String,
+    archive_path: String,
+    output_path: String,
+    password: Option<String>,
+    on_progress: Channel<silk_archive::CreateProgress>,
+) -> Result<silk_archive::RepairResult, String> {
+    if operation_id.is_empty() {
+        return Err("복구 작업 식별자가 없습니다.".into());
+    }
+    let cancellation = Arc::new(AtomicBool::new(false));
+    {
+        let mut active = tasks
+            .0
+            .lock()
+            .map_err(|_| "작업 상태를 읽지 못했습니다.")?;
+        if active.contains_key(&operation_id) {
+            return Err("이미 실행 중인 작업입니다.".into());
+        }
+        active.insert(operation_id.clone(), Arc::clone(&cancellation));
+    }
+    let worker_cancel = Arc::clone(&cancellation);
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let mut last_sent = Instant::now() - PROGRESS_CHANNEL_INTERVAL;
+        silk_archive::repair_archive(
+            std::path::Path::new(&archive_path),
+            std::path::Path::new(&output_path),
+            password.as_deref(),
+            &worker_cancel,
+            |progress| {
+                if last_sent.elapsed() >= PROGRESS_CHANNEL_INTERVAL || progress.phase != "writing" {
+                    last_sent = Instant::now();
+                    let _ = on_progress.send(progress);
+                }
+            },
+        )
+    })
+    .await
+    .map_err(|_| "복구를 실행하지 못했습니다.".to_string());
     if let Ok(mut active) = tasks.0.lock() {
         active.remove(&operation_id);
     }
@@ -672,6 +780,17 @@ pub fn is_elevated() -> bool {
     }
     #[cfg(not(target_os = "windows"))]
     false
+}
+
+/// Opens the folder the program is installed in (on macOS, the one holding the `.app` bundle).
+#[tauri::command]
+pub fn open_install_folder() -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|error| format!("설치 위치를 확인하지 못했습니다: {error}"))?;
+    let target = exe
+        .ancestors()
+        .find(|path| path.extension().is_some_and(|ext| ext == "app"))
+        .unwrap_or(exe.as_path());
+    open_output_folder(target.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

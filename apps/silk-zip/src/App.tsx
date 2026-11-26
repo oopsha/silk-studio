@@ -3,8 +3,6 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import ActivityBar from "@silk-studio/workbench/components/layout/ActivityBar/index.ts";
-import ViewPaneTitle from "@silk-studio/workbench/components/layout/Sidebar/ViewPaneTitle/ViewPaneTitle.tsx";
-import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayoutState.ts";
 import type { ActivityViewContribution } from "@silk-studio/workbench/services/view/viewService.ts";
 import { startWindowLayoutSync } from "@silk-studio/workbench/services/layout/windowLayoutSync.ts";
 import TitleBar from "@silk-studio/workbench/components/layout/TitleBar/index.ts";
@@ -15,23 +13,24 @@ import "./menubar";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
+import AboutDialog from "@silk-studio/workbench/components/diagnostics/AboutDialog.tsx";
+import { AboutDialogService } from "@silk-studio/workbench/services/diagnostics/aboutDialogService.ts";
 import ConfirmDialog from "@silk-studio/workbench/components/dialogs/ConfirmDialog.tsx";
 import { ConfirmDialogService } from "@silk-studio/workbench/services/dialog/confirmDialogService.ts";
-import { cancelArchive, createArchive, listArchive, openOutputFolder, revealInFolder, openNewWindow, exitApp, saveArchiveAs, clipboardPrepareDir, clipboardCopyDir, clipboardReadFiles, isElevated, reportArchiveProgressDiagnostic, type ArchiveListing, type CreateProgress, type CreateResult } from "./archive";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { cancelArchive, createArchive, openInstallFolder, listArchive, openOutputFolder, revealInFolder, openNewWindow, exitApp, saveArchiveAs, clipboardPrepareDir, clipboardCopyDir, clipboardReadFiles, isElevated, reportArchiveProgressDiagnostic, takeLaunchRequest, uniquePath, type ArchiveListing, type CreateProgress, type CreateResult } from "./archive";
 import { startNativeMenubar } from "@silk-studio/workbench/services/nativeMenubar/nativeMenubarService.ts";
 import CommandPalette from "@silk-studio/workbench/components/commands/index.ts";
 import ZipSettingsPage from "./components/ZipSettingsPage";
 import ZipKeybindingsPage from "./components/ZipKeybindingsPage";
 import { HistoryService } from "@silk-studio/editor/services/history/historyService.ts";
 import { UserKeybindingsService } from "@silk-studio/workbench/platform/keybinding/userKeybindingsService.ts";
-import { getZipSettings, setPage, updateZipSettings, useZipSettings, usePage, ZIP_VIEW_MODES, type ZipPage } from "./zipSettings";
+import { getZipSettings, setPage, updateZipSettings, useZipSettings, usePage, ZIP_COLUMNS, ZIP_VIEW_MODES, type ZipPage } from "./zipSettings";
 import ArchiveExplorer, { type RenameEntry } from "./components/ArchiveExplorer";
+import { findDropFolder, highlightDropTarget } from "./dropTarget";
 import { FOCUS_SEARCH_EVENT } from "./components/ArchiveSearchView";
 import { ViewService } from "@silk-studio/workbench/services/view/viewService.ts";
 import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
-import WorkbenchSash from "@silk-studio/workbench/components/layout/WorkbenchSash/index.ts";
-import { useWorkbenchSashDrag } from "@silk-studio/workbench/services/layout/useWorkbenchSashDrag.ts";
-import { useActiveView } from "@silk-studio/workbench/services/view/useActiveView.ts";
 import RenameDialog from "./components/RenameDialog";
 import { siblingNames } from "./archiveSource";
 import { usePendingChanges } from "./pendingChanges";
@@ -39,7 +38,8 @@ import CommandBar from "./components/CommandBar";
 import { ExtractDialog, useExtraction } from "./components/ExtractDialog";
 import { useCompressionDraft } from "./components/useCompressionDraft";
 import { startRecentArchives } from "./recentArchives";
-import type { ExtractTarget } from "./extractTargets";
+import { archiveStem, joinPath, parentFolder, type ExtractTarget } from "./extractTargets";
+import { quickArchivePath } from "./launchRequest";
 
 /** The icon toolbar under the menu bar is kept but hidden; extraction lives in the explorer title row. */
 const SHOW_COMMAND_BAR = false;
@@ -74,10 +74,7 @@ function formatElapsedTime(elapsedMs: number): string {
 }
 
 function App() {
-  const layout = useLayoutState();
-  const activeView = useActiveView();
-  const { startDrag } = useWorkbenchSashDrag();
-  const { viewMode } = useZipSettings();
+  const { viewMode, visibleColumns } = useZipSettings();
   useEffect(() => startWindowLayoutSync(), []);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
@@ -93,6 +90,8 @@ function App() {
   const [customSplitSize, setCustomSplitSize] = useState("100");
   const [compressionMethod, setCompressionMethod] = useState("normal");
   const [outputConfirmed, setOutputConfirmed] = useState(false);
+  // A one-click compression asked for from outside (Explorer menu); it starts once the items are scanned.
+  const [quickCompress, setQuickCompress] = useState<{ paths: string[]; extension: "zip" | "7z" } | null>(null);
   const [preparationMessage, setPreparationMessage] = useState("");
   const [compressionProgress, setCompressionProgress] = useState<CreateProgress | null>(null);
   const [compressionError, setCompressionError] = useState<string | null>(null);
@@ -109,16 +108,18 @@ function App() {
   const pending = usePendingChanges(archive);
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
+  // Edit commands act on the opened archive, or on the new archive while none is open.
+  const activeRef = useRef(pending);
+  activeRef.current = archive ? pending : draft.pending;
   const [folderPrompt, setFolderPrompt] = useState<{ folder: string; siblings: string[] } | null>(null);
-  const addActions = useRef({ files: () => {}, folder: () => {}, paste: () => {}, copy: () => {} });
+  const addActions = useRef({ files: () => {}, folder: () => {}, paste: () => {}, copy: () => {}, addPaths: async (_paths: string[], _folder: string) => {} });
   const page = usePage();
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  const [settingsOpen, setSettingsOpen] = useState(true);
   const busy = useRef(false);
   const creating = useRef(false);
   const activeCreateId = useRef<string | null>(null);
-  const removeDraft = useRef<() => void>(() => {});
-  removeDraft.current = draft.remove;
-  const renameDraft = useRef<() => ReturnType<typeof draft.renameTarget>>(() => null);
-  renameDraft.current = draft.renameTarget;
   const extractionController = useExtraction();
   const extraction = useRef(extractionController);
   extraction.current = extractionController;
@@ -173,70 +174,61 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!archive) ContextKeyService.set("canRenameEntry", draft.selectedCount === 1);
     ContextKeyService.set("canAddEntries", page === null && (archive ? pending.editable : compressionProgress === null));
-    if (!archive) ContextKeyService.set("canRemoveEntries", draft.selectedCount > 0);
-  }, [archive, page, compressionProgress, draft.selectedCount, pending.editable]);
+  }, [archive, page, compressionProgress, pending.editable]);
 
   useEffect(() => {
     for (const mode of ZIP_VIEW_MODES) ContextKeyService.set(`silkZip.viewMode.${mode.id}`, viewMode === mode.id);
   }, [viewMode]);
 
   useEffect(() => {
+    for (const column of ZIP_COLUMNS) ContextKeyService.set(`silkZip.column.${column.id}`, visibleColumns.includes(column.id));
+  }, [visibleColumns]);
+
+  useEffect(() => {
     ContextKeyService.set("hasOpenArchive", archive !== null);
     ContextKeyService.set("hasArchiveEntrySelection", false);
   }, [archive]);
 
-  // Files dropped onto an opened archive are added as pending changes in the shown folder.
+  // Files dropped on the window are added to the shown folder; a folder row or tree item under the pointer wins.
   useEffect(() => {
-    if (!isTauri() || archive === null) return;
+    if (!isTauri()) return;
     let cancelled = false;
     let unlisten: (() => void) | undefined;
+    const locate = (position: { x: number; y: number }) => findDropFolder(position, activeRef.current.view, folderRef.current);
     void getCurrentWebview().onDragDropEvent((event) => {
-      if (event.payload.type !== "drop") return;
-      const paths = event.payload.paths ?? [];
-      if (!paths.length) return;
-      if (!pendingRef.current.editable) { setError("이 형식의 압축 파일은 수정할 수 없습니다. (zip, 7z, tar만 가능)"); return; }
-      void pendingRef.current.add(paths, folderRef.current).then((message) => { if (message) setError(message); }).catch((reason) => setError(String(reason)));
-    }).then((stop) => {
-      if (cancelled) stop();
-      else unlisten = stop;
-    }).catch((reason) => console.warn("[silkZip.fileDrop] 드롭 이벤트 연결 실패:", reason));
-    return () => { cancelled = true; unlisten?.(); };
-  }, [archive]);
-
-  useEffect(() => {
-    if (!isTauri() || archive !== null) return;
-    let cancelled = false;
-    let unlisten: (() => void) | undefined;
-    void getCurrentWebview().onDragDropEvent((event) => {
-      if (event.payload.type === "enter" || event.payload.type === "over") {
+      const payload = event.payload;
+      if (pageRef.current !== null) return;
+      if (payload.type === "enter" || payload.type === "over") {
         setDragActive(true);
-        draft.resolveDropTarget(event.payload.position);
-      } else if (event.payload.type === "leave") {
+        highlightDropTarget(locate(payload.position).element);
+      } else if (payload.type === "leave") {
         setDragActive(false);
-        draft.clearDropTarget();
-      } else if (event.payload.type === "drop") {
+        highlightDropTarget(null);
+      } else if (payload.type === "drop") {
         setDragActive(false);
-        const paths = event.payload.paths ?? [];
-        const target = draft.resolveDropTarget(event.payload.position);
-        draft.clearDropTarget();
-        if (paths.length && !creating.current) void draft.add(paths, target);
+        const { folder } = locate(payload.position);
+        highlightDropTarget(null);
+        const paths = payload.paths ?? [];
+        if (!paths.length || creating.current) return;
+        if (!activeRef.current.editable) { setError("이 형식의 압축 파일은 수정할 수 없습니다. (zip, 7z, tar만 가능)"); return; }
+        void addActions.current.addPaths(paths, folder);
       }
     }).then((stop) => {
       if (cancelled) stop();
       else unlisten = stop;
     }).catch((reason) => console.warn("[silkZip.fileDrop] 드롭 이벤트 연결 실패:", reason));
-    return () => { cancelled = true; setDragActive(false); draft.clearDropTarget(); unlisten?.(); };
-  }, [archive, draft.add, draft.resolveDropTarget, draft.clearDropTarget]);
+    return () => { cancelled = true; setDragActive(false); highlightDropTarget(null); unlisten?.(); };
+  }, []);
 
   const recentRef = useRef<ReturnType<typeof startRecentArchives> | null>(null);
+  const openPathRef = useRef<(path: string) => Promise<void>>(async () => {});
   // The recent list follows use: whichever way an archive gets opened, it moves to the top.
   useEffect(() => { if (archive) recentRef.current?.record(archive.path); }, [archive?.path]);
 
   useEffect(() => {
     let disposed = false;
-    const recentArchives = startRecentArchives(async (path) => {
+    const openPath = async (path: string) => {
       if (busy.current) return;
       if (!(await confirmDiscard())) return;
       busy.current = true;
@@ -251,7 +243,9 @@ function App() {
         busy.current = false;
         if (!disposed) setLoading(false);
       }
-    });
+    };
+    openPathRef.current = openPath;
+    const recentArchives = startRecentArchives(openPath);
     recentRef.current = recentArchives;
     const confirmDiscard = async (): Promise<boolean> => {
       if (!pendingRef.current.dirty) return true;
@@ -412,6 +406,27 @@ ${target}
       }),
       KeybindingsRegistry.registerKeybinding("silkZip.edit.find", "Ctrl+F"),
       KeybindingsRegistry.registerKeybinding("silkZip.edit.find", "Ctrl+Shift+F"),
+      CommandsRegistry.registerCommand("silkZip.help.openInstallFolder", () => { void openInstallFolder().catch((error) => ConfirmDialogService.confirm({ title: "설치 위치를 열지 못했습니다", message: String(error), confirmLabel: "확인", hideCancel: true })); }),
+      CommandsRegistry.registerCommand("silkZip.help.about", () => AboutDialogService.show()),
+      KeybindingsRegistry.registerKeybinding("silkZip.help.about", "F1"),
+      CommandsRegistry.registerCommand("silkZip.tools.repair", async () => {
+        if (busy.current || extraction.current.state !== null) return;
+        const source = await open({ multiple: false, directory: false, title: "복구할 압축 파일 선택", filters: ARCHIVE_FILE_FILTERS });
+        if (!source || Array.isArray(source)) return;
+        const folder = parentFolder(source);
+        const target = await save({
+          title: "복구한 압축 파일 저장",
+          defaultPath: folder ? joinPath(folder, `${archiveStem(source)}_복구.zip`) : `${archiveStem(source)}_복구.zip`,
+          filters: [{ name: "ZIP", extensions: ["zip"] }, { name: "7z", extensions: ["7z"] }],
+        });
+        if (!target) return;
+        void extraction.current.startRepair(source, target, (path) => { void openPathRef.current(path); });
+      }),
+      ...ZIP_COLUMNS.map((column) => CommandsRegistry.registerCommand(`silkZip.column.${column.id}`, () => {
+        const current = getZipSettings().visibleColumns;
+        const next = current.includes(column.id) ? current.filter((id) => id !== column.id) : [...current, column.id];
+        updateZipSettings({ visibleColumns: ZIP_COLUMNS.map((item) => item.id).filter((id) => next.includes(id)) });
+      })),
       ...ZIP_VIEW_MODES.map((mode) => CommandsRegistry.registerCommand(`silkZip.viewMode.${mode.id}`, () => updateZipSettings({ viewMode: mode.id }))),
       CommandsRegistry.registerCommand("silkZip.edit.copy", () => addActions.current.copy()),
       KeybindingsRegistry.registerKeybinding("silkZip.edit.copy", "Ctrl+C"),
@@ -419,25 +434,17 @@ ${target}
       KeybindingsRegistry.registerKeybinding("silkZip.edit.paste", "Ctrl+V"),
     ];
     const removeSelected = () => {
-      if (createDraft.current.archive) {
-        if (pendingRef.current.editable && selectedPathsRef.current.length) pendingRef.current.remove(selectedPathsRef.current);
-      } else {
-        removeDraft.current();
-      }
+      const active = activeRef.current;
+      if (active.editable && selectedPathsRef.current.length) active.remove(selectedPathsRef.current);
     };
     const unregisterDelete = [
       CommandsRegistry.registerCommand("silkZip.edit.delete", removeSelected),
       KeybindingsRegistry.registerKeybinding("silkZip.edit.delete", "Delete"),
     ];
     const unregisterRename = CommandsRegistry.registerCommand("silkZip.edit.rename", () => {
-      const current = createDraft.current.archive;
-      if (current) {
-        const entry = archiveSelection.current;
-        if (entry && pendingRef.current.editable) setRenameTarget({ entry, siblings: siblingNames(pendingRef.current.view ?? current, entry.path), inArchive: true });
-        return;
-      }
-      const target = renameDraft.current();
-      if (target) setRenameTarget({ entry: { path: target.path, name: target.name, directory: target.directory }, siblings: target.siblings, inArchive: false });
+      const active = activeRef.current;
+      const entry = archiveSelection.current;
+      if (entry && active.editable && active.view) setRenameTarget({ entry, siblings: siblingNames(active.view, entry.path), inArchive: true });
     });
     const unregisterRenameKey = KeybindingsRegistry.registerKeybinding("silkZip.edit.rename", "F2");
     const unregisterClose = CommandsRegistry.registerCommand("silkZip.file.closeArchive", closeArchive);
@@ -491,9 +498,9 @@ ${target}
     window.addEventListener("keydown", onKeyDown);
     return () => { disposed = true; recentArchives.stop(); unregisterNewKey(); unregisterNew(); unregisterDelete.forEach((stop) => stop()); unregisterAdd.forEach((stop) => stop()); unregisterSaveAs(); unregisterRename(); unregisterRenameKey(); unregisterExit(); unregisterExitKey(); stopHistory(); unregisterSettings.forEach((stop) => stop()); unregisterNewWindow(); unregisterNewWindowAdmin(); unregisterNewWindowKeys.forEach((stop) => stop()); unregisterTest(); unregisterTestKey(); unregisterOpenFolder(); unregisterClose(); unregisterCloseKey(); unregisterExtract(); unregisterExtractHere(); unregisterExtractNamed(); unregisterExtractKeys.forEach((stop) => stop()); unregisterKey(); unregister(); window.removeEventListener("keydown", onKeyDown); };
   }, []);
-  const addToArchive = async (paths: string[]) => {
+  const addToArchive = async (paths: string[], folder: string = folderRef.current) => {
     try {
-      const message = await pending.add(paths, folderRef.current);
+      const message = archive ? await pending.add(paths, folder) : await draft.add(paths, folder);
       if (message) setError(message);
     } catch (reason) {
       setError(String(reason));
@@ -504,7 +511,7 @@ ${target}
     const selected = await open({ multiple: true, directory: false });
     if (!selected) return;
     const paths = Array.isArray(selected) ? selected : [selected];
-    if (archive) await addToArchive(paths); else await draft.add(paths);
+    await addToArchive(paths);
   };
   /** Selected archive entries go to the clipboard as real files (extracted into a temporary folder). */
   const copyToClipboard = async () => {
@@ -525,18 +532,18 @@ ${target}
     try {
       const paths = await clipboardReadFiles();
       if (!paths.length) { setError("클립보드에 붙여넣을 파일이 없습니다."); return; }
-      if (archive) await addToArchive(paths); else await draft.add(paths);
+      await addToArchive(paths);
     } catch (reason) {
       setError(String(reason));
     }
   };
-  addActions.current = { files: () => { void addFiles(); }, folder: () => { void addFolder(); }, paste: () => { void pasteFromClipboard(); }, copy: () => { void copyToClipboard(); } };
+  addActions.current = { files: () => { void addFiles(); }, folder: () => { void addFolder(); }, paste: () => { void pasteFromClipboard(); }, copy: () => { void copyToClipboard(); }, addPaths: addToArchive };
   const addFolder = async () => {
     setAddMenuOpen(false);
     const selected = await open({ multiple: true, directory: true });
     if (!selected) return;
     const paths = Array.isArray(selected) ? selected : [selected];
-    if (archive) await addToArchive(paths); else await draft.add(paths);
+    await addToArchive(paths);
   };
   const applyPending = () => {
     if (!archive) return;
@@ -670,6 +677,87 @@ ${target}
     }
     await runCompression(destination);
   };
+  useEffect(() => {
+    if (!quickCompress || draft.scanning || draft.entries.length === 0) return;
+    const { paths, extension } = quickCompress;
+    setQuickCompress(null);
+    setFormat(extension);
+    const wanted = quickArchivePath(paths, extension, draft.entries[0]?.directory === true && paths.length === 1);
+    // Never write over (or into) something that exists, e.g. compressing "a.zip" beside itself.
+    void uniquePath(wanted).catch(() => wanted).then((output) => {
+      setOutputPath(output);
+      setOutputConfirmed(true);
+      setStartQuick(true);
+    });
+  }, [quickCompress, draft.scanning, draft.entries]);
+  const [startQuick, setStartQuick] = useState(false);
+  useEffect(() => {
+    if (!startQuick) return;
+    setStartQuick(false);
+    void prepareCompression();
+  }, [startQuick]);
+  // Quick mode (a one-shot Explorer job): only the progress/result dialog shows, and the app
+  // quits once that dialog has been dismissed.
+  const [quickMode, setQuickMode] = useState(false);
+  const quickSeen = useRef(false);
+  // "Compress each": the items still waiting after the one being compressed.
+  const [eachQueue, setEachQueue] = useState<string[]>([]);
+  const [eachRunning, setEachRunning] = useState(false);
+  useEffect(() => {
+    if (!eachRunning) return;
+    if (compressionError) { setEachRunning(false); return; }
+    if (!completedArchive) return;
+    if (eachQueue.length === 0) { setEachRunning(false); return; }
+    const [next, ...rest] = eachQueue;
+    setEachQueue(rest);
+    setCompletedArchive(null);
+    draft.reset();
+    setOutputConfirmed(false);
+    void draft.add([next]).then(() => setQuickCompress({ paths: [next], extension: "zip" }));
+  }, [eachRunning, eachQueue, completedArchive, compressionError]);
+  const quickDialogOpen = eachRunning || extractionController.state !== null ||compressionProgress !== null || completedArchive !== null || compressionError !== null;
+  useEffect(() => {
+    if (!quickMode) return;
+    if (quickDialogOpen) { quickSeen.current = true; return; }
+    if (!quickSeen.current) return;
+    const timer = window.setTimeout(() => { void exitApp(); }, 400);
+    return () => window.clearTimeout(timer);
+  }, [quickMode, quickDialogOpen]);
+  // The "file already exists" question needs more room than the small job window has.
+  const quickConflict = extractionController.state?.phase === "conflict";
+  useEffect(() => {
+    if (!quickMode) return;
+    const window = getCurrentWindow();
+    void window.setSize(quickConflict ? new LogicalSize(520, 440) : new LogicalSize(460, 230)).then(() => window.center()).catch(() => undefined);
+  }, [quickMode, quickConflict]);
+  // Started from an Explorer/Finder menu: do what was asked with the given paths.
+  useEffect(() => {
+    let cancelled = false;
+    void takeLaunchRequest().then(async (request) => {
+      if (cancelled || !request) return;
+      const { action, paths } = request;
+      if (action === "extract-here" || action === "extract-folder" || action === "compress-zip" || action === "compress-7z" || action === "compress-each") setQuickMode(true);
+      if (action === "compress-each") {
+        // One archive per selected item: start with the first, the rest follow one by one.
+        setEachQueue(paths.slice(1));
+        setEachRunning(true);
+        await draft.add([paths[0]]);
+        setQuickCompress({ paths: [paths[0]], extension: "zip" });
+        return;
+      }
+      if (action === "open") { await openPathRef.current(paths[0]); return; }
+      if (action === "extract-here" || action === "extract-folder" || action === "extract-dialog") {
+        const target: ExtractTarget = action === "extract-here" ? "here" : action === "extract-folder" ? "named" : "ask";
+        for (const path of paths) await extraction.current.start(path, target);
+        return;
+      }
+      if (action === "compress-zip" || action === "compress-7z" || action === "compress-dialog") {
+        await draft.add(paths);
+        if (action !== "compress-dialog") setQuickCompress({ paths, extension: action === "compress-7z" ? "7z" : "zip" });
+      }
+    }).catch((reason) => console.warn("[silkZip.launch] 시작 요청 처리 실패:", reason));
+    return () => { cancelled = true; };
+  }, []);
   const cancelCompression = async () => {
     const operationId = activeCreateId.current;
     if (!operationId || cancelRequested) return;
@@ -715,8 +803,31 @@ ${target}
           : 0
     : 0;
 
+  const settingsPanel = (
+    <div className="zip-create-form zip-draft-settings">
+      <button type="button" className="zip-draft-settings__summary" aria-expanded={settingsOpen} onClick={() => setSettingsOpen((open) => !open)}>
+        <span className="codicon codicon-chevron-down zip-draft-settings__chevron" data-open={settingsOpen} aria-hidden="true" />
+        <strong>압축 설정</strong>
+        <span className="zip-draft-settings__status">{preparationMessage || `${files.length}개 항목${files.length ? ` · ${outputPath || "저장 파일명을 입력하세요"}` : ""}`}</span>
+      </button>
+      {settingsOpen ? <div className="zip-create-settings">
+              <section className="zip-setting-group"><h2>압축 파일 설정</h2>
+                <label className="zip-field"><span>압축 형식</span><select value={format} onChange={(event) => { const next = event.target.value; setFormat(next); if (next !== "zip" && next !== "7z") setSplitSize("none"); if (next !== "zip" && next !== "7z") { setPassword(""); setConfirmPassword(""); } setOutputPath((current) => current.replace(/\.[^.\\/]+$/, `.${next}`)); setCompressionMethod("normal"); setOutputConfirmed(false); setPreparationMessage(""); }}><option value="zip">ZIP</option><option value="tar">TAR</option><option value="gz">GZ</option><option value="tgz">TGZ</option><option value="xz">XZ</option><option value="7z">7z</option></select></label>
+                <label className="zip-field"><span>파일 이름</span><div className="zip-output-control"><input value={outputPath} onChange={(event) => { setOutputPath(event.target.value); setOutputConfirmed(false); setPreparationMessage(""); }} aria-label="저장 파일 이름 및 경로" /><button type="button" className="zip-button" onClick={() => { void chooseOutputPath(); }} disabled={compressionProgress !== null}>찾아보기…</button></div></label>
+                <div className="zip-field"><span>분할 압축</span><div className="zip-split-control"><select value={splitSize} disabled={format !== "zip" && format !== "7z"} onChange={(event) => setSplitSize(event.target.value)}><option value="none">분할하지 않음</option><option value="100">100 MB</option><option value="700">700 MB</option><option value="4096">4 GB</option><option value="custom">사용자 지정</option></select>{splitSize === "custom" ? <div className="zip-custom-size"><input type="number" min="1" value={customSplitSize} onChange={(event) => setCustomSplitSize(event.target.value)} aria-label="분할 크기" /><span>MB</span></div> : null}</div></div>
+                <label className="zip-field"><span>압축 방법</span><select value={compressionMethod} disabled={methods.length === 1} onChange={(event) => setCompressionMethod(event.target.value)}>{methods.map((method) => <option value={method.value} key={method.value}>{method.label}</option>)}</select></label>
+              </section>
+              <section className="zip-setting-group"><h2>암호 설정</h2>
+                <label className="zip-field"><span>암호</span><input type={showPassword ? "text" : "password"} disabled={format !== "zip" && format !== "7z"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="암호 입력" /></label>
+                <label className="zip-field"><span>암호 확인</span><input type={showPassword ? "text" : "password"} disabled={format !== "zip" && format !== "7z"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="암호 다시 입력" /></label>
+                <label className="zip-show-password"><input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} />암호 표시</label>
+                {password && confirmPassword && password !== confirmPassword ? <p className="zip-password-error" role="alert">암호가 일치하지 않습니다.</p> : <p className="zip-setting-hint">{format === "zip" ? "ZIP은 호환성을 위해 ZipCrypto를 사용합니다. 민감한 자료에는 사용하지 마세요." : format === "7z" ? "7z는 AES-256으로 암호화하며 파일 이름도 숨깁니다." : "이 형식은 암호와 분할 압축을 지원하지 않습니다."}</p>}
+              </section>
+            </div> : null}
+    </div>
+  );
   return (
-    <main className="zip-app">
+    <main className={quickMode ? "zip-app zip-app--quick" : "zip-app"}>
       {detectWorkbenchPlatform() === "windows" || detectWorkbenchPlatform() === "mac" ? <TitleBar /> : <div className="zip-menubar"><Menubar /></div>}
       {SHOW_COMMAND_BAR ? (
         <CommandBar
@@ -735,50 +846,24 @@ ${target}
           {elevated && !archive ? <div className="zip-message" role="note">관리자 권한으로 실행 중이라 일반 탐색기에서 이 창으로 파일을 끌어놓을 수 없습니다(끌 때 금지 표시가 나옵니다). 탐색기도 관리자 권한으로 실행하거나 '추가' 버튼을 사용하세요.</div> : null}
           {loading ? <div className="zip-message" role="status">압축 파일을 읽고 있습니다…</div> : null}
           {error ? <div className="zip-message zip-message--error" role="alert">{error}</div> : null}
-          {archive ? <ArchiveExplorer archive={pending.view ?? archive} folderRef={folderRef} selectedPathsRef={selectedPathsRef} editor={{ canEdit: pending.editable, addFiles: () => { void addFiles(); }, addFolder: () => { void addFolder(); }, newFolder: (folder) => setFolderPrompt({ folder, siblings: siblingNames(pending.view ?? archive, `${folder ? `${folder}/` : ""}x`) }), remove: (paths) => pending.remove(paths), pendingCount: pending.count, apply: applyPending, discard: pending.discard }} onExtract={(target, entries) => { void extractionController.start(archive.path, target, entries); }} onTest={() => { void extractionController.startTest(archive.path); }} onRename={(entry) => setRenameTarget({ entry, siblings: siblingNames(archive, entry.path), inArchive: true })} selectionRef={archiveSelection} /> : <div className="zip-start-workspace">
-          {layout.sidebar ? <aside className="zip-empty-explorer" style={{ width: layout.sidebarWidth }} aria-label={activeView === "search" ? "검색" : "탐색기"}>{activeView === "search" ? <><ViewPaneTitle title="검색" /><p className="zip-search__summary">열린 압축 파일이 없습니다.</p></> : <><ViewPaneTitle title="탐색기" />{draft.tree}</>}</aside> : null}
-          {layout.sidebar ? <WorkbenchSash orientation="vertical" onPointerDown={(event) => {
-            const startX = event.clientX, startWidth = layout.sidebarWidth;
-            startDrag({ orientation: "vertical", onResize: (x) => LayoutService.setSidebarWidth(Math.min(window.innerWidth / 2, startWidth + x - startX)) });
-          }} /> : null}
-          <section className="zip-content zip-create-form">
-            <div className="zip-toolbar"><div><h1>새 압축 만들기</h1><p>파일이나 폴더를 추가하고 압축 설정을 지정하세요.</p></div><div className="zip-toolbar__actions"><div className="zip-add-menu" ref={addMenuRef}><div className="zip-extract-split"><button className="zip-button zip-extract-split__main" title="파일 추가" onClick={addFiles}>추가</button><button className="zip-button zip-extract-split__arrow" aria-label="추가 옵션" aria-haspopup="menu" aria-expanded={addMenuOpen} onClick={() => setAddMenuOpen((open) => !open)}><span className="codicon codicon-chevron-down" aria-hidden="true" /></button></div>{addMenuOpen ? <div className="zip-add-menu__popup" role="menu"><button role="menuitem" onClick={addFiles}>파일 추가</button><button role="menuitem" onClick={addFolder}>폴더 추가</button></div> : null}</div><button className="zip-button" onClick={draft.newFolder}>새 폴더</button><button className="zip-button" onClick={draft.remove} disabled={draft.selectedCount === 0}>제거</button></div></div>
-            <div className={`zip-drop${files.length ? " zip-drop--filled" : ""}${dragActive ? " zip-drop--dragging" : ""}`} onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragActive(false); }} onDrop={(event) => { event.preventDefault(); setDragActive(false); }}>
-              {draft.list}
-            </div>
-            <div className="zip-create-settings">
-              <section className="zip-setting-group"><h2>압축 파일 설정</h2>
-                <label className="zip-field"><span>압축 형식</span><select value={format} onChange={(event) => { const next = event.target.value; setFormat(next); if (next !== "zip" && next !== "7z") setSplitSize("none"); if (next !== "zip" && next !== "7z") { setPassword(""); setConfirmPassword(""); } setOutputPath((current) => current.replace(/\.[^.\\/]+$/, `.${next}`)); setCompressionMethod("normal"); setOutputConfirmed(false); setPreparationMessage(""); }}><option value="zip">ZIP</option><option value="tar">TAR</option><option value="gz">GZ</option><option value="tgz">TGZ</option><option value="xz">XZ</option><option value="7z">7z</option></select></label>
-                <label className="zip-field"><span>파일 이름</span><div className="zip-output-control"><input value={outputPath} onChange={(event) => { setOutputPath(event.target.value); setOutputConfirmed(false); setPreparationMessage(""); }} aria-label="저장 파일 이름 및 경로" /><button type="button" className="zip-button" onClick={() => { void chooseOutputPath(); }} disabled={compressionProgress !== null}>찾아보기…</button></div></label>
-                <div className="zip-field"><span>분할 압축</span><div className="zip-split-control"><select value={splitSize} disabled={format !== "zip" && format !== "7z"} onChange={(event) => setSplitSize(event.target.value)}><option value="none">분할하지 않음</option><option value="100">100 MB</option><option value="700">700 MB</option><option value="4096">4 GB</option><option value="custom">사용자 지정</option></select>{splitSize === "custom" ? <div className="zip-custom-size"><input type="number" min="1" value={customSplitSize} onChange={(event) => setCustomSplitSize(event.target.value)} aria-label="분할 크기" /><span>MB</span></div> : null}</div></div>
-                <label className="zip-field"><span>압축 방법</span><select value={compressionMethod} disabled={methods.length === 1} onChange={(event) => setCompressionMethod(event.target.value)}>{methods.map((method) => <option value={method.value} key={method.value}>{method.label}</option>)}</select></label>
-              </section>
-              <section className="zip-setting-group"><h2>암호 설정</h2>
-                <label className="zip-field"><span>암호</span><input type={showPassword ? "text" : "password"} disabled={format !== "zip" && format !== "7z"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="암호 입력" /></label>
-                <label className="zip-field"><span>암호 확인</span><input type={showPassword ? "text" : "password"} disabled={format !== "zip" && format !== "7z"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="암호 다시 입력" /></label>
-                <label className="zip-show-password"><input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} />암호 표시</label>
-                {password && confirmPassword && password !== confirmPassword ? <p className="zip-password-error" role="alert">암호가 일치하지 않습니다.</p> : <p className="zip-setting-hint">{format === "zip" ? "ZIP은 호환성을 위해 ZipCrypto를 사용합니다. 민감한 자료에는 사용하지 마세요." : format === "7z" ? "7z는 AES-256으로 암호화하며 파일 이름도 숨깁니다." : "이 형식은 암호와 분할 압축을 지원하지 않습니다."}</p>}
-              </section>
-            </div>
-            <footer className="zip-footer"><span>{preparationMessage || `${files.length}개 항목${files.length ? ` · ${outputPath || "저장 파일명을 입력하세요"}` : ""}`}</span><button className="zip-button primary" onClick={() => { void prepareCompression(); }} disabled={files.length === 0 || draft.pending || compressionProgress !== null}>{compressionProgress ? "압축 중…" : "압축 시작"}</button></footer>
-          </section></div>}
+          {archive ? <ArchiveExplorer archive={pending.view ?? archive} folderRef={folderRef} selectedPathsRef={selectedPathsRef} editor={{ canEdit: pending.editable, addFiles: () => { void addFiles(); }, addFolder: () => { void addFolder(); }, newFolder: (folder) => setFolderPrompt({ folder, siblings: siblingNames(pending.view ?? archive, `${folder ? `${folder}/` : ""}x`) }), remove: (paths) => pending.remove(paths), pendingCount: pending.count, apply: applyPending, discard: pending.discard }} onExtract={(target, entries) => { void extractionController.start(archive.path, target, entries); }} onTest={() => { void extractionController.startTest(archive.path); }} onRename={(entry) => setRenameTarget({ entry, siblings: siblingNames(archive, entry.path), inArchive: true })} selectionRef={archiveSelection} /> : <ArchiveExplorer archive={draft.view} dragging={dragActive} folderRef={folderRef} selectedPathsRef={selectedPathsRef} editor={{ canEdit: true, addFiles: () => { void addFiles(); }, addFolder: () => { void addFolder(); }, newFolder: (folder) => setFolderPrompt({ folder, siblings: siblingNames(draft.view, `${folder ? `${folder}/` : ""}x`) }), remove: (paths) => draft.pending.remove(paths), pendingCount: 0, apply: () => {}, discard: () => {} }} onExtract={() => {}} onTest={() => {}} onRename={() => {}} selectionRef={archiveSelection} draft={{ title: "새 압축", subtitle: "파일이나 폴더를 추가하고 압축 설정을 지정하세요.", emptyMessage: <><strong>파일이나 폴더를 여기로 끌어오세요</strong>또는 추가를 눌러 선택</>, action: { label: compressionProgress ? "압축 중…" : "압축 시작", disabled: files.length === 0 || draft.scanning || compressionProgress !== null, onClick: () => { void prepareCompression(); } }, settings: settingsPanel }} />}
           </>}
         </div>
       </div>
       <div className="zip-status"><span>{archive?.engine ?? "압축 파일을 열려면 파일 메뉴 또는 Ctrl+O를 사용하세요."}</span><span>{elevated ? <b className="zip-status__admin">관리자 권한</b> : null}Silk Studio</span></div>
-      {compressionProgress ? <div className="zip-operation-backdrop"><section className="zip-operation-dialog" role="dialog" aria-modal="true" aria-labelledby="zip-progress-title"><h2 id="zip-progress-title">압축 중</h2><p>{cancelRequested ? "취소 요청을 처리하고 있습니다…" : compressionProgress.phase === "preparing" ? "압축할 파일을 확인하고 있습니다." : "파일을 ZIP으로 압축하고 있습니다."}</p><div className="zip-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent}><div style={{ width: `${progressPercent}%` }} /></div><span className="zip-progress-detail">{progressPercent}% · {compressionProgress.completedEntries.toLocaleString()} / {compressionProgress.totalEntries.toLocaleString()}개 항목</span><footer><button className="zip-button" onClick={() => { void cancelCompression(); }} disabled={cancelRequested}>{cancelRequested ? "취소 중…" : "취소"}</button></footer></section></div> : null}
-      {compressionError ? <div className="zip-operation-backdrop"><section className="zip-operation-dialog zip-error-dialog" role="alertdialog" aria-modal="true" aria-labelledby="zip-error-title" aria-describedby="zip-error-message"><h2 id="zip-error-title">압축 오류</h2><p id="zip-error-message">{compressionError}</p><footer><button className="zip-button primary" autoFocus onClick={() => setCompressionError(null)}>확인</button></footer></section></div> : null}
+      {compressionProgress ? <div className="zip-operation-backdrop"><section className="zip-operation-dialog" role="dialog" aria-modal="true" aria-labelledby="zip-progress-title"><h2 id="zip-progress-title" data-tauri-drag-region>압축 중</h2><p>{cancelRequested ? "취소 요청을 처리하고 있습니다…" : compressionProgress.phase === "preparing" ? "압축할 파일을 확인하고 있습니다." : "파일을 ZIP으로 압축하고 있습니다."}</p><div className="zip-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent}><div style={{ width: `${progressPercent}%` }} /></div><span className="zip-progress-detail">{progressPercent}% · {compressionProgress.completedEntries.toLocaleString()} / {compressionProgress.totalEntries.toLocaleString()}개 항목</span><footer><button className="zip-button" onClick={() => { void cancelCompression(); }} disabled={cancelRequested}>{cancelRequested ? "취소 중…" : "취소"}</button></footer></section></div> : null}
+      {compressionError ? <div className="zip-operation-backdrop"><section className="zip-operation-dialog zip-error-dialog" role="alertdialog" aria-modal="true" aria-labelledby="zip-error-title" aria-describedby="zip-error-message"><h2 id="zip-error-title" data-tauri-drag-region>압축 오류</h2><p id="zip-error-message">{compressionError}</p><footer><button className="zip-button primary" autoFocus onClick={() => setCompressionError(null)}>확인</button></footer></section></div> : null}
       {completedArchive ? (
         <div className="zip-operation-backdrop">
           <section className="zip-operation-dialog" role="dialog" aria-modal="true" aria-labelledby="zip-complete-title">
-            <h2 id="zip-complete-title">압축 완료</h2>
+            <h2 id="zip-complete-title" data-tauri-drag-region>압축 완료</h2>
             <p>{completedArchive.entries.toLocaleString()}개 항목을 압축했습니다. ({formatFileSize(completedArchive.size)})</p>
             <p>소요 시간 {formatElapsedTime(completedArchive.elapsedMs)}</p>
             <p className="zip-complete-path" title={completedArchive.path}>{completedArchive.path}</p>
             <footer>
               <button className="zip-button" onClick={() => { void openCompletedFolder(); }}>폴더 열기</button>
               <button className="zip-button" onClick={() => setCompletedArchive(null)}>닫기</button>
-              <button className="zip-button primary" onClick={() => { void openCompletedArchive(); }}>압축 파일 열기</button>
+              {quickMode ? null : <button className="zip-button primary" onClick={() => { void openCompletedArchive(); }}>압축 파일 열기</button>}
             </footer>
           </section>
         </div>
@@ -786,20 +871,17 @@ ${target}
       {renameTarget ? <RenameDialog request={{ name: renameTarget.entry.name, directory: renameTarget.entry.directory }} siblings={renameTarget.siblings} onCancel={() => setRenameTarget(null)} onSubmit={(name) => {
         const target = renameTarget;
         setRenameTarget(null);
-        if (target.inArchive) {
-          pending.rename(target.entry.path, name);
-        } else {
-          draft.rename(target.entry.path, name);
-        }
+        activeRef.current.rename(target.entry.path, name);
       }} /> : null}
       {folderPrompt ? <RenameDialog title="새 폴더" suggested request={{ name: "새 폴더", directory: true }} siblings={folderPrompt.siblings} onCancel={() => setFolderPrompt(null)} onSubmit={(name) => {
         const target = folderPrompt;
         setFolderPrompt(null);
-        const message = pending.newFolder(target.folder, name);
+        const message = activeRef.current.newFolder(target.folder, name);
         if (message) setError(message);
       }} /> : null}
       <CommandPalette />
       <ConfirmDialog />
+      <AboutDialog appName="Silk Zip" appVersion="0.1.0" fetchRuntimeInfo={false} showDatabaseRuntimeInfo={false} showLogFolderAction={false} showAiCallLogAction={false} />
       <ExtractDialog controller={extractionController} />
     </main>
   );

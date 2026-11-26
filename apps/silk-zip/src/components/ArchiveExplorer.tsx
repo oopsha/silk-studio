@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type CSSProperties, type MouseEvent } from "react";
-import ResourceExplorer, { type ResourceColumn, type ResourceLocate } from "@silk-studio/workbench/components/explorer/ResourceExplorer.tsx";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type MouseEvent, type ReactNode } from "react";
+import ResourceExplorer, { type ResourceLocate } from "@silk-studio/workbench/components/explorer/ResourceExplorer.tsx";
 import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import type { ResourceNode } from "@silk-studio/workbench/components/explorer/resourceExplorerTypes.ts";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { revealInFolder, type ArchiveListing } from "../archive";
 import { ConfirmDialogService } from "@silk-studio/workbench/services/dialog/confirmDialogService.ts";
+import { archiveColumns, draftColumns, STATUS_ICONS } from "../archiveColumns";
 import { archiveNodePath, archiveRoute, createArchiveSource, type SearchItem } from "../archiveSource";
 import ArchiveSearchView from "./ArchiveSearchView";
 import { useActiveView } from "@silk-studio/workbench/services/view/useActiveView.ts";
@@ -16,13 +17,24 @@ import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayout
 
 export type RenameEntry = { path: string; name: string; directory: boolean };
 
-const columns: readonly ResourceColumn[] = [
-  { id: "encrypted", title: "암호화", render: (node) => node.encrypted ? "예" : "" },
-  { id: "status", title: "상태", render: (node) => node.status ?? "" },
-];
+
+/** A new archive that is still being assembled: same explorer, different header action and a settings panel. */
+export interface DraftOptions {
+  title: string;
+  subtitle: string;
+  /** Shown in an empty folder. */
+  emptyMessage: ReactNode;
+  /** The main action, in the slot where an opened archive has "압축 풀기". */
+  action: { label: string; disabled: boolean; onClick: () => void };
+  /** Compression settings, shown below the list. */
+  settings: ReactNode;
+}
 
 interface ArchiveExplorerProps {
   archive: ArchiveListing;
+  draft?: DraftOptions;
+  /** A file is being dragged over the window. */
+  dragging?: boolean;
   onExtract: (target: ExtractTarget, entries?: string[]) => void;
   onTest: () => void;
   onRename: (entry: RenameEntry) => void;
@@ -47,11 +59,12 @@ export interface ArchiveEditor {
   discard: () => void;
 }
 
-export default function ArchiveExplorer({ archive, onExtract, onTest, onRename, selectionRef, folderRef, selectedPathsRef, editor }: ArchiveExplorerProps) {
+export default function ArchiveExplorer({ archive, draft, dragging, onExtract, onTest, onRename, selectionRef, folderRef, selectedPathsRef, editor }: ArchiveExplorerProps) {
   const layout = useLayoutState();
   const activeView = useActiveView();
   const [locate, setLocate] = useState<ResourceLocate | undefined>(undefined);
-  const { extractTarget, viewMode } = useZipSettings();
+  const { extractTarget, viewMode, visibleColumns } = useZipSettings();
+  const columns = useMemo(() => archiveColumns(visibleColumns), [visibleColumns]);
   const source = useMemo(() => createArchiveSource(archive), [archive]);
   const [menu, setMenu] = useState<(MenuAnchor & { selection?: { label: string; paths: string[] }; rename?: RenameEntry; reveal?: boolean }) | null>(null);
   const selected = useRef<readonly ResourceNode[]>([]);
@@ -62,14 +75,14 @@ export default function ArchiveExplorer({ archive, onExtract, onTest, onRename, 
   const addMenuRef = useRef<HTMLDivElement>(null);
   const onSelectionChange = useCallback((nodes: readonly ResourceNode[]) => {
     selected.current = nodes;
-    ContextKeyService.set("hasArchiveEntrySelection", nodes.length > 0);
+    ContextKeyService.set("hasArchiveEntrySelection", nodes.length > 0 && !draft);
     const path = nodes.length === 1 ? archiveNodePath(archive, nodes[0]) : null;
     selectionRef.current = path ? { path, name: nodes[0].name, directory: nodes[0].directory } : null;
     ContextKeyService.set("canRenameEntry", selectionRef.current !== null && editor.canEdit);
     selectedPathsRef.current = nodes.map((node) => archiveNodePath(archive, node)).filter((path): path is string => path !== null);
     ContextKeyService.set("canRemoveEntries", selectedPathsRef.current.length > 0 && editor.canEdit);
     setSelectedCount(selectedPathsRef.current.length);
-  }, [archive, selectionRef, selectedPathsRef, editor.canEdit]);
+  }, [archive, draft, selectionRef, selectedPathsRef, editor.canEdit]);
 
   const onRouteChange = useCallback((route: readonly ResourceNode[]) => {
     const last = route[route.length - 1];
@@ -107,7 +120,7 @@ export default function ArchiveExplorer({ archive, onExtract, onTest, onRename, 
   const fileName = archive.path.slice(Math.max(archive.path.lastIndexOf("\\"), archive.path.lastIndexOf("/")) + 1);
   const header = (
     <div className="zip-archive-header zip-toolbar">
-      <div className="zip-archive-header__text"><h1 title={fileName}>{fileName}</h1><p title={archive.path}>{archive.path}</p></div>
+      <div className="zip-archive-header__text"><h1 title={draft ? draft.title : fileName}>{draft ? draft.title : fileName}</h1><p title={draft ? draft.subtitle : archive.path}>{draft ? draft.subtitle : archive.path}</p></div>
       <div className="zip-toolbar__actions">
         <div className="zip-add-menu" ref={addMenuRef}>
           <div className="zip-extract-split">
@@ -118,38 +131,41 @@ export default function ArchiveExplorer({ archive, onExtract, onTest, onRename, 
         </div>
         <button type="button" className="zip-button" disabled={!editor.canEdit} title="현재 폴더에 새 폴더 만들기" onClick={() => editor.newFolder(folder)}>새 폴더</button>
         <button type="button" className="zip-button" disabled={!editor.canEdit || selectedCount === 0} title="선택한 항목 제거 (Delete)" onClick={() => editor.remove(selectedPathsRef.current)}>제거</button>
-        <div className="zip-extract-split">
-          <button type="button" className="zip-button zip-extract-split__main" title="압축 풀기 (Ctrl+E)" onClick={() => onExtract(extractTarget)}>압축 풀기</button>
-          <button type="button" className="zip-button zip-extract-split__arrow" title="풀기 옵션" aria-label="풀기 옵션" aria-haspopup="menu" aria-expanded={menu !== null} onClick={openMenuBelow}>
+        {draft ? <button type="button" className="zip-button primary" disabled={draft.action.disabled} onClick={draft.action.onClick}>{draft.action.label}</button> : <div className="zip-extract-split">
+          <button type="button" className="zip-button primary zip-extract-split__main" title="압축 풀기 (Ctrl+E)" onClick={() => onExtract(extractTarget)}>압축 풀기</button>
+          <button type="button" className="zip-button primary zip-extract-split__arrow" title="풀기 옵션" aria-label="풀기 옵션" aria-haspopup="menu" aria-expanded={menu !== null} onClick={openMenuBelow}>
             <Codicon name="chevron-down" />
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   );
-  return <section className={`zip-archive-workspace${layout.sidebar ? "" : " zip-archive-workspace--sidebar-hidden"}`} aria-label="압축 파일 탐색기">
+  return <section className={`zip-archive-workspace${layout.sidebar ? "" : " zip-archive-workspace--sidebar-hidden"}${draft ? " zip-archive-workspace--draft" : ""}${dragging ? " zip-archive-workspace--dragging" : ""}`} aria-label={draft ? "새 압축 탐색기" : "압축 파일 탐색기"}>
     {archive.warnings.map((warning, index) => <p className="zip-message" key={index}>{warning}</p>)}
     {editor.pendingCount > 0 ? <div className="zip-pending-bar" role="status">
       <span>{`변경 ${editor.pendingCount.toLocaleString()}개가 대기 중입니다. 적용해야 압축 파일에 반영됩니다.`}</span>
       <span className="zip-pending-bar__actions"><button type="button" className="zip-button" onClick={editor.discard}>모두 취소</button><button type="button" className="zip-button primary" onClick={editor.apply}>적용</button></span>
     </div> : null}
-    <div className="zip-explorer-content" style={{ "--zip-sidebar-width": layout.sidebar ? `${layout.sidebarWidth}px` : "0px" } as CSSProperties}>
-      {layout.sidebar ? <div className="zip-explorer-title"><ViewPaneTitle title={activeView === "search" ? "검색" : "탐색기"} /></div> : null}
+    <div className="zip-explorer-content">
       <ResourceExplorer
         source={source}
-        resetKey={archive.path}
+        resetKey={draft ? "draft" : archive.path}
+        emptyMessage={draft?.emptyMessage}
+        footer={draft?.settings}
         onRouteChange={onRouteChange}
         onSelectionChange={onSelectionChange}
-        extraColumns={columns}
+        columns={draft ? draftColumns : columns}
+        statusIcons={editor.pendingCount > 0 ? STATUS_ICONS : undefined}
         header={header}
+        sidebarTitle={<ViewPaneTitle title={activeView === "search" ? "검색" : "탐색기"} />}
         viewMode={viewMode}
         locate={locate}
         sidebar={activeView === "search" ? <ArchiveSearchView archive={archive} folder={folder} onReveal={(item: SearchItem) => setLocate((previous) => ({ route: archiveRoute(archive, item.parent), select: item.id, nonce: (previous?.nonce ?? 0) + 1 }))} /> : undefined}
-        addressExtra={<button type="button" className="zip-path-copy" title="경로 복사" aria-label="경로 복사" aria-haspopup="menu" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setPathMenu({ x: rect.right, y: rect.bottom + 2 }); }}><Codicon name="copy" /></button>}
-        onListContextMenu={openContextMenu}
-        onTreeContextMenu={openContextMenu}
-        rowAction={{ icon: "export", title: "압축 풀기" }}
-        onRowMenu={(nodes, at) => setMenu({ ...at, selection: currentSelection(nodes), rename: nodes.length === 1 && editor.canEdit ? selectionRef.current ?? undefined : undefined, reveal: true })}
+        addressExtra={draft ? undefined : <button type="button" className="zip-path-copy" title="경로 복사" aria-label="경로 복사" aria-haspopup="menu" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setPathMenu({ x: rect.right, y: rect.bottom + 2 }); }}><Codicon name="copy" /></button>}
+        onListContextMenu={draft ? undefined : openContextMenu}
+        onTreeContextMenu={draft ? undefined : openContextMenu}
+        rowAction={draft ? undefined : { icon: "export", title: "압축 풀기" }}
+        onRowMenu={draft ? undefined : (nodes, at) => setMenu({ ...at, selection: currentSelection(nodes), rename: nodes.length === 1 && editor.canEdit ? selectionRef.current ?? undefined : undefined, reveal: true })}
       />
     </div>
     {pathMenu ? <PathCopyMenu anchor={pathMenu} archivePath={archive.path} folder={folder} onClose={() => setPathMenu(null)} /> : null}

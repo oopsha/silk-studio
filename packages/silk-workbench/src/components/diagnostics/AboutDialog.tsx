@@ -21,6 +21,7 @@ type AboutDialogProps = {
   fetchRuntimeInfo?: boolean;
   showDatabaseRuntimeInfo?: boolean;
   showLogFolderAction?: boolean;
+  showAiCallLogAction?: boolean;
 };
 
 function AboutDialog({
@@ -29,6 +30,7 @@ function AboutDialog({
   fetchRuntimeInfo = true,
   showDatabaseRuntimeInfo = true,
   showLogFolderAction = true,
+  showAiCallLogAction = true,
 }: AboutDialogProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(() => AboutDialogService.isOpen());
@@ -185,7 +187,7 @@ function AboutDialog({
           >
             {t("workbench.commands.openLogFolder")}
           </button> : null}
-          <button
+          {showAiCallLogAction ? <button
             type="button"
             className="about-dialog__button about-dialog__button--secondary"
             onClick={() => {
@@ -194,7 +196,7 @@ function AboutDialog({
             }}
           >
             {t("workbench.commands.showAiCallLog")}
-          </button>
+          </button> : null}
           <button
             type="button"
             className="about-dialog__button"

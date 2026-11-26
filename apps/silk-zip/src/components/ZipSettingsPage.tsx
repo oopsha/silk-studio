@@ -1,6 +1,6 @@
 import SettingsEditor from "@silk-studio/workbench/components/settings/index.ts";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import { setPage, updateZipSettings, useZipSettings, type ExtractDefaultTarget } from "../zipSettings";
+import { setPage, updateZipSettings, useZipSettings, type ExtractDefaultTarget, type ExistingFilePolicy } from "../zipSettings";
 
 function Row({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
@@ -27,7 +27,8 @@ function ExtractSettings() {
         </select>
       </Row>
       <Row title="이미 있는 파일" description="풀 위치에 같은 이름의 파일이 있을 때 처리 방법입니다.">
-        <select className="settings-control" value={settings.overwrite ? "overwrite" : "skip"} onChange={(event) => updateZipSettings({ overwrite: event.target.value === "overwrite" })}>
+        <select className="settings-control" value={settings.existing} onChange={(event) => updateZipSettings({ existing: event.target.value as ExistingFilePolicy })}>
+          <option value="ask">매번 묻기</option>
           <option value="skip">건너뛰기</option>
           <option value="overwrite">덮어쓰기</option>
         </select>

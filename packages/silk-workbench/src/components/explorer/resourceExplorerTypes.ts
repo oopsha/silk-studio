@@ -8,6 +8,10 @@ export type ResourceNode = {
   directory: boolean;
   size?: number | null;
   encrypted?: boolean;
+  /** Where the item comes from (e.g. the source file of an entry that is about to be added). */
+  location?: string;
+  /** Extra values an app shows in its own columns (compressed size, modified time, ...). */
+  meta?: Record<string, string | number | undefined>;
   /** Short note shown by apps in a status column (e.g. a pending change). */
   status?: string;
   /** Overrides the icon chosen from the name (e.g. an archive shown as a folder). */

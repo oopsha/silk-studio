@@ -226,16 +226,18 @@ function ActivityBarContextMenu({
         ref={isActive ? submenuHostRef : undefined}
         className="activity-bar-context-menu__submenu-host"
         onMouseEnter={() => {
-          setActiveSubmenuId(item.menuId.id);
+          setActiveSubmenuId(item.enabled ? item.menuId.id : null);
           setFocusedItemId(null);
         }}
       >
         <button
           type="button"
-          className={`activity-bar-context-menu__item activity-bar-context-menu__item--submenu${isActive ? " activity-bar-context-menu__item--focused" : ""}`}
+          className={`activity-bar-context-menu__item activity-bar-context-menu__item--submenu${isActive ? " activity-bar-context-menu__item--focused" : ""}${item.enabled ? "" : " activity-bar-context-menu__item--disabled"}`}
           role="menuitem"
           aria-haspopup="menu"
           aria-expanded={isActive}
+          aria-disabled={!item.enabled}
+          disabled={!item.enabled}
         >
           <span className="activity-bar-context-menu__label">{item.label}</span>
           <span className="activity-bar-context-menu__submenu-indicator" aria-hidden>

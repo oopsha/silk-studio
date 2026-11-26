@@ -26,7 +26,8 @@ export function canEditArchive(archivePath: string): boolean {
  * Edits made to an opened archive (add, remove, rename, new folder) are kept here and shown in the
  * explorer; they reach the file only when applied, which rewrites the archive once.
  */
-export function usePendingChanges(archive: ArchiveListing | null) {
+/** `alwaysEditable`: a new archive that does not exist yet, where every format can be edited. */
+export function usePendingChanges(archive: ArchiveListing | null, options: { alwaysEditable?: boolean } = {}) {
   const [state, setState] = useState<PendingState>({ base: null, entries: [], changes: [], actions: 0 });
 
   useEffect(() => {
@@ -35,7 +36,7 @@ export function usePendingChanges(archive: ArchiveListing | null) {
 
   const fresh = state.base === archive;
   const view = useMemo<ArchiveListing | null>(() => (archive ? { ...archive, entries: fresh ? state.entries : archive.entries } : null), [archive, state.entries, fresh]);
-  const editable = archive !== null && canEditArchive(archive.path);
+  const editable = archive !== null && (options.alwaysEditable === true || canEditArchive(archive.path));
 
   const exists = (entries: ListedEntry[], path: string) =>
     entries.some((entry) => clean(entry.path).toLocaleLowerCase() === path.toLocaleLowerCase());

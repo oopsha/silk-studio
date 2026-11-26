@@ -546,6 +546,18 @@ extern "C" int silk_7zip_list_split_zip(const char *archive_path,
 STDAPI GetNumberOfFormats(UINT32 *numFormats);
 STDAPI GetHandlerProperty2(UInt32 formatIndex, PROPID propID, PROPVARIANT *value);
 
+// Asks what to do with a file that already exists: 0 skip, 1 overwrite, 2 write to `rename_to`
+// (a UTF-8 path the callee fills in), 3 cancel the whole extraction.
+using SilkConflictCallback = int (*)(const char *path, std::uint64_t old_size, std::int64_t old_modified,
+                                     std::uint64_t new_size, std::int64_t new_modified,
+                                     char *rename_to, std::uint32_t rename_capacity, void *context);
+
+static std::int64_t filetime_to_unix(const FILETIME &value) {
+  const std::uint64_t ticks = (static_cast<std::uint64_t>(value.dwHighDateTime) << 32) | value.dwLowDateTime;
+  if (ticks < 116444736000000000ULL) return 0;
+  return static_cast<std::int64_t>((ticks - 116444736000000000ULL) / 10000000ULL);
+}
+
 struct SilkExtractResult {
   std::uint32_t extracted;
   std::uint32_t skipped;
@@ -590,7 +602,7 @@ struct OpenedArchive {
 // Tries every registered format: extension matches first, then formats with a
 // signature, then the rest. `allow_split` lets a ".001" volume open through the Split handler.
 HRESULT open_detected(IInStream *stream, const UString &file_name, IArchiveOpenCallback *callback,
-                      bool allow_split, OpenedArchive &out) {
+                      bool allow_split, OpenedArchive &out, UInt64 max_start_position = 0) {
   UInt32 count = 0;
   HRESULT result = GetNumberOfFormats(&count);
   if (result != S_OK) return result;
@@ -626,7 +638,7 @@ HRESULT open_detected(IInStream *stream, const UString &file_name, IArchiveOpenC
     if (CreateObject(&clsid, &IID_IInArchive, reinterpret_cast<void **>(&archive)) != S_OK) continue;
     UInt64 position = 0;
     if (stream->Seek(0, STREAM_SEEK_SET, &position) != S_OK) return E_FAIL;
-    const UInt64 max_start = 0;
+    const UInt64 max_start = max_start_position;
     result = archive->Open(stream, &max_start, callback);
     if (result == E_ABORT) return result;
     if (result != S_OK) continue;
@@ -645,7 +657,7 @@ HRESULT open_detected(IInStream *stream, const UString &file_name, IArchiveOpenC
       const int dot = inner_name.ReverseFind(L'.');
       if (dot > 0) inner_name.DeleteFrom(static_cast<unsigned>(dot));
       OpenedArchive nested;
-      result = open_detected(inner_stream, inner_name, callback, false, nested);
+      result = open_detected(inner_stream, inner_name, callback, false, nested, max_start_position);
       if (result != S_OK) return result;
       nested.outer = archive;
       out = nested;
@@ -722,8 +734,10 @@ class SilkExtractCallback final : public IArchiveExtractCallback,
  public:
   SilkExtractCallback(IInArchive *archive, FString destination, UString fallback_name,
                       UString password, bool overwrite, UInt32 total_items,
-                      SilkZipProgress progress, void *progress_context, SilkExtractResult *result)
-      : archive_(archive), destination_(std::move(destination)),
+                      SilkZipProgress progress, void *progress_context, SilkExtractResult *result,
+                      SilkConflictCallback conflict = nullptr, void *conflict_context = nullptr)
+      : conflict_(conflict), conflict_context_(conflict_context),
+        archive_(archive), destination_(std::move(destination)),
         fallback_name_(std::move(fallback_name)), password_(std::move(password)),
         overwrite_(overwrite), total_items_(total_items), progress_(progress),
         progress_context_(progress_context), result_(result) {}
@@ -798,10 +812,35 @@ class SilkExtractCallback final : public IArchiveExtractCallback,
       if (IS_PATH_SEPAR(full[i])) last = static_cast<int>(i);
     if (last > 0) NWindows::NFile::NDir::CreateComplexDir(full.Left(static_cast<unsigned>(last)));
     NWindows::NFile::NFind::CFileInfo info;
-    if (!overwrite_ && info.Find(full)) {
-      skipped_item_ = true;
-      ++result_->skipped;
-      return S_OK;
+    if (info.Find(full)) {
+      if (conflict_ && !info.IsDir()) {
+        CPropVariant size_value;
+        archive_->GetProperty(index, kpidSize, &size_value);
+        const std::uint64_t new_size = size_value.vt == VT_UI8 ? size_value.uhVal.QuadPart : 0;
+        const std::int64_t new_modified = time_value.vt == VT_FILETIME ? filetime_to_unix(time_value.filetime) : 0;
+        FILETIME old_time{};
+#ifdef _WIN32
+        old_time = info.MTime;
+#else
+        timespec_To_FILETIME(info.MTime, old_time);
+#endif
+        AString utf8_full = UnicodeStringToMultiByte(fs2us(full), CP_UTF8);
+        char rename_to[4096] = {0};
+        const int answer = conflict_(utf8_full.Ptr(), info.Size, filetime_to_unix(old_time), new_size, new_modified,
+                                     rename_to, sizeof(rename_to), conflict_context_);
+        if (answer == 3) return E_ABORT;
+        if (answer == 2 && rename_to[0] != 0) {
+          full = file_system_path(rename_to);
+        } else if (answer != 1) {
+          skipped_item_ = true;
+          ++result_->skipped;
+          return S_OK;
+        }
+      } else if (!overwrite_) {
+        skipped_item_ = true;
+        ++result_->skipped;
+        return S_OK;
+      }
     }
     out_spec_ = new COutFileStream;
     out_stream_ = out_spec_;
@@ -916,6 +955,8 @@ class SilkExtractCallback final : public IArchiveExtractCallback,
   FString destination_;
   UString fallback_name_;
   UString password_;
+  SilkConflictCallback conflict_ = nullptr;
+  void *conflict_context_ = nullptr;
   bool overwrite_;
   UInt32 total_items_;
   SilkZipProgress progress_;
@@ -941,6 +982,7 @@ extern "C" int silk_7zip_extract(const char *archive_path, const char *output_di
                                   const char *password, int overwrite, int test_only,
                                   const char *const *only, std::uint32_t only_count,
                                   SilkZipProgress progress, void *progress_context,
+                                  int salvage, SilkConflictCallback conflict, void *conflict_context,
                                   SilkExtractResult *out) {
   if (!archive_path || !output_dir || !out) return static_cast<int>(E_INVALIDARG);
   memset(out, 0, sizeof(*out));
@@ -964,7 +1006,8 @@ extern "C" int silk_7zip_extract(const char *archive_path, const char *output_di
     if (IS_PATH_SEPAR(native_archive[i])) separator = static_cast<int>(i);
   UString file_name = fs2us(FString(native_archive.Ptr() + (separator >= 0 ? separator + 1 : 0)));
   OpenedArchive opened;
-  HRESULT result = open_detected(input, file_name, open_callback, true, opened);
+  // Repair mode also accepts an archive that starts after other bytes (the first 64 MB are searched).
+  HRESULT result = open_detected(input, file_name, open_callback, true, opened, salvage ? (64ULL << 20) : 0);
   if (open_spec->password_requested) out->need_password = 1;
   if (result != S_OK) return static_cast<int>(result);
   strncpy(out->format, opened.format.Ptr(), sizeof(out->format) - 1);
@@ -1002,7 +1045,7 @@ extern "C" int silk_7zip_extract(const char *archive_path, const char *output_di
   SilkExtractCallback *callback_spec = new SilkExtractCallback(
       opened.archive, destination, fallback, from_utf8(password ? password : ""),
       overwrite != 0, only_count > 0 ? static_cast<UInt32>(indices.size()) : items, progress,
-      progress_context, out);
+      progress_context, out, conflict, conflict_context);
   callback_spec->selections = selections;
   callback_spec->test_only = test_only != 0;
   CMyComPtr<IArchiveExtractCallback> callback = callback_spec;
@@ -1010,6 +1053,77 @@ extern "C" int silk_7zip_extract(const char *archive_path, const char *output_di
                                    indices.empty() ? static_cast<UInt32>(-1)
                                                    : static_cast<UInt32>(indices.size()),
                                    test_only ? 1 : 0, callback);
+  opened.archive->Close();
+  return static_cast<int>(result);
+}
+
+// Per-entry details the libarchive listing does not have: compressed size, modification time,
+// CRC, method and attributes. Called once per item; a non-zero return stops the listing.
+typedef int (*SilkArchiveDetailCallback)(const char *path, std::uint64_t packed_size, int packed_set,
+                                         std::int64_t modified, int modified_set, std::uint32_t crc,
+                                         int crc_set, const char *method, std::uint32_t attributes,
+                                         int attributes_set, void *context);
+
+extern "C" int silk_7zip_list_details(const char *archive_path, SilkArchiveDetailCallback callback,
+                                       void *context) {
+  if (!archive_path || !callback) return static_cast<int>(E_INVALIDARG);
+  const FString native_archive = file_system_path(archive_path);
+  CInFileStream *input_spec = new CInFileStream;
+  CMyComPtr<IInStream> input = input_spec;
+  if (!input_spec->Open(native_archive)) return static_cast<int>(E_FAIL);
+  SilkZipOpenCallback *open_spec = new SilkZipOpenCallback(native_archive);
+  CMyComPtr<IArchiveOpenCallback> open_callback = open_spec;
+
+  int separator = -1;
+  for (unsigned i = 0; i < native_archive.Len(); ++i)
+    if (IS_PATH_SEPAR(native_archive[i])) separator = static_cast<int>(i);
+  UString file_name = fs2us(FString(native_archive.Ptr() + (separator >= 0 ? separator + 1 : 0)));
+  OpenedArchive opened;
+  HRESULT result = open_detected(input, file_name, open_callback, true, opened);
+  if (result != S_OK) return static_cast<int>(result);
+
+  UInt32 items = 0;
+  result = opened.archive->GetNumberOfItems(&items);
+  if (result != S_OK) {
+    opened.archive->Close();
+    return static_cast<int>(result);
+  }
+#ifdef _WIN32
+  if (opened.format.IsEqualTo_Ascii_NoCase("zip")) prefer_utf8_zip_names(opened.archive, items);
+#endif
+  for (UInt32 index = 0; index < items; ++index) {
+    CPropVariant path, packed, modified, crc, method, attributes;
+    if (opened.archive->GetProperty(index, kpidPath, &path) != S_OK || path.vt != VT_BSTR) continue;
+    opened.archive->GetProperty(index, kpidPackSize, &packed);
+    opened.archive->GetProperty(index, kpidMTime, &modified);
+    opened.archive->GetProperty(index, kpidCRC, &crc);
+    opened.archive->GetProperty(index, kpidMethod, &method);
+    opened.archive->GetProperty(index, kpidAttrib, &attributes);
+
+    bool failed = false;
+    AString utf8_path = UnicodeStringToMultiByte(UString(path.bstrVal), CP_UTF8, '?', failed);
+    if (failed) continue;
+    AString utf8_method;
+    if (method.vt == VT_BSTR) utf8_method = UnicodeStringToMultiByte(UString(method.bstrVal), CP_UTF8, '?', failed);
+
+    UInt64 packed_size = 0;
+    const int packed_set = ConvertPropVariantToUInt64(packed, packed_size) ? 1 : 0;
+    std::int64_t unix_time = 0;
+    int modified_set = 0;
+    if (modified.vt == VT_FILETIME) {
+      const UInt64 ticks = (static_cast<UInt64>(modified.filetime.dwHighDateTime) << 32) | modified.filetime.dwLowDateTime;
+      unix_time = static_cast<std::int64_t>(ticks / 10000000ULL) - 11644473600LL;
+      modified_set = 1;
+    }
+    const int crc_set = crc.vt == VT_UI4 ? 1 : 0;
+    const int attributes_set = attributes.vt == VT_UI4 ? 1 : 0;
+    if (callback(utf8_path.Ptr(), packed_size, packed_set, unix_time, modified_set,
+                 crc_set ? crc.ulVal : 0, crc_set, utf8_method.Ptr(),
+                 attributes_set ? attributes.ulVal : 0, attributes_set, context) != 0) {
+      result = E_ABORT;
+      break;
+    }
+  }
   opened.archive->Close();
   return static_cast<int>(result);
 }

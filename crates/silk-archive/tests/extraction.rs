@@ -1,4 +1,4 @@
-use silk_archive::{create_archive_entries, extract_archive, extract_entries, test_archive, update_archive, EntryChange, ArchiveFormat, CreateInput};
+use silk_archive::{create_archive_entries, extract_archive, extract_entries, repair_archive, test_archive, update_archive, EntryChange, ArchiveFormat, CreateInput};
 use std::{
     fs,
     path::PathBuf,
@@ -241,4 +241,86 @@ fn updates_archives_in_one_pass() {
     assert_eq!(fs::read(out.join("c.bin")).unwrap().len(), 70_000);
     assert_eq!(fs::read_to_string(out.join("added.txt")).unwrap(), "added later");
     assert!(extract_archive(&locked, &workspace.0.join("nope"), None, false, &cancelled, |_| {}).unwrap_err().contains("암호"));
+}
+
+#[test]
+fn lists_compressed_size_time_crc_and_method() {
+    let workspace = Workspace::new();
+    let inputs = sample(&workspace);
+    let cancelled = Arc::new(AtomicBool::new(false));
+    for (format, name) in [(ArchiveFormat::Zip, "d.zip"), (ArchiveFormat::SevenZip, "d.7z"), (ArchiveFormat::Tar, "d.tar")] {
+        let archive = workspace.0.join(name);
+        create_archive_entries(format, &inputs, &archive, 6, None, None, &cancelled, |_| {}, None).unwrap();
+        let listing = silk_archive::list_archive(&archive).unwrap();
+        let file = listing.entries.iter().find(|entry| entry.path.ends_with("b.bin")).unwrap();
+        assert_eq!(file.size, Some(70_000), "{name}");
+        assert!(file.modified.is_some_and(|time| time > 1_600_000_000), "{name} modified");
+        if name != "d.tar" {
+            assert!(file.attributes.is_some(), "{name} attributes");
+            assert!(file.packed_size.is_some_and(|packed| packed > 0), "{name} packed");
+            assert!(file.crc.is_some(), "{name} crc");
+            assert!(file.method.is_some(), "{name} method");
+        }
+    }
+    // Encrypted zip: the method names the encryption.
+    let encrypted = workspace.0.join("e.zip");
+    create_archive_entries(ArchiveFormat::Zip, &inputs, &encrypted, 6, Some("secret"), None, &cancelled, |_| {}, None).unwrap();
+    let listing = silk_archive::list_archive(&encrypted).unwrap();
+    let file = listing.entries.iter().find(|entry| entry.path.ends_with("b.bin")).unwrap();
+    assert!(file.encrypted);
+    assert_eq!(file.encryption.as_deref(), Some("ZipCrypto"));
+}
+
+#[test]
+fn repairs_damaged_archives_into_a_new_one() {
+    let workspace = Workspace::new();
+    let inputs = sample(&workspace);
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let zip = workspace.0.join("good.zip");
+    create_archive_entries(ArchiveFormat::Zip, &inputs, &zip, 6, None, None, &cancelled, |_| {}, None).unwrap();
+    let bytes = fs::read(&zip).unwrap();
+    let names = |archive: &PathBuf| {
+        let mut names: Vec<String> = silk_archive::list_archive(archive).unwrap().entries.into_iter().map(|entry| entry.path.trim_end_matches('/').to_string()).collect();
+        names.sort();
+        names
+    };
+
+    // The end of the file is missing (no central directory): everything is still found.
+    let cut = workspace.0.join("cut.zip");
+    fs::write(&cut, &bytes[..bytes.len() - 120]).unwrap();
+    let fixed = workspace.0.join("cut-fixed.zip");
+    let result = repair_archive(&cut, &fixed, None, &cancelled, |_| {}).unwrap();
+    assert_eq!((result.recovered, result.lost), (3, 0));
+    assert_eq!(names(&fixed), vec!["b.bin", "dir", "dir/한글.txt", "empty"]);
+
+    // Damaged data inside one entry: that entry is lost, the rest is kept.
+    let mut flipped = bytes.clone();
+    for byte in &mut flipped[200..260] { *byte ^= 0xFF; }
+    let bad = workspace.0.join("bad.zip");
+    fs::write(&bad, &flipped).unwrap();
+    let fixed = workspace.0.join("bad-fixed.zip");
+    let result = repair_archive(&bad, &fixed, None, &cancelled, |_| {}).unwrap();
+    assert_eq!(result.lost, 1);
+    assert!(result.recovered >= 1);
+    let out = workspace.0.join("bad-out");
+    extract_archive(&fixed, &out, None, true, &cancelled, |_| {}).unwrap();
+
+    // Other bytes in front of the archive.
+    let mut front = vec![0u8; 100];
+    front.extend_from_slice(&bytes);
+    let pre = workspace.0.join("pre.zip");
+    fs::write(&pre, &front).unwrap();
+    let fixed = workspace.0.join("pre-fixed.zip");
+    let result = repair_archive(&pre, &fixed, None, &cancelled, |_| {}).unwrap();
+    assert_eq!(result.recovered, 3);
+
+    // Nothing readable: no output file, the original stays.
+    let junk = workspace.0.join("junk.zip");
+    fs::write(&junk, vec![7u8; 5000]).unwrap();
+    let fixed = workspace.0.join("junk-fixed.zip");
+    assert!(repair_archive(&junk, &fixed, None, &cancelled, |_| {}).is_err());
+    assert!(!fixed.exists());
+    // The result never overwrites the damaged file.
+    assert!(repair_archive(&cut, &cut, None, &cancelled, |_| {}).is_err());
+    assert!(fs::read_dir(&workspace.0).unwrap().all(|entry| !entry.unwrap().file_name().to_string_lossy().starts_with(".silk-zip-repair")));
 }

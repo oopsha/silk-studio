@@ -1,4 +1,4 @@
-import { ZIP_VIEW_MODES } from "./zipSettings";
+import { ZIP_COLUMNS, ZIP_VIEW_MODES } from "./zipSettings";
 import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
 import { detectWorkbenchPlatform } from "@silk-studio/ui/platform/fonts.ts";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
@@ -78,8 +78,8 @@ MenuRegistry.appendMenuItem(MenuId.MenubarViewMenu, {
 const otherMenus = [
   [MenuId.MenubarEditMenu, ["이름 바꾸기|F2", "파일 추가|Ins", "제거|Del", "|", "복사|Ctrl+C", "붙여넣기|Ctrl+V", "|", "찾기...|Ctrl+F"]],
   [MenuId.MenubarViewMenu, ["보기 형식", "표시할 열", "테마"]],
-  [MenuId.MenubarToolsMenu, ["손상된 압축 파일 복구...", "압축 파일 암호 복구..."]],
-  [MenuId.MenubarHelpMenu, ["정보|F1", "프로그램 설치 폴더 열기", "|", "도움말 페이지 열기", "토론 게시판 열기", "홈페이지 열기"]],
+  [MenuId.MenubarToolsMenu, ["압축 파일 복구..."]],
+  [MenuId.MenubarHelpMenu, ["정보|F1", "설치 위치 열기", "|", "도움말 페이지 열기", "토론 게시판 열기", "홈페이지 열기"]],
 ] as const;
 
 for (const [menuId, labels] of otherMenus) {
@@ -98,6 +98,7 @@ for (const [menuId, labels] of otherMenus) {
       MenuRegistry.appendMenuItem(menuId, {
         submenu: MenuId.MenubarFindMenu,
         title: "표시할 열",
+        enabledWhen: "hasOpenArchive",
         group: "group-0",
         order,
       });
@@ -133,6 +134,17 @@ for (const [menuId, labels] of otherMenus) {
       MenuRegistry.appendMenuItem(menuId, { command: { id: "silkZip.edit.paste", title: "붙여넣기" }, group: "group-1", order });
       return;
     }
+    if (menuId === MenuId.MenubarToolsMenu && order === 0) {
+      MenuRegistry.appendMenuItem(menuId, { command: { id: "silkZip.tools.repair", title: "압축 파일 복구..." }, group: "group-0", order });
+      return;
+    }
+    if (menuId === MenuId.MenubarHelpMenu && order === 0) {
+      MenuRegistry.appendMenuItem(menuId, { command: { id: "silkZip.help.about", title: "정보" }, group: "group-0", order });
+      return;
+    }
+    // "설치 위치 열기" (silkZip.help.openInstallFolder) is implemented but hidden from the menu;
+    // the label stays in the list so the following items keep their indices.
+    if (menuId === MenuId.MenubarHelpMenu && order === 1) return;
     if (menuId === MenuId.MenubarEditMenu && order === 7) {
       MenuRegistry.appendMenuItem(menuId, { command: { id: "silkZip.edit.find", title: "찾기..." }, group: "group-2", order });
       return;
@@ -160,12 +172,11 @@ ZIP_VIEW_MODES.forEach(({ id, title }, order) => {
   });
 });
 
-["압축 크기", "원본 크기", "파일 종류", "수정한 날짜", "|", "압축 방식", "암호 방식", "CRC", "속성", "파일 설명", "부가 정보"].forEach((entry, order) => {
-  if (entry === "|") return;
-  const group = order < 4 ? "1_primary" : "2_additional";
+ZIP_COLUMNS.forEach(({ id, title }, order) => {
   MenuRegistry.appendMenuItem(MenuId.MenubarFindMenu, {
-    command: { id: `silkZip.column.${order}`, title: entry },
-    group,
+    command: { id: `silkZip.column.${id}`, title },
+    checkedWhen: `silkZip.column.${id}`,
+    group: order < 4 ? "1_primary" : "2_additional",
     order,
   });
 });

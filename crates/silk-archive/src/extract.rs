@@ -21,6 +21,83 @@ struct SdkExtractResult {
 }
 
 type SdkProgressCallback = unsafe extern "C" fn(u64, u64, u32, u32, *mut c_void) -> c_int;
+type SdkConflictCallback =
+    unsafe extern "C" fn(*const c_char, u64, i64, u64, i64, *mut c_char, u32, *mut c_void) -> c_int;
+
+/// A file that already exists where an entry is about to be written.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictQuery {
+    pub path: String,
+    pub existing_size: u64,
+    /// Unix seconds; 0 when unknown.
+    pub existing_modified: i64,
+    pub new_size: u64,
+    pub new_modified: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConflictAnswer {
+    Skip,
+    Overwrite,
+    /// Write next to it as `name (2).ext`.
+    Rename,
+    Cancel,
+}
+
+pub type ConflictHandler<'a> = &'a mut dyn FnMut(&ConflictQuery) -> ConflictAnswer;
+
+/// First `stem (n).ext` next to `path` that does not exist yet.
+fn numbered_name(path: &Path) -> PathBuf {
+    let stem = path.file_stem().map(|value| value.to_string_lossy().into_owned()).unwrap_or_default();
+    let extension = path.extension().map(|value| format!(".{}", value.to_string_lossy())).unwrap_or_default();
+    let mut number = 2;
+    loop {
+        let candidate = path.with_file_name(format!("{stem} ({number}){extension}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+        number += 1;
+    }
+}
+
+unsafe extern "C" fn sdk_conflict(
+    path: *const c_char,
+    old_size: u64,
+    old_modified: i64,
+    new_size: u64,
+    new_modified: i64,
+    rename_to: *mut c_char,
+    capacity: u32,
+    context: *mut c_void,
+) -> c_int {
+    let handler = unsafe { &mut *(context as *mut ConflictHandler<'_>) };
+    let path = unsafe { std::ffi::CStr::from_ptr(path) }.to_string_lossy().into_owned();
+    let answer = handler(&ConflictQuery {
+        path: path.clone(),
+        existing_size: old_size,
+        existing_modified: old_modified,
+        new_size,
+        new_modified,
+    });
+    match answer {
+        ConflictAnswer::Skip => 0,
+        ConflictAnswer::Overwrite => 1,
+        ConflictAnswer::Cancel => 3,
+        ConflictAnswer::Rename => {
+            let target = numbered_name(Path::new(&path));
+            let bytes = target.to_string_lossy().into_owned().into_bytes();
+            if bytes.len() + 1 > capacity as usize {
+                return 0;
+            }
+            unsafe {
+                std::ptr::copy_nonoverlapping(bytes.as_ptr(), rename_to.cast::<u8>(), bytes.len());
+                *rename_to.add(bytes.len()) = 0;
+            }
+            2
+        }
+    }
+}
 
 #[repr(C)]
 struct SdkAddInput {
@@ -56,6 +133,9 @@ unsafe extern "C" {
         only_count: u32,
         progress: Option<SdkProgressCallback>,
         progress_context: *mut c_void,
+        salvage: c_int,
+        conflict: Option<SdkConflictCallback>,
+        conflict_context: *mut c_void,
         result: *mut SdkExtractResult,
     ) -> c_int;
 }
@@ -96,7 +176,7 @@ pub fn test_archive<F: FnMut(CreateProgress)>(
         total_entries: 0,
     });
     let (format, tested, _) =
-        extract_once(archive, Path::new(""), password, false, true, &[], cancelled, &mut on_progress)?;
+        extract_once(archive, Path::new(""), password, false, true, &[], cancelled, &mut on_progress, None)?;
     Ok(TestResult { format, tested: tested as usize })
 }
 
@@ -124,7 +204,26 @@ fn extract_once<F: FnMut(CreateProgress)>(
     only: &[CString],
     cancelled: &AtomicBool,
     on_progress: &mut F,
+    ask: Option<ConflictHandler<'_>>,
 ) -> Result<(String, u32, u32), String> {
+    extract_once_ex(archive, output_dir, password, overwrite, test_only, only, cancelled, on_progress, false, ask)
+        .map(|(format, extracted, skipped, _)| (format, extracted, skipped))
+}
+
+/// `salvage`: items that cannot be read are skipped (and counted) instead of failing the whole extraction,
+/// and an archive that starts after other bytes is still found. Returns (format, extracted, skipped, failed).
+fn extract_once_ex<F: FnMut(CreateProgress)>(
+    archive: &Path,
+    output_dir: &Path,
+    password: Option<&str>,
+    overwrite: bool,
+    test_only: bool,
+    only: &[CString],
+    cancelled: &AtomicBool,
+    on_progress: &mut F,
+    salvage: bool,
+    mut ask: Option<ConflictHandler<'_>>,
+) -> Result<(String, u32, u32, u32), String> {
     let archive_c = c_string(
         archive.to_str().ok_or("압축 파일 경로를 UTF-8로 처리할 수 없습니다.")?,
         "압축 파일 경로가 올바르지 않습니다.",
@@ -159,6 +258,9 @@ fn extract_once<F: FnMut(CreateProgress)>(
             only_pointers.len() as u32,
             Some(sdk_progress::<F>),
             (&mut context as *mut SdkProgressContext<'_, F>).cast(),
+            c_int::from(salvage),
+            ask.as_ref().map(|_| sdk_conflict as SdkConflictCallback),
+            ask.as_mut().map_or(std::ptr::null_mut(), |handler| (handler as *mut ConflictHandler<'_>).cast()),
             &mut result,
         )
     };
@@ -178,10 +280,13 @@ fn extract_once<F: FnMut(CreateProgress)>(
     if status == 1 {
         return Err("지원하지 않는 형식이거나 손상된 압축 파일입니다.".into());
     }
+    if status == 0x80004004u32 as i32 {
+        return Err("압축 풀기가 취소되었습니다.".into());
+    }
     if status != 0 {
         return Err(format!("압축 풀기에 실패했습니다 (HRESULT 0x{:08X}).", status as u32));
     }
-    if result.failed > 0 {
+    if result.failed > 0 && !salvage {
         let reason = match result.first_error {
             1 => "지원하지 않는 압축 방식입니다.",
             2 | 5 | 6 => "압축 파일이 손상되었습니다.",
@@ -200,7 +305,7 @@ fn extract_once<F: FnMut(CreateProgress)>(
             format!("{}개 항목을 풀지 못했습니다. {reason}", result.failed)
         });
     }
-    Ok((text(&result.format), result.extracted, result.skipped))
+    Ok((text(&result.format), result.extracted, result.skipped, result.failed))
 }
 
 /// Single-stream compressors whose payload is usually a tar.
@@ -232,7 +337,22 @@ pub fn extract_entries<F: FnMut(CreateProgress)>(
     overwrite: bool,
     only: &[String],
     cancelled: &AtomicBool,
+    on_progress: F,
+) -> Result<ExtractResult, String> {
+    extract_entries_ask(archive, output_dir, password, overwrite, only, cancelled, on_progress, None)
+}
+
+/// Like [`extract_entries`]; when `ask` is given it decides what happens to every file that
+/// already exists (and `overwrite` is ignored for them).
+pub fn extract_entries_ask<F: FnMut(CreateProgress)>(
+    archive: &Path,
+    output_dir: &Path,
+    password: Option<&str>,
+    overwrite: bool,
+    only: &[String],
+    cancelled: &AtomicBool,
     mut on_progress: F,
+    mut ask: Option<ConflictHandler<'_>>,
 ) -> Result<ExtractResult, String> {
     use unicode_normalization::UnicodeNormalization;
     // The listing shows NFC names, while an archive may store NFD; match either form.
@@ -277,7 +397,7 @@ pub fn extract_entries<F: FnMut(CreateProgress)>(
         .any(|suffix| name.ends_with(suffix));
     if !may_wrap_tar {
         let (format, extracted, skipped) =
-            extract_once(archive, &output_dir, password, overwrite, false, &only, cancelled, &mut on_progress)?;
+            extract_once(archive, &output_dir, password, overwrite, false, &only, cancelled, &mut on_progress, ask.take())?;
         on_progress(CreateProgress {
             phase: "finalizing".into(),
             completed_bytes: 1,
@@ -301,7 +421,7 @@ pub fn extract_entries<F: FnMut(CreateProgress)>(
     )));
     fs::create_dir(&stage.0).map_err(|error| error.to_string())?;
     let (format, extracted, skipped) =
-        extract_once(archive, &stage.0, password, true, false, &[], cancelled, &mut on_progress)?;
+        extract_once(archive, &stage.0, password, true, false, &[], cancelled, &mut on_progress, None)?;
 
     let staged: Vec<PathBuf> = fs::read_dir(&stage.0)
         .map_err(|error| error.to_string())?
@@ -311,7 +431,7 @@ pub fn extract_entries<F: FnMut(CreateProgress)>(
         let name = staged[0].file_name().unwrap().to_string_lossy().to_lowercase();
         if name.ends_with(".tar") || looks_like_tar(&staged[0]) {
             let (_, extracted, skipped) =
-                extract_once(&staged[0], &output_dir, None, overwrite, false, &only, cancelled, &mut on_progress)?;
+                extract_once(&staged[0], &output_dir, None, overwrite, false, &only, cancelled, &mut on_progress, ask.take())?;
             return Ok(ExtractResult {
                 output_dir: display_dir,
                 format: format!("{format}+tar"),
@@ -573,4 +693,90 @@ pub fn update_archive<F: FnMut(CreateProgress)>(
         added: result.skipped as usize,
         renamed: result.failed as usize,
     })
+}
+
+/// What a repair brought back.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairResult {
+    pub output_path: String,
+    pub format: String,
+    /// Items written to the new archive.
+    pub recovered: usize,
+    /// Items that could not be read and are missing from it.
+    pub lost: usize,
+}
+
+/// Reads whatever can still be read from a damaged archive and writes it into a new archive
+/// (`.7z` output gives a 7z, anything else a zip). The damaged file is never changed. An encrypted
+/// archive is repaired with its password, and the new archive keeps that password.
+pub fn repair_archive<F: FnMut(CreateProgress)>(
+    archive: &Path,
+    output: &Path,
+    password: Option<&str>,
+    cancelled: &std::sync::Arc<AtomicBool>,
+    mut on_progress: F,
+) -> Result<RepairResult, String> {
+    use crate::create::{create_archive_entries, ArchiveFormat, CreateInput};
+    crate::locale::ensure_utf8();
+    if !archive.is_file() {
+        return Err("압축 파일을 찾을 수 없습니다.".into());
+    }
+    if let (Ok(a), Ok(b)) = (fs::canonicalize(archive), fs::canonicalize(output)) {
+        if a == b {
+            return Err("손상된 원본과 같은 위치에는 저장할 수 없습니다.".into());
+        }
+    }
+    let parent = output.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    fs::create_dir_all(parent).map_err(|error| format!("저장 폴더를 만들지 못했습니다: {error}"))?;
+    let name = output.file_name().ok_or("저장할 파일 이름이 올바르지 않습니다.")?.to_string_lossy().into_owned();
+    let stage = StageDirectory(parent.join(format!(
+        ".silk-zip-repair-{}-{}",
+        std::process::id(),
+        EXTRACT_COUNTER.fetch_add(1, Ordering::Relaxed)
+    )));
+    fs::create_dir(&stage.0).map_err(|error| error.to_string())?;
+
+    let (format, extracted, _, failed) =
+        extract_once_ex(archive, &stage.0, password, true, false, &[], cancelled, &mut on_progress, true, None)
+            .map_err(|error| if error.contains("지원하지 않는 형식") { "압축 파일의 구조를 인식하지 못해 복구할 수 없습니다.".to_string() } else { error })?;
+    if extracted == 0 {
+        return Err("복구할 수 있는 항목이 없습니다.".into());
+    }
+
+    // Every file and folder that came out becomes an entry of the new archive.
+    fn collect(root: &Path, folder: &Path, inputs: &mut Vec<CreateInput>) -> Result<(), String> {
+        for item in fs::read_dir(folder).map_err(|error| error.to_string())? {
+            let item = item.map_err(|error| error.to_string())?;
+            let path = item.path();
+            let kind = item.file_type().map_err(|error| error.to_string())?;
+            let relative = path.strip_prefix(root).map_err(|error| error.to_string())?.to_string_lossy().replace('\\', "/");
+            if kind.is_dir() {
+                inputs.push(CreateInput { source_path: None, archive_path: relative });
+                collect(root, &path, inputs)?;
+            } else if kind.is_file() {
+                inputs.push(CreateInput { source_path: Some(path), archive_path: relative });
+            }
+        }
+        Ok(())
+    }
+    let mut inputs = Vec::new();
+    collect(&stage.0, &stage.0, &mut inputs)?;
+
+    let output_format = if name.to_lowercase().ends_with(".7z") { ArchiveFormat::SevenZip } else { ArchiveFormat::Zip };
+    let temporary = parent.join(format!(".silk-repair-{name}"));
+    let _ = fs::remove_file(&temporary);
+    let created = create_archive_entries(output_format, &inputs, &temporary, 6, password.filter(|value| !value.is_empty()), None, cancelled, |progress| on_progress(progress), None);
+    if let Err(error) = created {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+    if output.exists() {
+        fs::remove_file(output).map_err(|error| format!("기존 파일을 바꾸지 못했습니다: {error}"))?;
+    }
+    fs::rename(&temporary, output).map_err(|error| {
+        let _ = fs::remove_file(&temporary);
+        format!("복구한 파일을 저장하지 못했습니다: {error}")
+    })?;
+    Ok(RepairResult { output_path: output.to_string_lossy().into_owned(), format, recovered: extracted as usize, lost: failed as usize })
 }

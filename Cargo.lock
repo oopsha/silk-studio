@@ -4867,6 +4867,7 @@ dependencies = [
 name = "silk-zip"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "silk-archive",
  "silk-window-state",
  "tauri",
@@ -4874,6 +4875,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-window-controls",
  "windows-sys 0.59.0",
+ "winreg",
 ]
 
 [[package]]

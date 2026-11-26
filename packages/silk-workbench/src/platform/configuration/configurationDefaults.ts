@@ -75,7 +75,7 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "window.commandCenter": true,
   "workbench.navigationControl.enabled": true,
   "workbench.layoutControl.enabled": true,
-  "workbench.colorTheme": "dark",
+  "workbench.colorTheme": "system",
   "workbench.fontSize": 13,
   "workbench.locale": "en",
   "editor.fontFamily": getEditorFontFamily(),

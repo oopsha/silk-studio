@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import { cancelArchive, extractArchive, openOutputFolder, testArchive, updateArchive, type EntryChange, type NewEntry, type CreateProgress, type ExtractResult } from "../archive.ts";
+import { cancelArchive, extractArchive, openOutputFolder, resolveExtractConflict, type ConflictAction, type ExtractConflict, repairArchive, revealInFolder, testArchive, updateArchive, type EntryChange, type NewEntry, type CreateProgress, type ExtractResult, type RepairResult } from "../archive.ts";
 import { getZipSettings } from "../zipSettings.ts";
 import { parentFolder, rememberFolder, resolveTargetFolder, type ExtractTarget } from "../extractTargets.ts";
 
@@ -9,8 +9,10 @@ type ExtractState =
   | null
   | { phase: "running"; progress: CreateProgress | null }
   | { phase: "password"; message: string }
+  | { phase: "conflict"; conflict: ExtractConflict }
   | { phase: "done"; kind: "extract"; result: ExtractResult; elapsedMs: number }
   | { phase: "done"; kind: "test"; tested: number; elapsedMs: number }
+  | { phase: "done"; kind: "repair"; result: RepairResult; elapsedMs: number }
   | { phase: "error"; message: string };
 
 function formatDuration(ms: number): string {
@@ -20,6 +22,17 @@ function formatDuration(ms: number): string {
   const hours = Math.floor(whole / 3600);
   const minutes = Math.floor((whole % 3600) / 60);
   return `${hours ? `${hours}시간 ` : ""}${minutes}분 ${whole % 60}초`;
+}
+
+/** Drops the `\?\` prefix Windows adds to long paths. */
+function plainPath(path: string): string {
+  if (path.startsWith("\\\\?\\UNC\\")) return `\\\\${path.slice(8)}`;
+  return path.startsWith("\\\\?\\") ? path.slice(4) : path;
+}
+
+function formatStamp(seconds: number): string {
+  if (!seconds) return "알 수 없음";
+  return new Date(seconds * 1000).toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "numeric", minute: "2-digit", second: "2-digit" });
 }
 
 function formatBytes(bytes: number): string {
@@ -34,7 +47,7 @@ function formatBytes(bytes: number): string {
 /** Folder pick, progress, password prompt and cancel for one extraction at a time. */
 export function useExtraction() {
   const [state, setState] = useState<ExtractState>(null);
-  const job = useRef<{ operationId: string; archivePath: string; outputDir: string; entries: string[]; test?: boolean; update?: { changes: EntryChange[]; adds: NewEntry[]; onDone: () => void }; copy?: { onDone: () => void } } | null>(null);
+  const job = useRef<{ operationId: string; archivePath: string; outputDir: string; entries: string[]; test?: boolean; update?: { changes: EntryChange[]; adds: NewEntry[]; onDone: () => void }; copy?: { onDone: () => void }; repair?: { output: string; onOpen: (path: string) => void } } | null>(null);
   const active = useRef(false);
 
   const run = useCallback(async (password: string) => {
@@ -47,8 +60,11 @@ export function useExtraction() {
       const onProgress = (progress: CreateProgress) => {
         setState((previous) => (previous?.phase === "running" ? { phase: "running", progress } : previous));
       };
-      if (current.copy) {
-        await extractArchive(current.operationId, current.archivePath, current.outputDir, password, true, onProgress, current.entries);
+      if (current.repair) {
+        const result = await repairArchive(current.operationId, current.archivePath, current.repair.output, password, onProgress);
+        setState({ phase: "done", kind: "repair", result, elapsedMs: performance.now() - startedAt });
+      } else if (current.copy) {
+        await extractArchive(current.operationId, current.archivePath, current.outputDir, password, "overwrite", onProgress, current.entries);
         setState(null);
         current.copy.onDone();
       } else if (current.update) {
@@ -59,7 +75,7 @@ export function useExtraction() {
         const result = await testArchive(current.operationId, current.archivePath, password, onProgress);
         setState({ phase: "done", kind: "test", tested: result.tested, elapsedMs: performance.now() - startedAt });
       } else {
-        const result = await extractArchive(current.operationId, current.archivePath, current.outputDir, password, getZipSettings().overwrite, onProgress, current.entries);
+        const result = await extractArchive(current.operationId, current.archivePath, current.outputDir, password, getZipSettings().existing, onProgress, current.entries, (conflict) => setState({ phase: "conflict", conflict }));
         rememberFolder(result.outputDir);
         if (getZipSettings().openFolderAfter) void openOutputFolder(`${result.outputDir.replace(/[\\/]+$/, "")}/_`);
         setState({ phase: "done", kind: "extract", result, elapsedMs: performance.now() - startedAt });
@@ -107,24 +123,72 @@ export function useExtraction() {
     await run("");
   }, [run]);
 
+  /** Writes what can still be read from a damaged archive into a new archive; `onOpen` opens the result. */
+  const startRepair = useCallback(async (archivePath: string, output: string, onOpen: (path: string) => void) => {
+    if (active.current) return;
+    job.current = { operationId: `repair-${Date.now()}`, archivePath, outputDir: "", entries: [], repair: { output, onOpen } };
+    await run("");
+  }, [run]);
+
   const cancel = useCallback(() => {
     if (job.current) void cancelArchive(job.current.operationId);
   }, []);
 
+  /** Answers the "file already exists" question; the extraction carries on afterwards. */
+  const resolveConflict = useCallback((action: ConflictAction, applyAll: boolean) => {
+    if (!job.current) return;
+    setState({ phase: "running", progress: null });
+    void resolveExtractConflict(job.current.operationId, action, applyAll);
+  }, []);
+
   const close = useCallback(() => { if (!active.current) setState(null); }, []);
 
-  return { state, start, startTest, startUpdate, startCopy, submitPassword: run, cancel, close, isTest: () => job.current?.test === true, isUpdate: () => job.current?.update !== undefined, isCopy: () => job.current?.copy !== undefined, outputDir: () => job.current?.outputDir ?? "" };
+  return { state, start, startTest, startUpdate, startCopy, startRepair, submitPassword: run, cancel, close, resolveConflict, isTest: () => job.current?.test === true, isUpdate: () => job.current?.update !== undefined, isCopy: () => job.current?.copy !== undefined, isRepair: () => job.current?.repair !== undefined, repairOpen: () => job.current?.repair?.onOpen, outputDir: () => job.current?.outputDir ?? "" };
 }
 
 type ExtractionController = ReturnType<typeof useExtraction>;
 
 export function ExtractDialog({ controller }: { controller: ExtractionController }) {
-  const { state, submitPassword, cancel, close } = controller;
+  const { state, submitPassword, cancel, close, resolveConflict } = controller;
   const [password, setPassword] = useState("");
+  const [conflictAction, setConflictAction] = useState<ConflictAction>("overwrite");
+  const [applyAll, setApplyAll] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => { if (state?.phase !== "password") { setPassword(""); setShowPassword(false); } }, [state?.phase]);
+  useEffect(() => { if (state?.phase === "conflict") { setConflictAction("overwrite"); setApplyAll(false); } }, [state]);
   if (!state) return null;
+
+  if (state.phase === "conflict") {
+    const { conflict } = state;
+    return (
+      <div className="workbench-confirm-dialog__backdrop" role="presentation">
+        <form className="workbench-confirm-dialog zip-conflict" role="dialog" aria-modal="true" aria-labelledby="zip-conflict-title" onSubmit={(event) => { event.preventDefault(); resolveConflict(conflictAction, applyAll); }}>
+          <header className="workbench-confirm-dialog__header" data-tauri-drag-region>
+            <h2 id="zip-conflict-title">중복 확인</h2>
+            <button type="button" className="workbench-confirm-dialog__close" aria-label="닫기" onClick={() => resolveConflict("cancel", false)}><Codicon name="close" /></button>
+          </header>
+          <div className="workbench-confirm-dialog__body zip-extract-body">
+            <p>이미 같은 이름의 파일이 존재합니다.</p>
+            <p className="zip-conflict__path" title={plainPath(conflict.path)}>{plainPath(conflict.path)}</p>
+            <div className="zip-conflict__compare">
+              <section><h3>기존 파일</h3><p>{formatBytes(conflict.existingSize)}</p><p>{formatStamp(conflict.existingModified)}</p></section>
+              <section><h3>압축 풀 파일</h3><p>{formatBytes(conflict.newSize)}</p><p>{formatStamp(conflict.newModified)}</p></section>
+            </div>
+            <p>어떤 작업을 하시겠습니까?</p>
+            <label className="zip-conflict__option"><input type="radio" name="zip-conflict" checked={conflictAction === "skip"} onChange={() => setConflictAction("skip")} /> 건너뛰기</label>
+            <label className="zip-conflict__option"><input type="radio" name="zip-conflict" checked={conflictAction === "overwrite"} onChange={() => setConflictAction("overwrite")} /> 덮어쓰기</label>
+            <label className="zip-conflict__option"><input type="radio" name="zip-conflict" checked={conflictAction === "rename"} onChange={() => setConflictAction("rename")} /> 이름 변경 (이름 (2).확장자)</label>
+            <label className="zip-conflict__option"><input type="checkbox" checked={applyAll} onChange={(event) => setApplyAll(event.target.checked)} /> 모든 파일에 적용</label>
+          </div>
+          <footer className="workbench-confirm-dialog__footer">
+            <button type="submit" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus>확인</button>
+            <button type="button" className="workbench-confirm-dialog__button" onClick={() => resolveConflict("cancel", false)}>취소</button>
+          </footer>
+        </form>
+      </div>
+    );
+  }
 
   const progress = state.phase === "running" ? state.progress : null;
   const percent = progress
@@ -135,16 +199,17 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
   const testing = controller.isTest();
   const updating = controller.isUpdate();
   const copying = controller.isCopy();
-  const title = state.phase === "done" ? (state.kind === "test" ? "테스트 완료" : "압축 풀기 완료")
+  const repairing = controller.isRepair();
+  const title = state.phase === "done" ? (state.kind === "test" ? "테스트 완료" : state.kind === "repair" ? "압축 파일 복구 완료" : "압축 풀기 완료")
     : state.phase === "password" ? "암호 입력"
-    : state.phase === "error" ? (copying ? "복사 실패" : updating ? "변경 적용 실패" : testing ? "압축 파일 테스트 실패" : "압축 풀기 실패")
-    : copying ? "복사 준비 중" : updating ? "변경 적용 중" : testing ? "압축 파일 테스트 중" : "압축 푸는 중";
+    : state.phase === "error" ? (repairing ? "압축 파일 복구 실패" : copying ? "복사 실패" : updating ? "변경 적용 실패" : testing ? "압축 파일 테스트 실패" : "압축 풀기 실패")
+    : repairing ? "압축 파일 복구 중" : copying ? "복사 준비 중" : updating ? "변경 적용 중" : testing ? "압축 파일 테스트 중" : "압축 푸는 중";
   const canDismiss = state.phase !== "running";
 
   return (
     <div className="workbench-confirm-dialog__backdrop" role="presentation">
       <div className="workbench-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="zip-extract-title">
-        <header className="workbench-confirm-dialog__header">
+        <header className="workbench-confirm-dialog__header" data-tauri-drag-region>
           <h2 id="zip-extract-title">{title}</h2>
           {canDismiss ? <button type="button" className="workbench-confirm-dialog__close" aria-label="닫기" onClick={close}><Codicon name="close" /></button> : null}
         </header>
@@ -173,6 +238,9 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
           {state.phase === "done" && state.kind === "extract" ? (
             <p>{`${state.result.extracted.toLocaleString()}개 항목을 풀었습니다.${state.result.skipped ? `\n이미 있는 ${state.result.skipped.toLocaleString()}개 항목은 건너뛰었습니다.` : ""}\n소요 시간: ${formatDuration(state.elapsedMs)}\n${state.result.outputDir}`}</p>
           ) : null}
+          {state.phase === "done" && state.kind === "repair" ? (
+            <p>{`${state.result.recovered.toLocaleString()}개 항목을 복구했습니다.${state.result.lost ? `\n읽을 수 없어 복구하지 못한 항목: ${state.result.lost.toLocaleString()}개` : ""}\n소요 시간: ${formatDuration(state.elapsedMs)}\n${state.result.outputPath}`}</p>
+          ) : null}
           {state.phase === "error" ? <p>{state.message}</p> : null}
         </div>
         <footer className="workbench-confirm-dialog__footer">
@@ -187,6 +255,13 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
           {state.phase === "done" && state.kind === "extract" ? (
             <>
               <button type="button" className="workbench-confirm-dialog__button" onClick={() => { void openOutputFolder(`${state.result.outputDir.replace(/[\\/]+$/, "")}/_`); close(); }}>폴더 열기</button>
+              <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>확인</button>
+            </>
+          ) : null}
+          {state.phase === "done" && state.kind === "repair" ? (
+            <>
+              <button type="button" className="workbench-confirm-dialog__button" onClick={() => { void revealInFolder(state.result.outputPath).catch(() => undefined); close(); }}>폴더 열기</button>
+              <button type="button" className="workbench-confirm-dialog__button" onClick={() => { const open = controller.repairOpen(); close(); open?.(state.result.outputPath); }}>복구한 파일 열기</button>
               <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>확인</button>
             </>
           ) : null}

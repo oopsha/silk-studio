@@ -36,15 +36,17 @@ function MenuDropdown({ groups, onSelect }: MenuDropdownProps) {
                   className="menu-dropdown__submenu-host"
                   onMouseEnter={() => {
                     setFocusedItemId(null);
-                    setOpenSubmenuId(item.menuId.id);
+                    setOpenSubmenuId(item.enabled ? item.menuId.id : null);
                   }}
                 >
                   <button
                     type="button"
-                    className="menu-dropdown__item menu-dropdown__submenu-trigger"
+                    className={`menu-dropdown__item menu-dropdown__submenu-trigger${item.enabled ? "" : " menu-dropdown__item--disabled"}`}
                     role="menuitem"
                     aria-haspopup="menu"
                     aria-expanded={isOpen}
+                    aria-disabled={!item.enabled}
+                    disabled={!item.enabled}
                     onClick={() => setOpenSubmenuId(item.menuId.id)}
                   >
                     <span className="menu-dropdown__label">{item.label}</span>

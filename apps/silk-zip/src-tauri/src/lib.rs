@@ -1,5 +1,8 @@
 mod archive;
 mod clipboard;
+mod launch;
+#[cfg(windows)]
+mod shell_menu;
 mod settings;
 mod window_layout;
 
@@ -55,7 +58,10 @@ fn cascade_window(window: &tauri::WebviewWindow) {
 }
 
 #[tauri::command]
-fn ensure_title_bar_overlay(window: tauri::WebviewWindow) -> Result<(), String> {
+fn ensure_title_bar_overlay(window: tauri::WebviewWindow, quick: tauri::State<'_, launch::QuickMode>) -> Result<(), String> {
+    if quick.0 {
+        return Ok(());
+    }
     configure_main_window(&window).map_err(|error| error.to_string())
 }
 
@@ -123,19 +129,33 @@ async fn draft_scan(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    if shell_menu::handle_args() {
+        return;
+    }
+    let request = launch::from_environment();
+    let quick = request.as_ref().is_some_and(|request| launch::is_quick(&request.action));
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_controls::init())
         .manage(archive::CreateTasks::default())
+        .manage(archive::ConflictWaiters::default())
+        .manage(launch::QuickMode(quick))
+        .manage(launch::LaunchState(std::sync::Mutex::new(request)))
         .invoke_handler(tauri::generate_handler![
             archive::archive_list,
             archive::archive_create,
             archive::archive_extract,
+            archive::archive_resolve_conflict,
             archive::archive_test,
             archive::archive_update,
+            archive::archive_repair,
             archive::archive_progress_diagnostic,
             archive::archive_cancel,
             archive::open_output_folder,
+            archive::open_install_folder,
+            launch::take_launch_request,
+            launch::unique_path,
             archive::new_window,
             archive::exit_app,
             archive::archive_save_as,
@@ -155,14 +175,25 @@ pub fn run() {
             window_layout::window_layout_file_exists,
             window_layout::window_layout_load,
         ])
-        .setup(|app| {
+        .setup(move |app| {
             if let Some(window) = app.get_webview_window("main") {
-                configure_main_window(&window)?;
+                // The small job window has no title bar buttons; the dialog's own close button is enough.
+                if !quick {
+                    configure_main_window(&window)?;
+                }
                 if archive::is_elevated() {
                     let _ = window.set_title("Silk Zip (관리자)");
                 }
-                silk_window_state::restore_main_window(app.handle(), &window);
-                if std::env::args().any(|arg| arg == archive::NEW_WINDOW_ARG) {
+                if quick {
+                    let _ = window.set_min_size(None::<tauri::Size>);
+                    let _ = window.set_size(tauri::LogicalSize::new(460.0, 230.0));
+                    let _ = window.center();
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                } else {
+                    silk_window_state::restore_main_window(app.handle(), &window);
+                }
+                if !quick && std::env::args().any(|arg| arg == archive::NEW_WINDOW_ARG) {
                     cascade_window(&window);
                 }
             }

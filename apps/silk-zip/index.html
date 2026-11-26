@@ -24,11 +24,11 @@
       (() => {
         const dark = { background: "#191a1b", foreground: "#8c8c8c" };
         const light = { background: "#fafafd", foreground: "#606060" };
-        let selected = "dark";
+        let selected = "system";
         try {
           const saved = JSON.parse(localStorage.getItem("silk-workbench.configuration") || "{}");
           selected = saved["workbench.colorTheme"] || selected;
-        } catch { /* Use the dark default when localStorage is unavailable or invalid. */ }
+        } catch { /* Use the system default when localStorage is unavailable or invalid. */ }
         const isLight = selected === "light" ||
           (selected === "system" && window.matchMedia("(prefers-color-scheme: light)").matches);
         const colors = isLight ? light : dark;

@@ -9,6 +9,11 @@ function archiveIcon(archive: ArchiveListing) {
   return resourceIcon({ id: "", name: file.replace(/\.(?:\d{3}|z\d{2})$/i, ""), directory: false });
 }
 
+/** The archive details shown in the optional columns. */
+function entryMeta(entry: ArchiveListing["entries"][number]): ResourceNode["meta"] {
+  return { packedSize: entry.packedSize, modified: entry.modified, crc: entry.crc, method: entry.method, encryption: entry.encryption, attributes: entry.attributes };
+}
+
 const statusLabel = (status: "added" | "renamed" | undefined) => (status === "added" ? "추가됨" : status === "renamed" ? "이름 변경됨" : undefined);
 
 /** Build virtual directories, including folders absent from the archive headers.
@@ -25,10 +30,10 @@ export function createArchiveSource(archive: ArchiveListing): ResourceSource {
       if (directory) {
         if (!children.has(id)) {
           children.set(id, []);
-          children.get(parentId)!.push({ id, name, directory: true, status: depth === segments.length - 1 ? statusLabel(entry.status) : undefined });
+          children.get(parentId)!.push({ id, name, directory: true, status: depth === segments.length - 1 ? statusLabel(entry.status) : undefined, location: depth === segments.length - 1 ? entry.sourcePath ?? undefined : undefined, meta: depth === segments.length - 1 ? entryMeta(entry) : undefined });
         }
       } else {
-        children.get(parentId)!.push({ id, name, directory: false, size: entry.size, encrypted: entry.encrypted, status: statusLabel(entry.status) });
+        children.get(parentId)!.push({ id, name, directory: false, size: entry.size, encrypted: entry.encrypted, status: statusLabel(entry.status), location: entry.sourcePath ?? undefined, meta: entryMeta(entry) });
       }
       parentId = id;
     });

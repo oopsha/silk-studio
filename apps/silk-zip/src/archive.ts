@@ -4,7 +4,11 @@ export type ArchiveListing = {
   path: string;
   format: string;
   engine: string;
-  entries: { path: string; size: number | null; directory: boolean; encrypted: boolean; status?: "added" | "renamed"; sourcePath?: string | null }[];
+  entries: {
+    path: string; size: number | null; directory: boolean; encrypted: boolean; status?: "added" | "renamed"; sourcePath?: string | null;
+    /** Details read from the archive; absent when the format does not provide them. */
+    packedSize?: number; modified?: number; crc?: number; method?: string; encryption?: string; attributes?: number;
+  }[];
   warnings: string[];
 };
 
@@ -50,26 +54,39 @@ export function createArchive(
 
 export type ExtractResult = { outputDir: string; format: string; extracted: number; skipped: number };
 
+/** A file that already exists where an entry is about to be written (times are Unix seconds, 0 = unknown). */
+export type ExtractConflict = { path: string; existingSize: number; existingModified: number; newSize: number; newModified: number };
+export type ConflictAction = "skip" | "overwrite" | "rename" | "cancel";
+
 export function extractArchive(
   operationId: string,
   archivePath: string,
   outputDir: string,
   password: string,
-  overwrite: boolean,
+  existing: "ask" | "skip" | "overwrite",
   onProgress: (progress: CreateProgress) => void,
   entries: string[] = [],
+  onConflict: (conflict: ExtractConflict) => void = () => {},
 ): Promise<ExtractResult> {
   const channel = new Channel<CreateProgress>();
   channel.onmessage = onProgress;
+  const conflicts = new Channel<ExtractConflict>();
+  conflicts.onmessage = onConflict;
   return invoke("archive_extract", {
     operationId,
     archivePath,
     outputDir,
     password: password || null,
-    overwrite,
+    overwrite: existing === "overwrite",
+    askExisting: existing === "ask",
     entries: entries.length ? entries : null,
     onProgress: channel,
+    onConflict: conflicts,
   });
+}
+
+export function resolveExtractConflict(operationId: string, action: ConflictAction, applyAll: boolean): Promise<boolean> {
+  return invoke("archive_resolve_conflict", { operationId, action, applyAll });
 }
 
 /** A pending change to existing entries; applied in order (a folder path covers what is below). */
@@ -89,6 +106,21 @@ export function updateArchive(
   const channel = new Channel<CreateProgress>();
   channel.onmessage = onProgress;
   return invoke("archive_update", { operationId, archivePath, changes, adds, password: password || null, onProgress: channel });
+}
+
+export type RepairResult = { outputPath: string; format: string; recovered: number; lost: number };
+
+/** Writes what can still be read from a damaged archive into a new archive at `outputPath`. */
+export function repairArchive(
+  operationId: string,
+  archivePath: string,
+  outputPath: string,
+  password: string,
+  onProgress: (progress: CreateProgress) => void,
+): Promise<RepairResult> {
+  const channel = new Channel<CreateProgress>();
+  channel.onmessage = onProgress;
+  return invoke("archive_repair", { operationId, archivePath, outputPath, password: password || null, onProgress: channel });
 }
 
 export type TestResult = { format: string; tested: number };
@@ -157,6 +189,22 @@ export function openNewWindow(admin: boolean): Promise<void> {
 
 export function revealInFolder(path: string): Promise<void> {
   return invoke("reveal_in_folder", { path });
+}
+
+/** What the app was started to do (from an Explorer/Finder menu); null for a plain start. */
+export type LaunchRequest = { action: string; paths: string[] };
+
+export function takeLaunchRequest(): Promise<LaunchRequest | null> {
+  return invoke("take_launch_request");
+}
+
+/** `path`, or the first free `name (2).ext` beside it when something already exists there. */
+export function uniquePath(path: string): Promise<string> {
+  return invoke("unique_path", { path });
+}
+
+export function openInstallFolder(): Promise<void> {
+  return invoke("open_install_folder");
 }
 
 export function openOutputFolder(path: string): Promise<void> {

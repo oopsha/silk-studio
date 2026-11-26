@@ -12,18 +12,36 @@ export const ZIP_VIEW_MODES: readonly { id: ZipViewMode; title: string }[] = [
   { id: "details", title: "자세히" },
 ];
 
+/** Columns of the opened archive's file list that can be switched on and off (보기 > 표시할 열). */
+export const ZIP_COLUMNS = [
+  { id: "packed", title: "압축 크기" },
+  { id: "size", title: "원본 크기" },
+  { id: "kind", title: "파일 종류" },
+  { id: "modified", title: "수정한 날짜" },
+  { id: "method", title: "압축 방식" },
+  { id: "encryption", title: "암호 방식" },
+  { id: "crc", title: "CRC" },
+  { id: "attributes", title: "속성" },
+] as const;
+export type ZipColumnId = (typeof ZIP_COLUMNS)[number]["id"];
+const DEFAULT_COLUMNS: readonly ZipColumnId[] = ["packed", "size", "kind", "modified"];
+
+export type ExistingFilePolicy = "ask" | "skip" | "overwrite";
+
 export interface ZipSettings {
+  /** Shown columns, in the order of `ZIP_COLUMNS`. */
+  visibleColumns: readonly ZipColumnId[];
   /** How the opened archive's files are laid out (보기 > 보기 형식). */
   viewMode: ZipViewMode;
   extractTarget: ExtractDefaultTarget;
-  /** Replace files that already exist in the destination instead of skipping them. */
-  overwrite: boolean;
+  /** What happens to files that already exist in the destination. */
+  existing: ExistingFilePolicy;
   /** Open the destination folder once extraction finishes. */
   openFolderAfter: boolean;
 }
 
 const STORAGE_KEY = "silkZip.settings";
-const DEFAULTS: ZipSettings = { viewMode: "details", extractTarget: "ask", overwrite: false, openFolderAfter: false };
+const DEFAULTS: ZipSettings = { visibleColumns: DEFAULT_COLUMNS, viewMode: "details", extractTarget: "ask", existing: "ask", openFolderAfter: false };
 
 /** Reads settings text; unknown or broken content falls back to the defaults. */
 function parse(text: string | null): ZipSettings {
@@ -31,9 +49,15 @@ function parse(text: string | null): ZipSettings {
     const stored: unknown = JSON.parse(text ?? "{}");
     const value = (stored && typeof stored === "object" ? stored : {}) as Partial<ZipSettings>;
     return {
+      visibleColumns: Array.isArray(value.visibleColumns)
+        ? ZIP_COLUMNS.map((column) => column.id).filter((id) => (value.visibleColumns as unknown[]).includes(id))
+        : DEFAULTS.visibleColumns,
       viewMode: ZIP_VIEW_MODES.some((mode) => mode.id === value.viewMode) ? (value.viewMode as ZipViewMode) : DEFAULTS.viewMode,
       extractTarget: value.extractTarget === "named" || value.extractTarget === "here" ? value.extractTarget : DEFAULTS.extractTarget,
-      overwrite: typeof value.overwrite === "boolean" ? value.overwrite : DEFAULTS.overwrite,
+      existing: value.existing === "ask" || value.existing === "skip" || value.existing === "overwrite"
+        ? value.existing
+        // Settings saved before "ask" existed stored a plain true/false; false was the untouched default.
+        : (value as { overwrite?: unknown }).overwrite === true ? "overwrite" : DEFAULTS.existing,
       openFolderAfter: typeof value.openFolderAfter === "boolean" ? value.openFolderAfter : DEFAULTS.openFolderAfter,
     };
   } catch {

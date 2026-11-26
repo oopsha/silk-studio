@@ -147,6 +147,7 @@ async function buildEntry(
     return Submenu.new({
       id: entry.menuId.id,
       text: entry.label,
+      enabled: entry.enabled,
       items: nestedItems,
     });
   }
