@@ -29,7 +29,6 @@ import {
   type EffectiveColorThemeId,
 } from "@silk-studio/ui/platform/colorTheme.ts";
 import {
-  toQueryResultRows,
   isResultTruncated,
   getQueryResultRowIndex,
   QUERY_RESULT_ROW_NUMBER_COL_ID,
@@ -38,7 +37,9 @@ import {
 } from "../../../services/query/queryResult";
 import { QueryResultGridService, QueryResultGridController } from "../../../services/query/queryResultGridService";
 import ContextMenu, { type ContextMenuItem } from "../../common/ContextMenu";
-import { fetchQueryResultPage } from "../../../services/query/queryResultPaging";
+import { invoke } from "@tauri-apps/api/core";
+import { copyQueryResultAll, countQueryResultRows, streamQueryResultCsv } from "../../../services/query/queryResultExport";
+import type { StreamExport } from "../../../services/query/queryResultGridService";
 import { translateFilterModel, translateSortModel } from "../../../services/query/filterModelTranslator";
 import { QueryResultDirtyService } from "../../../services/query/queryResultDirtyService";
 import { formatErrorMessage } from "../../../services/formatErrorMessage";
@@ -69,7 +70,7 @@ import "./QueryResultUpdateDialog.css";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-import { gridUiStateByTabId, gridViewStateByTabId, type GridUiState } from "../../../services/query/queryResultViewStateService";
+import { gridUiStateByTabId, gridViewStateByTabId, serverTotalByTabId, type GridUiState } from "../../../services/query/queryResultViewStateService";
 
 type PendingGridReshuffle = {
   next: GridUiState;
@@ -133,6 +134,18 @@ function applyGridUiState(api: GridApi<QueryResultRow>, state: GridUiState): voi
  * coexist with the loaded rows and keep a stable identity while more data arrives.
  */
 const INCREMENTAL_SCROLL_PAGE_SIZE = RESULT_PAGE_SIZE;
+
+/**
+ * Caps for copying a whole server result to the clipboard (Ctrl+A → Ctrl+C). Past these the
+ * clipboard payload gets too large for the WebView and paste targets — use CSV/Excel export.
+ */
+const COPY_ALL_MAX_ROWS = 100_000;
+
+/** Result-wide index of the shown page's first row (0 for unpaged results). */
+function pageOffset(view: { pageIndex?: number; pageSize?: number } | undefined): number {
+  return (view?.pageIndex ?? 0) * (view?.pageSize ?? 0);
+}
+const COPY_ALL_MAX_CHARS = 30_000_000;
 
 const GRID_THEME_PALETTES: Record<
   EffectiveColorThemeId,
@@ -220,6 +233,8 @@ function QueryResultGrid({
   // A truncated result keeps its initial batch and appends subsequent pages on demand. Unlike AG
   // Grid's Infinite Row Model, this lets Client-Side transactions add/duplicate rows safely.
   const useIncrementalScroll = QueryResultQueryService.isPaged(tabId) && !!connectionId?.trim();
+  /** Paged result browsed by appending on scroll (vs. one page at a time with the navigator). */
+  const scrollPaging = useIncrementalScroll && QueryResultQueryService.pagingMode(tabId) === "scroll";
   const apiRef = useRef<GridApi<QueryResultRow> | null>(null);
   const gridRootRef = useRef<HTMLDivElement | null>(null);
   const autoSizePendingRef = useRef(true);
@@ -237,7 +252,49 @@ function QueryResultGrid({
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [exportProgressRows, setExportProgressRows] = useState<number | null>(null);
   const [exportInProgress, setExportInProgress] = useState(false);
+  const [exportMenu, setExportMenu] = useState<{ top: number; left: number } | null>(null);
+  /** The progress dialog is shared by file export and the full-result clipboard copy. */
+  const [progressKind, setProgressKind] = useState<"export" | "copy">("export");
+  /** Ctrl+A → Ctrl+C while more rows remain on the server: ask how much to copy. */
+  const [copyAllPrompt, setCopyAllPrompt] = useState<{ loadedRows: number } | null>(null);
+  /**
+   * Total rows of a paged result, from a background `COUNT(*)` run after the first page.
+   * "stopped" = cancelled (to free the connection for scroll paging) or failed; click to retry.
+   */
+  const totalFilterKey = () => JSON.stringify(gridUiStateByTabId.get(tabId)?.filterModel ?? {});
+  const refreshGeneration = useSyncExternalStore(
+    (listener) => QueryResultQueryService.onDidChange(listener),
+    () => QueryResultQueryService.getRefreshGeneration(tabId),
+    () => 0,
+  );
+  // A remount (switching editor tabs) reuses the last count for the same filter and data.
+  const [serverTotal, setServerTotal] = useState<
+    { status: "counting" } | { status: "done"; count: number } | { status: "stopped" } | null
+  >(() => {
+    const cached = serverTotalByTabId.get(tabId);
+    return cached && cached.filterKey === totalFilterKey() &&
+      cached.refreshGeneration === QueryResultQueryService.getRefreshGeneration(tabId)
+      ? cached.total
+      : null;
+  });
+  useEffect(() => {
+    if (serverTotal?.status === "done" || serverTotal?.status === "stopped") {
+      serverTotalByTabId.set(tabId, { filterKey: totalFilterKey(), refreshGeneration, total: serverTotal });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverTotal, tabId]);
+  const countAbortRef = useRef<AbortController | null>(null);
+  /** Bumped after a server-side filter reload so the total is counted again. */
+  const [countGeneration, setCountGeneration] = useState(0);
   const exportingRef = useRef(false);
+  const exportAbortRef = useRef<AbortController | null>(null);
+  const exportStartedAtRef = useRef<number | null>(null);
+  const [exportNow, setExportNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (exportProgressRows === null) return;
+    const timer = window.setInterval(() => setExportNow(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [exportProgressRows === null]);
   const actionTimerRef = useRef<number | null>(null);
   const [saveBlockedReason, setSaveBlockedReason] = useState<string | null>(null);
   const [preview, setPreview] = useState<UpdatePreview | null>(null);
@@ -295,6 +352,11 @@ function QueryResultGrid({
   const queryBusy = useSyncExternalStore(
     (listener) => QueryResultQueryService.onDidChange(listener),
     () => QueryResultQueryService.isBusy(tabId),
+    () => false,
+  );
+  const appendingRows = useSyncExternalStore(
+    (listener) => QueryResultQueryService.onDidChange(listener),
+    () => QueryResultQueryService.isAppending(tabId),
     () => false,
   );
   const restoreGridViewport = useCallback(() => {
@@ -459,7 +521,9 @@ function QueryResultGrid({
       {
         colId: QUERY_RESULT_ROW_NUMBER_COL_ID,
         headerName: "#",
-        valueGetter: (params) => (params.node?.rowIndex ?? 0) + 1,
+        // Paged results number rows across the whole result (page 2 starts at pageSize + 1).
+        valueGetter: (params) =>
+          (params.node?.rowIndex ?? 0) + 1 + pageOffset(gridViewStateByTabId.get(tabId)),
         width: 56,
         minWidth: 40,
         pinned: "left",
@@ -607,19 +671,134 @@ function QueryResultGrid({
     }, 2800);
   };
 
-  /**
-   * Loads the next server page into the Client-Side Row Model. Existing rows retain their stable
-   * result index and locally added/duplicated rows remain in their transaction position, which is
-   * the same separation of remote rows and local edit changes used by DevExtreme.
-   */
+  /** The agent runs one statement per connection: a running COUNT would hold up page loads. */
+  const stopServerCount = useCallback(() => {
+    const running = countAbortRef.current;
+    if (!running) return;
+    countAbortRef.current = null;
+    running.abort();
+    setServerTotal({ status: "stopped" });
+  }, []);
+
+  /** Rows exist beyond the shown page (before or after it). */
+  const hasOtherPages = () => {
+    const view = gridViewStateByTabId.get(tabId);
+    return view?.hasMore === true || (view?.pageIndex ?? 0) > 0;
+  };
+
+  /** Counts all rows (current filter); resolves the total, or null when cancelled/failed. */
+  const startServerCount = useCallback((): Promise<number | null> => {
+    countAbortRef.current?.abort();
+    countAbortRef.current = null;
+    const view = gridViewStateByTabId.get(tabId);
+    if (!useIncrementalScroll || !connectionId || (view?.hasMore !== true && (view?.pageIndex ?? 0) === 0)) {
+      setServerTotal(null);
+      return Promise.resolve(null);
+    }
+    const abort = new AbortController();
+    countAbortRef.current = abort;
+    setServerTotal({ status: "counting" });
+    const filterModel = (gridUiStateByTabId.get(tabId)?.filterModel ??
+      apiRef.current?.getFilterModel() ??
+      {}) as Record<string, unknown>;
+    return countQueryResultRows({
+      connectionId,
+      sql: executedSql ?? sql,
+      knownColumns: result.columns,
+      binds,
+      filters: translateFilterModel(filterModel, result.columns),
+      signal: abort.signal,
+    })
+      .then((outcome) => {
+        if (countAbortRef.current !== abort) return null;
+        if (outcome.cancelled || typeof outcome.rowCount !== "number") {
+          setServerTotal({ status: "stopped" });
+          return null;
+        }
+        setServerTotal({ status: "done", count: outcome.rowCount });
+        return outcome.rowCount;
+      })
+      .catch((error) => {
+        if (countAbortRef.current !== abort) return null;
+        console.warn("[query-result] row count failed", error);
+        setServerTotal({ status: "stopped" });
+        return null;
+      })
+      .finally(() => {
+        if (countAbortRef.current === abort) countAbortRef.current = null;
+      });
+  }, [binds, connectionId, executedSql, result.columns, sql, tabId, useIncrementalScroll]);
+
+  /** Shows page `pageIndex` (zero-based) of a paged result. */
+  const goToPage = async (pageIndex: number) => {
+    if (!useIncrementalScroll || QueryResultQueryService.isBusy(tabId)) return;
+    const view = gridViewStateByTabId.get(tabId);
+    if (!view || pageIndex < 0 || pageIndex === (view.pageIndex ?? 0)) return;
+    if (QueryResultDirtyService.hasPendingChanges(tabId)) {
+      // Edits are tracked per loaded page; leaving it would silently drop them.
+      flashMessage(t("app.query.pageNeedsSave"));
+      return;
+    }
+    stopServerCount();
+    try {
+      await QueryResultQueryService.goToPage(tabId, pageIndex);
+      apiRef.current?.deselectAll();
+      cellSelectionRef.current = null;
+      gridController.clearCellSelection();
+      rowSelectionAnchorRef.current = null;
+    } catch (error) {
+      if (!apiRef.current || apiRef.current.isDestroyed()) return;
+      flashMessage(t("app.query.pagedFetchFailed").replace("{message}", formatErrorMessage(error, "")));
+    }
+  };
+
+  /** Last page needs the total row count; count first when it isn't known yet. */
+  const goToLastPage = async () => {
+    const pageSize = gridViewStateByTabId.get(tabId)?.pageSize ?? INCREMENTAL_SCROLL_PAGE_SIZE;
+    const total = serverTotal?.status === "done" ? serverTotal.count : await startServerCount();
+    if (total == null || total <= 0) return;
+    await goToPage(Math.ceil(total / pageSize) - 1);
+  };
+
+  // Count once the first page is on screen (and again after a server-side filter reload), but
+  // not on every remount: switching editor tabs reuses the cached count for the same filter.
+  // A refresh (after save, rollback…) can change the row count, so it also invalidates the cache.
+  useEffect(() => {
+    const cached = serverTotalByTabId.get(tabId);
+    if (countGeneration === 0 && cached && cached.filterKey === totalFilterKey() &&
+      cached.refreshGeneration === refreshGeneration) {
+      setServerTotal(cached.total);
+    } else {
+      void startServerCount();
+    }
+    return () => {
+      countAbortRef.current?.abort();
+      countAbortRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabId, useIncrementalScroll, connectionId, countGeneration, refreshGeneration]);
+
+  /** Scroll mode: loads the next block into the Client-Side Row Model (rows keep their index). */
   const loadNextPage = useCallback(async () => {
-    if (!useIncrementalScroll || truncateBeforeImport) return;
+    if (!scrollPaging || truncateBeforeImport) return;
+    // One statement per connection: a running COUNT would hold up the append.
+    stopServerCount();
     try { await QueryResultQueryService.append(tabId); }
     catch (error) {
       if (!apiRef.current || apiRef.current.isDestroyed()) return;
       flashMessage(t("app.query.pagedFetchFailed").replace("{message}", formatErrorMessage(error, "")));
     }
-  }, [tabId, useIncrementalScroll, truncateBeforeImport, t]);
+  }, [tabId, scrollPaging, truncateBeforeImport, t, stopServerCount]);
+
+  /** Stops a slow scroll append: drop its rows and cancel the statement in the agent. */
+  const handleCancelAppend = () => {
+    const cancelConnectionId = QueryResultQueryService.cancelAppend(tabId);
+    if (!cancelConnectionId) return;
+    void invoke("query_cancel", { connectionId: cancelConnectionId }).catch((error) => {
+      console.warn("[query-result] cancel append failed", error);
+    });
+    flashMessage(t("app.query.loadingMoreRowsCancelled"));
+  };
 
   const handleBodyScrollEnd = useCallback(() => {
     const api = apiRef.current;
@@ -631,8 +810,19 @@ function QueryResultGrid({
     lastViewportRangeRef.current = { first, last };
     const view = gridViewStateByTabId.get(tabId);
     if (view) gridViewStateByTabId.set(tabId, { ...view, firstVisibleRow: first, lastVisibleRow: last });
-    if (api.getDisplayedRowCount() > 0 && last >= api.getDisplayedRowCount() - 3) void loadNextPage();
-  }, [loadNextPage, tabId]);
+    if (scrollPaging && view?.hasMore && api.getDisplayedRowCount() > 0 &&
+      last >= api.getDisplayedRowCount() - 3) void loadNextPage();
+  }, [loadNextPage, scrollPaging, tabId]);
+
+  /** Scroll mode: load the next block when the last rows are already on screen. */
+  const loadMoreIfAtBottom = () => {
+    const api = apiRef.current;
+    if (!scrollPaging || !api || api.isDestroyed() || QueryResultQueryService.isBusy(tabId) ||
+      QueryResultQueryService.isAppending(tabId)) return;
+    if (gridViewStateByTabId.get(tabId)?.hasMore !== true) return;
+    const count = api.getDisplayedRowCount();
+    if (count > 0 && api.getLastDisplayedRowIndex() >= count - 3) void loadNextPage();
+  };
 
   const performServerReshuffle = async (request: PendingGridReshuffle) => {
     const api = apiRef.current;
@@ -640,10 +830,12 @@ function QueryResultGrid({
     applyingGridQueryStateRef.current = true;
     applyGridUiState(api, request.next);
     applyingGridQueryStateRef.current = false;
+    stopServerCount();
     try {
       const payload = await QueryResultQueryService.reload(tabId, request.next);
       if (!payload || api.isDestroyed()) return;
       appliedGridUiStateRef.current = gridUiStateByTabId.get(tabId) ?? request.next;
+      setCountGeneration((value) => value + 1);
       window.requestAnimationFrame(() => {
         if (api.isDestroyed()) return;
         gridController.refreshSnapshot();
@@ -689,62 +881,39 @@ function QueryResultGrid({
     void performServerReshuffle(request);
   };
 
-  const fetchAllRowsForExport = useCallback(async (
-    visibleColumns: string[],
-    onProgress?: (rowCount: number | null) => void,
-  ) => {
-    if (!useIncrementalScroll || !connectionId) return null;
-    const api = apiRef.current;
-    if (!api) return null;
-    const filterModel = api.getFilterModel() as Record<string, unknown>;
-    const filterActive = Object.keys(filterModel).length > 0;
-    const sort = translateSortModel(
-      api.getColumnState()
-        .filter((column) => column.sort === "asc" || column.sort === "desc")
-        .sort((left, right) => (left.sortIndex ?? 0) - (right.sortIndex ?? 0))
-        .map((column) => ({ colId: column.colId, sort: column.sort! })),
-      result.columns,
-    );
-    const sortActive = sort.length > 0;
-    const filters = translateFilterModel(filterModel, result.columns);
-    const rows: QueryResultRow[] = [];
-    let offset = 0;
-    while (true) {
-      const payload = await fetchQueryResultPage(
-        connectionId,
-        executedSql ?? sql,
-        result.columns,
-        offset,
-        INCREMENTAL_SCROLL_PAGE_SIZE,
-        { binds, filters, sort },
-      );
-      const page = toQueryResultRows(payload.columns, payload.rows, offset);
-      rows.push(...page);
-      offset += page.length;
-      onProgress?.(offset);
-      if (page.length < INCREMENTAL_SCROLL_PAGE_SIZE) break;
-    }
-    if (!filterActive && !sortActive) {
-      const loadedByIndex = new Map<number, QueryResultRow>();
-      api.forEachNode((node) => {
-        if (node.data) loadedByIndex.set(getQueryResultRowIndex(node.data), node.data);
-      });
-      rows.forEach((row, index) => {
-        const loaded = loadedByIndex.get(index);
-        if (loaded) Object.assign(row, loaded);
-      });
-    }
-    const exported = rows
-      .filter((_, index) => filterActive || sortActive || !QueryResultDirtyService.isRowDeleted(tabId, index))
-      .map((row) => visibleColumns.map((column) => row[column] ?? null));
-    if (!filterActive && !sortActive) {
-      api.forEachNode((node) => {
-        if (node.data && getQueryResultRowIndex(node.data) < 0) {
-          exported.push(visibleColumns.map((column) => node.data?.[column] ?? null));
-        }
-      });
-    }
-    return exported;
+  const streamExport = useMemo<StreamExport | undefined>(() => {
+    if (!connectionId) return undefined;
+    return {
+      // Exports read the database, which does not have unsaved edits yet: refuse until saved.
+      hasPendingChanges: () => QueryResultDirtyService.hasPendingChanges(tabId),
+      // Excel always streams from the server; CSV streams for paged results (otherwise the
+      // whole result is already in the grid and is written as shown).
+      canRun: (format) => format === "xlsx" || useIncrementalScroll,
+      run: ({ format, path, columns, signal, onProgress }) => {
+        const api = apiRef.current;
+        const filterModel = (api?.getFilterModel() ?? {}) as Record<string, unknown>;
+        const sort = translateSortModel(
+          (api?.getColumnState() ?? [])
+            .filter((column) => column.sort === "asc" || column.sort === "desc")
+            .sort((left, right) => (left.sortIndex ?? 0) - (right.sortIndex ?? 0))
+            .map((column) => ({ colId: column.colId, sort: column.sort! })),
+          result.columns,
+        );
+        return streamQueryResultCsv({
+          connectionId,
+          sql: executedSql ?? sql,
+          knownColumns: result.columns,
+          columns,
+          path,
+          format,
+          binds,
+          filters: translateFilterModel(filterModel, result.columns),
+          sort,
+          signal,
+          onProgress,
+        });
+      },
+    };
   }, [binds, connectionId, executedSql, result.columns, sql, tabId, useIncrementalScroll]);
 
   const sizeVisibleGrid = useCallback(() => {
@@ -756,13 +925,13 @@ function QueryResultGrid({
       result.columns,
       nullDisplay,
       openValueEditor,
-      useIncrementalScroll ? async (columns, onProgress) => (await fetchAllRowsForExport(columns, onProgress)) ?? [] : undefined,
       connectionId ?? null,
+      streamExport,
     );
     gridController.autoSizeToContent(root);
     autoSizePendingRef.current = false;
     restoreGridViewport();
-  }, [connectionId, gridController, fetchAllRowsForExport, nullDisplay, openValueEditor, result.columns, useIncrementalScroll, restoreGridViewport]);
+  }, [connectionId, gridController, streamExport, nullDisplay, openValueEditor, result.columns, restoreGridViewport]);
 
   useEffect(() => {
     autoSizePendingRef.current = true;
@@ -849,10 +1018,44 @@ function QueryResultGrid({
     );
   };
 
+  /** Ctrl+A: select every loaded row across the visible columns, like a spreadsheet. */
+  const handleSelectAllCells = () => {
+    const api = apiRef.current;
+    if (!api || !gridController.selectAllCells()) return;
+    cellSelectionRef.current = {
+      anchorRowIndex: 0,
+      anchorColumnIndex: 0,
+      // Open-ended so rows loaded later by scrolling are painted as selected too.
+      focusRowIndex: Number.MAX_SAFE_INTEGER,
+      focusColumnIndex: result.columns.length - 1,
+    };
+    api.refreshCells({ force: true });
+  };
+
+  /** Rows of a paged result that are still on the server (not yet loaded into the grid). */
+  const hasUnloadedRows = () => useIncrementalScroll && !!connectionId && hasOtherPages();
+
   const handleCopySelection = async () => {
+    if (gridController.allCellsSelectionColumns() && hasUnloadedRows()) {
+      const loadedRows = gridController.displayedRowCount();
+      // Full copy reads the database, so local unsaved edits would be dropped: copy only the
+      // loaded rows (which include the edits) and say why the rest was left out.
+      if (QueryResultDirtyService.hasPendingChanges(tabId)) {
+        await copyLoadedSelection(
+          t("app.query.copyAllPendingChanges").replace("{n}", loadedRows.toLocaleString()),
+        );
+        return;
+      }
+      setCopyAllPrompt({ loadedRows });
+      return;
+    }
+    await copyLoadedSelection();
+  };
+
+  const copyLoadedSelection = async (successMessage?: string) => {
     try {
       const ok = await gridController.copy("selection");
-      flashMessage(ok ? t("app.query.copiedSelection") : t("app.query.nothingToCopy"));
+      flashMessage(ok ? successMessage ?? t("app.query.copiedSelection") : t("app.query.nothingToCopy"));
     } catch (error) {
       console.warn("[query-result] copy selection failed", error);
       flashMessage(t("app.query.copyFailed"));
@@ -1306,20 +1509,100 @@ function QueryResultGrid({
     }
   };
 
-  const handleExportCsv = async () => {
-    if (exportingRef.current) return;
+  /** Copies the whole result (all server rows, current filter/sort) to the clipboard. */
+  const runCopyAll = async () => {
+    const columns = gridController.allCellsSelectionColumns();
+    const api = apiRef.current;
+    if (!columns || !api || !connectionId || exportingRef.current) return;
     exportingRef.current = true;
     setExportInProgress(true);
-    if (useIncrementalScroll) setExportProgressRows(result.rows.length);
+    setProgressKind("copy");
+    setExportProgressRows(0);
+    const abort = new AbortController();
+    exportAbortRef.current = abort;
     try {
-      const ok = await gridController.exportCsv((rowCount) => {
-        setExportProgressRows(rowCount);
+      const filterModel = api.getFilterModel() as Record<string, unknown>;
+      const sort = translateSortModel(
+        api.getColumnState()
+          .filter((column) => column.sort === "asc" || column.sort === "desc")
+          .sort((left, right) => (left.sortIndex ?? 0) - (right.sortIndex ?? 0))
+          .map((column) => ({ colId: column.colId, sort: column.sort! })),
+        result.columns,
+      );
+      const outcome = await copyQueryResultAll({
+        connectionId,
+        sql: executedSql ?? sql,
+        knownColumns: result.columns,
+        columns,
+        binds,
+        filters: translateFilterModel(filterModel, result.columns),
+        sort,
+        nullDisplay,
+        maxRows: COPY_ALL_MAX_ROWS,
+        maxChars: COPY_ALL_MAX_CHARS,
+        signal: abort.signal,
+        onProgress: (rowCount) => {
+          if (exportStartedAtRef.current === null) {
+            exportStartedAtRef.current = Date.now();
+            setExportNow(Date.now());
+          }
+          setExportProgressRows(rowCount);
+        },
       });
-      flashMessage(ok ? t("app.query.csvExported") : t("app.query.exportCancelled"));
+      if (outcome.cancelled) {
+        flashMessage(t("app.query.copyAllCancelled"));
+      } else if (outcome.limitExceeded) {
+        flashMessage(t("app.query.copyAllTooLarge").replace("{n}", COPY_ALL_MAX_ROWS.toLocaleString()));
+      } else {
+        await navigator.clipboard.writeText(outcome.text);
+        flashMessage(t("app.query.copyAllDone").replace("{n}", outcome.rowCount.toLocaleString()));
+      }
+    } catch (error) {
+      console.warn("[query-result] copy all rows failed", error);
+      flashMessage(t("app.query.copyFailed"));
+    } finally {
+      exportAbortRef.current = null;
+      exportStartedAtRef.current = null;
+      exportingRef.current = false;
+      setExportInProgress(false);
+      setExportProgressRows(null);
+    }
+  };
+
+  const handleExportCsv = () => runExport("csv");
+  const handleExportXlsx = () => runExport("xlsx");
+
+  const runExport = async (format: "csv" | "xlsx") => {
+    if (exportingRef.current) return;
+    if (QueryResultDirtyService.hasPendingChanges(tabId)) {
+      flashMessage(t("app.query.exportNeedsSave"));
+      return;
+    }
+    exportingRef.current = true;
+    setExportInProgress(true);
+    setProgressKind("export");
+    const abort = new AbortController();
+    exportAbortRef.current = abort;
+    try {
+      const onProgress = (rowCount: number | null) => {
+        if (rowCount !== null && exportStartedAtRef.current === null) {
+          exportStartedAtRef.current = Date.now();
+          setExportNow(Date.now());
+        }
+        setExportProgressRows(rowCount);
+      };
+      const ok = format === "xlsx"
+        ? await gridController.exportXlsx(onProgress, abort.signal)
+        : await gridController.exportCsv(onProgress, abort.signal);
+      flashMessage(ok
+        ? t(format === "xlsx" ? "app.query.xlsxExported" : "app.query.csvExported")
+        : t("app.query.exportCancelled"));
     } catch (error) {
       console.warn("[query-result] csv export failed", error);
       flashMessage(t("app.query.exportFailed"));
     } finally {
+      exportAbortRef.current = null;
+      exportStartedAtRef.current = null;
       exportingRef.current = false;
       setExportInProgress(false);
       setExportProgressRows(null);
@@ -1377,6 +1660,11 @@ function QueryResultGrid({
       label: t("app.query.exportCsv"),
       enabled: true,
       separator: true,
+    },
+    {
+      id: "exportXlsx",
+      label: t("app.query.exportXlsx"),
+      enabled: !!connectionId,
     },
     {
       id: "clearFilters",
@@ -1499,6 +1787,9 @@ function QueryResultGrid({
       case "copyAll":
         void handleCopyAll();
         return;
+      case "exportXlsx":
+        void handleExportXlsx();
+        break;
       case "exportCsv":
         void handleExportCsv();
         return;
@@ -1733,6 +2024,32 @@ function QueryResultGrid({
       : preview.eligibility.table
     : "";
 
+  /** Page navigator state for a paged (server-side) result; null for results held entirely. */
+  const pager = (() => {
+    if (!useIncrementalScroll || scrollPaging) return null;
+    const view = gridViewStateByTabId.get(tabId);
+    if (!view) return null;
+    const pageIndex = view.pageIndex ?? 0;
+    const pageSize = view.pageSize ?? INCREMENTAL_SCROLL_PAGE_SIZE;
+    const offset = pageIndex * pageSize;
+    const loaded = Math.max(0, view.nextOffset - offset);
+    const pageCount = serverTotal?.status === "done" ? Math.max(1, Math.ceil(serverTotal.count / pageSize)) : null;
+    return {
+      pageIndex,
+      hasMore: view.hasMore,
+      rangeLabel: loaded > 0
+        ? `${(offset + 1).toLocaleString()}–${(offset + loaded).toLocaleString()}`
+        : t("app.query.pageEmpty"),
+      pageTitle: (pageCount == null ? t("app.query.pageNumber") : t("app.query.pageNumberOf"))
+        .replace("{page}", (pageIndex + 1).toLocaleString())
+        .replace("{pages}", (pageCount ?? 0).toLocaleString())
+        .replace("{size}", pageSize.toLocaleString()),
+    };
+  })();
+
+  /** Known total already exceeds the clipboard cap: offer only the loaded rows. */
+  const copyAllTooLarge = serverTotal?.status === "done" && serverTotal.count > COPY_ALL_MAX_ROWS;
+
   return (
     <div className="query-result-grid" ref={gridRootRef}>
       <div className="query-result-grid__toolbar">
@@ -1746,7 +2063,73 @@ function QueryResultGrid({
             t,
           )}
         >
-          <span>{formatRowStatus(snapshot, t)}</span>
+          {pager ? (
+            <span className="query-result-grid__pager" role="group" aria-label={t("app.query.pagerLabel")}>
+              <button
+                type="button"
+                className="query-result-grid__pager-button"
+                title={t("app.query.pageFirst")}
+                aria-label={t("app.query.pageFirst")}
+                disabled={queryBusy || pager.pageIndex === 0}
+                onClick={() => void goToPage(0)}
+              >
+                <Codicon name="arrow-left" />
+              </button>
+              <button
+                type="button"
+                className="query-result-grid__pager-button"
+                title={t("app.query.pagePrevious")}
+                aria-label={t("app.query.pagePrevious")}
+                disabled={queryBusy || pager.pageIndex === 0}
+                onClick={() => void goToPage(pager.pageIndex - 1)}
+              >
+                <Codicon name="chevron-left" />
+              </button>
+              <span className="query-result-grid__pager-range" title={pager.pageTitle}>
+                {pager.rangeLabel}
+              </span>
+              <button
+                type="button"
+                className="query-result-grid__pager-button"
+                title={t("app.query.pageNext")}
+                aria-label={t("app.query.pageNext")}
+                disabled={queryBusy || !pager.hasMore}
+                onClick={() => void goToPage(pager.pageIndex + 1)}
+              >
+                <Codicon name="chevron-right" />
+              </button>
+              <button
+                type="button"
+                className="query-result-grid__pager-button"
+                title={t("app.query.pageLast")}
+                aria-label={t("app.query.pageLast")}
+                disabled={queryBusy || !pager.hasMore || serverTotal?.status === "counting"}
+                onClick={() => void goToLastPage()}
+              >
+                <Codicon name="arrow-right" />
+              </button>
+            </span>
+          ) : (
+            <span>{formatRowStatus(snapshot, t)}</span>
+          )}
+          {serverTotal?.status === "counting" ? (
+            <span className="query-result-grid__total" title={t("app.query.totalCountingTitle")}>
+              {t("app.query.totalCounting")}
+            </span>
+          ) : serverTotal?.status === "done" ? (
+            <span className="query-result-grid__total">
+              {t("app.query.totalRows").replace("{n}", serverTotal.count.toLocaleString())}
+            </span>
+          ) : serverTotal?.status === "stopped" ? (
+            <button
+              type="button"
+              className="query-result-grid__total query-result-grid__total--action"
+              title={t("app.query.totalCountTitle")}
+              onClick={startServerCount}
+            >
+              {t("app.query.totalCount")}
+            </button>
+          ) : null}
           {dirtyCount > 0 ? (
             <span
               className="query-result-grid__badge query-result-grid__badge--dirty"
@@ -1777,7 +2160,7 @@ function QueryResultGrid({
               {t("app.query.badgeNew").replace("{n}", String(newRowCount))}
             </span>
           ) : null}
-          {truncated ? (
+          {truncated && !pager ? (
             <span
               className="query-result-grid__badge query-result-grid__badge--warn"
               title={
@@ -1930,10 +2313,14 @@ function QueryResultGrid({
           <button
             type="button"
             className="query-result-grid__action"
-            title={t("app.query.exportCsvTitle")}
-            aria-label={t("app.query.exportCsv")}
+            title={t("app.query.exportMenuTitle")}
+            aria-label={t("app.query.exportMenuTitle")}
+            aria-haspopup="menu"
             disabled={exportInProgress}
-            onClick={() => void handleExportCsv()}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              setExportMenu({ top: rect.bottom + 2, left: rect.left });
+            }}
           >
             <Codicon name="export" />
           </button>
@@ -1972,6 +2359,11 @@ function QueryResultGrid({
       <div
         className="query-result-grid__body"
         onPasteCapture={handlePasteGridData}
+        // Already at the bottom, a wheel-down scrolls nothing, so no scroll event fires (e.g.
+        // right after cancelling a load). Treat the wheel itself as "load more".
+        onWheel={(event) => {
+          if (event.deltaY > 0) loadMoreIfAtBottom();
+        }}
         onKeyDownCapture={(event) => {
           const target = event.target;
           const isEditableTarget =
@@ -2015,6 +2407,23 @@ function QueryResultGrid({
             event.preventDefault();
             event.stopPropagation();
             void handleCopySelection();
+            return;
+          }
+          if (
+            !isEditableTarget &&
+            (event.ctrlKey || event.metaKey) &&
+            !event.altKey &&
+            !event.shiftKey &&
+            event.key.toLowerCase() === "a"
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            handleSelectAllCells();
+            return;
+          }
+          // Keyboard on the last row: like the wheel, moving down scrolls nothing to trigger a load.
+          if (!isEditableTarget && (event.key === "ArrowDown" || event.key === "PageDown" || event.key === "End")) {
+            window.requestAnimationFrame(loadMoreIfAtBottom);
           }
         }}
         onContextMenu={(event) => {
@@ -2146,8 +2555,35 @@ function QueryResultGrid({
           onColumnVisible={markLayoutDirty}
           onColumnPinned={markLayoutDirty}
         />
+        {appendingRows ? (
+          <div className="query-result-grid__loading-more" role="status" aria-live="polite">
+            <span className="query-result-grid__loading-spinner" aria-hidden="true" />
+            {t("app.query.loadingMoreRows")}
+            <button
+              type="button"
+              className="query-result-grid__loading-cancel"
+              onClick={handleCancelAppend}
+            >
+              {t("app.query.loadingMoreRowsCancel")}
+            </button>
+          </div>
+        ) : null}
       </div>
 
+      {exportMenu ? (
+        <ContextMenu
+          anchor={exportMenu}
+          items={[
+            { id: "exportCsv", label: t("app.query.exportCsv"), enabled: true },
+            { id: "exportXlsx", label: t("app.query.exportXlsx"), enabled: !!connectionId },
+          ]}
+          onClose={() => setExportMenu(null)}
+          onSelect={(item) => {
+            setExportMenu(null);
+            void (item.id === "exportXlsx" ? handleExportXlsx() : handleExportCsv());
+          }}
+        />
+      ) : null}
       {contextMenu ? (
         <ContextMenu
           anchor={{ top: contextMenu.y, left: contextMenu.x }}
@@ -2233,17 +2669,100 @@ function QueryResultGrid({
         <div className="query-result-update-dialog__backdrop" role="presentation">
           <section className="query-result-update-dialog query-result-export-progress" role="dialog" aria-modal="true" aria-labelledby="query-result-export-progress-title">
             <header className="query-result-update-dialog__header">
-              <h2 id="query-result-export-progress-title">{t("app.query.csvExportProgressTitle")}</h2>
+              <h2 id="query-result-export-progress-title">
+                {t(progressKind === "copy" ? "app.query.copyAllProgressTitle" : "app.query.csvExportProgressTitle")}
+              </h2>
             </header>
             <div className="query-result-update-dialog__body">
-              <p className="query-result-update-dialog__hint">{t("app.query.csvExportProgressHint")}</p>
+              <p className="query-result-update-dialog__hint">
+                {t(progressKind === "copy" ? "app.query.copyAllProgressHint" : "app.query.csvExportProgressHint")}
+              </p>
               <div className="query-result-update-dialog__progress-status">
                 <div className="query-result-update-dialog__progress-track" role="progressbar" aria-label={t("app.query.csvExportProgressRows").replace("{n}", String(exportProgressRows))} aria-busy="true">
                   <div className="query-result-update-dialog__progress-value query-result-export-progress__bar" />
                 </div>
                 <span>{t("app.query.csvExportProgressRows").replace("{n}", exportProgressRows.toLocaleString())}</span>
               </div>
+              {exportStartedAtRef.current !== null ? (() => {
+                const seconds = Math.max(0, Math.floor((exportNow - exportStartedAtRef.current) / 1000));
+                const elapsed = seconds >= 60
+                  ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
+                  : `${seconds}s`;
+                const rate = seconds > 0 ? Math.round(exportProgressRows / seconds) : 0;
+                return (
+                  <p className="query-result-update-dialog__hint">
+                    {t("app.query.csvExportProgressStats")
+                      .replace("{elapsed}", elapsed)
+                      .replace("{rate}", rate.toLocaleString())}
+                  </p>
+                );
+              })() : null}
             </div>
+            <footer className="query-result-update-dialog__footer">
+              <button type="button" onClick={() => exportAbortRef.current?.abort()}>
+                {t("app.query.csvExportCancel")}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+      {copyAllPrompt ? (
+        <div className="query-result-update-dialog__backdrop" role="presentation">
+          <section
+            className="query-result-update-dialog query-result-copy-all"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="query-result-copy-all-title"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setCopyAllPrompt(null);
+              }
+            }}
+          >
+            <header className="query-result-update-dialog__header">
+              <h2 id="query-result-copy-all-title">{t("app.query.copyAllPromptTitle")}</h2>
+            </header>
+            <div className="query-result-update-dialog__body">
+              <p className="query-result-update-dialog__hint">
+                {serverTotal?.status === "done"
+                  ? t("app.query.copyAllPromptMessageTotal")
+                      .replace("{total}", serverTotal.count.toLocaleString())
+                      .replace("{n}", copyAllPrompt.loadedRows.toLocaleString())
+                  : t("app.query.copyAllPromptMessage").replace("{n}", copyAllPrompt.loadedRows.toLocaleString())}
+              </p>
+              <p className="query-result-update-dialog__hint">
+                {t(copyAllTooLarge ? "app.query.copyAllPromptOverLimit" : "app.query.copyAllPromptLimit")
+                  .replace("{max}", COPY_ALL_MAX_ROWS.toLocaleString())}
+              </p>
+            </div>
+            <footer className="query-result-update-dialog__footer">
+              <button type="button" className="query-result-update-dialog__button" onClick={() => setCopyAllPrompt(null)}>
+                {t("app.query.copyAllPromptCancel")}
+              </button>
+              <button
+                type="button"
+                className="query-result-update-dialog__button"
+                onClick={() => {
+                  setCopyAllPrompt(null);
+                  void copyLoadedSelection();
+                }}
+              >
+                {t("app.query.copyAllPromptLoaded").replace("{n}", copyAllPrompt.loadedRows.toLocaleString())}
+              </button>
+              <button
+                type="button"
+                className="query-result-update-dialog__button query-result-update-dialog__button--primary"
+                autoFocus={!copyAllTooLarge}
+                disabled={copyAllTooLarge}
+                onClick={() => {
+                  setCopyAllPrompt(null);
+                  void runCopyAll();
+                }}
+              >
+                {t("app.query.copyAllPromptAll")}
+              </button>
+            </footer>
           </section>
         </div>
       ) : null}

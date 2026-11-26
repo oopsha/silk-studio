@@ -39,9 +39,31 @@ type ActiveGrid = {
     columns: string[];
     startRowIndex: number;
     endRowIndex: number;
+    /** Ctrl+A: every displayed row, including rows loaded after the selection was made. */
+    all?: boolean;
   } | null;
   openValueEditor: () => void;
-  fetchAllRowsForExport?: (columns: string[], onProgress?: (rowCount: number | null) => void) => Promise<Array<Array<string | null>>>;
+  /** Server-side streaming of the whole result into a file (large paged results). */
+  streamExport?: StreamExport;
+};
+
+export type ExportFormat = "csv" | "xlsx";
+
+export type StreamExport = {
+  /**
+   * Unsaved grid edits exist. Exports read the database, which does not have them yet, so both
+   * CSV and Excel are refused until the edits are saved or discarded.
+   */
+  hasPendingChanges: () => boolean;
+  /** The server-side stream can produce this format (Excel always; CSV for paged results). */
+  canRun: (format: ExportFormat) => boolean;
+  run: (request: {
+    format: ExportFormat;
+    path: string;
+    columns: string[];
+    signal?: AbortSignal;
+    onProgress?: (rowCount: number) => void;
+  }) => Promise<{ rowCount: number; cancelled: boolean }>;
 };
 
 type SnapshotListener = () => void;
@@ -115,17 +137,17 @@ export class QueryResultGridController {
     columns: string[],
     nullDisplay: string,
     openValueEditor: () => void,
-    fetchAllRowsForExport?: (columns: string[], onProgress?: (rowCount: number | null) => void) => Promise<Array<Array<string | null>>>,
     profileId: string | null = null,
+    streamExport?: StreamExport,
   ): void {
     const previous = this.active;
     if (previous?.api === api && previous.profileId === profileId &&
       previous.columns.length === columns.length && previous.columns.every((column, i) => column === columns[i])) {
-      Object.assign(previous, { columns, nullDisplay, openValueEditor, fetchAllRowsForExport });
+      Object.assign(previous, { columns, nullDisplay, openValueEditor, streamExport });
       this.refreshSnapshot();
       return;
     }
-    this.active = { api, columns, nullDisplay, profileId, cellSelection: null, openValueEditor, fetchAllRowsForExport };
+    this.active = { api, columns, nullDisplay, profileId, cellSelection: null, openValueEditor, streamExport };
     this.layoutDirty = false;
     this.restoreColumnLayout();
     this.refreshSnapshot();
@@ -334,16 +356,80 @@ export class QueryResultGridController {
     this.active.cellSelection = null;
   }
 
-  async exportCsv(onProgress?: (rowCount: number | null) => void): Promise<boolean> {
+  /** Ctrl+A: selects every displayed row across the visible columns (grid order). */
+  selectAllCells(): string[] | null {
+    const grid = this.active;
+    if (!grid) return null;
+    const count = grid.api.getDisplayedRowCount();
+    if (count === 0) return null;
+    const columns = visibleColumnFields(grid.api, grid.columns);
+    grid.cellSelection = { columns, startRowIndex: 0, endRowIndex: count - 1, all: true };
+    return columns;
+  }
+
+  /** Visible columns of a Ctrl+A selection, or null when the selection is a narrower range. */
+  allCellsSelectionColumns(): string[] | null {
+    const selection = this.active?.cellSelection;
+    return selection?.all ? selection.columns : null;
+  }
+
+  /** Loaded rows the current Ctrl+A selection would copy. */
+  displayedRowCount(): number {
+    return this.active?.api.getDisplayedRowCount() ?? 0;
+  }
+
+  async exportCsv(
+    onProgress?: (rowCount: number | null) => void,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    return this.exportFile("csv", onProgress, signal);
+  }
+
+  async exportXlsx(
+    onProgress?: (rowCount: number | null) => void,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    return this.exportFile("xlsx", onProgress, signal);
+  }
+
+  private async exportFile(
+    format: ExportFormat,
+    onProgress?: (rowCount: number | null) => void,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
     const grid = this.active;
     if (!grid) return false;
+    // The database does not have unsaved edits yet; exporting would silently drop them.
+    if (grid.streamExport?.hasPendingChanges()) return false;
 
     const visible = this.collectVisibleMatrix(grid);
-    const columns = visible.columns;
-    const rows = grid.fetchAllRowsForExport
-      ? await grid.fetchAllRowsForExport(columns, onProgress)
-      : visible.rows;
-    onProgress?.(null);
+    if (grid.streamExport?.canRun(format) && isTauri()) {
+      // Pick the destination first, then stream the result straight into it.
+      const path = await save({
+        title: format === "xlsx" ? "Export Excel" : "Export CSV",
+        defaultPath: `query-result-${formatTimestamp(new Date())}.${format}`,
+        filters: [{ name: format === "xlsx" ? "Excel" : "CSV", extensions: [format] }],
+      });
+      if (!path) return false;
+      onProgress?.(0);
+      try {
+        const result = await grid.streamExport.run({
+          format,
+          path,
+          columns: visible.columns,
+          signal,
+          onProgress,
+        });
+        return !result.cancelled;
+      } finally {
+        onProgress?.(null);
+      }
+    }
+    // Excel files are only produced by the server-side stream.
+    if (format === "xlsx") return false;
+
+    // The whole result is in the grid (not paged): export it as shown.
+    const { columns, rows } = visible;
     // File interchange uses empty fields for SQL NULL, independent of the grid display token.
     const csv = toCsv(columns, rows);
     const defaultName = `query-result-${formatTimestamp(new Date())}.csv`;
@@ -522,8 +608,10 @@ export class QueryResultGridController {
   } | null {
     const selection = grid.cellSelection;
     if (!selection || selection.columns.length === 0) return null;
-    const from = Math.min(selection.startRowIndex, selection.endRowIndex);
-    const to = Math.max(selection.startRowIndex, selection.endRowIndex);
+    const from = selection.all ? 0 : Math.min(selection.startRowIndex, selection.endRowIndex);
+    const to = selection.all
+      ? grid.api.getDisplayedRowCount() - 1
+      : Math.max(selection.startRowIndex, selection.endRowIndex);
 
     const rows: Array<Array<string | null>> = [];
     for (let rowIndex = from; rowIndex <= to; rowIndex += 1) {
@@ -641,8 +729,17 @@ export class QueryResultGridCommandRouter {
   }
   openValueEditor(): void { this.target()?.openValueEditor(); }
   async copy(mode: QueryResultCopyMode): Promise<boolean> { return this.target()?.copy(mode) ?? false; }
-  async exportCsv(onProgress?: (rowCount: number | null) => void): Promise<boolean> {
-    return this.target()?.exportCsv(onProgress) ?? false;
+  async exportCsv(
+    onProgress?: (rowCount: number | null) => void,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    return this.target()?.exportCsv(onProgress, signal) ?? false;
+  }
+  async exportXlsx(
+    onProgress?: (rowCount: number | null) => void,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    return this.target()?.exportXlsx(onProgress, signal) ?? false;
   }
   clearFiltersAndSort(): void { this.target()?.clearFiltersAndSort(); }
   saveColumnLayoutNow(): boolean { return this.target()?.saveColumnLayoutNow() ?? false; }

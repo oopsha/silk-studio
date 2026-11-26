@@ -102,8 +102,14 @@
   transition: width 120ms ease-out;
 }
 
-.query-result-export-progress {
+.query-result-export-progress,
+.query-result-copy-all {
   width: min(420px, 100%);
+}
+
+.query-result-copy-all .query-result-update-dialog__hint {
+  margin: 0 0 6px;
+  line-height: 1.5;
 }
 
 .query-result-export-progress__bar {

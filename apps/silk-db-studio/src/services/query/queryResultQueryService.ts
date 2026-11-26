@@ -12,6 +12,8 @@ type ResultQuery = {
   columns: string[];
   binds?: Array<string | null>;
   paged: boolean;
+  /** How a paged result is browsed (fixed per result, from `queryResult.pagingMode`). Default "page". */
+  pagingMode?: "page" | "scroll";
   prepare: () => Promise<void>;
   fetchInitial: () => Promise<QueryResultPayload>;
 };
@@ -27,20 +29,27 @@ export class QueryResultQueryServiceImpl {
   private readonly entries = new Map<string, Entry>();
   private readonly paused = new Map<string, number>();
   private readonly listeners = new Set<() => void>();
+  private readonly refreshGenerations = new Map<string, number>();
 
   constructor(private readonly fetchPage = fetchQueryResultPage) {}
 
   register(tabId: string, query: ResultQuery, rowCount: number): void {
     this.entries.set(tabId, { ...query, epoch: 0, reloading: false, appending: false, committedUi: emptyUi() });
     gridUiStateByTabId.set(tabId, emptyUi());
-    gridViewStateByTabId.set(tabId, { nextOffset: rowCount, hasMore: query.paged, firstVisibleRow: 0, lastVisibleRow: 0 });
+    // The initial fetch (maxRows) is page 1, so its size is the page size.
+    gridViewStateByTabId.set(tabId, { nextOffset: rowCount, hasMore: query.paged, firstVisibleRow: 0, lastVisibleRow: 0,
+      pageIndex: 0, pageSize: rowCount > 0 ? rowCount : RESULT_PAGE_SIZE });
   }
 
   isPaged(tabId: string): boolean { return this.entries.get(tabId)?.paged ?? false; }
+  /** "scroll": rows are appended as the grid scrolls; "page": one page at a time. */
+  pagingMode(tabId: string): "page" | "scroll" { return this.entries.get(tabId)?.pagingMode ?? "page"; }
   isBusy(tabId: string): boolean {
     const entry = this.entries.get(tabId);
     return !!entry && (entry.reloading || this.paused.has(entry.connectionId));
   }
+  /** Scroll mode: the next block is being fetched. */
+  isAppending(tabId: string): boolean { return this.entries.get(tabId)?.appending ?? false; }
   onDidChange(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
@@ -49,7 +58,12 @@ export class QueryResultQueryServiceImpl {
   hasPendingEdits(connectionId: string): boolean {
     return [...this.entries].some(([id, entry]) => entry.connectionId === connectionId && QueryResultDirtyService.hasPendingChanges(id));
   }
-  removeTabs(tabIds: Iterable<string>): void { for (const id of tabIds) this.entries.delete(id); }
+  removeTabs(tabIds: Iterable<string>): void {
+    for (const id of tabIds) {
+      this.entries.delete(id);
+      this.refreshGenerations.delete(id);
+    }
+  }
 
   pauseConnection(connectionId: string): () => void {
     this.paused.set(connectionId, (this.paused.get(connectionId) ?? 0) + 1);
@@ -87,7 +101,29 @@ export class QueryResultQueryServiceImpl {
     };
   }
 
+  /**
+   * Re-fetches the shown page. A new filter/sort (`nextUi`) returns to the first page; a plain
+   * refresh (after save, rollback…) stays on the current one.
+   */
   async reload(tabId: string, nextUi?: GridUiState): Promise<QueryResultPayload | null> {
+    const payload = await this.load(tabId, nextUi, undefined);
+    if (payload && !nextUi) {
+      // A plain refresh (after save, rollback…) may change the row count: let the grid recount.
+      this.refreshGenerations.set(tabId, (this.refreshGenerations.get(tabId) ?? 0) + 1);
+      this.fire();
+    }
+    return payload;
+  }
+
+  /** Bumped by every successful plain refresh (not filter changes or page moves). */
+  getRefreshGeneration(tabId: string): number { return this.refreshGenerations.get(tabId) ?? 0; }
+
+  /** Paged results: shows page `pageIndex` (zero-based) with the committed filter/sort. */
+  goToPage(tabId: string, pageIndex: number): Promise<QueryResultPayload | null> {
+    return this.load(tabId, undefined, Math.max(0, Math.floor(pageIndex)));
+  }
+
+  private async load(tabId: string, nextUi: GridUiState | undefined, requestedPage: number | undefined): Promise<QueryResultPayload | null> {
     const entry = this.entries.get(tabId);
     if (!entry || this.paused.has(entry.connectionId)) return null;
     const epoch = ++entry.epoch;
@@ -103,39 +139,64 @@ export class QueryResultQueryServiceImpl {
       if (!this.current(tabId, entry, epoch)) return null;
       let payload: QueryResultPayload;
       let hasMore = false;
-      if (entry.paged) {
+      let pageSize = view.pageSize ?? RESULT_PAGE_SIZE;
+      let pageIndex = requestedPage ?? (nextUi ? 0 : view.pageIndex ?? 0);
+      if (entry.paged && entry.pagingMode === "scroll") {
+        // Scroll mode: re-read every loaded block from the top (at least what was on screen).
         const rows: Array<Array<string | null>> = [];
         const lobTruncated: boolean[][] = [];
         let hasLobMetadata = false;
-        const target = Math.max(view.nextOffset, view.lastVisibleRow + 1, RESULT_PAGE_SIZE);
+        const target = Math.max(view.nextOffset, view.lastVisibleRow + 1, pageSize);
         let last: QueryResultPayload | null = null;
         do {
           last = await this.fetchPage(entry.connectionId, entry.sql, entry.columns,
-            rows.length, RESULT_PAGE_SIZE, this.options(entry, ui));
+            rows.length, pageSize, this.options(entry, ui));
           if (!this.current(tabId, entry, epoch)) return null;
           if (last.lobTruncated) hasLobMetadata = true;
           last.rows.forEach((_, index) => lobTruncated.push(last!.lobTruncated?.[index] ?? []));
           rows.push(...last.rows);
-          hasMore = last.rows.length === RESULT_PAGE_SIZE;
+          hasMore = morePagesFollow(last, pageSize);
         } while (hasMore && rows.length < target);
         payload = { ...last!, rows, rowCount: rows.length, truncated: hasMore,
           lobTruncated: hasLobMetadata ? lobTruncated : undefined };
+        pageIndex = 0;
+      } else if (entry.paged) {
+        const fetchAt = (index: number) => this.fetchPage(entry.connectionId, entry.sql, entry.columns,
+          index * pageSize, pageSize, this.options(entry, ui));
+        payload = await fetchAt(pageIndex);
+        if (!this.current(tabId, entry, epoch)) return null;
+        // The page vanished (rows deleted, narrower filter): fall back to the first page.
+        if (payload.rows.length === 0 && pageIndex > 0) {
+          pageIndex = 0;
+          payload = await fetchAt(0);
+          if (!this.current(tabId, entry, epoch)) return null;
+        }
+        // The agent reads limit+1 rows and reports `truncated` when another page follows.
+        hasMore = morePagesFollow(payload, pageSize);
+        payload = { ...payload, rowCount: payload.rows.length, truncated: hasMore };
       } else {
         payload = await entry.fetchInitial();
         if (!this.current(tabId, entry, epoch)) return null;
         hasMore = payload.truncated === true;
-        if (hasMore) entry.paged = true;
+        pageIndex = 0;
+        if (hasMore) {
+          entry.paged = true;
+          pageSize = Math.max(1, payload.rows.length);
+        }
       }
       if (payload.kind !== "resultSet") throw new Error("The refreshed query no longer returns rows.");
       if (QueryResultDirtyService.getRevision(tabId) !== revision) throw new Error("Grid edits changed while reloading. Reload was discarded.");
       entry.columns = payload.columns;
       entry.committedUi = ui;
+      const offset = pageIndex * pageSize;
+      const samePage = entry.pagingMode === "scroll" ||
+        (requestedPage === undefined && !nextUi && pageIndex === (view.pageIndex ?? 0));
       gridViewStateByTabId.set(tabId, {
-        nextOffset: payload.rows.length, hasMore,
-        firstVisibleRow: view.firstVisibleRow < payload.rows.length ? view.firstVisibleRow : 0,
-        lastVisibleRow: Math.min(view.lastVisibleRow, Math.max(0, payload.rows.length - 1)),
+        nextOffset: offset + payload.rows.length, hasMore, pageIndex, pageSize,
+        firstVisibleRow: samePage && view.firstVisibleRow < payload.rows.length ? view.firstVisibleRow : 0,
+        lastVisibleRow: samePage ? Math.min(view.lastVisibleRow, Math.max(0, payload.rows.length - 1)) : 0,
       });
-      QueryResultDirtyService.replaceOriginalRows(tabId, payload.columns, payload.rows);
+      QueryResultDirtyService.replaceOriginalRows(tabId, payload.columns, payload.rows, offset);
       return payload;
     } catch (error) {
       if (!this.current(tabId, entry, epoch)) return null;
@@ -146,29 +207,52 @@ export class QueryResultQueryServiceImpl {
     }
   }
 
+  /** Scroll mode: appends the next block of rows after the loaded ones. */
   async append(tabId: string): Promise<void> {
     const entry = this.entries.get(tabId);
     const view = gridViewStateByTabId.get(tabId);
-    if (!entry || !view?.hasMore || !entry.paged || entry.reloading || entry.appending || this.paused.has(entry.connectionId)) return;
+    if (!entry || entry.pagingMode !== "scroll" || !view?.hasMore || !entry.paged || entry.reloading ||
+      entry.appending || this.paused.has(entry.connectionId)) return;
     const epoch = entry.epoch;
     const offset = view.nextOffset;
+    // Each block is `queryResult.maxRows` rows — the size of the initial fetch.
+    const blockSize = view.pageSize ?? RESULT_PAGE_SIZE;
     entry.appending = true;
+    this.fire();
     try {
       await entry.prepare();
       if (!this.current(tabId, entry, epoch)) return;
       const payload = await this.fetchPage(entry.connectionId, entry.sql, entry.columns,
-        offset, RESULT_PAGE_SIZE, this.options(entry, entry.committedUi));
+        offset, blockSize, this.options(entry, entry.committedUi));
       if (!this.current(tabId, entry, epoch)) return;
       const currentView = gridViewStateByTabId.get(tabId)!;
       gridViewStateByTabId.set(tabId, { ...currentView,
-        nextOffset: offset + payload.rows.length, hasMore: payload.rows.length === RESULT_PAGE_SIZE });
+        nextOffset: offset + payload.rows.length, hasMore: morePagesFollow(payload, blockSize) });
       QueryResultDirtyService.appendOriginalRows(tabId, offset, payload.columns, payload.rows);
     } catch (error) {
       if (this.current(tabId, entry, epoch)) throw error;
     } finally {
-      if (this.current(tabId, entry, epoch)) entry.appending = false;
+      if (this.current(tabId, entry, epoch)) { entry.appending = false; this.fire(); }
     }
   }
+
+  /**
+   * Abandons a running scroll append (its rows are discarded when they arrive). Returns the
+   * connection whose running statement the caller should cancel, or null if nothing was running.
+   */
+  cancelAppend(tabId: string): string | null {
+    const entry = this.entries.get(tabId);
+    if (!entry?.appending) return null;
+    entry.epoch++;
+    entry.appending = false;
+    this.fire();
+    return entry.connectionId;
+  }
+}
+
+/** The agent reads limit+1 rows and reports `truncated` when another block follows. */
+function morePagesFollow(payload: QueryResultPayload, size: number): boolean {
+  return payload.truncated === true || (payload.truncated === undefined && payload.rows.length >= size);
 }
 
 export const QueryResultQueryService = new QueryResultQueryServiceImpl();

@@ -113,6 +113,55 @@ async fn query_import_rows(connection_id: String, params: Value, app: tauri::App
 }
 
 #[tauri::command]
+async fn query_export_result(connection_id: String, params: Value, app: tauri::AppHandle) -> Result<Value, String> {
+    require_connection_id(&connection_id)?;
+    run_blocking(move || app.state::<AppState>().jdbc_agent.export_result(&connection_id, params)).await
+}
+
+#[tauri::command]
+async fn query_count_rows(connection_id: String, params: Value, app: tauri::AppHandle) -> Result<Value, String> {
+    require_connection_id(&connection_id)?;
+    run_blocking(move || app.state::<AppState>().jdbc_agent.count_rows(&connection_id, params)).await
+}
+
+/// Streams the full result as clipboard TSV into a temp file inside the agent, then returns the
+/// text (the agent enforces `maxRows`/`maxChars`; on `limitExceeded` no text is returned).
+#[tauri::command]
+async fn query_copy_result(connection_id: String, mut params: Value, app: tauri::AppHandle) -> Result<Value, String> {
+    require_connection_id(&connection_id)?;
+    let operation_id = params
+        .get("operationId")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty() && id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-'))
+        .ok_or_else(|| "operationId is required".to_string())?
+        .to_string();
+    let path = std::env::temp_dir().join(format!("silk-copy-{operation_id}.tsv"));
+    params["path"] = Value::String(path.to_string_lossy().into_owned());
+    params["format"] = Value::String("tsv".into());
+    run_blocking(move || {
+        let outcome = app.state::<AppState>().jdbc_agent.export_result(&connection_id, params);
+        let mut outcome = match outcome {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = std::fs::remove_file(&path);
+                return Err(error);
+            }
+        };
+        let skip = outcome.get("cancelled").and_then(Value::as_bool).unwrap_or(false)
+            || outcome.get("limitExceeded").and_then(Value::as_bool).unwrap_or(false);
+        let text = if skip { Ok(String::new()) } else { std::fs::read_to_string(&path) };
+        let _ = std::fs::remove_file(&path);
+        let text = text.map_err(|error| format!("Unable to read copy buffer: {error}"))?;
+        if let Some(map) = outcome.as_object_mut() {
+            map.remove("path");
+            map.insert("text".into(), Value::String(text));
+        }
+        Ok(outcome)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn query_import_status(connection_id: String, operation_id: String, cancel: bool, app: tauri::AppHandle) -> Result<Value, String> {
     require_connection_id(&connection_id)?;
     run_blocking(move || app.state::<AppState>().jdbc_agent.import_status(&connection_id, &operation_id, cancel)).await
@@ -670,6 +719,9 @@ pub fn run() {
             query_execute_paged,
             query_import_rows,
             query_import_status,
+            query_export_result,
+            query_copy_result,
+            query_count_rows,
             query_cancel,
             connection_commit,
             connection_rollback,

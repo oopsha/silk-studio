@@ -5,6 +5,7 @@ export type LineNumbersMode = "on" | "off" | "relative";
 export type WordWrapMode = "off" | "on";
 export type AiProviderId = "gemini" | "openai" | "anthropic" | "custom";
 export type LocaleId = "en" | "ko";
+export type QueryResultPagingMode = "page" | "scroll";
 
 export const AI_PROVIDER_IDS: readonly AiProviderId[] = [
   "gemini",
@@ -34,6 +35,11 @@ export type WorkbenchConfiguration = {
   "queryResult.fontSize": number;
   "queryResult.nullDisplay": string;
   "queryResult.maxRows": number;
+  /**
+   * Results larger than `queryResult.maxRows`: "page" shows one page (maxRows rows) at a time
+   * with a navigator; "scroll" appends more rows as the grid is scrolled to the end.
+   */
+  "queryResult.pagingMode": QueryResultPagingMode;
   "queryResult.filterEnabled": boolean;
   "database.queryTimeoutSec": number;
   "database.autoCommit": boolean;
@@ -91,6 +97,7 @@ export const CONFIGURATION_DEFAULTS: WorkbenchConfiguration = {
   "queryResult.fontSize": 12,
   "queryResult.nullDisplay": "NULL",
   "queryResult.maxRows": 200,
+  "queryResult.pagingMode": "scroll",
   "queryResult.filterEnabled": true,
   "database.queryTimeoutSec": 30,
   "database.autoCommit": false,
