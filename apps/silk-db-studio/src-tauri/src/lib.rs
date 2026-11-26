@@ -246,58 +246,78 @@ async fn query_execute_paged(
 }
 
 #[tauri::command]
-fn query_cancel(
+async fn query_cancel(
     connection_id: String,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.cancel_query(connection_id)
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.cancel_query(connection_id)
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_commit(
+async fn connection_commit(
     connection_id: String,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.commit_connection(connection_id)
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.commit_connection(connection_id)
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_rollback(
+async fn connection_rollback(
     connection_id: String,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.rollback_connection(connection_id)
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.rollback_connection(connection_id)
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_set_catalog(
+async fn connection_set_catalog(
     connection_id: String,
     catalog: String,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    let catalog = catalog.trim();
-    if catalog.is_empty() {
-        return Err("catalog is required.".into());
-    }
-    state.jdbc_agent.set_catalog(connection_id, catalog)
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        let catalog = catalog.trim();
+        if catalog.is_empty() {
+            return Err("catalog is required.".into());
+        }
+        state.jdbc_agent.set_catalog(connection_id, catalog)
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_set_schema(
+async fn connection_set_schema(
     connection_id: String,
     schema: String,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    let schema = schema.trim();
-    if schema.is_empty() {
-        return Err("schema is required.".into());
-    }
-    state.jdbc_agent.set_schema(connection_id, schema)
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        let schema = schema.trim();
+        if schema.is_empty() {
+            return Err("schema is required.".into());
+        }
+        state.jdbc_agent.set_schema(connection_id, schema)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -361,33 +381,41 @@ async fn connection_test(
 }
 
 #[tauri::command]
-fn connection_metadata(
+async fn connection_metadata(
     connection_id: String,
     schema: Option<String>,
     catalog: Option<String>,
     include_secondary_kinds: Option<bool>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.list_metadata(
-        connection_id,
-        schema.as_deref(),
-        catalog.as_deref(),
-        include_secondary_kinds,
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.list_metadata(
+            connection_id,
+            schema.as_deref(),
+            catalog.as_deref(),
+            include_secondary_kinds,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_prefetch_catalog(
+async fn connection_prefetch_catalog(
     connection_id: String,
     catalog: Option<String>,
     max_objects: Option<u32>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state
-        .jdbc_agent
-        .prefetch_catalog(connection_id, catalog.as_deref(), max_objects)
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state
+            .jdbc_agent
+            .prefetch_catalog(connection_id, catalog.as_deref(), max_objects)
+    })
+    .await
 }
 
 /// Loops every catalog on catalog-explorer dialects (SQL Server) server-side (jdbc-agent), so
@@ -417,177 +445,217 @@ async fn connection_find_objects_by_name(
 }
 
 #[tauri::command]
-fn connection_columns(
+async fn connection_columns(
     connection_id: String,
     schema: String,
     table: String,
     catalog: Option<String>,
     completion_only: Option<bool>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.list_columns(
-        connection_id,
-        schema.trim(),
-        table.trim(),
-        catalog.as_deref(),
-        completion_only.unwrap_or(false),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.list_columns(
+            connection_id,
+            schema.trim(),
+            table.trim(),
+            catalog.as_deref(),
+            completion_only.unwrap_or(false),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_arguments(
+async fn connection_arguments(
     connection_id: String,
     schema: String,
     name: String,
     kind: String,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.list_arguments(
-        connection_id,
-        schema.trim(),
-        name.trim(),
-        kind.trim(),
-        catalog.as_deref(),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.list_arguments(
+            connection_id,
+            schema.trim(),
+            name.trim(),
+            kind.trim(),
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_package_members(
+async fn connection_package_members(
     connection_id: String,
     schema: String,
     package: String,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.list_package_members(
-        connection_id,
-        schema.trim(),
-        package.trim(),
-        catalog.as_deref(),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.list_package_members(
+            connection_id,
+            schema.trim(),
+            package.trim(),
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_primary_keys(
+async fn connection_primary_keys(
     connection_id: String,
     schema: String,
     table: String,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.list_primary_keys(
-        connection_id,
-        schema.trim(),
-        table.trim(),
-        catalog.as_deref(),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.list_primary_keys(
+            connection_id,
+            schema.trim(),
+            table.trim(),
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_indexes(
+async fn connection_indexes(
     connection_id: String,
     schema: String,
     table: String,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.list_indexes(
-        connection_id,
-        schema.trim(),
-        table.trim(),
-        catalog.as_deref(),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.list_indexes(
+            connection_id,
+            schema.trim(),
+            table.trim(),
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_table_comment(
+async fn connection_table_comment(
     connection_id: String,
     schema: String,
     table: String,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.get_table_comment(
-        connection_id,
-        schema.trim(),
-        table.trim(),
-        catalog.as_deref(),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.get_table_comment(
+            connection_id,
+            schema.trim(),
+            table.trim(),
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_foreign_keys(
+async fn connection_foreign_keys(
     connection_id: String,
     schema: String,
     table: String,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.list_foreign_keys(
-        connection_id,
-        schema.trim(),
-        table.trim(),
-        catalog.as_deref(),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.list_foreign_keys(
+            connection_id,
+            schema.trim(),
+            table.trim(),
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_references(
+async fn connection_references(
     connection_id: String,
     schema: String,
     table: String,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.list_references(
-        connection_id,
-        schema.trim(),
-        table.trim(),
-        catalog.as_deref(),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.list_references(
+            connection_id,
+            schema.trim(),
+            table.trim(),
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_constraints(
+async fn connection_constraints(
     connection_id: String,
     schema: String,
     table: String,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.list_constraints(
-        connection_id,
-        schema.trim(),
-        table.trim(),
-        catalog.as_deref(),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.list_constraints(
+            connection_id,
+            schema.trim(),
+            table.trim(),
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_triggers(
+async fn connection_triggers(
     connection_id: String,
     schema: String,
     table: String,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.list_triggers(
-        connection_id,
-        schema.trim(),
-        table.trim(),
-        catalog.as_deref(),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.list_triggers(
+            connection_id,
+            schema.trim(),
+            table.trim(),
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -616,66 +684,78 @@ async fn connection_ddl(
 }
 
 #[tauri::command]
-fn connection_compile(
+async fn connection_compile(
     connection_id: String,
     schema: String,
     name: String,
     kind: String,
     package_body: Option<bool>,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.compile_object(
-        connection_id,
-        schema.trim(),
-        name.trim(),
-        kind.trim(),
-        package_body,
-        catalog.as_deref(),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.compile_object(
+            connection_id,
+            schema.trim(),
+            name.trim(),
+            kind.trim(),
+            package_body,
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_dependencies(
+async fn connection_dependencies(
     connection_id: String,
     schema: String,
     name: String,
     kind: String,
     package_body: Option<bool>,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.list_object_dependencies(
-        connection_id,
-        schema.trim(),
-        name.trim(),
-        kind.trim(),
-        package_body,
-        catalog.as_deref(),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.list_object_dependencies(
+            connection_id,
+            schema.trim(),
+            name.trim(),
+            kind.trim(),
+            package_body,
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn connection_dependents(
+async fn connection_dependents(
     connection_id: String,
     schema: String,
     name: String,
     kind: String,
     package_body: Option<bool>,
     catalog: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
-    let connection_id = require_connection_id(&connection_id)?;
-    state.jdbc_agent.list_object_dependents(
-        connection_id,
-        schema.trim(),
-        name.trim(),
-        kind.trim(),
-        package_body,
-        catalog.as_deref(),
-    )
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let connection_id = require_connection_id(&connection_id)?;
+        state.jdbc_agent.list_object_dependents(
+            connection_id,
+            schema.trim(),
+            name.trim(),
+            kind.trim(),
+            package_body,
+            catalog.as_deref(),
+        )
+    })
+    .await
 }
 
 fn shutdown_runtime(app: &tauri::AppHandle) {
