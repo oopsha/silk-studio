@@ -1389,6 +1389,7 @@ class QueryExecutionServiceImpl {
       QueryResultQueryService.register(tab.id, {
         connectionId, sql: input.executedSql ?? input.sql, columns: input.result.columns, binds: input.binds,
         paged: isResultTruncated(input.result, ConfigurationService.getValue("queryResult.maxRows")),
+        pagingMode: ConfigurationService.getValue("queryResult.pagingMode"),
         prepare: async () => {
           assertReadOnlyQueryAllowed(input.sql, ConfigurationService.getValue("database.readOnly"));
           await ensureExecutionConnection(connectionId);

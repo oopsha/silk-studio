@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "allow-query-import"
-description = "Allows importing file rows and streaming CSV exports through jdbc-agent."
-commands.allow = ["query_import_rows", "query_import_status", "query_export_result"]
+description = "Allows importing file rows, streaming CSV exports and full-result copies through jdbc-agent."
+commands.allow = ["query_import_rows", "query_import_status", "query_export_result", "query_copy_result", "query_count_rows"]

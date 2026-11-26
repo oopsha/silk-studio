@@ -27,8 +27,82 @@ interface ResultExportWriter extends AutoCloseable {
   @Override
   void close() throws IOException;
 
-  static ResultExportWriter open(String format, Path target) throws IOException {
-    return "xlsx".equalsIgnoreCase(format) ? new Xlsx(target) : new Csv(target);
+  /** Characters written so far (only tracked by writers that need a size limit). */
+  default long writtenChars() {
+    return 0;
+  }
+
+  static ResultExportWriter open(String format, Path target, String nullDisplay) throws IOException {
+    if ("xlsx".equalsIgnoreCase(format)) return new Xlsx(target);
+    if ("tsv".equalsIgnoreCase(format)) return new Tsv(target, nullDisplay);
+    return new Csv(target);
+  }
+
+  /**
+   * Clipboard text: values only (no header), tab separated, LF rows, SQL NULL as the grid's null
+   * token — matches the frontend's {@code toTsv(..., { includeHeader: false })}.
+   */
+  final class Tsv implements ResultExportWriter {
+    private final Writer out;
+    private final String nullDisplay;
+    private final StringBuilder line = new StringBuilder(512);
+    private boolean first = true;
+    private long chars;
+
+    Tsv(Path target, String nullDisplay) throws IOException {
+      out = new BufferedWriter(new OutputStreamWriter(Files.newOutputStream(target), StandardCharsets.UTF_8), 1 << 16);
+      this.nullDisplay = nullDisplay == null ? "" : nullDisplay;
+    }
+
+    @Override
+    public void header(String[] labels) {
+      // Cell copy mirrors spreadsheet behavior: values only, never headers.
+    }
+
+    @Override
+    public void row(String[] values, boolean[] numeric) throws IOException {
+      line.setLength(0);
+      if (!first) line.append('\n');
+      first = false;
+      for (int i = 0; i < values.length; i++) {
+        if (i > 0) line.append('\t');
+        appendField(line, values[i] == null ? nullDisplay : values[i]);
+      }
+      chars += line.length();
+      out.write(line.toString());
+    }
+
+    private static void appendField(StringBuilder out, String value) {
+      boolean quote = false;
+      for (int i = 0; i < value.length(); i++) {
+        char ch = value.charAt(i);
+        if (ch == '\t' || ch == '\n' || ch == '\r') {
+          quote = true;
+          break;
+        }
+      }
+      if (!quote) {
+        out.append(value);
+        return;
+      }
+      out.append('"');
+      for (int i = 0; i < value.length(); i++) {
+        char ch = value.charAt(i);
+        if (ch == '"') out.append('"');
+        out.append(ch);
+      }
+      out.append('"');
+    }
+
+    @Override
+    public long writtenChars() {
+      return chars;
+    }
+
+    @Override
+    public void close() throws IOException {
+      out.close();
+    }
   }
 
   /** UTF-8 CSV with BOM and CRLF, quoted like the frontend's {@code toCsv}. */

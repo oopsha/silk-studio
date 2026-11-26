@@ -648,6 +648,12 @@ impl JdbcAgentClient {
         self.send_request("query.exportResult", params)
     }
 
+    pub fn count_rows(&self, connection_id: &str, mut params: Value) -> Result<Value, String> {
+        self.ensure_connection(connection_id)?;
+        params["connectionId"] = json!(connection_id.trim());
+        self.send_request("query.count", params)
+    }
+
     pub fn import_status(&self, connection_id: &str, operation_id: &str, cancel: bool) -> Result<Value, String> {
         self.send_request("query.importStatus", json!({
             "connectionId": connection_id, "operationId": operation_id, "cancel": cancel

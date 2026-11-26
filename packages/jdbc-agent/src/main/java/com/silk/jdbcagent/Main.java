@@ -178,7 +178,9 @@ public final class Main {
         long agentRequestId = JdbcDiagnostics.nextRequestId();
         long queuedAtNanos = System.nanoTime();
         // Register before queueing so cancellation also works while earlier work is still running.
-        if ("query.importRows".equals(method) || "query.exportResult".equals(method)) {
+        if ("query.importRows".equals(method)
+            || "query.exportResult".equals(method)
+            || "query.count".equals(method)) {
           runtime.registerImport(request.path("params"));
         }
         ExecutorService executor =
@@ -375,6 +377,14 @@ public final class Main {
           }
           response.put("ok", true);
           response.set("result", runtime.exportResult(sql, params));
+        }
+        case "query.count" -> {
+          String sql = params.path("sql").asText("").trim();
+          if (sql.isEmpty()) {
+            throw new RuntimeException("Missing params.sql");
+          }
+          response.put("ok", true);
+          response.set("result", runtime.countRows(sql, params));
         }
         case "query.importStatus" -> {
           response.put("ok", true);
@@ -1450,9 +1460,16 @@ public final class Main {
             }
             rs = prepared.executeQuery();
           }
+          // Optional caps (clipboard copy): stop and report instead of producing a huge payload.
+          long maxRows = params.path("maxRows").asLong(0);
+          long maxChars = params.path("maxChars").asLong(0);
+          boolean limitExceeded = false;
           try (ResultSet cursor = rs;
               ResultExportWriter out =
-                  ResultExportWriter.open(params.path("format").asText("csv"), target)) {
+                  ResultExportWriter.open(
+                      params.path("format").asText("csv"),
+                      target,
+                      params.path("nullDisplay").asText(""))) {
             ResultSetMetaData metadata = cursor.getMetaData();
             String[] labels = uniqueColumnLabels(metadata);
             // Export only the grid's visible columns, in the grid's order.
@@ -1486,12 +1503,21 @@ public final class Main {
               if (progress.cancelled) {
                 throw new SQLException("Export cancelled", "57014");
               }
+              if ((maxRows > 0 && rowCount >= maxRows)
+                  || (maxChars > 0 && out.writtenChars() > maxChars)) {
+                limitExceeded = true;
+                break;
+              }
               for (int c = 0; c < width; c++) {
                 values[c] = exportCellText(cursor, indexes.get(c), jdbcTypes[c]);
               }
               out.row(values, numeric);
               progress.completed = (int) Math.min(++rowCount, Integer.MAX_VALUE);
             }
+          }
+          if (limitExceeded) {
+            // `finished` stays false so the partial file is deleted below.
+            return exportOutcome(target, rowCount, false).put("limitExceeded", true);
           }
           finished = true;
           return exportOutcome(target, rowCount, false);
@@ -1514,6 +1540,96 @@ public final class Main {
         if (!finished) {
           try { java.nio.file.Files.deleteIfExists(target); } catch (IOException ignored) { }
         }
+      }
+    }
+
+    /**
+     * Total row count of a (paged) result: {@code SELECT COUNT(*) FROM (sql) sq [WHERE filter]}.
+     * Sort is irrelevant to a count and omitted. Runs on the connection's executor, so the
+     * frontend cancels it (via {@code query.importStatus} with {@code cancel}) when it needs the
+     * connection for something else, e.g. the next scroll page.
+     */
+    ObjectNode countRows(String sql, JsonNode params) throws SQLException {
+      String operationId = importKey(params);
+      TableImport.Progress progress = imports.computeIfAbsent(operationId, key -> new TableImport.Progress());
+      ObjectNode result = MAPPER.createObjectNode();
+      try {
+        progress.phase = "running";
+        if (progress.cancelled) {
+          return result.put("cancelled", true);
+        }
+        Session session = requireSession(params);
+        if (params.path("readOnly").asBoolean(false) && isWriteSql(sql)) {
+          throw new RuntimeException("Read-only mode is enabled. Write statements are blocked.");
+        }
+        applyConnectionSettings(session, params);
+
+        Set<String> knownColumns = new LinkedHashSet<>();
+        for (JsonNode column : params.path("knownColumns")) {
+          knownColumns.add(column.asText(""));
+        }
+        List<String> filterBinds = new ArrayList<>();
+        String whereFragment =
+            FilterSqlBuilder.buildWhereFragment(
+                params.path("filters"), knownColumns, session.dialect, filterBinds);
+        // Same derived-table shape (and alias) as wrapPagedQuery, so filters resolve identically.
+        StringBuilder countSql = new StringBuilder("SELECT COUNT(*) FROM (").append(sql).append("\n) sq");
+        if (whereFragment != null && !whereFragment.isBlank()) {
+          countSql.append(" WHERE ").append(whereFragment);
+        }
+
+        List<String> finalBinds = new ArrayList<>();
+        for (JsonNode bind : params.path("binds")) {
+          finalBinds.add(bind == null || bind.isNull() ? null : bind.asText());
+        }
+        finalBinds.addAll(filterBinds);
+
+        int timeoutOverride = params.hasNonNull("queryTimeoutSec")
+            ? params.path("queryTimeoutSec").asInt(-1)
+            : -1;
+        int effectiveTimeout = timeoutOverride >= 0 ? timeoutOverride : timeoutSeconds;
+        int previousNetworkTimeout = getNetworkTimeoutQuietly(session.connection);
+        setNetworkTimeoutQuietly(session.connection, effectiveTimeout);
+
+        Statement statement =
+            finalBinds.isEmpty()
+                ? session.connection.createStatement()
+                : session.connection.prepareStatement(countSql.toString());
+        session.activeStatement = statement;
+        progress.statement = statement;
+        try {
+          statement.setQueryTimeout(effectiveTimeout);
+          ResultSet rs;
+          if (finalBinds.isEmpty()) {
+            rs = statement.executeQuery(countSql.toString());
+          } else {
+            PreparedStatement prepared = (PreparedStatement) statement;
+            for (int i = 0; i < finalBinds.size(); i++) {
+              String bind = finalBinds.get(i);
+              if (bind == null) prepared.setNull(i + 1, Types.VARCHAR);
+              else prepared.setString(i + 1, bind);
+            }
+            rs = prepared.executeQuery();
+          }
+          try (ResultSet cursor = rs) {
+            long count = cursor.next() ? cursor.getLong(1) : 0;
+            result.put("rowCount", count);
+            result.put("cancelled", false);
+            return result;
+          }
+        } catch (SQLException error) {
+          if (progress.cancelled) {
+            return result.put("cancelled", true);
+          }
+          throw error;
+        } finally {
+          if (session.activeStatement == statement) session.activeStatement = null;
+          progress.statement = null;
+          try { statement.close(); } catch (SQLException ignored) { }
+          restoreNetworkTimeoutQuietly(session.connection, previousNetworkTimeout);
+        }
+      } finally {
+        imports.remove(operationId, progress);
       }
     }
 

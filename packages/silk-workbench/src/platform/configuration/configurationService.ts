@@ -163,6 +163,9 @@ class ConfigurationServiceImpl {
       5000,
       CONFIGURATION_DEFAULTS["queryResult.maxRows"],
     );
+    if (values["queryResult.pagingMode"] !== "page" && values["queryResult.pagingMode"] !== "scroll") {
+      values["queryResult.pagingMode"] = CONFIGURATION_DEFAULTS["queryResult.pagingMode"];
+    }
     if (typeof values["queryResult.nullDisplay"] !== "string") {
       values["queryResult.nullDisplay"] =
         CONFIGURATION_DEFAULTS["queryResult.nullDisplay"];

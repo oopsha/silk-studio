@@ -39,6 +39,8 @@ type ActiveGrid = {
     columns: string[];
     startRowIndex: number;
     endRowIndex: number;
+    /** Ctrl+A: every displayed row, including rows loaded after the selection was made. */
+    all?: boolean;
   } | null;
   openValueEditor: () => void;
   fetchAllRowsForExport?: (columns: string[], onProgress?: (rowCount: number | null) => void) => Promise<Array<Array<string | null>>>;
@@ -351,6 +353,28 @@ export class QueryResultGridController {
     this.active.cellSelection = null;
   }
 
+  /** Ctrl+A: selects every displayed row across the visible columns (grid order). */
+  selectAllCells(): string[] | null {
+    const grid = this.active;
+    if (!grid) return null;
+    const count = grid.api.getDisplayedRowCount();
+    if (count === 0) return null;
+    const columns = visibleColumnFields(grid.api, grid.columns);
+    grid.cellSelection = { columns, startRowIndex: 0, endRowIndex: count - 1, all: true };
+    return columns;
+  }
+
+  /** Visible columns of a Ctrl+A selection, or null when the selection is a narrower range. */
+  allCellsSelectionColumns(): string[] | null {
+    const selection = this.active?.cellSelection;
+    return selection?.all ? selection.columns : null;
+  }
+
+  /** Loaded rows the current Ctrl+A selection would copy. */
+  displayedRowCount(): number {
+    return this.active?.api.getDisplayedRowCount() ?? 0;
+  }
+
   async exportCsv(
     onProgress?: (rowCount: number | null) => void,
     signal?: AbortSignal,
@@ -582,8 +606,10 @@ export class QueryResultGridController {
   } | null {
     const selection = grid.cellSelection;
     if (!selection || selection.columns.length === 0) return null;
-    const from = Math.min(selection.startRowIndex, selection.endRowIndex);
-    const to = Math.max(selection.startRowIndex, selection.endRowIndex);
+    const from = selection.all ? 0 : Math.min(selection.startRowIndex, selection.endRowIndex);
+    const to = selection.all
+      ? grid.api.getDisplayedRowCount() - 1
+      : Math.max(selection.startRowIndex, selection.endRowIndex);
 
     const rows: Array<Array<string | null>> = [];
     for (let rowIndex = from; rowIndex <= to; rowIndex += 1) {

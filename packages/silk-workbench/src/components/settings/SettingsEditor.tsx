@@ -551,6 +551,25 @@ function QueryResultSettings() {
           }
         />
       </SettingRow>
+      <SettingRow
+        title={t("settings.queryResult.pagingMode")}
+        description={t("settings.queryResult.pagingModeDescription")}
+      >
+        <select
+          className="settings-control"
+          value={configuration["queryResult.pagingMode"]}
+          onChange={(event) =>
+            ConfigurationService.updateValue(
+              "queryResult.pagingMode",
+              event.target.value === "scroll" ? "scroll" : "page",
+            )
+          }
+          aria-label={t("settings.queryResult.pagingMode")}
+        >
+          <option value="page">{t("settings.queryResult.pagingModePage")}</option>
+          <option value="scroll">{t("settings.queryResult.pagingModeScroll")}</option>
+        </select>
+      </SettingRow>
       <SettingRow title={t("settings.queryResult.rowHeight")}>
         <input
           className="settings-control settings-control--number"

@@ -1,5 +1,5 @@
 import "./Panel.css";
-import { useRef, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import { CommandService } from "@silk-studio/workbench/platform/commands/commandService.ts";
 import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
@@ -14,6 +14,28 @@ import { useQueryExecutionState } from "../../../services/query/useQueryExecutio
 import QueryResultGrid from "./QueryResultGrid";
 import QueryResultLog from "./QueryResultLog";
 
+/** Run start per editor group, kept outside the component so a remount mid-run keeps the clock. */
+const runStartedAtByGroup = new Map<EditorGroupId, number>();
+
+/** Live elapsed time (m:ss) while a query runs in `groupId`; null when idle. */
+function useRunElapsed(groupId: EditorGroupId, running: boolean): string | null {
+  const [now, setNow] = useState(() => Date.now());
+  if (running && !runStartedAtByGroup.has(groupId)) runStartedAtByGroup.set(groupId, Date.now());
+  useEffect(() => {
+    if (!running) {
+      runStartedAtByGroup.delete(groupId);
+      return;
+    }
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [groupId, running]);
+  const startedAt = runStartedAtByGroup.get(groupId);
+  if (!running || startedAt === undefined) return null;
+  const seconds = Math.max(0, Math.floor((now - startedAt) / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
 function Panel({
   groupId,
   editorTabId,
@@ -27,6 +49,9 @@ function Panel({
   const panelVisual = useGroupPanelState(groupId, editorTabId);
   const logPreRef = useRef<HTMLPreElement | null>(null);
   const isRunning = queryState.status === "running";
+  const runElapsed = useRunElapsed(groupId, isRunning);
+  const withElapsed = (text: string | undefined) =>
+    runElapsed && text?.trim() ? `${text.trimEnd()} (${runElapsed})` : text;
   const showErrorOrCancel =
     queryState.status === "error" || queryState.status === "cancelled";
   const activeTab =
@@ -111,7 +136,7 @@ function Panel({
         tabIndex={0}
         onKeyDown={handleLogKeyDown}
       >
-        {logText}
+        {isRunning ? withElapsed(logText) : logText}
       </pre>
     );
   }
@@ -269,7 +294,7 @@ function Panel({
       <div className="panel__body">
         {isRunning && (gridResult || activeTab) ? (
           <div className="panel__running-banner" role="status">
-            {queryState.output}
+            {withElapsed(queryState.output)}
           </div>
         ) : null}
 
