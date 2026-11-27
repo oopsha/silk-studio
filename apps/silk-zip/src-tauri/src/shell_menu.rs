@@ -27,16 +27,17 @@ pub const ARCHIVE_EXTENSIONS: &[&str] = &[
     "zip", "zipx", "tar", "tgz", "taz", "gz", "gzip", "bz2", "xz", "txz", "lz", "lzma", "lzh", "lha", "iso", "7z", "zpaq", "rar", "rar5",
 ];
 
-/// (key name = sort order, label with `&` accelerator, action, only for archives, separator before)
-const ITEMS: &[(&str, &str, &str, bool, bool)] = &[
-    ("01", "Silk Zip으로 열기(&O)", "open", true, true),
-    ("02", "여기에 풀기(&X)", "extract-here", true, false),
-    ("03", "파일명 폴더에 풀기(&E)", "extract-folder", true, false),
-    ("04", "Silk Zip으로 압축 풀기(&T)...", "extract-dialog", true, false),
-    ("05", "ZIP으로 압축하기(&Z)", "compress-zip", false, true),
-    ("06", "7z로 압축하기(&7)", "compress-7z", false, false),
-    ("07", "각각 ZIP으로 압축하기(&U)", "compress-each", false, false),
-    ("08", "Silk Zip으로 압축하기(&L)...", "compress-dialog", false, false),
+/// (key name = sort order, Korean and English label with `&` accelerator, action, only for
+/// archives, separator before)
+const ITEMS: &[(&str, (&str, &str), &str, bool, bool)] = &[
+    ("01", ("Silk Zip으로 열기(&O)", "Open with Silk Zip(&O)"), "open", true, true),
+    ("02", ("여기에 풀기(&X)", "Extract Here(&X)"), "extract-here", true, false),
+    ("03", ("파일명 폴더에 풀기(&E)", "Extract to Archive-Named Folder(&E)"), "extract-folder", true, false),
+    ("04", ("Silk Zip으로 압축 풀기(&T)...", "Extract with Silk Zip(&T)..."), "extract-dialog", true, false),
+    ("05", ("ZIP으로 압축하기(&Z)", "Compress to ZIP(&Z)"), "compress-zip", false, true),
+    ("06", ("7z로 압축하기(&7)", "Compress to 7z(&7)"), "compress-7z", false, false),
+    ("07", ("각각 ZIP으로 압축하기(&U)", "Compress Each to ZIP(&U)"), "compress-each", false, false),
+    ("08", ("Silk Zip으로 압축하기(&L)...", "Compress with Silk Zip(&L)..."), "compress-dialog", false, false),
 ];
 
 fn archive_filter() -> String {
@@ -65,7 +66,7 @@ pub fn register() -> io::Result<()> {
                 continue;
             }
             let (item, _) = classes.create_subkey(format!(r"{target}\shell\{VERB_PREFIX}{order}"))?;
-            item.set_value("MUIVerb", label)?;
+            item.set_value("MUIVerb", &crate::language::pick(label.0, label.1))?;
             item.set_value("Icon", &format!("\"{exe}\",0"))?;
             if *archives_only {
                 item.set_value("AppliesTo", &filter)?;

@@ -117,7 +117,7 @@ mod windows_dialog {
     }
 
     fn label_in(archive: &Path, folder: &Path) -> HSTRING {
-        HSTRING::from(silk_zip_menu::named_folder_label(archive, folder, &|path| path.exists()))
+        HSTRING::from(silk_zip_menu::named_folder_label(archive, folder, &|path| path.exists(), crate::language::current()))
     }
 
     /// Renames the check box after the folder that "폴더 선택" would take: the selected one, or
@@ -176,11 +176,11 @@ mod windows_dialog {
     unsafe fn run(owner: Option<isize>, default_path: Option<String>, check: Check) -> windows::core::Result<Option<PickedFolder>> {
         let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER)?;
         dialog.SetOptions(dialog.GetOptions()? | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM)?;
-        dialog.SetTitle(&HSTRING::from("압축을 풀 폴더 선택"))?;
+        dialog.SetTitle(&HSTRING::from(crate::language::pick("압축을 풀 폴더 선택", "Choose where to extract")))?;
         // Several archives: one fixed text; one archive: named after it, updated by `FollowFolder`.
         let label = match &check.archive {
             Some(archive) => label_in(archive, Path::new(default_path.as_deref().unwrap_or_default())),
-            None => HSTRING::from("각각 폴더에 풀기"),
+            None => HSTRING::from(crate::language::pick("각각 폴더에 풀기", "Extract each to its own folder")),
         };
         if let Some(path) = default_path {
             // A folder that is gone just leaves the dialog where it opens by itself.

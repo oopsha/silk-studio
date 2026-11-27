@@ -14,6 +14,7 @@ import { useZipSettings } from "../zipSettings";
 import ExtractMenu, { type MenuAnchor } from "./ExtractMenu";
 import ViewPaneTitle from "@silk-studio/workbench/components/layout/Sidebar/ViewPaneTitle/ViewPaneTitle.tsx";
 import { useLayoutState } from "@silk-studio/workbench/services/layout/useLayoutState.ts";
+import { tr } from "../i18n";
 
 export type RenameEntry = { path: string; name: string; directory: boolean };
 
@@ -104,7 +105,7 @@ export default function ArchiveExplorer({ archive, draft, dragging, onExtract, o
   const closeMenu = useCallback(() => setMenu(null), []);
   const currentSelection = (nodes: readonly ResourceNode[]) => {
     const paths = nodes.map((node) => archiveNodePath(archive, node)).filter((path): path is string => path !== null);
-    const label = nodes.length === 1 ? `'${nodes[0].name}'` : `${nodes.length.toLocaleString()}개 항목`;
+    const label = nodes.length === 1 ? `'${nodes[0].name}'` : tr("{0}개 항목", nodes.length.toLocaleString());
     return paths.length ? { label, paths } : undefined;
   };
   const openMenuBelow = (event: MouseEvent<HTMLButtonElement>) => {
@@ -124,27 +125,27 @@ export default function ArchiveExplorer({ archive, draft, dragging, onExtract, o
       <div className="zip-toolbar__actions">
         <div className="zip-add-menu" ref={addMenuRef}>
           <div className="zip-extract-split">
-            <button type="button" className="zip-button zip-extract-split__main" title={editor.canEdit ? "파일 추가 (Insert)" : "이 형식은 수정할 수 없습니다 (zip, 7z, tar만 가능)"} disabled={!editor.canEdit} onClick={() => editor.addFiles(folder)}>추가</button>
-            <button type="button" className="zip-button zip-extract-split__arrow" aria-label="추가 옵션" aria-haspopup="menu" aria-expanded={addMenuOpen} disabled={!editor.canEdit} onClick={() => setAddMenuOpen((open) => !open)}><Codicon name="chevron-down" /></button>
+            <button type="button" className="zip-button zip-extract-split__main" title={editor.canEdit ? tr("파일 추가 (Insert)") : tr("이 형식은 수정할 수 없습니다 (zip, 7z, tar만 가능)")} disabled={!editor.canEdit} onClick={() => editor.addFiles(folder)}>{tr("추가")}</button>
+            <button type="button" className="zip-button zip-extract-split__arrow" aria-label={tr("추가 옵션")} aria-haspopup="menu" aria-expanded={addMenuOpen} disabled={!editor.canEdit} onClick={() => setAddMenuOpen((open) => !open)}><Codicon name="chevron-down" /></button>
           </div>
-          {addMenuOpen ? <div className="zip-add-menu__popup" role="menu"><button role="menuitem" onClick={() => { setAddMenuOpen(false); editor.addFiles(folder); }}>파일 추가</button><button role="menuitem" onClick={() => { setAddMenuOpen(false); editor.addFolder(folder); }}>폴더 추가</button></div> : null}
+          {addMenuOpen ? <div className="zip-add-menu__popup" role="menu"><button role="menuitem" onClick={() => { setAddMenuOpen(false); editor.addFiles(folder); }}>{tr("파일 추가")}</button><button role="menuitem" onClick={() => { setAddMenuOpen(false); editor.addFolder(folder); }}>{tr("폴더 추가")}</button></div> : null}
         </div>
-        <button type="button" className="zip-button" disabled={!editor.canEdit} title="현재 폴더에 새 폴더 만들기" onClick={() => editor.newFolder(folder)}>새 폴더</button>
-        <button type="button" className="zip-button" disabled={!editor.canEdit || selectedCount === 0} title="선택한 항목 제거 (Delete)" onClick={() => editor.remove(selectedPathsRef.current)}>제거</button>
+        <button type="button" className="zip-button" disabled={!editor.canEdit} title={tr("현재 폴더에 새 폴더 만들기")} onClick={() => editor.newFolder(folder)}>{tr("새 폴더")}</button>
+        <button type="button" className="zip-button" disabled={!editor.canEdit || selectedCount === 0} title={tr("선택한 항목 제거 (Delete)")} onClick={() => editor.remove(selectedPathsRef.current)}>{tr("제거")}</button>
         {draft ? <button type="button" className="zip-button primary" disabled={draft.action.disabled} onClick={draft.action.onClick}>{draft.action.label}</button> : <div className="zip-extract-split">
-          <button type="button" className="zip-button primary zip-extract-split__main" title="압축 풀기 (Ctrl+E)" onClick={() => onExtract(extractTarget)}>압축 풀기</button>
-          <button type="button" className="zip-button primary zip-extract-split__arrow" title="풀기 옵션" aria-label="풀기 옵션" aria-haspopup="menu" aria-expanded={menu !== null} onClick={openMenuBelow}>
+          <button type="button" className="zip-button primary zip-extract-split__main" title={tr("압축 풀기 (Ctrl+E)")} onClick={() => onExtract(extractTarget)}>{tr("압축 풀기")}</button>
+          <button type="button" className="zip-button primary zip-extract-split__arrow" title={tr("풀기 옵션")} aria-label={tr("풀기 옵션")} aria-haspopup="menu" aria-expanded={menu !== null} onClick={openMenuBelow}>
             <Codicon name="chevron-down" />
           </button>
         </div>}
       </div>
     </div>
   );
-  return <section className={`zip-archive-workspace${layout.sidebar ? "" : " zip-archive-workspace--sidebar-hidden"}${draft ? " zip-archive-workspace--draft" : ""}${dragging ? " zip-archive-workspace--dragging" : ""}`} aria-label={draft ? "새 압축 탐색기" : "압축 파일 탐색기"}>
+  return <section className={`zip-archive-workspace${layout.sidebar ? "" : " zip-archive-workspace--sidebar-hidden"}${draft ? " zip-archive-workspace--draft" : ""}${dragging ? " zip-archive-workspace--dragging" : ""}`} aria-label={draft ? tr("새 압축 탐색기") : tr("압축 파일 탐색기")}>
     {archive.warnings.map((warning, index) => <p className="zip-message" key={index}>{warning}</p>)}
     {editor.pendingCount > 0 ? <div className="zip-pending-bar" role="status">
-      <span>{`변경 ${editor.pendingCount.toLocaleString()}개가 대기 중입니다. 적용해야 압축 파일에 반영됩니다.`}</span>
-      <span className="zip-pending-bar__actions"><button type="button" className="zip-button" onClick={editor.discard}>모두 취소</button><button type="button" className="zip-button primary" onClick={editor.apply}>적용</button></span>
+      <span>{tr("변경 {0}개가 대기 중입니다. 적용해야 압축 파일에 반영됩니다.", editor.pendingCount.toLocaleString())}</span>
+      <span className="zip-pending-bar__actions"><button type="button" className="zip-button" onClick={editor.discard}>{tr("모두 취소")}</button><button type="button" className="zip-button primary" onClick={editor.apply}>{tr("적용")}</button></span>
     </div> : null}
     <div className="zip-explorer-content">
       <ResourceExplorer
@@ -157,19 +158,19 @@ export default function ArchiveExplorer({ archive, draft, dragging, onExtract, o
         columns={draft ? draftColumns : columns}
         statusIcons={editor.pendingCount > 0 ? STATUS_ICONS : undefined}
         header={header}
-        sidebarTitle={<ViewPaneTitle title={activeView === "search" ? "검색" : "탐색기"} />}
+        sidebarTitle={<ViewPaneTitle title={activeView === "search" ? tr("검색") : tr("탐색기")} />}
         viewMode={viewMode}
         locate={locate}
         sidebar={activeView === "search" ? <ArchiveSearchView archive={archive} folder={folder} onReveal={(item: SearchItem) => setLocate((previous) => ({ route: archiveRoute(archive, item.parent), select: item.id, nonce: (previous?.nonce ?? 0) + 1 }))} /> : undefined}
-        addressExtra={draft ? undefined : <button type="button" className="zip-path-copy" title="경로 복사" aria-label="경로 복사" aria-haspopup="menu" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setPathMenu({ x: rect.right, y: rect.bottom + 2 }); }}><Codicon name="copy" /></button>}
+        addressExtra={draft ? undefined : <button type="button" className="zip-path-copy" title={tr("경로 복사")} aria-label={tr("경로 복사")} aria-haspopup="menu" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setPathMenu({ x: rect.right, y: rect.bottom + 2 }); }}><Codicon name="copy" /></button>}
         onListContextMenu={draft ? undefined : openContextMenu}
         onTreeContextMenu={draft ? undefined : openContextMenu}
-        rowAction={draft ? undefined : { icon: "export", title: "압축 풀기" }}
+        rowAction={draft ? undefined : { icon: "export", title: tr("압축 풀기") }}
         onRowMenu={draft ? undefined : (nodes, at) => setMenu({ ...at, selection: currentSelection(nodes), rename: nodes.length === 1 && editor.canEdit ? selectionRef.current ?? undefined : undefined, reveal: true })}
       />
     </div>
     {pathMenu ? <PathCopyMenu anchor={pathMenu} archivePath={archive.path} folder={folder} onClose={() => setPathMenu(null)} /> : null}
-    {menu ? <ExtractMenu archivePath={archive.path} anchor={menu} onClose={closeMenu} selectionLabel={menu.selection?.label} onRename={menu.rename ? () => { const entry = menu.rename!; setMenu(null); onRename(entry); } : undefined} onTestArchive={menu.reveal ? () => { setMenu(null); onTest(); } : undefined} onRevealArchive={menu.reveal ? () => { setMenu(null); void revealInFolder(archive.path).catch((reason) => ConfirmDialogService.confirm({ title: "압축 파일 위치 열기", message: String(reason), confirmLabel: "확인", hideCancel: true })); } : undefined} onPick={(target, scope) => { const entries = scope === "selection" && menu.selection ? menu.selection.paths : undefined; setMenu(null); onExtract(target, entries); }} /> : null}
+    {menu ? <ExtractMenu archivePath={archive.path} anchor={menu} onClose={closeMenu} selectionLabel={menu.selection?.label} onRename={menu.rename ? () => { const entry = menu.rename!; setMenu(null); onRename(entry); } : undefined} onTestArchive={menu.reveal ? () => { setMenu(null); onTest(); } : undefined} onRevealArchive={menu.reveal ? () => { setMenu(null); void revealInFolder(archive.path).catch((reason) => ConfirmDialogService.confirm({ title: tr("압축 파일 위치 열기"), message: String(reason), confirmLabel: tr("확인"), hideCancel: true })); } : undefined} onPick={(target, scope) => { const entries = scope === "selection" && menu.selection ? menu.selection.paths : undefined; setMenu(null); onExtract(target, entries); }} /> : null}
   </section>;
 }
 
@@ -186,7 +187,7 @@ function PathCopyMenu({ anchor, archivePath, folder, onClose }: { anchor: { x: n
   const copy = (text: string) => { onClose(); void navigator.clipboard.writeText(text).catch((reason) => console.warn("[silkZip.copyPath]", reason)); };
   const separator = archivePath.includes("\\") ? "\\" : "/";
   return <div className="zip-path-menu" role="menu" style={{ left: anchor.x, top: anchor.y }} onMouseDown={(event) => event.stopPropagation()}>
-    <button role="menuitem" onClick={() => copy(archivePath)}>압축 파일 경로 복사</button>
-    {folder ? <button role="menuitem" onClick={() => copy(`${archivePath}${separator}${folder.replace(/\//g, separator)}`)}>현재 폴더 경로 복사</button> : null}
+    <button role="menuitem" onClick={() => copy(archivePath)}>{tr("압축 파일 경로 복사")}</button>
+    {folder ? <button role="menuitem" onClick={() => copy(`${archivePath}${separator}${folder.replace(/\//g, separator)}`)}>{tr("현재 폴더 경로 복사")}</button> : null}
   </div>;
 }

@@ -9,6 +9,7 @@ import ResourceIconView from "./ResourceIconView";
 import { useMarqueeSelection } from "./useMarqueeSelection";
 import { sortResources, type ResourceNode, type ResourceRowAction, type ResourceSource, type RowMenuHandler } from "./resourceExplorerTypes";
 import "./ResourceExplorer.css";
+import { koEn } from "../../platform/i18n/koEn";
 
 /** Asks the explorer to show a folder and select one of its items (e.g. from a search result). */
 export type ResourceLocate = { route: readonly ResourceNode[]; select: string; nonce: number };
@@ -20,8 +21,8 @@ export type ResourceColumn = { id: string; title: string; render: (node: Resourc
 
 /** Shown when the app does not supply its own `columns`. */
 const BUILTIN_COLUMNS: readonly ResourceColumn[] = [
-  { id: "kind", title: "종류", render: (node) => (node.directory ? "폴더" : "파일") },
-  { id: "size", title: "크기", render: (node) => (node.directory || node.size == null ? "—" : `${node.size.toLocaleString()} B`) },
+  { id: "kind", get title() { return koEn("종류", "Type"); }, render: (node) => (node.directory ? koEn("폴더", "Folder") : koEn("파일", "File")) },
+  { id: "size", get title() { return koEn("크기", "Size"); }, render: (node) => (node.directory || node.size == null ? "—" : `${node.size.toLocaleString()} B`) },
 ];
 type Props = {
   source: ResourceSource;
@@ -148,14 +149,14 @@ export default function ResourceExplorer({ source, onOpenFile, onSelectionChange
     const targets = rowTargets(node, index);
     if (onRowMenu) { event.preventDefault(); event.stopPropagation(); onRowMenu(targets, { x: event.clientX, y: event.clientY }); }
   };
-  const grid = <ul className={`resource-explorer__grid resource-explorer__grid--${viewMode}`} aria-label="현재 폴더의 파일 목록">
-    {route.length > 1 ? <li tabIndex={0} className="resource-explorer__item" title="상위 폴더" onDoubleClick={() => setRoute(route.slice(0, -1))} onKeyDown={(e) => { if (e.key === "Enter") setRoute(route.slice(0, -1)); }}><Codicon name="folder" className="resource-icon--folder" /><span className="resource-explorer__item-name">..</span></li> : null}
+  const grid = <ul className={`resource-explorer__grid resource-explorer__grid--${viewMode}`} aria-label={koEn("현재 폴더의 파일 목록", "Files in the current folder")}>
+    {route.length > 1 ? <li tabIndex={0} className="resource-explorer__item" title={koEn("상위 폴더", "Parent folder")} onDoubleClick={() => setRoute(route.slice(0, -1))} onKeyDown={(e) => { if (e.key === "Enter") setRoute(route.slice(0, -1)); }}><Codicon name="folder" className="resource-icon--folder" /><span className="resource-explorer__item-name">..</span></li> : null}
     {visible.map((node, index) => <li key={node.id} data-index={index} data-resource-id={node.id} tabIndex={0} title={node.name} aria-selected={selectedIds.has(node.id)} className={selectedIds.has(node.id) ? "resource-explorer__item resource-explorer__selected" : "resource-explorer__item"} onClick={(event) => clickRow(event, index)} onContextMenu={itemMenu(node, index)} onDoubleClick={() => open(node)} onKeyDown={(e) => { if (e.key === "Enter") open(node); }}>
       <ResourceIconView node={node} /><span className="resource-explorer__item-name">{node.name}</span>{statusBadge(node)}
     </li>)}
   </ul>;
   const nav = (
-    <nav className="resource-explorer__address" aria-label="현재 폴더 경로">
+    <nav className="resource-explorer__address" aria-label={koEn("현재 폴더 경로", "Current folder path")}>
       {route.map((node, index) => <span className="resource-explorer__breadcrumb" key={node.id}>
         {index > 0 ? <Codicon name="chevron-right" /> : null}
         <button type="button" aria-current={index === route.length - 1 ? "location" : undefined} onClick={() => setRoute(route.slice(0, index + 1))}>{node.name}</button>
@@ -164,11 +165,11 @@ export default function ResourceExplorer({ source, onOpenFile, onSelectionChange
     </nav>
   );
   const pager = (
-    <footer className="resource-explorer__pager"><span>{nodes?.filter((node) => node.directory).length ?? 0}개 폴더 · {nodes?.filter((node) => !node.directory).length ?? 0}개 파일</span>{pages > 1 ? <><button disabled={page === 0} onClick={() => setPage(page - 1)}>이전</button><span>{page + 1} / {pages}</span><button disabled={page >= pages - 1} onClick={() => setPage(page + 1)}>다음</button></> : null}</footer>
+    <footer className="resource-explorer__pager"><span>{nodes?.filter((node) => node.directory).length ?? 0}{koEn("개 폴더", " folder(s)")} · {nodes?.filter((node) => !node.directory).length ?? 0}{koEn("개 파일", " file(s)")}</span>{pages > 1 ? <><button disabled={page === 0} onClick={() => setPage(page - 1)}>{koEn("이전", "Previous")}</button><span>{page + 1} / {pages}</span><button disabled={page >= pages - 1} onClick={() => setPage(page + 1)}>{koEn("다음", "Next")}</button></> : null}</footer>
   );
   return <div className="resource-explorer">
     <div className="resource-explorer__body" ref={body}>
-      <aside className="resource-explorer__tree" aria-label="폴더 탐색" onContextMenu={onTreeContextMenu} style={{ width: layout.sidebarWidth, maxWidth: "50%" }}>
+      <aside className="resource-explorer__tree" aria-label={koEn("폴더 탐색", "Folder navigation")} onContextMenu={onTreeContextMenu} style={{ width: layout.sidebarWidth, maxWidth: "50%" }}>
         {sidebarTitle}
         <div className="resource-explorer__tree-body">{sidebar ?? <ResourceTree source={source} selectedId={current.id} expandedPath={expandedPath} rowAction={rowAction} onRowMenu={onRowMenu} directoriesOnly onSelect={(_, ancestors) => setRoute(ancestors)} />}</div>
       </aside>
@@ -181,14 +182,14 @@ export default function ResourceExplorer({ source, onOpenFile, onSelectionChange
         <div className={`resource-explorer__card${nodes !== null && nodes.length === 0 ? " resource-explorer__card--empty" : ""}`}>
           {nav}
       <div className="resource-explorer__list" ref={listRef} onPointerDown={marqueeSelection.onPointerDown} aria-busy={nodes === null && !error} onContextMenu={onListContextMenu} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") { event.preventDefault(); select(new Set(visible.map((node) => node.id))); } }}>
-        {viewMode !== "details" ? grid : <table aria-label="현재 폴더의 파일 목록"><thead><tr>{statusIcons ? <th className="resource-explorer__status-cell" /> : null}<th>이름</th>{tableColumns.map((column) => <th key={column.id} className={column.align === "right" ? "resource-explorer__right" : undefined}>{column.title}</th>)}{rowAction ? <th className="resource-explorer__action-cell" /> : null}</tr></thead><tbody>
-          {route.length > 1 ? <tr tabIndex={0} onDoubleClick={() => setRoute(route.slice(0, -1))} onKeyDown={(e) => { if (e.key === "Enter") setRoute(route.slice(0, -1)); }}>{statusIcons ? <td className="resource-explorer__status-cell" /> : null}<td className="resource-explorer__name"><Codicon name="folder" />..</td>{tableColumns.map((column) => <td key={column.id}>{column.id === "kind" ? "상위 폴더" : null}</td>)}{rowAction ? <td /> : null}</tr> : null}
+        {viewMode !== "details" ? grid : <table aria-label={koEn("현재 폴더의 파일 목록", "Files in the current folder")}><thead><tr>{statusIcons ? <th className="resource-explorer__status-cell" /> : null}<th>{koEn("이름", "Name")}</th>{tableColumns.map((column) => <th key={column.id} className={column.align === "right" ? "resource-explorer__right" : undefined}>{column.title}</th>)}{rowAction ? <th className="resource-explorer__action-cell" /> : null}</tr></thead><tbody>
+          {route.length > 1 ? <tr tabIndex={0} onDoubleClick={() => setRoute(route.slice(0, -1))} onKeyDown={(e) => { if (e.key === "Enter") setRoute(route.slice(0, -1)); }}>{statusIcons ? <td className="resource-explorer__status-cell" /> : null}<td className="resource-explorer__name"><Codicon name="folder" />..</td>{tableColumns.map((column) => <td key={column.id}>{column.id === "kind" ? koEn("상위 폴더", "Parent folder") : null}</td>)}{rowAction ? <td /> : null}</tr> : null}
           {visible.map((node, index) => <tr key={node.id} data-index={index} data-resource-id={node.id} tabIndex={0} aria-selected={selectedIds.has(node.id)} className={selectedIds.has(node.id) ? "resource-explorer__selected" : undefined} onClick={(event) => clickRow(event, index)} onContextMenu={(event) => { const targets = rowTargets(node, index); if (onRowMenu) { event.preventDefault(); event.stopPropagation(); onRowMenu(targets, { x: event.clientX, y: event.clientY }); } }} onDoubleClick={() => open(node)} onKeyDown={(e) => { if (e.key === "Enter") open(node); }}>
             {statusIcons ? <td className="resource-explorer__status-cell">{statusBadge(node)}</td> : null}<td className="resource-explorer__name"><ResourceIconView node={node} />{node.name}</td>{tableColumns.map((column) => <td key={column.id} className={column.align === "right" ? "resource-explorer__right" : undefined}>{column.render(node)}</td>)}{rowAction && onRowMenu ? <td className="resource-explorer__action-cell"><button type="button" className="resource-row-action" tabIndex={-1} title={rowAction.title} aria-label={rowAction.title} onClick={(event) => { event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); onRowMenu(rowTargets(node, index), { x: rect.left, y: rect.bottom + 2 }); }}><Codicon name={rowAction.icon} /></button></td> : null}
           </tr>)}
         </tbody></table>}
         {marqueeSelection.overlay}
-        {error ? <div className="resource-explorer__message" role="alert">{error} <button onClick={() => setRevision(revision + 1)}>다시 시도</button></div> : nodes === null ? <div className="resource-explorer__message" role="status">불러오는 중…</div> : nodes.length === 0 ? <div className="resource-explorer__message">{emptyMessage ?? "이 폴더는 비어 있습니다."}</div> : null}
+        {error ? <div className="resource-explorer__message" role="alert">{error} <button onClick={() => setRevision(revision + 1)}>{koEn("다시 시도", "Retry")}</button></div> : nodes === null ? <div className="resource-explorer__message" role="status">{koEn("불러오는 중…", "Loading…")}</div> : nodes.length === 0 ? <div className="resource-explorer__message">{emptyMessage ?? koEn("이 폴더는 비어 있습니다.", "This folder is empty.")}</div> : null}
       </div>
           {pager}
         </div>

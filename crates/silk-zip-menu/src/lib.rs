@@ -10,6 +10,30 @@ const ARCHIVE_EXTENSIONS: &[&str] = &[
 /// Longest file name shown inside a label before it is shortened.
 const NAME_LIMIT: usize = 40;
 
+/// Display language of the labels.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Lang {
+    Ko,
+    En,
+}
+
+impl Lang {
+    pub fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "ko" => Some(Self::Ko),
+            "en" => Some(Self::En),
+            _ => None,
+        }
+    }
+
+    fn pick(self, korean: &'static str, english: &'static str) -> &'static str {
+        match self {
+            Self::Ko => korean,
+            Self::En => english,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Selected {
     pub path: PathBuf,
@@ -64,7 +88,7 @@ fn archive_stem(name: &str) -> String {
 }
 
 /// Name of the archive a one-click compression would create, without the extension.
-fn output_stem(items: &[Selected]) -> String {
+fn output_stem(items: &[Selected], lang: Lang) -> String {
     match items {
         [only] if only.is_dir => file_name(&only.path),
         [only] => archive_stem(&file_name(&only.path)),
@@ -73,13 +97,13 @@ fn output_stem(items: &[Selected]) -> String {
             .and_then(|item| item.path.parent())
             .map(file_name)
             .filter(|name| !name.is_empty())
-            .unwrap_or_else(|| "새 압축".into()),
+            .unwrap_or_else(|| lang.pick("새 압축", "New Archive").into()),
     }
 }
 
 /// The file name the app will really use: it adds " (2)" when the plain name is taken.
-fn free_name(items: &[Selected], extension: &str, exists: &dyn Fn(&Path) -> bool) -> String {
-    let stem = output_stem(items);
+fn free_name(items: &[Selected], extension: &str, exists: &dyn Fn(&Path) -> bool, lang: Lang) -> String {
+    let stem = output_stem(items, lang);
     let folder = items.first().and_then(|item| item.path.parent()).unwrap_or(Path::new(""));
     let plain = format!("{stem}.{extension}");
     if !exists(&folder.join(&plain)) {
@@ -106,8 +130,12 @@ fn shown(name: &str) -> String {
 
 /// `"name" 폴더에 풀기` for an archive, also used by the app's folder dialog.
 /// `folder` is where the new folder would be made, so a taken name shows as "name (2)".
-pub fn named_folder_label(archive: &Path, folder: &Path, exists: &dyn Fn(&Path) -> bool) -> String {
-    format!("\"{}\" 폴더에 풀기", shown(&free_folder(archive, folder, exists)))
+pub fn named_folder_label(archive: &Path, folder: &Path, exists: &dyn Fn(&Path) -> bool, lang: Lang) -> String {
+    let name = shown(&free_folder(archive, folder, exists));
+    match lang {
+        Lang::Ko => format!("\"{name}\" 폴더에 풀기"),
+        Lang::En => format!("Extract to \"{name}\""),
+    }
 }
 
 /// The folder "extract to the archive's folder" will really make: "name", or "name (2)" when taken.
@@ -123,7 +151,7 @@ fn free_folder(archive: &Path, folder: &Path, exists: &dyn Fn(&Path) -> bool) ->
 }
 
 /// Menu entries in groups; a separator goes between groups.
-pub fn build(items: &[Selected], exists: &dyn Fn(&Path) -> bool) -> Vec<Vec<Entry>> {
+pub fn build(items: &[Selected], exists: &dyn Fn(&Path) -> bool, lang: Lang) -> Vec<Vec<Entry>> {
     if items.is_empty() {
         return Vec::new();
     }
@@ -132,33 +160,34 @@ pub fn build(items: &[Selected], exists: &dyn Fn(&Path) -> bool) -> Vec<Vec<Entr
     if items.iter().all(is_archive) {
         let mut extract = Vec::new();
         if single {
-            extract.push(entry("Silk Zip으로 열기(&O)", "open"));
+            extract.push(entry(lang.pick("Silk Zip으로 열기(&O)", "Open with Silk Zip(&O)"), "open"));
         }
-        extract.push(entry("여기에 풀기(&X)", "extract-here"));
+        extract.push(entry(lang.pick("여기에 풀기(&X)", "Extract Here(&X)"), "extract-here"));
         extract.push(if single {
             let archive = &items[0].path;
-            let label = named_folder_label(archive, archive.parent().unwrap_or(Path::new("")), exists);
+            let label = named_folder_label(archive, archive.parent().unwrap_or(Path::new("")), exists, lang);
             entry(format!("{label}(&E)"), "extract-folder")
         } else {
-            entry("각각 파일명 폴더에 풀기(&E)", "extract-folder")
+            entry(lang.pick("각각 파일명 폴더에 풀기(&E)", "Extract Each to Its Own Folder(&E)"), "extract-folder")
         });
-        extract.push(entry("Silk Zip으로 압축 풀기(&T)...", "extract-dialog"));
+        extract.push(entry(lang.pick("Silk Zip으로 압축 풀기(&T)...", "Extract with Silk Zip(&T)..."), "extract-dialog"));
         groups.push(extract);
         // One archive is rarely compressed again; several may still be bundled into one.
         if single {
             return groups;
         }
     }
-    let zip = shown(&free_name(items, "zip", exists));
-    let seven = shown(&free_name(items, "7z", exists));
-    let mut compress = vec![
-        entry(format!("\"{zip}\"(으)로 압축하기(&Z)"), "compress-zip"),
-        entry(format!("\"{seven}\"(으)로 압축하기(&7)"), "compress-7z"),
-    ];
+    let zip = shown(&free_name(items, "zip", exists, lang));
+    let seven = shown(&free_name(items, "7z", exists, lang));
+    let compress_to = |name: &str, key: char| match lang {
+        Lang::Ko => format!("\"{name}\"(으)로 압축하기(&{key})"),
+        Lang::En => format!("Compress to \"{name}\"(&{key})"),
+    };
+    let mut compress = vec![entry(compress_to(&zip, 'Z'), "compress-zip"), entry(compress_to(&seven, '7'), "compress-7z")];
     if !single {
-        compress.push(entry("각각 ZIP으로 압축하기(&U)", "compress-each"));
+        compress.push(entry(lang.pick("각각 ZIP으로 압축하기(&U)", "Compress Each to ZIP(&U)"), "compress-each"));
     }
-    compress.push(entry("Silk Zip으로 압축하기(&L)...", "compress-dialog"));
+    compress.push(entry(lang.pick("Silk Zip으로 압축하기(&L)...", "Compress with Silk Zip(&L)..."), "compress-dialog"));
     groups.push(compress);
     groups
 }
@@ -181,30 +210,30 @@ mod tests {
 
     #[test]
     fn single_archive_shows_its_name() {
-        let groups = build(&[file(r"C:\work\새 압축.zip")], &|_| false);
+        let groups = build(&[file(r"C:\work\새 압축.zip")], &|_| false, Lang::Ko);
         assert_eq!(actions(&groups), ["open", "extract-here", "extract-folder", "extract-dialog"]);
         assert!(labels(&groups).contains(&"\"새 압축\" 폴더에 풀기(&E)"));
     }
 
     #[test]
     fn taken_folder_name_is_numbered() {
-        let groups = build(&[file(r"C:\work\test.tar")], &|path| path.ends_with("test"));
+        let groups = build(&[file(r"C:\work\test.tar")], &|path| path.ends_with("test"), Lang::Ko);
         assert!(labels(&groups).contains(&"\"test (2)\" 폴더에 풀기(&E)"));
     }
 
     #[test]
     fn single_file_shows_the_name_that_will_be_written() {
-        let groups = build(&[file(r"C:\work\새 압축.txt")], &|path| path.ends_with("새 압축.zip"));
+        let groups = build(&[file(r"C:\work\새 압축.txt")], &|path| path.ends_with("새 압축.zip"), Lang::Ko);
         assert_eq!(actions(&groups), ["compress-zip", "compress-7z", "compress-dialog"]);
         assert!(labels(&groups).contains(&"\"새 압축 (2).zip\"(으)로 압축하기(&Z)"));
     }
 
     #[test]
     fn many_items_offer_each_and_use_the_folder_name() {
-        let groups = build(&[file(r"C:\work\a.txt"), file(r"C:\work\b.zip")], &|_| false);
+        let groups = build(&[file(r"C:\work\a.txt"), file(r"C:\work\b.zip")], &|_| false, Lang::Ko);
         assert_eq!(actions(&groups), ["compress-zip", "compress-7z", "compress-each", "compress-dialog"]);
         assert!(labels(&groups).contains(&"\"work.zip\"(으)로 압축하기(&Z)"));
-        let archives = build(&[file(r"C:\work\a.zip"), file(r"C:\work\b.7z")], &|_| false);
+        let archives = build(&[file(r"C:\work\a.zip"), file(r"C:\work\b.7z")], &|_| false, Lang::Ko);
         assert_eq!(actions(&archives)[..2], ["extract-here", "extract-folder"]);
     }
 
@@ -215,12 +244,20 @@ mod tests {
         assert_eq!(archive_stem("v1.2.zip"), "v1.2");
         assert_eq!(archive_stem(".zip"), ".zip");
         let folder = Selected { path: r"C:\work\v1.2".into(), is_dir: true };
-        assert_eq!(output_stem(&[folder]), "v1.2");
+        assert_eq!(output_stem(&[folder], Lang::Ko), "v1.2");
     }
 
     #[test]
     fn long_names_and_ampersands() {
         assert_eq!(shown("A&B"), "A&&B");
         assert_eq!(shown(&"가".repeat(60)).chars().count(), 25 + 3 + 12);
+    }
+
+    #[test]
+    fn english_labels() {
+        let groups = build(&[file(r"C:\work\test.tar")], &|_| false, Lang::En);
+        assert!(labels(&groups).contains(&"Extract to \"test\"(&E)"));
+        let files = build(&[file(r"C:\work\a.txt")], &|_| false, Lang::En);
+        assert!(labels(&files).contains(&"Compress to \"a.zip\"(&Z)"));
     }
 }

@@ -3,6 +3,8 @@ import ReactDOM from "react-dom/client";
 import "@vscode/codicons/dist/codicon.css";
 import "@silk-studio/ui/global.css";
 import "./style.css";
+// Registers the English menu titles before anything is drawn.
+import "./i18n";
 import App from "./App";
 import { WindowTitleService } from "@silk-studio/workbench/services/windowTitle/windowTitleService.ts";
 // Registers the title bar centre (back/forward and the search box) shared with the other apps.

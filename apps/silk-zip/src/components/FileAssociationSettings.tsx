@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { detectWorkbenchPlatform } from "@silk-studio/ui/platform/fonts.ts";
+import { tr } from "../i18n";
+import { trError } from "../errorMessages";
 
 type Association = { extension: string; registered: boolean; isDefault: boolean };
 
@@ -39,8 +41,8 @@ export default function FileAssociationSettings() {
   if (!windows) {
     return (
       <section className="settings-section">
-        <h2 className="settings-section__title">파일 연결</h2>
-        <p className="zip-assoc__note">이 운영체제에서는 시스템 설정에서 기본 앱을 지정하세요.</p>
+        <h2 className="settings-section__title">{tr("파일 연결")}</h2>
+        <p className="zip-assoc__note">{tr("이 운영체제에서는 시스템 설정에서 기본 앱을 지정하세요.")}</p>
       </section>
     );
   }
@@ -59,9 +61,9 @@ export default function FileAssociationSettings() {
     setMessage("");
     try {
       show(await invoke<Association[]>("set_file_associations", { extensions: [...checked] }));
-      setMessage("파일 연결을 저장했습니다.");
+      setMessage(tr("파일 연결을 저장했습니다."));
     } catch (error) {
-      setMessage(String(error));
+      setMessage(trError(String(error)));
     } finally {
       setBusy(false);
     }
@@ -69,37 +71,36 @@ export default function FileAssociationSettings() {
 
   return (
     <section className="settings-section">
-      <h2 className="settings-section__title">파일 연결</h2>
+      <h2 className="settings-section__title">{tr("파일 연결")}</h2>
       <p className="zip-assoc__note">
-        선택한 형식을 Silk Zip으로 열도록 등록합니다. 다른 앱이 이미 기본 앱인 형식은 Windows 정책상 직접 바꿀 수 없으니,
-        등록 후 <b>Windows 기본 앱 설정</b>에서 Silk Zip을 선택하세요.
+        {tr("선택한 형식을 Silk Zip으로 열도록 등록합니다. 다른 앱이 이미 기본 앱인 형식은 Windows 정책상 직접 바꿀 수 없으니, 등록 후")}{" "}<b>{tr("Windows 기본 앱 설정")}</b>{tr("에서 Silk Zip을 선택하세요.")}
       </p>
       <div className="zip-assoc__actions">
         <button type="button" className="settings-button" onClick={() => setChecked(new Set(ESSENTIAL.filter((ext) => items.some((item) => item.extension === ext))))}>
-          필수 선택
+          {tr("필수 선택")}
         </button>
         <button type="button" className="settings-button" onClick={() => setChecked(new Set(items.map((item) => item.extension)))}>
-          모두 선택
+          {tr("모두 선택")}
         </button>
         <button type="button" className="settings-button" onClick={() => setChecked(new Set())}>
-          모두 해제
+          {tr("모두 해제")}
         </button>
       </div>
       <div className="zip-assoc__grid">
         {items.map((item) => (
-          <label key={item.extension} className="settings-checkbox zip-assoc__item" title={item.isDefault ? "Silk Zip이 기본 앱입니다." : undefined}>
+          <label key={item.extension} className="settings-checkbox zip-assoc__item" title={item.isDefault ? tr("Silk Zip이 기본 앱입니다.") : undefined}>
             <input type="checkbox" checked={checked.has(item.extension)} onChange={(event) => toggle(item.extension, event.target.checked)} />
             <span>.{item.extension}</span>
-            {item.isDefault && <span className="zip-assoc__badge">기본</span>}
+            {item.isDefault && <span className="zip-assoc__badge">{tr("기본")}</span>}
           </label>
         ))}
       </div>
       <div className="zip-assoc__actions">
         <button type="button" className="settings-button" disabled={busy || !changed} onClick={() => void apply()}>
-          적용
+          {tr("적용")}
         </button>
         <button type="button" className="settings-button" onClick={() => void invoke("open_default_apps_settings")}>
-          Windows 기본 앱 설정 열기
+          {tr("Windows 기본 앱 설정 열기")}
         </button>
         {message && <span className="zip-assoc__message">{message}</span>}
       </div>

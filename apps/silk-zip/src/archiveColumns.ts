@@ -1,6 +1,7 @@
 import type { ResourceColumn } from "@silk-studio/workbench/components/explorer/ResourceExplorer.tsx";
 import type { ResourceNode } from "@silk-studio/workbench/components/explorer/resourceExplorerTypes.ts";
 import type { ZipColumnId } from "./zipSettings";
+import { tr } from "./i18n";
 
 const bytes = (size: number) => `${size.toLocaleString()} B`;
 
@@ -12,9 +13,9 @@ function formatDate(seconds: number): string {
 
 /** "PNG 파일", "폴더", or just "파일" for a name without extension. */
 export function kindLabel(node: ResourceNode): string {
-  if (node.directory) return "폴더";
+  if (node.directory) return tr("폴더");
   const dot = node.name.lastIndexOf(".");
-  return dot > 0 && dot < node.name.length - 1 ? `${node.name.slice(dot + 1).toUpperCase()} 파일` : "파일";
+  return dot > 0 && dot < node.name.length - 1 ? tr("{0} 파일", node.name.slice(dot + 1).toUpperCase()) : tr("파일");
 }
 
 /** Unix mode (high 16 bits, flagged by 0x8000) as "rwxr-xr-x"; otherwise the Windows flags R, H, S, A. */
@@ -35,7 +36,7 @@ const RENDERERS: Record<ZipColumnId, (node: ResourceNode) => string> = {
   kind: kindLabel,
   modified: (node) => { const value = meta(node, "modified"); return typeof value === "number" ? formatDate(value) : ""; },
   method: (node) => String(meta(node, "method") ?? ""),
-  encryption: (node) => String(meta(node, "encryption") ?? (node.encrypted ? "예" : "")),
+  encryption: (node) => String(meta(node, "encryption") ?? (node.encrypted ? tr("예") : "")),
   crc: (node) => { const value = meta(node, "crc"); return typeof value === "number" && !node.directory ? value.toString(16).toUpperCase().padStart(8, "0") : ""; },
   attributes: (node) => { const value = meta(node, "attributes"); return typeof value === "number" ? formatAttributes(value) : ""; },
 };
@@ -44,7 +45,7 @@ const TITLES: Record<ZipColumnId, string> = { packed: "압축 크기", size: "�
 const RIGHT_ALIGNED = new Set<ZipColumnId>(["packed", "size"]);
 
 export function zipColumn(id: ZipColumnId): ResourceColumn {
-  return { id, title: TITLES[id], render: RENDERERS[id], align: RIGHT_ALIGNED.has(id) ? "right" : undefined };
+  return { id, get title() { return tr(TITLES[id]); }, render: RENDERERS[id], align: RIGHT_ALIGNED.has(id) ? "right" : undefined };
 }
 
 /** Columns of an opened archive: the ones chosen in 보기 > 표시할 열. */
@@ -56,11 +57,13 @@ export function archiveColumns(visible: readonly ZipColumnId[]): readonly Resour
 export const STATUS_ICONS = {
   "추가됨": { name: "add", className: "zip-status-icon--added" },
   "이름 변경됨": { name: "edit", className: "zip-status-icon--renamed" },
+  "Added": { name: "add", className: "zip-status-icon--added" },
+  "Renamed": { name: "edit", className: "zip-status-icon--renamed" },
 } as const;
 
 /** Columns of a new archive: where each file comes from instead of archive details. */
 export const draftColumns: readonly ResourceColumn[] = [
   zipColumn("kind"),
   zipColumn("size"),
-  { id: "location", title: "경로", render: (node) => node.location ?? "" },
+  { id: "location", get title() { return tr("경로"); }, render: (node) => node.location ?? "" },
 ];

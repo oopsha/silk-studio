@@ -3,6 +3,7 @@ import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import ResourceIconView from "@silk-studio/workbench/components/explorer/ResourceIconView.tsx";
 import type { ArchiveListing } from "../archive";
 import { buildSearchIndex, type SearchItem } from "../archiveSource";
+import { tr } from "../i18n";
 
 /** Dispatched on `window` to focus the search input (Ctrl+F while the view is already open). */
 export const FOCUS_SEARCH_EVENT = "silkZip:focusSearch";
@@ -60,12 +61,12 @@ export default function ArchiveSearchView({ archive, folder, onReveal }: Archive
   return (
     <div className="zip-search">
       <div className="zip-search__field">
-        <input ref={input} value={query} spellCheck={false} placeholder="이름 검색 (*, ? 사용 가능)" aria-label="이름 검색" onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} />
-        <button type="button" className={`zip-search__toggle${caseSensitive ? " zip-search__toggle--on" : ""}`} title="대소문자 구분" aria-label="대소문자 구분" aria-pressed={caseSensitive} onClick={() => setCaseSensitive((on) => !on)}><Codicon name="case-sensitive" /></button>
+        <input ref={input} value={query} spellCheck={false} placeholder={tr("이름 검색 (*, ? 사용 가능)")} aria-label={tr("이름 검색")} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} />
+        <button type="button" className={`zip-search__toggle${caseSensitive ? " zip-search__toggle--on" : ""}`} title={tr("대소문자 구분")} aria-label={tr("대소문자 구분")} aria-pressed={caseSensitive} onClick={() => setCaseSensitive((on) => !on)}><Codicon name="case-sensitive" /></button>
       </div>
-      <label className="zip-search__option"><input type="checkbox" checked={inFolder} onChange={(event) => setInFolder(event.target.checked)} /> 현재 폴더 안에서만</label>
-      {searching ? <p className="zip-search__summary" role="status">{total === 0 ? "일치하는 항목이 없습니다." : total > RESULT_LIMIT ? `${total.toLocaleString()}개 중 처음 ${RESULT_LIMIT.toLocaleString()}개를 표시합니다.` : `${total.toLocaleString()}개 항목`}</p> : null}
-      <ul className="zip-search__results" aria-label="검색 결과">
+      <label className="zip-search__option"><input type="checkbox" checked={inFolder} onChange={(event) => setInFolder(event.target.checked)} />{" "}{tr("현재 폴더 안에서만")}</label>
+      {searching ? <p className="zip-search__summary" role="status">{total === 0 ? tr("일치하는 항목이 없습니다.") : total > RESULT_LIMIT ? tr("{0}개 중 처음 {1}개를 표시합니다.", total.toLocaleString(), RESULT_LIMIT.toLocaleString()) : tr("{0}개 항목", total.toLocaleString())}</p> : null}
+      <ul className="zip-search__results" aria-label={tr("검색 결과")}>
         {results.map((item) => {
           return <li key={item.id}>
             <button type="button" className={activeId === item.id ? "zip-search__result zip-search__result--active" : "zip-search__result"} title={item.path} onClick={() => { setActiveId(item.id); onReveal(item); }}>

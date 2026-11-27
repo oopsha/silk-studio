@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ArchiveListing, EntryChange, NewEntry } from "./archive";
+import { tr } from "./i18n";
 
 type ListedEntry = ArchiveListing["entries"][number];
 
@@ -57,7 +58,7 @@ export function usePendingChanges(archive: ArchiveListing | null, options: { alw
       }));
       const clash = additions.find((entry) => exists(current.entries, clean(entry.path)));
       if (clash) {
-        error = `같은 이름의 항목이 이미 있습니다: ${clean(clash.path)}`;
+        error = tr("같은 이름의 항목이 이미 있습니다: {0}", clean(clash.path));
         return current;
       }
       return { ...current, entries: [...current.entries, ...additions], actions: current.actions + 1 };
@@ -70,7 +71,7 @@ export function usePendingChanges(archive: ArchiveListing | null, options: { alw
     let error: string | null = null;
     setState((current) => {
       if (exists(current.entries, path)) {
-        error = `같은 이름의 항목이 이미 있습니다: ${path}`;
+        error = tr("같은 이름의 항목이 이미 있습니다: {0}", path);
         return current;
       }
       const entry: ListedEntry = { path, size: null, directory: true, encrypted: false, status: "added", sourcePath: null };

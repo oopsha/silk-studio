@@ -4,6 +4,8 @@ import { cancelArchive, extractArchive, openOutputFolder, resolveExtractConflict
 import { getZipSettings } from "../zipSettings.ts";
 import { pickExtractFolder } from "../pickExtractFolder.ts";
 import { isNamedTarget, parentFolder, rememberFolder, resolveTargetFolder, type ExtractTarget } from "../extractTargets.ts";
+import { displayLocale, tr } from "../i18n";
+import { trError } from "../errorMessages";
 
 /** One archive of a multi-archive extraction, for the summary. */
 type BatchItem = { archivePath: string; outputDir: string; extracted: number; skipped: number; error?: string };
@@ -22,11 +24,11 @@ type ExtractState =
 
 function formatDuration(ms: number): string {
   const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}초`;
+  if (seconds < 60) return tr("{0}초", seconds.toFixed(1));
   const whole = Math.round(seconds);
   const hours = Math.floor(whole / 3600);
   const minutes = Math.floor((whole % 3600) / 60);
-  return `${hours ? `${hours}시간 ` : ""}${minutes}분 ${whole % 60}초`;
+  return tr("{0}{1}분 {2}초", hours ? tr("{0}시간 ", hours) : "", minutes, whole % 60);
 }
 
 /** Drops the `\?\` prefix Windows adds to long paths. */
@@ -36,8 +38,8 @@ function plainPath(path: string): string {
 }
 
 function formatStamp(seconds: number): string {
-  if (!seconds) return "알 수 없음";
-  return new Date(seconds * 1000).toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "numeric", minute: "2-digit", second: "2-digit" });
+  if (!seconds) return tr("알 수 없음");
+  return new Date(seconds * 1000).toLocaleString(displayLocale(), { year: "numeric", month: "2-digit", day: "2-digit", hour: "numeric", minute: "2-digit", second: "2-digit" });
 }
 
 function fileName(path: string): string {
@@ -88,7 +90,7 @@ export function useExtraction() {
           const message = String(reason);
           if (message.includes("취소")) { finish(); return; }
           if (message.includes("암호")) {
-            setState({ phase: "password", message: `${fileName(current.archivePath)}: ${message.includes("필요") ? "암호를 입력하세요." : message}` });
+            setState({ phase: "password", message: `${fileName(current.archivePath)}: ${message.includes("필요") ? tr("암호를 입력하세요.") : message}` });
             return;
           }
           batch.items.push({ ...item, error: message });
@@ -246,25 +248,25 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
       <div className="workbench-confirm-dialog__backdrop" role="presentation">
         <form className="workbench-confirm-dialog zip-conflict" role="dialog" aria-modal="true" aria-labelledby="zip-conflict-title" onSubmit={(event) => { event.preventDefault(); resolveConflict(conflictAction, applyAll); }}>
           <header className="workbench-confirm-dialog__header" data-tauri-drag-region>
-            <h2 id="zip-conflict-title">중복 확인</h2>
-            <button type="button" className="workbench-confirm-dialog__close" aria-label="닫기" onClick={() => resolveConflict("cancel", false)}><Codicon name="close" /></button>
+            <h2 id="zip-conflict-title">{tr("중복 확인")}</h2>
+            <button type="button" className="workbench-confirm-dialog__close" aria-label={tr("닫기")} onClick={() => resolveConflict("cancel", false)}><Codicon name="close" /></button>
           </header>
           <div className="workbench-confirm-dialog__body zip-extract-body">
-            <p>이미 같은 이름의 파일이 존재합니다.</p>
+            <p>{tr("이미 같은 이름의 파일이 존재합니다.")}</p>
             <p className="zip-conflict__path" title={plainPath(conflict.path)}>{plainPath(conflict.path)}</p>
             <div className="zip-conflict__compare">
-              <section><h3>기존 파일</h3><p>{formatBytes(conflict.existingSize)}</p><p>{formatStamp(conflict.existingModified)}</p></section>
-              <section><h3>압축 풀 파일</h3><p>{formatBytes(conflict.newSize)}</p><p>{formatStamp(conflict.newModified)}</p></section>
+              <section><h3>{tr("기존 파일")}</h3><p>{formatBytes(conflict.existingSize)}</p><p>{formatStamp(conflict.existingModified)}</p></section>
+              <section><h3>{tr("압축 풀 파일")}</h3><p>{formatBytes(conflict.newSize)}</p><p>{formatStamp(conflict.newModified)}</p></section>
             </div>
-            <p>어떤 작업을 하시겠습니까?</p>
-            <label className="zip-conflict__option"><input type="radio" name="zip-conflict" checked={conflictAction === "skip"} onChange={() => setConflictAction("skip")} /> 건너뛰기</label>
-            <label className="zip-conflict__option"><input type="radio" name="zip-conflict" checked={conflictAction === "overwrite"} onChange={() => setConflictAction("overwrite")} /> 덮어쓰기</label>
-            <label className="zip-conflict__option"><input type="radio" name="zip-conflict" checked={conflictAction === "rename"} onChange={() => setConflictAction("rename")} /> 이름 변경 (이름 (2).확장자)</label>
-            <label className="zip-conflict__option"><input type="checkbox" checked={applyAll} onChange={(event) => setApplyAll(event.target.checked)} /> 모든 파일에 적용</label>
+            <p>{tr("어떤 작업을 하시겠습니까?")}</p>
+            <label className="zip-conflict__option"><input type="radio" name="zip-conflict" checked={conflictAction === "skip"} onChange={() => setConflictAction("skip")} />{" "}{tr("건너뛰기")}</label>
+            <label className="zip-conflict__option"><input type="radio" name="zip-conflict" checked={conflictAction === "overwrite"} onChange={() => setConflictAction("overwrite")} />{" "}{tr("덮어쓰기")}</label>
+            <label className="zip-conflict__option"><input type="radio" name="zip-conflict" checked={conflictAction === "rename"} onChange={() => setConflictAction("rename")} />{" "}{tr("이름 변경 (이름 (2).확장자)")}</label>
+            <label className="zip-conflict__option"><input type="checkbox" checked={applyAll} onChange={(event) => setApplyAll(event.target.checked)} />{" "}{tr("모든 파일에 적용")}</label>
           </div>
           <footer className="workbench-confirm-dialog__footer">
-            <button type="submit" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus>확인</button>
-            <button type="button" className="workbench-confirm-dialog__button" onClick={() => resolveConflict("cancel", false)}>취소</button>
+            <button type="submit" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus>{tr("확인")}</button>
+            <button type="button" className="workbench-confirm-dialog__button" onClick={() => resolveConflict("cancel", false)}>{tr("취소")}</button>
           </footer>
         </form>
       </div>
@@ -281,10 +283,10 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
   const updating = controller.isUpdate();
   const copying = controller.isCopy();
   const repairing = controller.isRepair();
-  const title = state.phase === "done" ? (state.kind === "test" ? "테스트 완료" : state.kind === "repair" ? "압축 파일 복구 완료" : state.kind === "batch" && (state.notRun > 0 || state.items.some((item) => item.error)) ? "압축 풀기 결과" : "압축 풀기 완료")
-    : state.phase === "password" ? "암호 입력"
-    : state.phase === "error" ? (repairing ? "압축 파일 복구 실패" : copying ? "복사 실패" : updating ? "변경 적용 실패" : testing ? "압축 파일 테스트 실패" : "압축 풀기 실패")
-    : repairing ? "압축 파일 복구 중" : copying ? "복사 준비 중" : updating ? "변경 적용 중" : testing ? "압축 파일 테스트 중" : "압축 푸는 중";
+  const title = state.phase === "done" ? (state.kind === "test" ? tr("테스트 완료") : state.kind === "repair" ? tr("압축 파일 복구 완료") : state.kind === "batch" && (state.notRun > 0 || state.items.some((item) => item.error)) ? tr("압축 풀기 결과") : tr("압축 풀기 완료"))
+    : state.phase === "password" ? tr("암호 입력")
+    : state.phase === "error" ? (repairing ? tr("압축 파일 복구 실패") : copying ? tr("복사 실패") : updating ? tr("변경 적용 실패") : testing ? tr("압축 파일 테스트 실패") : tr("압축 풀기 실패"))
+    : repairing ? tr("압축 파일 복구 중") : copying ? tr("복사 준비 중") : updating ? tr("변경 적용 중") : testing ? tr("압축 파일 테스트 중") : tr("압축 푸는 중");
   const canDismiss = state.phase !== "running";
 
   return (
@@ -292,7 +294,7 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
       <div className="workbench-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="zip-extract-title">
         <header className="workbench-confirm-dialog__header" data-tauri-drag-region>
           <h2 id="zip-extract-title">{title}</h2>
-          {canDismiss ? <button type="button" className="workbench-confirm-dialog__close" aria-label="닫기" onClick={close}><Codicon name="close" /></button> : null}
+          {canDismiss ? <button type="button" className="workbench-confirm-dialog__close" aria-label={tr("닫기")} onClick={close}><Codicon name="close" /></button> : null}
         </header>
         <div className="workbench-confirm-dialog__body zip-extract-body">
           {state.phase === "running" ? (
@@ -301,58 +303,57 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
               <div className="zip-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><div style={{ width: `${percent}%` }} /></div>
               <p className="zip-progress-detail">
                 {progress && progress.phase !== "preparing"
-                  ? `${percent}% · ${progress.totalEntries.toLocaleString()}개 중 ${progress.completedEntries.toLocaleString()}개${progress.totalBytes > 0 ? ` · ${formatBytes(progress.completedBytes)} / ${formatBytes(progress.totalBytes)}` : ""}`
-                  : "압축 파일을 여는 중..."}
+                  ? tr("{0}% · {1}개 중 {2}개{3}", percent, progress.totalEntries.toLocaleString(), progress.completedEntries.toLocaleString(), progress.totalBytes > 0 ? ` · ${formatBytes(progress.completedBytes)} / ${formatBytes(progress.totalBytes)}` : "")
+                  : tr("압축 파일을 여는 중...")}
               </p>
             </>
           ) : null}
           {state.phase === "password" ? (
             <form id="zip-extract-password-form" onSubmit={(event) => { event.preventDefault(); if (password) void submitPassword(password); }}>
-              <p>{state.message || "암호가 걸린 압축 파일입니다. 암호를 입력하세요."}</p>
-              <input className="zip-extract-password" type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="암호" autoFocus />
-              <label className="zip-extract-show"><input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} /> 암호 표시</label>
+              <p>{trError(state.message) || tr("암호가 걸린 압축 파일입니다. 암호를 입력하세요.")}</p>
+              <input className="zip-extract-password" type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={tr("암호")} autoFocus />
+              <label className="zip-extract-show"><input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} />{" "}{tr("암호 표시")}</label>
             </form>
           ) : null}
           {state.phase === "done" && state.kind === "test" ? (
-            <p>{`${state.tested.toLocaleString()}개 항목이 모두 정상입니다.
-소요 시간: ${formatDuration(state.elapsedMs)}`}</p>
+            <p>{tr("{0}개 항목이 모두 정상입니다.\n소요 시간: {1}", state.tested.toLocaleString(), formatDuration(state.elapsedMs))}</p>
           ) : null}
           {state.phase === "done" && state.kind === "extract" ? (
-            <p>{`${state.result.extracted.toLocaleString()}개 항목을 풀었습니다.${state.result.skipped ? `\n이미 있는 ${state.result.skipped.toLocaleString()}개 항목은 건너뛰었습니다.` : ""}\n소요 시간: ${formatDuration(state.elapsedMs)}\n${state.result.outputDir}`}</p>
+            <p>{tr("{0}개 항목을 풀었습니다.{1}\n소요 시간: {2}\n{3}", state.result.extracted.toLocaleString(), state.result.skipped ? tr("\n이미 있는 {0}개 항목은 건너뛰었습니다.", state.result.skipped.toLocaleString()) : "", formatDuration(state.elapsedMs), state.result.outputDir)}</p>
           ) : null}
           {state.phase === "done" && state.kind === "batch" ? (
             <>
-              <p>{`압축 파일 ${(state.items.length + state.notRun).toLocaleString()}개 중 ${state.items.filter((item) => !item.error).length.toLocaleString()}개를 풀었습니다. (${formatDuration(state.elapsedMs)})${state.notRun ? `\n취소하여 풀지 않은 파일: ${state.notRun.toLocaleString()}개` : ""}`}</p>
+              <p>{tr("압축 파일 {0}개 중 {1}개를 풀었습니다. ({2}){3}", (state.items.length + state.notRun).toLocaleString(), state.items.filter((item) => !item.error).length.toLocaleString(), formatDuration(state.elapsedMs), state.notRun ? tr("\n취소하여 풀지 않은 파일: {0}개", state.notRun.toLocaleString()) : "")}</p>
               <ul className="zip-batch">
                 {state.items.map((item) => (
                   <li key={item.archivePath}>
                     <strong>{fileName(item.archivePath)}</strong>
                     {item.error
-                      ? <span className="zip-batch__error">{item.error}</span>
-                      : <span>{`${item.extracted.toLocaleString()}개 항목${item.skipped ? `, ${item.skipped.toLocaleString()}개 건너뜀` : ""} → ${plainPath(item.outputDir)}`}</span>}
+                      ? <span className="zip-batch__error">{trError(item.error)}</span>
+                      : <span>{tr("{0}개 항목{1} → {2}", item.extracted.toLocaleString(), item.skipped ? tr(", {0}개 건너뜀", item.skipped.toLocaleString()) : "", plainPath(item.outputDir))}</span>}
                   </li>
                 ))}
               </ul>
             </>
           ) : null}
           {state.phase === "done" && state.kind === "repair" ? (
-            <p>{`${state.result.recovered.toLocaleString()}개 항목을 복구했습니다.${state.result.lost ? `\n읽을 수 없어 복구하지 못한 항목: ${state.result.lost.toLocaleString()}개` : ""}\n소요 시간: ${formatDuration(state.elapsedMs)}\n${state.result.outputPath}`}</p>
+            <p>{tr("{0}개 항목을 복구했습니다.{1}\n소요 시간: {2}\n{3}", state.result.recovered.toLocaleString(), state.result.lost ? tr("\n읽을 수 없어 복구하지 못한 항목: {0}개", state.result.lost.toLocaleString()) : "", formatDuration(state.elapsedMs), state.result.outputPath)}</p>
           ) : null}
-          {state.phase === "error" ? <p>{state.message}</p> : null}
+          {state.phase === "error" ? <p>{trError(state.message)}</p> : null}
         </div>
         <footer className="workbench-confirm-dialog__footer">
-          {state.phase === "running" ? <button type="button" className="workbench-confirm-dialog__button" onClick={cancel}>취소</button> : null}
+          {state.phase === "running" ? <button type="button" className="workbench-confirm-dialog__button" onClick={cancel}>{tr("취소")}</button> : null}
           {state.phase === "password" ? (
             <>
-              <button type="button" className="workbench-confirm-dialog__button" onClick={close}>취소</button>
-              <button type="submit" form="zip-extract-password-form" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" disabled={!password}>확인</button>
+              <button type="button" className="workbench-confirm-dialog__button" onClick={close}>{tr("취소")}</button>
+              <button type="submit" form="zip-extract-password-form" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" disabled={!password}>{tr("확인")}</button>
             </>
           ) : null}
-          {state.phase === "done" && state.kind === "test" ? <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>확인</button> : null}
+          {state.phase === "done" && state.kind === "test" ? <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>{tr("확인")}</button> : null}
           {state.phase === "done" && state.kind === "extract" ? (
             <>
-              <button type="button" className="workbench-confirm-dialog__button" onClick={() => { void openOutputFolder(`${state.result.outputDir.replace(/[\\/]+$/, "")}/_`); close(); }}>폴더 열기</button>
-              <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>확인</button>
+              <button type="button" className="workbench-confirm-dialog__button" onClick={() => { void openOutputFolder(`${state.result.outputDir.replace(/[\\/]+$/, "")}/_`); close(); }}>{tr("폴더 열기")}</button>
+              <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>{tr("확인")}</button>
             </>
           ) : null}
           {state.phase === "done" && state.kind === "batch" ? (
@@ -363,18 +364,18 @@ export function ExtractDialog({ controller }: { controller: ExtractionController
                 const shared = folders.every((folder) => folder === folders[0]) ? folders[0] : parentFolder(folders[0]) ?? folders[0];
                 void openOutputFolder(`${shared}/_`);
                 close();
-              }}>폴더 열기</button> : null}
-              <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>확인</button>
+              }}>{tr("폴더 열기")}</button> : null}
+              <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>{tr("확인")}</button>
             </>
           ) : null}
           {state.phase === "done" && state.kind === "repair" ? (
             <>
-              <button type="button" className="workbench-confirm-dialog__button" onClick={() => { void revealInFolder(state.result.outputPath).catch(() => undefined); close(); }}>폴더 열기</button>
-              <button type="button" className="workbench-confirm-dialog__button" onClick={() => { const open = controller.repairOpen(); close(); open?.(state.result.outputPath); }}>복구한 파일 열기</button>
-              <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>확인</button>
+              <button type="button" className="workbench-confirm-dialog__button" onClick={() => { void revealInFolder(state.result.outputPath).catch(() => undefined); close(); }}>{tr("폴더 열기")}</button>
+              <button type="button" className="workbench-confirm-dialog__button" onClick={() => { const open = controller.repairOpen(); close(); open?.(state.result.outputPath); }}>{tr("복구한 파일 열기")}</button>
+              <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>{tr("확인")}</button>
             </>
           ) : null}
-          {state.phase === "error" ? <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>확인</button> : null}
+          {state.phase === "error" ? <button type="button" className="workbench-confirm-dialog__button workbench-confirm-dialog__button--primary" autoFocus onClick={close}>{tr("확인")}</button> : null}
         </footer>
       </div>
     </div>

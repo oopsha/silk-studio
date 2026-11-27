@@ -3,6 +3,7 @@ import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
 import ResourceIconView from "./ResourceIconView";
 import { sortResources, type ResourceNode, type ResourceRowAction, type ResourceSource, type RowMenuHandler } from "./resourceExplorerTypes";
 import "./ResourceExplorer.css";
+import { koEn } from "../../platform/i18n/koEn";
 
 type Props = {
   source: ResourceSource;
@@ -62,8 +63,8 @@ function Branch({ source, node, depth, selectedId, directoriesOnly, expandedPath
       </span> : null}
     </button>
     {node.directory && expanded ? <ul role="group">
-      {error ? <li role="none" className="resource-explorer__message" ><span role="alert">{error}</span><button type="button" onClick={() => setRevision(revision + 1)}>다시 시도</button></li>
-        : children === null ? <li role="none" className="resource-explorer__message">불러오는 중…</li>
+      {error ? <li role="none" className="resource-explorer__message" ><span role="alert">{error}</span><button type="button" onClick={() => setRevision(revision + 1)}>{koEn("다시 시도", "Retry")}</button></li>
+        : children === null ? <li role="none" className="resource-explorer__message">{koEn("불러오는 중…", "Loading…")}</li>
         : children.filter((child) => !directoriesOnly || child.directory).map((child) => <Branch key={child.id} source={source} node={child} depth={depth + 1} selectedId={selectedId} directoriesOnly={directoriesOnly} expandedPath={expandedPath} onSelect={onSelect} rowAction={rowAction} onRowMenu={onRowMenu} ancestors={[...ancestors, node]} />)}
     </ul> : null}
   </li>;

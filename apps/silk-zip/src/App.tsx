@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { isTauri } from "@tauri-apps/api/core";
@@ -42,18 +43,21 @@ import { archiveStem, joinPath, parentFolder, type ExtractTarget } from "./extra
 import { quickArchivePath } from "./launchRequest";
 import { pickExtractFolder } from "./pickExtractFolder";
 import { dialogContentHeight } from "./dialogContentHeight";
+import { displayLocale, tr } from "./i18n";
+import { useI18n } from "@silk-studio/workbench/platform/i18n/useI18n.ts";
+import { trError } from "./errorMessages";
 
 /** The icon toolbar under the menu bar is kept but hidden; extraction lives in the explorer title row. */
 const SHOW_COMMAND_BAR = false;
 
 const ARCHIVE_FILE_FILTERS = [
-  { name: "압축 파일", extensions: ["zip", "zipx", "tar", "tgz", "taz", "gz", "gzip", "bz2", "xz", "txz", "lz", "lzma", "lzh", "lha", "iso", "7z", "zpaq", "rar", "rar5"] },
-  { name: "모든 파일", extensions: ["*"] },
+  { get name() { return tr("압축 파일"); }, extensions: ["zip", "zipx", "tar", "tgz", "taz", "gz", "gzip", "bz2", "xz", "txz", "lz", "lzma", "lzh", "lha", "iso", "7z", "zpaq", "rar", "rar5"] },
+  { get name() { return tr("모든 파일"); }, extensions: ["*"] },
 ];
 
 const activityViews: readonly ActivityViewContribution[] = [
-  { id: "explorer", icon: "files", label: "탐색기", render: () => null },
-  { id: "search", icon: "search", label: "검색", render: () => null },
+  { id: "explorer", icon: "files", get label() { return tr("탐색기"); }, render: () => null },
+  { id: "search", icon: "search", get label() { return tr("검색"); }, render: () => null },
 ];
 
 function formatFileSize(bytes: number): string {
@@ -65,25 +69,29 @@ function formatFileSize(bytes: number): string {
     value /= 1024;
     unit += 1;
   }
-  return `${value.toLocaleString("ko-KR", { maximumFractionDigits: 1 })} ${units[unit]}`;
+  return `${value.toLocaleString(displayLocale(), { maximumFractionDigits: 1 })} ${units[unit]}`;
 }
 
 function formatElapsedTime(elapsedMs: number): string {
   const totalTenths = Math.round(elapsedMs / 100);
   const minutes = Math.floor(totalTenths / 600);
   const seconds = ((totalTenths % 600) / 10).toFixed(1);
-  return minutes > 0 ? `${minutes}분 ${seconds}초` : `${seconds}초`;
+  return minutes > 0 ? tr("{0}분 {1}초", minutes, seconds) : tr("{0}초", seconds);
 }
 
 function App() {
+  // Re-renders everything when the display language changes.
+  const { locale } = useI18n();
+  // The Explorer menu and the folder dialog follow the same language.
+  useEffect(() => { void invoke("set_native_language", { language: locale }).catch(() => undefined); }, [locale]);
   const { viewMode, visibleColumns } = useZipSettings();
   useEffect(() => startWindowLayoutSync(), []);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [format, setFormat] = useState("zip");
-  const [outputPath, setOutputPath] = useState("새 압축.zip");
-  const draft = useCompressionDraft(outputPath.split(/[\\/]/).pop() || "새 압축.zip");
+  const [outputPath, setOutputPath] = useState(tr("새 압축.zip"));
+  const draft = useCompressionDraft(outputPath.split(/[\\/]/).pop() || tr("새 압축.zip"));
   const files = draft.entries.map((entry) => entry.archivePath);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -161,7 +169,7 @@ function App() {
     const uri = page ? `zip:page:${page}` : archive ? `zip:archive:${archive.path}` : "zip:create";
     if ((HistoryService.current()?.uri ?? "zip:create") === uri) return;
     const name = archive?.path.split(/[\/]/).pop() ?? "";
-    HistoryService.push({ uri, label: page === "settings" ? "설정" : page === "keybindings" ? "키보드 단축키" : archive ? name : "새 압축 만들기" });
+    HistoryService.push({ uri, label: page === "settings" ? tr("설정") : page === "keybindings" ? tr("키보드 단축키") : archive ? name : tr("새 압축 만들기") });
   }, [archive, page]);
 
   // Suppress the browser's own context menu; text fields keep it for copy/paste.
@@ -213,7 +221,7 @@ function App() {
         highlightDropTarget(null);
         const paths = payload.paths ?? [];
         if (!paths.length || creating.current) return;
-        if (!activeRef.current.editable) { setError("이 형식의 압축 파일은 수정할 수 없습니다. (zip, 7z, tar만 가능)"); return; }
+        if (!activeRef.current.editable) { setError(tr("이 형식의 압축 파일은 수정할 수 없습니다. (zip, 7z, tar만 가능)")); return; }
         void addActions.current.addPaths(paths, folder);
       }
     }).then((stop) => {
@@ -252,10 +260,10 @@ function App() {
     const confirmDiscard = async (): Promise<boolean> => {
       if (!pendingRef.current.dirty) return true;
       return ConfirmDialogService.confirm({
-        title: "변경 사항이 적용되지 않았습니다",
-        message: `대기 중인 변경 ${pendingRef.current.count.toLocaleString()}개가 압축 파일에 아직 반영되지 않았습니다. 버리고 계속할까요?`,
-        confirmLabel: "버리고 계속",
-        cancelLabel: "취소",
+        title: tr("변경 사항이 적용되지 않았습니다"),
+        message: tr("대기 중인 변경 {0}개가 압축 파일에 아직 반영되지 않았습니다. 버리고 계속할까요?", pendingRef.current.count.toLocaleString()),
+        confirmLabel: tr("버리고 계속"),
+        cancelLabel: tr("취소"),
         danger: true,
       });
     };
@@ -283,7 +291,7 @@ function App() {
       const draft = createDraft.current;
       const hasUnsavedWork = draft.files.length > 0
         || draft.format !== "zip"
-        || draft.outputPath !== "새 압축.zip"
+        || draft.outputPath !== tr("새 압축.zip")
         || draft.password !== ""
         || draft.confirmPassword !== ""
         || draft.splitSize !== "none"
@@ -291,10 +299,10 @@ function App() {
         || draft.outputConfirmed;
       if (draft.archive === null && hasUnsavedWork) {
         const confirmed = await ConfirmDialogService.confirm({
-          title: "새 압축",
-          message: "현재 작업은 저장되지 않습니다. 새 압축을 시작할까요?",
-          confirmLabel: "새 압축",
-          cancelLabel: "취소",
+          title: tr("새 압축"),
+          message: tr("현재 작업은 저장되지 않습니다. 새 압축을 시작할까요?"),
+          confirmLabel: tr("새 압축"),
+          cancelLabel: tr("취소"),
         });
         if (!confirmed) return;
       }
@@ -302,7 +310,7 @@ function App() {
       setError(null);
       draft.resetDraft();
       setFormat("zip");
-      setOutputPath("새 압축.zip");
+      setOutputPath(tr("새 압축.zip"));
       setPassword("");
       setConfirmPassword("");
       setShowPassword(false);
@@ -351,15 +359,12 @@ function App() {
       const extension = /\.([^.\\/]+)$/.exec(current.path)?.[1];
       const target = await save({
         defaultPath: current.path,
-        filters: extension ? [{ name: extension.toUpperCase(), extensions: [extension] }, { name: "모든 파일", extensions: ["*"] }] : undefined,
+        filters: extension ? [{ name: extension.toUpperCase(), extensions: [extension] }, { name: tr("모든 파일"), extensions: ["*"] }] : undefined,
       });
       if (!target) return;
       try {
         await saveArchiveAs(current.path, target);
-        const openSaved = await ConfirmDialogService.confirm({ title: "다른 이름으로 저장", message: `저장했습니다.
-${target}
-
-저장한 파일을 열까요?`, confirmLabel: "열기", cancelLabel: "닫기" });
+        const openSaved = await ConfirmDialogService.confirm({ title: tr("다른 이름으로 저장"), message: tr("저장했습니다.\n{0}\n\n저장한 파일을 열까요?", target), confirmLabel: tr("열기"), cancelLabel: tr("닫기") });
         if (openSaved && !busy.current) {
           busy.current = true;
           try {
@@ -375,7 +380,7 @@ ${target}
           }
         }
       } catch (reason) {
-        await ConfirmDialogService.confirm({ title: "저장 실패", message: String(reason), confirmLabel: "확인", hideCancel: true });
+        await ConfirmDialogService.confirm({ title: tr("저장 실패"), message: trError(String(reason)), confirmLabel: tr("확인"), hideCancel: true });
       }
     };
     const unregisterSaveAs = CommandsRegistry.registerCommand("silkZip.file.saveAs", saveArchiveCopy);
@@ -384,10 +389,10 @@ ${target}
       const busyNow = creating.current || extraction.current.state?.phase === "running";
       if (busyNow) {
         const confirmed = await ConfirmDialogService.confirm({
-          title: "종료",
-          message: "작업이 진행 중입니다. 지금 종료하면 작업이 중단됩니다. 종료할까요?",
-          confirmLabel: "종료",
-          cancelLabel: "취소",
+          title: tr("종료"),
+          message: tr("작업이 진행 중입니다. 지금 종료하면 작업이 중단됩니다. 종료할까요?"),
+          confirmLabel: tr("종료"),
+          cancelLabel: tr("취소"),
           danger: true,
         });
         if (!confirmed) return;
@@ -408,17 +413,17 @@ ${target}
       }),
       KeybindingsRegistry.registerKeybinding("silkZip.edit.find", "Ctrl+F"),
       KeybindingsRegistry.registerKeybinding("silkZip.edit.find", "Ctrl+Shift+F"),
-      CommandsRegistry.registerCommand("silkZip.help.openInstallFolder", () => { void openInstallFolder().catch((error) => ConfirmDialogService.confirm({ title: "설치 위치를 열지 못했습니다", message: String(error), confirmLabel: "확인", hideCancel: true })); }),
+      CommandsRegistry.registerCommand("silkZip.help.openInstallFolder", () => { void openInstallFolder().catch((error) => ConfirmDialogService.confirm({ title: tr("설치 위치를 열지 못했습니다"), message: trError(String(error)), confirmLabel: tr("확인"), hideCancel: true })); }),
       CommandsRegistry.registerCommand("silkZip.help.about", () => AboutDialogService.show()),
       KeybindingsRegistry.registerKeybinding("silkZip.help.about", "F1"),
       CommandsRegistry.registerCommand("silkZip.tools.repair", async () => {
         if (busy.current || extraction.current.state !== null) return;
-        const source = await open({ multiple: false, directory: false, title: "복구할 압축 파일 선택", filters: ARCHIVE_FILE_FILTERS });
+        const source = await open({ multiple: false, directory: false, title: tr("복구할 압축 파일 선택"), filters: ARCHIVE_FILE_FILTERS });
         if (!source || Array.isArray(source)) return;
         const folder = parentFolder(source);
         const target = await save({
-          title: "복구한 압축 파일 저장",
-          defaultPath: folder ? joinPath(folder, `${archiveStem(source)}_복구.zip`) : `${archiveStem(source)}_복구.zip`,
+          title: tr("복구한 압축 파일 저장"),
+          defaultPath: folder ? joinPath(folder, tr("{0}_복구.zip", archiveStem(source))) : tr("{0}_복구.zip", archiveStem(source)),
           filters: [{ name: "ZIP", extensions: ["zip"] }, { name: "7z", extensions: ["7z"] }],
         });
         if (!target) return;
@@ -530,10 +535,10 @@ ${target}
   /** Files on the clipboard are added like dropped files. */
   const pasteFromClipboard = async () => {
     if (page !== null) return;
-    if (archive && !pending.editable) { setError("이 형식의 압축 파일은 수정할 수 없습니다. (zip, 7z, tar만 가능)"); return; }
+    if (archive && !pending.editable) { setError(tr("이 형식의 압축 파일은 수정할 수 없습니다. (zip, 7z, tar만 가능)")); return; }
     try {
       const paths = await clipboardReadFiles();
-      if (!paths.length) { setError("클립보드에 붙여넣을 파일이 없습니다."); return; }
+      if (!paths.length) { setError(tr("클립보드에 붙여넣을 파일이 없습니다.")); return; }
       await addToArchive(paths);
     } catch (reason) {
       setError(String(reason));
@@ -633,7 +638,7 @@ ${target}
       setOutputConfirmed(false);
     } catch (reason) {
       const message = String(reason);
-      if (message.includes("취소")) setPreparationMessage("압축 작업을 취소했습니다.");
+      if (message.includes("취소")) setPreparationMessage(tr("압축 작업을 취소했습니다."));
       else setCompressionError(message);
     } finally {
       window.clearInterval(diagnosticTimer);
@@ -647,14 +652,14 @@ ${target}
   const prepareCompression = async () => {
     if (files.length === 0) return;
     if (!["zip", "tar", "gz", "tgz", "xz", "7z"].includes(format)) {
-      setPreparationMessage("현재 압축 생성은 ZIP, TAR, GZ, TGZ, XZ, 7z 형식만 지원합니다.");
+      setPreparationMessage(tr("현재 압축 생성은 ZIP, TAR, GZ, TGZ, XZ, 7z 형식만 지원합니다."));
       return;
     }
     if ((format === "gz" || format === "xz") && (draft.entries.length !== 1 || draft.entries[0].directory)) {
       await ConfirmDialogService.confirm({
-        title: `${format.toUpperCase()} 압축`,
-        message: `${format.toUpperCase()}는 파일 하나만 압축할 수 있습니다. 여러 파일이나 폴더는 TGZ 또는 TAR을 사용하세요.`,
-        confirmLabel: "확인",
+        title: tr("{0} 압축", format.toUpperCase()),
+        message: tr("{0}는 파일 하나만 압축할 수 있습니다. 여러 파일이나 폴더는 TGZ 또는 TAR을 사용하세요.", format.toUpperCase()),
+        confirmLabel: tr("확인"),
         hideCancel: true,
       });
       return;
@@ -662,12 +667,12 @@ ${target}
     if (splitSize !== "none") {
       const splitSizeMb = splitSize === "custom" ? Number(customSplitSize) : Number(splitSize);
       if (!Number.isSafeInteger(splitSizeMb) || splitSizeMb < 1 || !Number.isSafeInteger(splitSizeMb * 1024 * 1024)) {
-        setPreparationMessage("분할 크기는 1MB 이상의 정수로 입력하세요.");
+        setPreparationMessage(tr("분할 크기는 1MB 이상의 정수로 입력하세요."));
         return;
       }
     }
     if (password !== confirmPassword) {
-      setPreparationMessage("암호가 일치하는지 확인하세요.");
+      setPreparationMessage(tr("암호가 일치하는지 확인하세요."));
       return;
     }
     setPreparationMessage("");
@@ -803,7 +808,7 @@ ${target}
       const accepted = await cancelArchive(operationId);
       if (!accepted) setCancelRequested(false);
     }
-    catch (reason) { setPreparationMessage(`취소 요청을 전달하지 못했습니다: ${String(reason)}`); setCancelRequested(false); }
+    catch (reason) { setPreparationMessage(tr("취소 요청을 전달하지 못했습니다: {0}", trError(String(reason)))); setCancelRequested(false); }
   };
   const openCompletedArchive = async () => {
     if (!completedArchive) return;
@@ -822,11 +827,11 @@ ${target}
     catch (reason) { setCompletedArchive(null); setError(String(reason)); }
   };
   const methods = format === "tar"
-    ? [{ value: "store", label: "압축 안 함" }]
+    ? [{ value: "store", label: tr("압축 안 함") }]
     : [
-        { value: "fast", label: "빠름" },
-        { value: "normal", label: "보통" },
-        { value: "maximum", label: "최대" },
+        { value: "fast", label: tr("빠름") },
+        { value: "normal", label: tr("보통") },
+        { value: "maximum", label: tr("최대") },
       ];
   const progressPercent = compressionProgress
     ? compressionProgress.phase === "preparing"
@@ -844,21 +849,21 @@ ${target}
     <div className="zip-create-form zip-draft-settings">
       <button type="button" className="zip-draft-settings__summary" aria-expanded={settingsOpen} onClick={() => setSettingsOpen((open) => !open)}>
         <span className="codicon codicon-chevron-down zip-draft-settings__chevron" data-open={settingsOpen} aria-hidden="true" />
-        <strong>압축 설정</strong>
-        <span className="zip-draft-settings__status">{preparationMessage || `${files.length}개 항목${files.length ? ` · ${outputPath || "저장 파일명을 입력하세요"}` : ""}`}</span>
+        <strong>{tr("압축 설정")}</strong>
+        <span className="zip-draft-settings__status">{trError(preparationMessage) || tr("{0}개 항목{1}", files.length, files.length ? ` · ${outputPath || tr("저장 파일명을 입력하세요")}` : "")}</span>
       </button>
       {settingsOpen ? <div className="zip-create-settings">
-              <section className="zip-setting-group"><h2>압축 파일 설정</h2>
-                <label className="zip-field"><span>압축 형식</span><select value={format} onChange={(event) => { const next = event.target.value; setFormat(next); if (next !== "zip" && next !== "7z") setSplitSize("none"); if (next !== "zip" && next !== "7z") { setPassword(""); setConfirmPassword(""); } setOutputPath((current) => current.replace(/\.[^.\\/]+$/, `.${next}`)); setCompressionMethod("normal"); setOutputConfirmed(false); setPreparationMessage(""); }}><option value="zip">ZIP</option><option value="tar">TAR</option><option value="gz">GZ</option><option value="tgz">TGZ</option><option value="xz">XZ</option><option value="7z">7z</option></select></label>
-                <label className="zip-field"><span>파일 이름</span><div className="zip-output-control"><input value={outputPath} onChange={(event) => { setOutputPath(event.target.value); setOutputConfirmed(false); setPreparationMessage(""); }} aria-label="저장 파일 이름 및 경로" /><button type="button" className="zip-button" onClick={() => { void chooseOutputPath(); }} disabled={compressionProgress !== null}>찾아보기…</button></div></label>
-                <div className="zip-field"><span>분할 압축</span><div className="zip-split-control"><select value={splitSize} disabled={format !== "zip" && format !== "7z"} onChange={(event) => setSplitSize(event.target.value)}><option value="none">분할하지 않음</option><option value="100">100 MB</option><option value="700">700 MB</option><option value="4096">4 GB</option><option value="custom">사용자 지정</option></select>{splitSize === "custom" ? <div className="zip-custom-size"><input type="number" min="1" value={customSplitSize} onChange={(event) => setCustomSplitSize(event.target.value)} aria-label="분할 크기" /><span>MB</span></div> : null}</div></div>
-                <label className="zip-field"><span>압축 방법</span><select value={compressionMethod} disabled={methods.length === 1} onChange={(event) => setCompressionMethod(event.target.value)}>{methods.map((method) => <option value={method.value} key={method.value}>{method.label}</option>)}</select></label>
+              <section className="zip-setting-group"><h2>{tr("압축 파일 설정")}</h2>
+                <label className="zip-field"><span>{tr("압축 형식")}</span><select value={format} onChange={(event) => { const next = event.target.value; setFormat(next); if (next !== "zip" && next !== "7z") setSplitSize("none"); if (next !== "zip" && next !== "7z") { setPassword(""); setConfirmPassword(""); } setOutputPath((current) => current.replace(/\.[^.\\/]+$/, `.${next}`)); setCompressionMethod("normal"); setOutputConfirmed(false); setPreparationMessage(""); }}><option value="zip">ZIP</option><option value="tar">TAR</option><option value="gz">GZ</option><option value="tgz">TGZ</option><option value="xz">XZ</option><option value="7z">7z</option></select></label>
+                <label className="zip-field"><span>{tr("파일 이름")}</span><div className="zip-output-control"><input value={outputPath} onChange={(event) => { setOutputPath(event.target.value); setOutputConfirmed(false); setPreparationMessage(""); }} aria-label={tr("저장 파일 이름 및 경로")} /><button type="button" className="zip-button" onClick={() => { void chooseOutputPath(); }} disabled={compressionProgress !== null}>{tr("찾아보기…")}</button></div></label>
+                <div className="zip-field"><span>{tr("분할 압축")}</span><div className="zip-split-control"><select value={splitSize} disabled={format !== "zip" && format !== "7z"} onChange={(event) => setSplitSize(event.target.value)}><option value="none">{tr("분할하지 않음")}</option><option value="100">100 MB</option><option value="700">700 MB</option><option value="4096">4 GB</option><option value="custom">{tr("사용자 지정")}</option></select>{splitSize === "custom" ? <div className="zip-custom-size"><input type="number" min="1" value={customSplitSize} onChange={(event) => setCustomSplitSize(event.target.value)} aria-label={tr("분할 크기")} /><span>MB</span></div> : null}</div></div>
+                <label className="zip-field"><span>{tr("압축 방법")}</span><select value={compressionMethod} disabled={methods.length === 1} onChange={(event) => setCompressionMethod(event.target.value)}>{methods.map((method) => <option value={method.value} key={method.value}>{method.label}</option>)}</select></label>
               </section>
-              <section className="zip-setting-group"><h2>암호 설정</h2>
-                <label className="zip-field"><span>암호</span><input type={showPassword ? "text" : "password"} disabled={format !== "zip" && format !== "7z"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="암호 입력" /></label>
-                <label className="zip-field"><span>암호 확인</span><input type={showPassword ? "text" : "password"} disabled={format !== "zip" && format !== "7z"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="암호 다시 입력" /></label>
-                <label className="zip-show-password"><input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} />암호 표시</label>
-                {password && confirmPassword && password !== confirmPassword ? <p className="zip-password-error" role="alert">암호가 일치하지 않습니다.</p> : <p className="zip-setting-hint">{format === "zip" ? "ZIP은 호환성을 위해 ZipCrypto를 사용합니다. 민감한 자료에는 사용하지 마세요." : format === "7z" ? "7z는 AES-256으로 암호화하며 파일 이름도 숨깁니다." : "이 형식은 암호와 분할 압축을 지원하지 않습니다."}</p>}
+              <section className="zip-setting-group"><h2>{tr("암호 설정")}</h2>
+                <label className="zip-field"><span>{tr("암호")}</span><input type={showPassword ? "text" : "password"} disabled={format !== "zip" && format !== "7z"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={tr("암호 입력")} /></label>
+                <label className="zip-field"><span>{tr("암호 확인")}</span><input type={showPassword ? "text" : "password"} disabled={format !== "zip" && format !== "7z"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder={tr("암호 다시 입력")} /></label>
+                <label className="zip-show-password"><input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} />{tr("암호 표시")}</label>
+                {password && confirmPassword && password !== confirmPassword ? <p className="zip-password-error" role="alert">{tr("암호가 일치하지 않습니다.")}</p> : <p className="zip-setting-hint">{format === "zip" ? tr("ZIP은 호환성을 위해 ZipCrypto를 사용합니다. 민감한 자료에는 사용하지 마세요.") : format === "7z" ? tr("7z는 AES-256으로 암호화하며 파일 이름도 숨깁니다.") : tr("이 형식은 암호와 분할 압축을 지원하지 않습니다.")}</p>}
               </section>
             </div> : null}
     </div>
@@ -880,27 +885,27 @@ ${target}
         </div>
         <div className="zip-workbench__main">
           {page === "settings" ? <ZipSettingsPage /> : page === "keybindings" ? <ZipKeybindingsPage /> : <>
-          {elevated && !archive ? <div className="zip-message" role="note">관리자 권한으로 실행 중이라 일반 탐색기에서 이 창으로 파일을 끌어놓을 수 없습니다(끌 때 금지 표시가 나옵니다). 탐색기도 관리자 권한으로 실행하거나 '추가' 버튼을 사용하세요.</div> : null}
-          {loading ? <div className="zip-message" role="status">압축 파일을 읽고 있습니다…</div> : null}
-          {error ? <div className="zip-message zip-message--error" role="alert">{error}</div> : null}
-          {archive ? <ArchiveExplorer archive={pending.view ?? archive} folderRef={folderRef} selectedPathsRef={selectedPathsRef} editor={{ canEdit: pending.editable, addFiles: () => { void addFiles(); }, addFolder: () => { void addFolder(); }, newFolder: (folder) => setFolderPrompt({ folder, siblings: siblingNames(pending.view ?? archive, `${folder ? `${folder}/` : ""}x`) }), remove: (paths) => pending.remove(paths), pendingCount: pending.count, apply: applyPending, discard: pending.discard }} onExtract={(target, entries) => { void extractionController.start(archive.path, target, entries); }} onTest={() => { void extractionController.startTest(archive.path); }} onRename={(entry) => setRenameTarget({ entry, siblings: siblingNames(archive, entry.path), inArchive: true })} selectionRef={archiveSelection} /> : <ArchiveExplorer archive={draft.view} dragging={dragActive} folderRef={folderRef} selectedPathsRef={selectedPathsRef} editor={{ canEdit: true, addFiles: () => { void addFiles(); }, addFolder: () => { void addFolder(); }, newFolder: (folder) => setFolderPrompt({ folder, siblings: siblingNames(draft.view, `${folder ? `${folder}/` : ""}x`) }), remove: (paths) => draft.pending.remove(paths), pendingCount: 0, apply: () => {}, discard: () => {} }} onExtract={() => {}} onTest={() => {}} onRename={() => {}} selectionRef={archiveSelection} draft={{ title: "새 압축", subtitle: "파일이나 폴더를 추가하고 압축 설정을 지정하세요.", emptyMessage: <><strong>파일이나 폴더를 여기로 끌어오세요</strong>또는 추가를 눌러 선택</>, action: { label: compressionProgress ? "압축 중…" : "압축 시작", disabled: files.length === 0 || draft.scanning || compressionProgress !== null, onClick: () => { void prepareCompression(); } }, settings: settingsPanel }} />}
+          {elevated && !archive ? <div className="zip-message" role="note">{tr("관리자 권한으로 실행 중이라 일반 탐색기에서 이 창으로 파일을 끌어놓을 수 없습니다(끌 때 금지 표시가 나옵니다). 탐색기도 관리자 권한으로 실행하거나 '추가' 버튼을 사용하세요.")}</div> : null}
+          {loading ? <div className="zip-message" role="status">{tr("압축 파일을 읽고 있습니다…")}</div> : null}
+          {error ? <div className="zip-message zip-message--error" role="alert">{trError(error)}</div> : null}
+          {archive ? <ArchiveExplorer archive={pending.view ?? archive} folderRef={folderRef} selectedPathsRef={selectedPathsRef} editor={{ canEdit: pending.editable, addFiles: () => { void addFiles(); }, addFolder: () => { void addFolder(); }, newFolder: (folder) => setFolderPrompt({ folder, siblings: siblingNames(pending.view ?? archive, `${folder ? `${folder}/` : ""}x`) }), remove: (paths) => pending.remove(paths), pendingCount: pending.count, apply: applyPending, discard: pending.discard }} onExtract={(target, entries) => { void extractionController.start(archive.path, target, entries); }} onTest={() => { void extractionController.startTest(archive.path); }} onRename={(entry) => setRenameTarget({ entry, siblings: siblingNames(archive, entry.path), inArchive: true })} selectionRef={archiveSelection} /> : <ArchiveExplorer archive={draft.view} dragging={dragActive} folderRef={folderRef} selectedPathsRef={selectedPathsRef} editor={{ canEdit: true, addFiles: () => { void addFiles(); }, addFolder: () => { void addFolder(); }, newFolder: (folder) => setFolderPrompt({ folder, siblings: siblingNames(draft.view, `${folder ? `${folder}/` : ""}x`) }), remove: (paths) => draft.pending.remove(paths), pendingCount: 0, apply: () => {}, discard: () => {} }} onExtract={() => {}} onTest={() => {}} onRename={() => {}} selectionRef={archiveSelection} draft={{ title: tr("새 압축"), subtitle: tr("파일이나 폴더를 추가하고 압축 설정을 지정하세요."), emptyMessage: <><strong>{tr("파일이나 폴더를 여기로 끌어오세요")}</strong>{tr("또는 추가를 눌러 선택")}</>, action: { label: compressionProgress ? tr("압축 중…") : tr("압축 시작"), disabled: files.length === 0 || draft.scanning || compressionProgress !== null, onClick: () => { void prepareCompression(); } }, settings: settingsPanel }} />}
           </>}
         </div>
       </div>
-      <div className="zip-status"><span>{archive?.engine ?? "압축 파일을 열려면 파일 메뉴 또는 Ctrl+O를 사용하세요."}</span><span>{elevated ? <b className="zip-status__admin">관리자 권한</b> : null}Silk Studio</span></div>
-      {compressionProgress ? <div className="zip-operation-backdrop"><section className="zip-operation-dialog" role="dialog" aria-modal="true" aria-labelledby="zip-progress-title"><h2 id="zip-progress-title" data-tauri-drag-region>압축 중</h2><p>{cancelRequested ? "취소 요청을 처리하고 있습니다…" : compressionProgress.phase === "preparing" ? "압축할 파일을 확인하고 있습니다." : "파일을 ZIP으로 압축하고 있습니다."}</p><div className="zip-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent}><div style={{ width: `${progressPercent}%` }} /></div><span className="zip-progress-detail">{progressPercent}% · {compressionProgress.completedEntries.toLocaleString()} / {compressionProgress.totalEntries.toLocaleString()}개 항목</span><footer><button className="zip-button" onClick={() => { void cancelCompression(); }} disabled={cancelRequested}>{cancelRequested ? "취소 중…" : "취소"}</button></footer></section></div> : null}
-      {compressionError ? <div className="zip-operation-backdrop"><section className="zip-operation-dialog zip-error-dialog" role="alertdialog" aria-modal="true" aria-labelledby="zip-error-title" aria-describedby="zip-error-message"><h2 id="zip-error-title" data-tauri-drag-region>압축 오류</h2><p id="zip-error-message">{compressionError}</p><footer><button className="zip-button primary" autoFocus onClick={() => setCompressionError(null)}>확인</button></footer></section></div> : null}
+      <div className="zip-status"><span>{archive?.engine ?? tr("압축 파일을 열려면 파일 메뉴 또는 Ctrl+O를 사용하세요.")}</span><span>{elevated ? <b className="zip-status__admin">{tr("관리자 권한")}</b> : null}Silk Studio</span></div>
+      {compressionProgress ? <div className="zip-operation-backdrop"><section className="zip-operation-dialog" role="dialog" aria-modal="true" aria-labelledby="zip-progress-title"><h2 id="zip-progress-title" data-tauri-drag-region>{tr("압축 중")}</h2><p>{cancelRequested ? tr("취소 요청을 처리하고 있습니다…") : compressionProgress.phase === "preparing" ? tr("압축할 파일을 확인하고 있습니다.") : tr("파일을 ZIP으로 압축하고 있습니다.")}</p><div className="zip-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent}><div style={{ width: `${progressPercent}%` }} /></div><span className="zip-progress-detail">{progressPercent}% · {compressionProgress.completedEntries.toLocaleString()} / {compressionProgress.totalEntries.toLocaleString()}{tr("개 항목")}</span><footer><button className="zip-button" onClick={() => { void cancelCompression(); }} disabled={cancelRequested}>{cancelRequested ? tr("취소 중…") : tr("취소")}</button></footer></section></div> : null}
+      {compressionError ? <div className="zip-operation-backdrop"><section className="zip-operation-dialog zip-error-dialog" role="alertdialog" aria-modal="true" aria-labelledby="zip-error-title" aria-describedby="zip-error-message"><h2 id="zip-error-title" data-tauri-drag-region>{tr("압축 오류")}</h2><p id="zip-error-message">{trError(compressionError)}</p><footer><button className="zip-button primary" autoFocus onClick={() => setCompressionError(null)}>{tr("확인")}</button></footer></section></div> : null}
       {completedArchive ? (
         <div className="zip-operation-backdrop">
           <section className="zip-operation-dialog" role="dialog" aria-modal="true" aria-labelledby="zip-complete-title">
-            <h2 id="zip-complete-title" data-tauri-drag-region>압축 완료</h2>
-            <p>{completedArchive.entries.toLocaleString()}개 항목을 압축했습니다. ({formatFileSize(completedArchive.size)})</p>
-            <p>소요 시간 {formatElapsedTime(completedArchive.elapsedMs)}</p>
+            <h2 id="zip-complete-title" data-tauri-drag-region>{tr("압축 완료")}</h2>
+            <p>{completedArchive.entries.toLocaleString()}{tr("개 항목을 압축했습니다. (")}{formatFileSize(completedArchive.size)})</p>
+            <p>{tr("소요 시간")}{" "}{formatElapsedTime(completedArchive.elapsedMs)}</p>
             <p className="zip-complete-path" title={completedArchive.path}>{completedArchive.path}</p>
             <footer>
-              <button className="zip-button" onClick={() => { void openCompletedFolder(); }}>폴더 열기</button>
-              <button className="zip-button" onClick={() => setCompletedArchive(null)}>닫기</button>
-              {quickMode ? null : <button className="zip-button primary" onClick={() => { void openCompletedArchive(); }}>압축 파일 열기</button>}
+              <button className="zip-button" onClick={() => { void openCompletedFolder(); }}>{tr("폴더 열기")}</button>
+              <button className="zip-button" onClick={() => setCompletedArchive(null)}>{tr("닫기")}</button>
+              {quickMode ? null : <button className="zip-button primary" onClick={() => { void openCompletedArchive(); }}>{tr("압축 파일 열기")}</button>}
             </footer>
           </section>
         </div>
@@ -910,7 +915,7 @@ ${target}
         setRenameTarget(null);
         activeRef.current.rename(target.entry.path, name);
       }} /> : null}
-      {folderPrompt ? <RenameDialog title="새 폴더" suggested request={{ name: "새 폴더", directory: true }} siblings={folderPrompt.siblings} onCancel={() => setFolderPrompt(null)} onSubmit={(name) => {
+      {folderPrompt ? <RenameDialog title={tr("새 폴더")} suggested request={{ name: tr("새 폴더"), directory: true }} siblings={folderPrompt.siblings} onCancel={() => setFolderPrompt(null)} onSubmit={(name) => {
         const target = folderPrompt;
         setFolderPrompt(null);
         const message = activeRef.current.newFolder(target.folder, name);

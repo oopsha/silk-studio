@@ -86,7 +86,7 @@ mod imp {
     fn register(classes: &RegKey, capabilities: &RegKey, extension: &str, exe: &str) -> io::Result<()> {
         let id = prog_id(extension);
         let (prog, _) = classes.create_subkey(&id)?;
-        prog.set_value("", &format!("{} 압축 파일", extension.to_uppercase()))?;
+        prog.set_value("", &format!("{} {}", extension.to_uppercase(), crate::language::pick("압축 파일", "Archive")))?;
         prog.create_subkey("DefaultIcon")?.0.set_value("", &format!("\"{exe}\",0"))?;
         prog.create_subkey(r"shell\open\command")?.0.set_value("", &format!("\"{exe}\" --action=open --batch \"%1\""))?;
         let (class, _) = classes.create_subkey(format!(".{extension}"))?;
@@ -131,7 +131,7 @@ mod imp {
         let user = RegKey::predef(HKEY_CURRENT_USER);
         let (capabilities, _) = user.create_subkey(CAPABILITIES)?;
         capabilities.set_value("ApplicationName", &APP_NAME)?;
-        capabilities.set_value("ApplicationDescription", &"압축 파일을 만들고 풉니다.")?;
+        capabilities.set_value("ApplicationDescription", &crate::language::pick("압축 파일을 만들고 풉니다.", "Create and extract archives."))?;
         for extension in EXTENSIONS {
             if wanted.iter().any(|item| item.eq_ignore_ascii_case(extension)) {
                 register(&classes, &capabilities, extension, &exe)?;

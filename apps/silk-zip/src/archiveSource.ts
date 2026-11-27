@@ -1,3 +1,4 @@
+import { tr } from "./i18n.ts";
 import { resourceIcon } from "@silk-studio/workbench/components/explorer/resourceExplorerTypes.ts";
 import type { ResourceNode, ResourceSource } from "@silk-studio/workbench/components/explorer/resourceExplorerTypes.ts";
 import type { ArchiveListing } from "./archive";
@@ -14,7 +15,7 @@ function entryMeta(entry: ArchiveListing["entries"][number]): ResourceNode["meta
   return { packedSize: entry.packedSize, modified: entry.modified, crc: entry.crc, method: entry.method, encryption: entry.encryption, attributes: entry.attributes };
 }
 
-const statusLabel = (status: "added" | "renamed" | undefined) => (status === "added" ? "추가됨" : status === "renamed" ? "이름 변경됨" : undefined);
+const statusLabel = (status: "added" | "renamed" | undefined) => (status === "added" ? tr("추가됨") : status === "renamed" ? tr("이름 변경됨") : undefined);
 
 /** Build virtual directories, including folders absent from the archive headers.
  * IDs are opaque and are never used as filesystem paths or extraction targets. */

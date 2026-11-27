@@ -1,7 +1,7 @@
 //! The Windows 11 first-level menu: a "Silk Zip" entry with the same items as the classic menu as
 //! its sub-menu. It is reached through the package the app registers (`shell_menu.rs`), so it
 //! runs in a COM surrogate rather than in Explorer. Nothing here may panic.
-use crate::com::{app_path, launch};
+use crate::com::{app_path, language, launch};
 use silk_zip_menu::{self as menu, Selected};
 use std::cell::{Cell, RefCell};
 use std::ffi::OsString;
@@ -104,7 +104,7 @@ impl IExplorerCommand_Impl for Root_Impl {
         let paths = self.paths.borrow().clone();
         let items: Vec<Selected> = paths.iter().map(|path| Selected { path: path.clone(), is_dir: path.is_dir() }).collect();
         let mut commands: Vec<IExplorerCommand> = Vec::new();
-        for (group_index, group) in menu::build(&items, &|path| path.exists()).into_iter().enumerate() {
+        for (group_index, group) in menu::build(&items, &|path| path.exists(), language()).into_iter().enumerate() {
             for (index, entry) in group.into_iter().enumerate() {
                 let child = Child {
                     title: plain_label(&entry.label),

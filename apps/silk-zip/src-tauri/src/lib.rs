@@ -2,6 +2,7 @@ mod archive;
 mod clipboard;
 mod file_assoc;
 mod folder_picker;
+mod language;
 mod launch;
 #[cfg(windows)]
 mod shell_menu;
@@ -166,6 +167,7 @@ pub fn run() {
             launch::take_launch_request,
             launch::unique_path,
             launch::unique_folder,
+            language::set_native_language,
             folder_picker::pick_extract_folder,
             folder_picker::wait_extract_folder,
             file_assoc::file_associations,
@@ -198,7 +200,8 @@ pub fn run() {
                     configure_main_window(&window)?;
                 }
                 if archive::is_elevated() {
-                    let _ = window.set_title("Silk Zip (관리자)");
+                    #[cfg(windows)]
+                    let _ = window.set_title(language::pick("Silk Zip (관리자)", "Silk Zip (Administrator)"));
                 }
                 if quick {
                     let _ = window.set_min_size(None::<tauri::Size>);

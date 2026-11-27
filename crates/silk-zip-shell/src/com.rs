@@ -1,5 +1,5 @@
 //! The COM object Explorer loads. Nothing here may panic: the code runs inside Explorer.
-use silk_zip_menu::{self as menu, Selected};
+use silk_zip_menu::{self as menu, Lang, Selected};
 use std::cell::{Cell, RefCell};
 use std::ffi::{c_void, OsString};
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
@@ -12,6 +12,7 @@ use windows::Win32::Graphics::Gdi::{
     CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject, BITMAPINFO, BITMAPINFOHEADER,
     BI_RGB, DIB_RGB_COLORS, HBITMAP,
 };
+use windows::Win32::Globalization::GetUserDefaultUILanguage;
 use windows::Win32::System::Com::{
     IClassFactory, IClassFactory_Impl, IDataObject, DVASPECT_CONTENT, FORMATETC, TYMED_HGLOBAL,
 };
@@ -89,6 +90,22 @@ fn app_beside_dll() -> Option<PathBuf> {
     };
     let dll = PathBuf::from(OsString::from_wide(buffer.get(..length)?));
     Some(dll.parent()?.join("silk-zip.exe"))
+}
+
+/// `HKCU\Software\SilkZip\Language`, written by the app; else the Windows display language.
+pub(crate) fn language() -> Lang {
+    let (key, name) = (wide(r"Software\SilkZip"), wide("Language"));
+    let mut buffer = [0u16; 8];
+    let mut size = (buffer.len() * 2) as u32;
+    let status = unsafe {
+        RegGetValueW(HKEY_CURRENT_USER, PCWSTR(key.as_ptr()), PCWSTR(name.as_ptr()), RRF_RT_REG_SZ, None, Some(buffer.as_mut_ptr().cast()), Some(&mut size))
+    };
+    let saved = status
+        .is_ok()
+        .then(|| String::from_utf16_lossy(&buffer[..(size as usize / 2).saturating_sub(1).min(buffer.len())]))
+        .and_then(|code| Lang::from_code(&code));
+    // Primary language 0x12 is Korean.
+    saved.unwrap_or_else(|| if unsafe { GetUserDefaultUILanguage() } & 0x3ff == 0x12 { Lang::Ko } else { Lang::En })
 }
 
 fn wide(text: impl AsRef<std::ffi::OsStr>) -> Vec<u16> {
@@ -222,7 +239,7 @@ impl IContextMenu_Impl for ContextMenu_Impl {
             .iter()
             .map(|path| Selected { path: path.clone(), is_dir: path.is_dir() })
             .collect();
-        let groups = menu::build(&items, &|path| path.exists());
+        let groups = menu::build(&items, &|path| path.exists(), language());
         if groups.is_empty() {
             return HRESULT(0);
         }
@@ -368,7 +385,8 @@ mod tests {
                 .collect();
             let _ = DestroyMenu(menu);
             assert_eq!(labels.len(), 4, "{labels:?}");
-            assert!(labels.contains(&"\"sample\" 폴더에 풀기(&E)".to_string()), "{labels:?}");
+            let expected = match language() { Lang::Ko => "\"sample\" 폴더에 풀기(&E)", Lang::En => "Extract to \"sample\"(&E)" };
+            assert!(labels.contains(&expected.to_string()), "{labels:?}");
         }
         std::fs::remove_dir_all(&folder).unwrap();
     }
@@ -402,7 +420,8 @@ mod tests {
                 CoTaskMemFree(Some(title.0 as *const _));
             }
             assert_eq!(titles.len(), 4, "{titles:?}");
-            assert!(titles.contains(&"\"sample\" 폴더에 풀기".to_string()), "{titles:?}");
+            let expected = match language() { Lang::Ko => "\"sample\" 폴더에 풀기", Lang::En => "Extract to \"sample\"" };
+            assert!(titles.contains(&expected.to_string()), "{titles:?}");
         }
         std::fs::remove_dir_all(&folder).unwrap();
     }
