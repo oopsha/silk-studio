@@ -159,7 +159,8 @@ export default function ResourceExplorer({ source, onOpenFile, onSelectionChange
     <nav className="resource-explorer__address" aria-label={koEn("현재 폴더 경로", "Current folder path")}>
       {route.map((node, index) => <span className="resource-explorer__breadcrumb" key={node.id}>
         {index > 0 ? <Codicon name="chevron-right" /> : null}
-        <button type="button" aria-current={index === route.length - 1 ? "location" : undefined} onClick={() => setRoute(route.slice(0, index + 1))}>{node.name}</button>
+        {/* The route outlives source updates (`resetKey`), so the root's current name comes from the source. */}
+        <button type="button" aria-current={index === route.length - 1 ? "location" : undefined} onClick={() => setRoute(route.slice(0, index + 1))}>{node.id === source.root.id ? source.root.name : node.name}</button>
       </span>)}
       {addressExtra ? <span className="resource-explorer__address-extra">{addressExtra}</span> : null}
     </nav>

@@ -93,6 +93,10 @@ function App() {
   const [dragActive, setDragActive] = useState(false);
   const [format, setFormat] = useState("zip");
   const [outputPath, setOutputPath] = useState(tr("새 압축.zip"));
+  // The saved language is applied after the first render, so a still-default name follows it.
+  useEffect(() => {
+    setOutputPath((current) => current.replace(/^(?:새 압축|New Archive)(?=\.[^.\\/]+$)/, tr("새 압축")));
+  }, [locale]);
   const draft = useCompressionDraft(outputPath.split(/[\\/]/).pop() || tr("새 압축.zip"));
   const files = draft.entries.map((entry) => entry.archivePath);
   const [password, setPassword] = useState("");
