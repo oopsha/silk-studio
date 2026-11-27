@@ -194,6 +194,9 @@ function PackagePlsqlHistoryDialog() {
       {...backdropDismiss}
     >
       <div
+        // The diff view is user-resizable (native handle writes an inline size onto this element).
+        // A separate element per view keeps that size from leaking into the list/confirm views.
+        key={view.mode === "diff" ? "diff" : "compact"}
         className={`explorer-mutation-dialog plsql-snapshot-dialog${
           view.mode === "diff" ? " plsql-snapshot-dialog--diff" : ""
         }`}
