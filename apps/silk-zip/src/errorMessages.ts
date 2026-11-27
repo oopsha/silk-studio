@@ -153,6 +153,7 @@ const MESSAGES: Record<string, string> = {
   "실행 파일 경로를 찾지 못했습니다: {}": "Could not find the program path: {}",
   "관리자 권한으로 새 창을 열지 못했습니다: {}": "Could not open an administrator window: {}",
   "관리자 권한 새 창은 Windows에서만 지원합니다.": "Administrator windows are supported only on Windows.",
+  "Store 버전에서는 관리자 권한 새 창을 지원하지 않습니다.": "The Store version cannot open administrator windows.",
   "새 창을 열지 못했습니다: {}": "Could not open a new window: {}",
   "설치 위치를 확인하지 못했습니다: {}": "Could not determine the install location: {}",
   "압축 파일이 저장된 폴더를 찾을 수 없습니다.": "The folder of the archive was not found.",

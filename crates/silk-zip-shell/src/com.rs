@@ -44,9 +44,9 @@ const CLSID_COMMAND: GUID = GUID::from_u128(0x0f4c2b71_6d5a_4b0e_9e43_8a1d7c90b2
 const COMMAND_LIMIT: usize = 30_000;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// `silk-zip.exe` next to this DLL.
+/// `silk-zip.exe` next to this DLL (the Store package), else the one named at registration.
 pub(crate) fn app_path() -> Option<PathBuf> {
-    registered_app().or_else(app_beside_dll)
+    app_beside_dll().filter(|app| app.is_file()).or_else(registered_app)
 }
 
 /// `App` under this class's key, written by `silk-zip --register-shell`: the registered DLL is a
@@ -75,7 +75,6 @@ fn registered_app() -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-/// Without a registration value (a DLL registered by hand), the app is looked for beside it.
 fn app_beside_dll() -> Option<PathBuf> {
     let mut module = HMODULE::default();
     let mut buffer = [0u16; 32_768];

@@ -30,14 +30,14 @@ pub const ARCHIVE_EXTENSIONS: &[&str] = &[
 /// (key name = sort order, Korean and English label with `&` accelerator, action, only for
 /// archives, separator before)
 const ITEMS: &[(&str, (&str, &str), &str, bool, bool)] = &[
-    ("01", ("Silk Zip으로 열기(&O)", "Open with Silk Zip(&O)"), "open", true, true),
+    ("01", ("실크집으로 열기(&O)", "Open with Silk Zip(&O)"), "open", true, true),
     ("02", ("여기에 풀기(&X)", "Extract Here(&X)"), "extract-here", true, false),
     ("03", ("파일명 폴더에 풀기(&E)", "Extract to Archive-Named Folder(&E)"), "extract-folder", true, false),
-    ("04", ("Silk Zip으로 압축 풀기(&T)...", "Extract with Silk Zip(&T)..."), "extract-dialog", true, false),
+    ("04", ("실크집으로 압축 풀기(&T)...", "Extract with Silk Zip(&T)..."), "extract-dialog", true, false),
     ("05", ("ZIP으로 압축하기(&Z)", "Compress to ZIP(&Z)"), "compress-zip", false, true),
     ("06", ("7z로 압축하기(&7)", "Compress to 7z(&7)"), "compress-7z", false, false),
     ("07", ("각각 ZIP으로 압축하기(&U)", "Compress Each to ZIP(&U)"), "compress-each", false, false),
-    ("08", ("Silk Zip으로 압축하기(&L)...", "Compress with Silk Zip(&L)..."), "compress-dialog", false, false),
+    ("08", ("실크집으로 압축하기(&L)...", "Compress with Silk Zip(&L)..."), "compress-dialog", false, false),
 ];
 
 fn archive_filter() -> String {
@@ -188,6 +188,8 @@ pub fn unregister() -> io::Result<()> {
 pub fn handle_args() -> bool {
     for arg in std::env::args().skip(1) {
         let result = match arg.as_str() {
+            // The Store package declares the menu itself; there is nothing to write or remove.
+            "--register-shell" | "--unregister-shell" if crate::store::is_packaged() => return true,
             "--register-shell" => register(),
             "--unregister-shell" => unregister().and(crate::file_assoc::remove_all()),
             _ => continue,

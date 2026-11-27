@@ -50,6 +50,12 @@ pub fn set_native_language(language: String) -> Result<(), String> {
     #[cfg(windows)]
     if language == "ko" || language == "en" {
         imp::save(&language).map_err(|error| error.to_string())?;
+        // The front end calls this on every start, so this also catches a moved program.
+        std::thread::spawn(|| {
+            if let Err(error) = crate::file_assoc::refresh_registrations() {
+                eprintln!("파일 연결을 갱신하지 못했습니다: {error}");
+            }
+        });
     }
     #[cfg(not(windows))]
     let _ = language;

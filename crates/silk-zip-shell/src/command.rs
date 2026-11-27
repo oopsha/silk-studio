@@ -2,7 +2,7 @@
 //! its sub-menu. It is reached through the package the app registers (`shell_menu.rs`), so it
 //! runs in a COM surrogate rather than in Explorer. Nothing here may panic.
 use crate::com::{app_path, language, launch};
-use silk_zip_menu::{self as menu, Selected};
+use silk_zip_menu::{self as menu, Lang, Selected};
 use std::cell::{Cell, RefCell};
 use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
@@ -52,7 +52,7 @@ fn paths_of(items: Option<&IShellItemArray>) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The "Silk Zip" entry itself.
+/// The "실크집" / "Silk Zip" entry itself.
 #[implement(IExplorerCommand)]
 #[derive(Default)]
 pub(crate) struct Root {
@@ -72,7 +72,10 @@ impl Root_Impl {
 impl IExplorerCommand_Impl for Root_Impl {
     fn GetTitle(&self, items: Ref<'_, IShellItemArray>) -> windows_core::Result<PWSTR> {
         self.remember(items);
-        text("Silk Zip")
+        text(match language() {
+            Lang::Ko => "실크집",
+            Lang::En => "Silk Zip",
+        })
     }
 
     fn GetIcon(&self, _items: Ref<'_, IShellItemArray>) -> windows_core::Result<PWSTR> {

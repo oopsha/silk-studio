@@ -732,6 +732,10 @@ pub fn new_window(admin: bool) -> Result<(), String> {
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
+            // Elevating a packaged app needs a capability the Store package does not ask for.
+            if crate::store::is_packaged() {
+                return Err("Store 버전에서는 관리자 권한 새 창을 지원하지 않습니다.".into());
+            }
             let path = exe.display().to_string().replace('\'', "''");
             return Command::new("powershell.exe")
                 .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command"])

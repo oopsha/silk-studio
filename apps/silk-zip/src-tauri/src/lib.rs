@@ -7,6 +7,7 @@ mod launch;
 #[cfg(windows)]
 mod shell_menu;
 mod settings;
+mod store;
 mod window_layout;
 
 use tauri::Manager;

@@ -79,7 +79,7 @@ const otherMenus = [
   [MenuId.MenubarEditMenu, ["이름 바꾸기|F2", "파일 추가|Ins", "제거|Del", "|", "복사|Ctrl+C", "붙여넣기|Ctrl+V", "|", "찾기...|Ctrl+F"]],
   [MenuId.MenubarViewMenu, ["보기 형식", "표시할 열", "테마"]],
   [MenuId.MenubarToolsMenu, ["압축 파일 복구..."]],
-  [MenuId.MenubarHelpMenu, ["정보|F1", "설치 위치 열기", "|", "도움말 페이지 열기", "토론 게시판 열기", "홈페이지 열기"]],
+  [MenuId.MenubarHelpMenu, ["정보|F1", "설치 위치 열기", "|", "사용 가이드", "홈페이지 열기"]],
 ] as const;
 
 for (const [menuId, labels] of otherMenus) {

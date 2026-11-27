@@ -160,7 +160,7 @@ pub fn build(items: &[Selected], exists: &dyn Fn(&Path) -> bool, lang: Lang) -> 
     if items.iter().all(is_archive) {
         let mut extract = Vec::new();
         if single {
-            extract.push(entry(lang.pick("Silk Zip으로 열기(&O)", "Open with Silk Zip(&O)"), "open"));
+            extract.push(entry(lang.pick("실크집으로 열기(&O)", "Open with Silk Zip(&O)"), "open"));
         }
         extract.push(entry(lang.pick("여기에 풀기(&X)", "Extract Here(&X)"), "extract-here"));
         extract.push(if single {
@@ -170,7 +170,7 @@ pub fn build(items: &[Selected], exists: &dyn Fn(&Path) -> bool, lang: Lang) -> 
         } else {
             entry(lang.pick("각각 파일명 폴더에 풀기(&E)", "Extract Each to Its Own Folder(&E)"), "extract-folder")
         });
-        extract.push(entry(lang.pick("Silk Zip으로 압축 풀기(&T)...", "Extract with Silk Zip(&T)..."), "extract-dialog"));
+        extract.push(entry(lang.pick("실크집으로 압축 풀기(&T)...", "Extract with Silk Zip(&T)..."), "extract-dialog"));
         groups.push(extract);
         // One archive is rarely compressed again; several may still be bundled into one.
         if single {
@@ -187,7 +187,7 @@ pub fn build(items: &[Selected], exists: &dyn Fn(&Path) -> bool, lang: Lang) -> 
     if !single {
         compress.push(entry(lang.pick("각각 ZIP으로 압축하기(&U)", "Compress Each to ZIP(&U)"), "compress-each"));
     }
-    compress.push(entry(lang.pick("Silk Zip으로 압축하기(&L)...", "Compress with Silk Zip(&L)..."), "compress-dialog"));
+    compress.push(entry(lang.pick("실크집으로 압축하기(&L)...", "Compress with Silk Zip(&L)..."), "compress-dialog"));
     groups.push(compress);
     groups
 }

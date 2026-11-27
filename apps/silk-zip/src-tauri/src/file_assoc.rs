@@ -83,12 +83,48 @@ mod imp {
             .collect()
     }
 
+    /// What a double-click starts. The Store package's folder changes with every update, so its
+    /// execution alias is named instead (see `store/AppxManifest.xml`).
+    fn command_path(exe: &str) -> String {
+        match std::env::var("LOCALAPPDATA") {
+            Ok(local) if crate::store::is_packaged() => format!(r"{local}\Microsoft\WindowsApps\silkzip.exe"),
+            _ => exe.to_string(),
+        }
+    }
+
+    /// The name shown in "연결 프로그램" and the default apps settings. Without it Windows shows the
+    /// file name of the program, which for the Store package is the alias.
+    fn display_name() -> &'static str {
+        crate::language::pick("실크집", "Silk Zip")
+    }
+
+    /// Registers the same types again when the saved name or icon is out of date: the language
+    /// changed, or a Store update moved the program.
+    pub fn refresh_registrations() -> io::Result<()> {
+        let exe = std::env::current_exe()?.to_string_lossy().into_owned();
+        let classes = classes()?;
+        let registered: Vec<String> = EXTENSIONS.iter().filter(|extension| is_registered(&classes, extension)).map(|extension| extension.to_string()).collect();
+        let read = |key: String, value: &str| classes.open_subkey(key).and_then(|key| key.get_value::<String, _>(value)).unwrap_or_default();
+        let stale = registered.iter().any(|extension| {
+            let id = prog_id(extension);
+            read(format!(r"{id}\Application"), "ApplicationName") != display_name() || !read(format!(r"{id}\DefaultIcon"), "").contains(&exe)
+        });
+        if stale {
+            apply(&registered)?;
+        }
+        Ok(())
+    }
+
     fn register(classes: &RegKey, capabilities: &RegKey, extension: &str, exe: &str) -> io::Result<()> {
         let id = prog_id(extension);
         let (prog, _) = classes.create_subkey(&id)?;
         prog.set_value("", &format!("{} {}", extension.to_uppercase(), crate::language::pick("압축 파일", "Archive")))?;
         prog.create_subkey("DefaultIcon")?.0.set_value("", &format!("\"{exe}\",0"))?;
-        prog.create_subkey(r"shell\open\command")?.0.set_value("", &format!("\"{exe}\" --action=open --batch \"%1\""))?;
+        prog.create_subkey(r"shell\open\command")?.0.set_value("", &format!("\"{}\" --action=open --batch \"%1\"", command_path(exe)))?;
+        let (application, _) = prog.create_subkey("Application")?;
+        application.set_value("ApplicationName", &display_name())?;
+        application.set_value("ApplicationIcon", &format!("\"{exe}\",0"))?;
+        prog.create_subkey(r"shell\open")?.0.set_value("FriendlyAppName", &display_name())?;
         let (class, _) = classes.create_subkey(format!(".{extension}"))?;
         class.create_subkey("OpenWithProgids")?.0.set_value(&id, &"")?;
         // Used only when the user has not chosen an app for the extension.
@@ -130,13 +166,28 @@ mod imp {
         let classes = classes()?;
         let user = RegKey::predef(HKEY_CURRENT_USER);
         let (capabilities, _) = user.create_subkey(CAPABILITIES)?;
-        capabilities.set_value("ApplicationName", &APP_NAME)?;
+        capabilities.set_value("ApplicationName", &display_name())?;
         capabilities.set_value("ApplicationDescription", &crate::language::pick("압축 파일을 만들고 풉니다.", "Create and extract archives."))?;
         for extension in EXTENSIONS {
             if wanted.iter().any(|item| item.eq_ignore_ascii_case(extension)) {
                 register(&classes, &capabilities, extension, &exe)?;
             } else {
                 unregister(&classes, extension)?;
+            }
+        }
+        // "연결 프로그램" names a program by its file name; this is the name for that file.
+        let command = command_path(&exe);
+        if let Some(program) = std::path::Path::new(&command).file_name() {
+            let key = format!(r"Applications\{}", program.to_string_lossy());
+            if wanted.is_empty() {
+                match classes.delete_subkey_all(&key) {
+                    Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+                    _ => {}
+                }
+            } else {
+                let (program_key, _) = classes.create_subkey(&key)?;
+                program_key.set_value("FriendlyAppName", &display_name())?;
+                program_key.create_subkey("DefaultIcon")?.0.set_value("", &format!("\"{exe}\",0"))?;
             }
         }
         let (apps, _) = user.create_subkey(r"Software\RegisteredApplications")?;
@@ -176,7 +227,7 @@ mod imp {
 }
 
 #[cfg(windows)]
-pub use imp::remove_all;
+pub use imp::{refresh_registrations, remove_all};
 
 #[tauri::command]
 pub fn file_associations() -> Vec<Association> {
