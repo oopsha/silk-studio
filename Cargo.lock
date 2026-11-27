@@ -4877,6 +4877,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-window-controls",
  "windows 0.61.3",
+ "windows-core 0.61.2",
  "windows-sys 0.59.0",
  "winreg",
 ]

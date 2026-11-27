@@ -58,6 +58,11 @@ export function rememberFolder(path: string): void {
   writeStored("recent-folders", RECENT_KEY, JSON.stringify(recentFolders));
 }
 
+/** True when the files go into a folder named after the archive (a new one is made if it is taken). */
+export function isNamedTarget(target: Exclude<ExtractTarget, "ask">): boolean {
+  return typeof target === "object" ? target.named === true : target === "named";
+}
+
 export function resolveTargetFolder(target: Exclude<ExtractTarget, "ask">, archivePath: string): string | undefined {
   if (typeof target === "object") return target.named ? joinPath(target.dir, archiveStem(archivePath)) : target.dir;
   const parent = parentFolder(archivePath);

@@ -165,6 +165,7 @@ pub fn run() {
             archive::open_install_folder,
             launch::take_launch_request,
             launch::unique_path,
+            launch::unique_folder,
             folder_picker::pick_extract_folder,
             folder_picker::wait_extract_folder,
             file_assoc::file_associations,

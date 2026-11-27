@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
-import { cancelArchive, extractArchive, openOutputFolder, resolveExtractConflict, type ConflictAction, type ExtractConflict, repairArchive, revealInFolder, testArchive, updateArchive, type EntryChange, type NewEntry, type CreateProgress, type ExtractResult, type RepairResult } from "../archive.ts";
+import { cancelArchive, extractArchive, openOutputFolder, resolveExtractConflict, type ConflictAction, type ExtractConflict, repairArchive, revealInFolder, testArchive, updateArchive, type EntryChange, type NewEntry, type CreateProgress, type ExtractResult, type RepairResult, uniqueFolder } from "../archive.ts";
 import { getZipSettings } from "../zipSettings.ts";
 import { pickExtractFolder } from "../pickExtractFolder.ts";
-import { parentFolder, rememberFolder, resolveTargetFolder, type ExtractTarget } from "../extractTargets.ts";
+import { isNamedTarget, parentFolder, rememberFolder, resolveTargetFolder, type ExtractTarget } from "../extractTargets.ts";
 
 /** One archive of a multi-archive extraction, for the summary. */
 type BatchItem = { archivePath: string; outputDir: string; extracted: number; skipped: number; error?: string };
@@ -53,6 +53,12 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(value >= 100 ? 0 : 1)} ${units[unit]}`;
 }
 
+/** The folder to write to; a taken archive-named folder becomes "name (2)" instead of being merged into. */
+async function targetFolder(target: Exclude<ExtractTarget, "ask">, archivePath: string): Promise<string | undefined> {
+  const folder = resolveTargetFolder(target, archivePath);
+  return folder && isNamedTarget(target) ? uniqueFolder(folder) : folder;
+}
+
 /** Folder pick, progress, password prompt and cancel for one extraction at a time. */
 export function useExtraction() {
   const [state, setState] = useState<ExtractState>(null);
@@ -89,7 +95,7 @@ export function useExtraction() {
         }
         password = "";
         const next = batch.queue.shift();
-        const folder = next && batch.target !== "ask" ? resolveTargetFolder(batch.target, next) : undefined;
+        const folder = next && batch.target !== "ask" ? await targetFolder(batch.target, next) : undefined;
         if (!next || !folder) { finish(); return; }
         job.current = { operationId: `extract-${Date.now()}-${batch.items.length}`, archivePath: next, outputDir: folder, entries: [], batch };
       }
@@ -143,7 +149,7 @@ export function useExtraction() {
   const startMany = useCallback(async (archivePaths: string[], target: Exclude<ExtractTarget, "ask">) => {
     if (active.current || archivePaths.length === 0) return;
     const [first, ...queue] = archivePaths;
-    const folder = resolveTargetFolder(target, first);
+    const folder = await targetFolder(target, first);
     if (!folder) return;
     const batch: Batch | undefined = queue.length ? { target, queue, items: [], total: archivePaths.length, startedAt: performance.now() } : undefined;
     job.current = { operationId: `extract-${Date.now()}-0`, archivePath: first, outputDir: folder, entries: [], batch, remember: typeof target === "object" ? target.dir : undefined };
@@ -166,7 +172,7 @@ export function useExtraction() {
     } else {
       chosen = target;
     }
-    const folder = resolveTargetFolder(chosen, archivePath);
+    const folder = await targetFolder(chosen, archivePath);
     if (!folder) return;
     job.current = { operationId: `extract-${Date.now()}`, archivePath, outputDir: folder, entries, remember: typeof chosen === "object" ? chosen.dir : undefined };
     await run("");

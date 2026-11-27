@@ -213,6 +213,11 @@ export function uniquePath(path: string): Promise<string> {
   return invoke("unique_path", { path });
 }
 
+/** `path`, or the first free `name (2)` folder beside it when something already exists there. */
+export function uniqueFolder(path: string): Promise<string> {
+  return invoke("unique_folder", { path });
+}
+
 export function openInstallFolder(): Promise<void> {
   return invoke("open_install_folder");
 }

@@ -105,8 +105,21 @@ fn shown(name: &str) -> String {
 }
 
 /// `"name" 폴더에 풀기` for an archive, also used by the app's folder dialog.
-pub fn named_folder_label(archive: &Path) -> String {
-    format!("\"{}\" 폴더에 풀기", shown(&archive_stem(&file_name(archive))))
+/// `folder` is where the new folder would be made, so a taken name shows as "name (2)".
+pub fn named_folder_label(archive: &Path, folder: &Path, exists: &dyn Fn(&Path) -> bool) -> String {
+    format!("\"{}\" 폴더에 풀기", shown(&free_folder(archive, folder, exists)))
+}
+
+/// The folder "extract to the archive's folder" will really make: "name", or "name (2)" when taken.
+fn free_folder(archive: &Path, folder: &Path, exists: &dyn Fn(&Path) -> bool) -> String {
+    let stem = archive_stem(&file_name(archive));
+    if !exists(&folder.join(&stem)) {
+        return stem;
+    }
+    (2..100)
+        .map(|number| format!("{stem} ({number})"))
+        .find(|name| !exists(&folder.join(name)))
+        .unwrap_or(stem)
 }
 
 /// Menu entries in groups; a separator goes between groups.
@@ -123,7 +136,9 @@ pub fn build(items: &[Selected], exists: &dyn Fn(&Path) -> bool) -> Vec<Vec<Entr
         }
         extract.push(entry("여기에 풀기(&X)", "extract-here"));
         extract.push(if single {
-            entry(format!("{}(&E)", named_folder_label(&items[0].path)), "extract-folder")
+            let archive = &items[0].path;
+            let label = named_folder_label(archive, archive.parent().unwrap_or(Path::new("")), exists);
+            entry(format!("{label}(&E)"), "extract-folder")
         } else {
             entry("각각 파일명 폴더에 풀기(&E)", "extract-folder")
         });
@@ -169,6 +184,12 @@ mod tests {
         let groups = build(&[file(r"C:\work\새 압축.zip")], &|_| false);
         assert_eq!(actions(&groups), ["open", "extract-here", "extract-folder", "extract-dialog"]);
         assert!(labels(&groups).contains(&"\"새 압축\" 폴더에 풀기(&E)"));
+    }
+
+    #[test]
+    fn taken_folder_name_is_numbered() {
+        let groups = build(&[file(r"C:\work\test.tar")], &|path| path.ends_with("test"));
+        assert!(labels(&groups).contains(&"\"test (2)\" 폴더에 풀기(&E)"));
     }
 
     #[test]

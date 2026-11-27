@@ -141,6 +141,18 @@ pub fn unique_path(path: String) -> String {
         .unwrap_or(path)
 }
 
+/// Like `unique_path` for a folder: its whole name is kept ("v1.2" -> "v1.2 (2)").
+#[tauri::command]
+pub fn unique_folder(path: String) -> String {
+    if !std::path::Path::new(&path).exists() {
+        return path;
+    }
+    (2..)
+        .map(|number| format!("{path} ({number})"))
+        .find(|candidate| !std::path::Path::new(candidate).exists())
+        .unwrap_or(path)
+}
+
 /// Hands the start-up request to the front end once; later calls return nothing.
 #[tauri::command]
 pub fn take_launch_request(state: State<'_, LaunchState>) -> Option<LaunchRequest> {
