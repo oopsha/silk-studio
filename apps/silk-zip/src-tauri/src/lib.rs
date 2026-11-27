@@ -142,14 +142,13 @@ pub fn run() {
     if let Some(job) = request.as_ref().filter(|job| job.action == "extract-dialog") {
         pending = folder_picker::pick_in_background(&job.paths[0], job.paths.len(), settings::extract_named_folder());
     }
-    let hidden = pending.0.lock().map(|receiver| receiver.is_some()).unwrap_or(false);
     let quick = request.as_ref().is_some_and(|request| launch::is_quick(&request.action));
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_controls::init())
         .manage(archive::CreateTasks::default())
         .manage(archive::ConflictWaiters::default())
-        .manage(launch::QuickMode(quick, hidden.into()))
+        .manage(launch::QuickMode(quick, quick.into()))
         .manage(pending)
         .manage(launch::LaunchState(std::sync::Mutex::new(request)))
         .invoke_handler(tauri::generate_handler![
@@ -187,6 +186,7 @@ pub fn run() {
             window_layout::window_layout_save,
             window_layout::window_layout_apply_and_show,
             window_layout::window_layout_show,
+            window_layout::show_job_window,
             window_layout::window_layout_file_exists,
             window_layout::window_layout_load,
         ])
@@ -215,10 +215,6 @@ pub fn run() {
                                 std::mem::size_of_val(&disable) as u32,
                             );
                         }
-                    }
-                    if !hidden {
-                        let _ = window.show();
-                        let _ = window.set_focus();
                     }
                 } else {
                     silk_window_state::restore_main_window(app.handle(), &window);

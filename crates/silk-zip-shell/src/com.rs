@@ -35,13 +35,16 @@ use windows_core::{implement, IUnknown, Interface, Ref, BOOL, GUID, HRESULT, PCW
 /// Registered by `silk-zip --register-shell`; keep equal to `CLSID` in the app's `shell_menu.rs`.
 const CLSID_MENU: GUID = GUID::from_u128(0x7b3e9a52_4c1d_4e8f_9a67_2d5b0c8f1e34);
 
+/// The Windows 11 first-level menu, named in the package manifest (`shell-package/AppxManifest.xml`).
+const CLSID_COMMAND: GUID = GUID::from_u128(0x0f4c2b71_6d5a_4b0e_9e43_8a1d7c90b2f5);
+
 /// Longest command line passed to one process; more paths go to further processes, which the
 /// app merges again.
 const COMMAND_LIMIT: usize = 30_000;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// `silk-zip.exe` next to this DLL.
-fn app_path() -> Option<PathBuf> {
+pub(crate) fn app_path() -> Option<PathBuf> {
     registered_app().or_else(app_beside_dll)
 }
 
@@ -152,7 +155,7 @@ fn selected_paths(data: &IDataObject) -> windows_core::Result<Vec<PathBuf>> {
     }
 }
 
-fn launch(action: &str, paths: &[PathBuf]) -> std::io::Result<()> {
+pub(crate) fn launch(action: &str, paths: &[PathBuf]) -> std::io::Result<()> {
     let app = app_path().ok_or(std::io::ErrorKind::NotFound)?;
     let mut rest = paths;
     while !rest.is_empty() {
@@ -282,15 +285,21 @@ impl IContextMenu_Impl for ContextMenu_Impl {
 }
 
 #[implement(IClassFactory)]
-struct Factory;
+struct Factory {
+    class: GUID,
+}
 
 impl IClassFactory_Impl for Factory_Impl {
     fn CreateInstance(&self, outer: Ref<'_, IUnknown>, iid: *const GUID, object: *mut *mut c_void) -> windows_core::Result<()> {
         if !outer.is_null() {
             return Err(CLASS_E_NOAGGREGATION.into());
         }
-        let menu: IUnknown = ContextMenu::default().into();
-        unsafe { menu.query(iid, object).ok() }
+        let created: IUnknown = if self.class == CLSID_COMMAND {
+            crate::command::Root::default().into()
+        } else {
+            ContextMenu::default().into()
+        };
+        unsafe { created.query(iid, object).ok() }
     }
 
     fn LockServer(&self, _lock: BOOL) -> windows_core::Result<()> {
@@ -306,10 +315,10 @@ pub unsafe extern "system" fn DllGetClassObject(class: *const GUID, iid: *const 
         return E_POINTER;
     }
     *object = std::ptr::null_mut();
-    if *class != CLSID_MENU {
+    if *class != CLSID_MENU && *class != CLSID_COMMAND {
         return CLASS_E_CLASSNOTAVAILABLE;
     }
-    let factory: IUnknown = Factory.into();
+    let factory: IUnknown = Factory { class: *class }.into();
     factory.query(iid, object)
 }
 
@@ -360,6 +369,40 @@ mod tests {
             let _ = DestroyMenu(menu);
             assert_eq!(labels.len(), 4, "{labels:?}");
             assert!(labels.contains(&"\"sample\" 폴더에 풀기(&E)".to_string()), "{labels:?}");
+        }
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn first_level_menu_lists_the_same_items() {
+        use windows::Win32::UI::Shell::{IExplorerCommand, IShellItem, SHCreateItemFromParsingName, SHCreateShellItemArrayFromShellItem};
+        let folder = std::env::temp_dir().join(format!("silk-zip-command-test-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let archive = folder.join("sample.zip");
+        std::fs::write(&archive, b"PK").unwrap();
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            let name = wide(&archive);
+            let item: IShellItem = SHCreateItemFromParsingName(PCWSTR(name.as_ptr()), None).unwrap();
+            let array: IShellItemArray = SHCreateShellItemArrayFromShellItem(&item).unwrap();
+            let mut raw = std::ptr::null_mut();
+            DllGetClassObject(&CLSID_COMMAND, &IClassFactory::IID, &mut raw).ok().unwrap();
+            let factory = IClassFactory::from_raw(raw);
+            let root: IExplorerCommand = factory.CreateInstance(None).unwrap();
+            root.GetState(&array, false).unwrap();
+            let children = root.EnumSubCommands().unwrap();
+            let mut titles = Vec::new();
+            loop {
+                let mut next = [None];
+                let mut fetched = 0;
+                let _ = children.Next(&mut next, Some(&mut fetched));
+                let Some(command) = next[0].take() else { break };
+                let title = command.GetTitle(None).unwrap();
+                titles.push(title.to_string().unwrap());
+                CoTaskMemFree(Some(title.0 as *const _));
+            }
+            assert_eq!(titles.len(), 4, "{titles:?}");
+            assert!(titles.contains(&"\"sample\" 폴더에 풀기".to_string()), "{titles:?}");
         }
         std::fs::remove_dir_all(&folder).unwrap();
     }

@@ -39,27 +39,17 @@ pub fn pick_in_background(archive: &str, count: usize, named: bool) -> PendingFo
     PendingFolder(std::sync::Mutex::new(Some(receiver)))
 }
 
-/// Waits for the start-up dialog. With a folder the hidden job window is shown; `None` when it
-/// was cancelled (or there was no such dialog).
+/// Waits for the start-up dialog; `None` when it was cancelled (or there was no such dialog).
 #[tauri::command]
 pub async fn wait_extract_folder(
-    window: tauri::WebviewWindow,
-    quick: tauri::State<'_, crate::launch::QuickMode>,
     pending: tauri::State<'_, PendingFolder>,
 ) -> Result<Option<PickedFolder>, String> {
     let Some(receiver) = pending.0.lock().map_err(|error| error.to_string())?.take() else {
         return Ok(None);
     };
-    let picked = tauri::async_runtime::spawn_blocking(move || receiver.recv().ok().flatten())
+    tauri::async_runtime::spawn_blocking(move || receiver.recv().ok().flatten())
         .await
-        .map_err(|error| error.to_string())?;
-    if picked.is_some() {
-        quick.1.store(false, std::sync::atomic::Ordering::SeqCst);
-        let _ = window.center();
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
-    Ok(picked)
+        .map_err(|error| error.to_string())
 }
 
 /// `None` when the dialog was cancelled.

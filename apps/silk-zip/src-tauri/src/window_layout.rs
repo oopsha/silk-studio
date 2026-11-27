@@ -30,9 +30,22 @@ pub fn window_layout_apply_and_show(
 #[tauri::command]
 pub fn window_layout_show(quick: State<'_, QuickMode>, window: WebviewWindow) -> Result<(), String> {
     if quick.1.load(std::sync::atomic::Ordering::SeqCst) {
-        return Ok(()); // shown by `wait_extract_folder` once a folder was chosen
+        return Ok(()); // shown by `show_job_window` once there is something to see
     }
     silk_window_state::window_layout_show(window)
+}
+
+/// Shows the job window the first time; later calls (and calls outside quick mode) do nothing.
+/// Showing it earlier flashes an unpainted (black) window and then the main screen.
+#[tauri::command]
+pub fn show_job_window(quick: State<'_, QuickMode>, window: WebviewWindow) -> Result<(), String> {
+    if !quick.1.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        return Ok(());
+    }
+    let _ = window.center();
+    window.show().map_err(|error| error.to_string())?;
+    let _ = window.set_focus();
+    Ok(())
 }
 
 #[tauri::command]

@@ -3,6 +3,13 @@
  * its own height says nothing; the header, the body's content and the footer are added up instead.
  */
 export function dialogContentHeight(): number | null {
+  // The compression result/error dialog is one padded column: up to its footer plus the padding.
+  const operation = document.querySelector<HTMLElement>(".zip-operation-dialog");
+  const operationFooter = operation?.querySelector<HTMLElement>("footer");
+  if (operation && operationFooter) {
+    const bottom = operationFooter.getBoundingClientRect().bottom - operation.getBoundingClientRect().top;
+    return Math.ceil(bottom + parseFloat(getComputedStyle(operation).paddingBottom));
+  }
   const dialog = document.querySelector<HTMLElement>(".workbench-confirm-dialog");
   const header = dialog?.querySelector<HTMLElement>(".workbench-confirm-dialog__header");
   const body = dialog?.querySelector<HTMLElement>(".workbench-confirm-dialog__body");

@@ -4,3 +4,5 @@
 //! from the DLL's own folder.
 #[cfg(windows)]
 mod com;
+#[cfg(windows)]
+mod command;

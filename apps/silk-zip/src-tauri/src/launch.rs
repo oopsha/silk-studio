@@ -32,7 +32,7 @@ pub struct LaunchState(pub Mutex<Option<LaunchRequest>>);
 
 /// `.0`: true while the app runs only to do one Explorer-menu job: it shows a small window with the
 /// progress and result, and leaves the saved window layout alone.
-/// `.1`: the job window stays hidden until the start-up folder dialog has been answered.
+/// `.1`: the job window is still hidden; it appears once its first dialog is drawn (`show_job_window`).
 #[derive(Default)]
 pub struct QuickMode(pub bool, pub AtomicBool);
 

@@ -199,6 +199,11 @@ export function waitExtractFolder(): Promise<{ dir: string; named: boolean } | n
   return invoke("wait_extract_folder");
 }
 
+/** Shows the hidden job window of a quick (Explorer menu) job; does nothing once it is shown. */
+export function showJobWindow(): Promise<void> {
+  return invoke("show_job_window");
+}
+
 export function takeLaunchRequest(): Promise<LaunchRequest | null> {
   return invoke("take_launch_request");
 }

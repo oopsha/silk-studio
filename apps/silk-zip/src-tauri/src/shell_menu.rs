@@ -3,6 +3,10 @@
 //! copy of it is registered and builds the menu itself (file names, entries by selection count). Without it,
 //! fixed registry verbs are written instead. Either way an entry starts the app as
 //! `silk-zip --action=<action> <paths>` (see `launch.rs`).
+//!
+//! The Windows 11 first-level menu also needs the DLL to come from a package: a package with an
+//! external location (`shell-package/AppxManifest.xml`) is registered beside the DLL copy. It is
+//! unsigned, so Windows accepts it only in developer mode; otherwise only the classic menu shows.
 use std::io;
 use winreg::enums::{HKEY_CURRENT_USER, KEY_ALL_ACCESS};
 use winreg::RegKey;
@@ -13,6 +17,11 @@ const VERB_PREFIX: &str = "SilkZip.";
 const EXTENSION_DLL: &str = "silk_zip_shell.dll";
 /// Keep equal to `CLSID_MENU` in `crates/silk-zip-shell/src/com.rs`.
 const CLSID: &str = "{7B3E9A52-4C1D-4E8F-9A67-2D5B0C8F1E34}";
+/// Keep equal to the `Identity Name` in `shell-package/AppxManifest.xml`.
+const PACKAGE_NAME: &str = "Oopsha.SilkZip";
+const PACKAGE_MANIFEST: &str = include_str!("../shell-package/AppxManifest.xml");
+const PACKAGE_LOGO: &[u8] = include_bytes!("../shell-package/logo.png");
+const PACKAGE_PREFIX: &str = "package-";
 const HANDLER: &str = r"shellex\ContextMenuHandlers\SilkZip";
 pub const ARCHIVE_EXTENSIONS: &[&str] = &[
     "zip", "zipx", "tar", "tgz", "taz", "gz", "gzip", "bz2", "xz", "txz", "lz", "lzma", "lzh", "lha", "iso", "7z", "zpaq", "rar", "rar5",
@@ -80,8 +89,49 @@ fn copies_folder() -> Option<std::path::PathBuf> {
 fn remove_old_copies() {
     let Some(entries) = copies_folder().and_then(|folder| std::fs::read_dir(folder).ok()) else { return };
     for entry in entries.flatten() {
-        let _ = std::fs::remove_file(entry.path());
+        if entry.file_name().to_string_lossy().starts_with(PACKAGE_PREFIX) {
+            let _ = std::fs::remove_dir_all(entry.path());
+        } else {
+            let _ = std::fs::remove_file(entry.path());
+        }
     }
+}
+
+/// Runs a Windows PowerShell command without a window; the package cmdlets have no simpler form.
+fn powershell(script: &str, location: Option<&std::path::Path>) -> io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut command = std::process::Command::new("powershell.exe");
+    command
+        .args(["-NoProfile", "-NonInteractive", "-Command"])
+        .arg(format!("$ErrorActionPreference='Stop'; {script}"))
+        .creation_flags(CREATE_NO_WINDOW);
+    // Passed through the environment, so the path needs no quoting inside the script.
+    if let Some(location) = location {
+        command.env("SILK_ZIP_PACKAGE", location);
+    }
+    let output = command.output()?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(String::from_utf8_lossy(&output.stderr).trim().to_string()))
+    }
+}
+
+fn register_package(folder: &std::path::Path, dll: &std::path::Path, stamp: u128) -> io::Result<()> {
+    let location = folder.join(format!("{PACKAGE_PREFIX}{stamp}"));
+    std::fs::create_dir_all(&location)?;
+    std::fs::copy(dll, location.join(EXTENSION_DLL))?;
+    std::fs::write(location.join("logo.png"), PACKAGE_LOGO)?;
+    std::fs::write(location.join("AppxManifest.xml"), PACKAGE_MANIFEST)?;
+    powershell(
+        "Add-AppxPackage -Register (Join-Path $env:SILK_ZIP_PACKAGE 'AppxManifest.xml') -ExternalLocation $env:SILK_ZIP_PACKAGE",
+        Some(&location),
+    )
+}
+
+fn unregister_package() -> io::Result<()> {
+    powershell(&format!("Get-AppxPackage -Name {PACKAGE_NAME} | Remove-AppxPackage"), None)
 }
 
 /// Explorer keeps a loaded extension open until it exits, so registering the built or installed
@@ -103,10 +153,17 @@ fn register_extension(classes: &RegKey, dll: &std::path::Path, exe: &std::path::
         let (handler, _) = classes.create_subkey(format!(r"{target}\{HANDLER}"))?;
         handler.set_value("", &CLSID)?;
     }
+    // The classic menu is in place by now; without developer mode only this step fails.
+    if let Err(error) = register_package(&folder, dll, stamp) {
+        eprintln!("Windows 11 첫 메뉴를 등록하지 못했습니다: {error}");
+    }
     Ok(())
 }
 
 pub fn unregister() -> io::Result<()> {
+    if let Err(error) = unregister_package() {
+        eprintln!("Windows 11 첫 메뉴를 해제하지 못했습니다: {error}");
+    }
     let classes = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(CLASSES, KEY_ALL_ACCESS)?;
     let mut keys = vec!["SilkZip.Menu".to_string(), r"*\shell\SilkZip".to_string(), r"Directory\shell\SilkZip".to_string()];
     keys.push(format!(r"CLSID\{CLSID}"));

@@ -18,7 +18,7 @@ import { AboutDialogService } from "@silk-studio/workbench/services/diagnostics/
 import ConfirmDialog from "@silk-studio/workbench/components/dialogs/ConfirmDialog.tsx";
 import { ConfirmDialogService } from "@silk-studio/workbench/services/dialog/confirmDialogService.ts";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { cancelArchive, createArchive, openInstallFolder, listArchive, openOutputFolder, revealInFolder, openNewWindow, exitApp, saveArchiveAs, clipboardPrepareDir, clipboardCopyDir, clipboardReadFiles, isElevated, reportArchiveProgressDiagnostic, takeLaunchRequest, uniquePath, waitExtractFolder, type ArchiveListing, type CreateProgress, type CreateResult } from "./archive";
+import { cancelArchive, createArchive, openInstallFolder, listArchive, openOutputFolder, revealInFolder, openNewWindow, exitApp, saveArchiveAs, clipboardPrepareDir, clipboardCopyDir, clipboardReadFiles, isElevated, reportArchiveProgressDiagnostic, takeLaunchRequest, showJobWindow, uniquePath, waitExtractFolder, type ArchiveListing, type CreateProgress, type CreateResult } from "./archive";
 import { startNativeMenubar } from "@silk-studio/workbench/services/nativeMenubar/nativeMenubarService.ts";
 import CommandPalette from "@silk-studio/workbench/components/commands/index.ts";
 import ZipSettingsPage from "./components/ZipSettingsPage";
@@ -718,6 +718,12 @@ ${target}
     void draft.add([next]).then(() => setQuickCompress({ paths: [next], extension: "zip" }));
   }, [eachRunning, eachQueue, completedArchive, compressionError]);
   const quickDialogOpen = eachRunning || extractionController.state !== null ||compressionProgress !== null || completedArchive !== null || compressionError !== null;
+  // The job window starts hidden and appears with its first dialog already drawn.
+  useEffect(() => {
+    if (!quickMode || !quickDialogOpen) return;
+    const timer = window.setTimeout(() => { void showJobWindow(); }, 100);
+    return () => window.clearTimeout(timer);
+  }, [quickMode, quickDialogOpen]);
   useEffect(() => {
     if (!quickMode) return;
     if (quickDialogOpen) { quickSeen.current = true; return; }
@@ -726,24 +732,27 @@ ${target}
     void getCurrentWindow().hide().catch(() => undefined).finally(() => { void exitApp(); });
   }, [quickMode, quickDialogOpen]);
   // The "file already exists" question needs more room than the small job window has.
-  // The summary of a multi-archive extraction gets exactly the height its list needs.
+  // A result (done or failed) gets exactly the height its text needs; the multi-archive list is wider.
   const quickConflict = extractionController.state?.phase === "conflict";
   const quickSummary = extractionController.state?.phase === "done" && extractionController.state.kind === "batch";
+  const quickResult = extractionController.state?.phase === "done" || extractionController.state?.phase === "error"
+    || (compressionProgress === null && (completedArchive !== null || compressionError !== null));
   useEffect(() => {
     if (!quickMode) return;
     const appWindow = getCurrentWindow();
     const resize = async () => {
-      await appWindow.setSize(quickConflict || quickSummary ? new LogicalSize(520, 440) : new LogicalSize(460, 230));
-      if (quickSummary) {
+      const width = quickConflict || quickSummary ? 520 : 460;
+      await appWindow.setSize(new LogicalSize(width, quickConflict || quickSummary ? 440 : 230));
+      if (quickResult) {
         // Measure after the new width has been laid out: long paths wrap.
         await new Promise((resolve) => window.setTimeout(resolve, 50));
         const height = dialogContentHeight();
-        if (height) await appWindow.setSize(new LogicalSize(520, Math.min(520, Math.max(180, height))));
+        if (height) await appWindow.setSize(new LogicalSize(width, Math.min(520, Math.max(140, height))));
       }
       await appWindow.center();
     };
     void resize().catch(() => undefined);
-  }, [quickMode, quickConflict, quickSummary]);
+  }, [quickMode, quickConflict, quickSummary, quickResult]);
   // Started from an Explorer/Finder menu: do what was asked with the given paths.
   // No cleanup flag: the request is handed out once, so dropping it when StrictMode re-runs the
   // effect (development) would lose it.
@@ -751,6 +760,9 @@ ${target}
     void takeLaunchRequest().then(async (request) => {
       if (!request) return;
       const { action, paths } = request;
+      // Never stay invisible: if no dialog has appeared after a while, show the window anyway.
+      const showLater = () => window.setTimeout(() => { void showJobWindow(); }, 3000);
+      if (action !== "extract-dialog") showLater();
       if (action === "extract-here" || action === "extract-folder" || action === "compress-zip" || action === "compress-7z" || action === "compress-each") setQuickMode(true);
       if (action === "compress-each") {
         // One archive per selected item: start with the first, the rest follow one by one.
@@ -769,6 +781,7 @@ ${target}
           .catch((reason) => { console.warn("[silkZip.launch] 폴더 선택 실패:", reason); return null; });
         if (picked && windows) updateZipSettings({ extractNamedFolder: picked.named });
         if (!picked) { await exitApp(); return; }
+        showLater();
         await extraction.current.startMany(paths, picked);
         return;
       }
@@ -780,7 +793,7 @@ ${target}
         await draft.add(paths);
         if (action !== "compress-dialog") setQuickCompress({ paths, extension: action === "compress-7z" ? "7z" : "zip" });
       }
-    }).catch((reason) => console.warn("[silkZip.launch] 시작 요청 처리 실패:", reason));
+    }).catch((reason) => { console.warn("[silkZip.launch] 시작 요청 처리 실패:", reason); void showJobWindow(); });
   }, []);
   const cancelCompression = async () => {
     const operationId = activeCreateId.current;
