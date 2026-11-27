@@ -2,18 +2,17 @@
 <!-- The Microsoft Store package, built by scripts/build-store-msix.ps1, which sets the version.
      Identity and publisher are the values Partner Center gives the reserved product.
      Registry writes are not virtualized (restricted capability unvirtualizedResources): the
-     app's file association settings must be visible to Explorer, as in the installer build. The
-     alias gives those entries a path that survives updates. -->
+     app's file association settings must be visible to Explorer, as in the installer build. Those
+     entries open archives through a class of the Explorer DLL, which survives updates without a
+     path. (No execution alias: Windows search would list it as a "run command".) -->
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
-  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
-  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
   xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
   xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap3 com desktop desktop4 desktop5 desktop6 rescap">
+  IgnorableNamespaces="uap com desktop4 desktop5 desktop6 rescap">
   <Identity Name="SilkStudio.SilkZip" Publisher="CN=711BD9D2-31E4-49CC-854A-ABB931E46B00" Version="0.0.0.0" ProcessorArchitecture="x64" />
   <Properties>
     <DisplayName>ms-resource:AppName</DisplayName>
@@ -37,11 +36,6 @@
     <Application Id="SilkZip" Executable="silk-zip.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements DisplayName="ms-resource:AppName" Description="ms-resource:AppDescription" BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" />
       <Extensions>
-        <uap3:Extension Category="windows.appExecutionAlias" Executable="silk-zip.exe" EntryPoint="Windows.FullTrustApplication">
-          <uap3:AppExecutionAlias>
-            <desktop:ExecutionAlias Alias="silkzip.exe" />
-          </uap3:AppExecutionAlias>
-        </uap3:Extension>
         <desktop4:Extension Category="windows.fileExplorerContextMenus">
           <desktop4:FileExplorerContextMenus>
             <desktop5:ItemType Type="*"><desktop5:Verb Id="SilkZip" Clsid="0F4C2B71-6D5A-4B0E-9E43-8A1D7C90B2F5" /></desktop5:ItemType>
@@ -52,6 +46,7 @@
           <com:ComServer>
             <com:SurrogateServer DisplayName="Silk Zip menu">
               <com:Class Id="0F4C2B71-6D5A-4B0E-9E43-8A1D7C90B2F5" Path="silk_zip_shell.dll" ThreadingModel="STA" />
+              <com:Class Id="6A1D3C58-2F74-4B0A-9C61-8E5B7D2A4F19" Path="silk_zip_shell.dll" ThreadingModel="STA" />
             </com:SurrogateServer>
           </com:ComServer>
         </com:Extension>

@@ -1,6 +1,7 @@
 import { ZIP_COLUMNS, ZIP_VIEW_MODES } from "./zipSettings";
 import { MenuId } from "@silk-studio/workbench/platform/actions/menuId.ts";
-import { detectWorkbenchPlatform } from "@silk-studio/ui/platform/fonts.ts";
+import { canOpenAdminWindow } from "./adminWindow";
+import { WEBSITE_LINKS } from "./websiteLinks";
 import { MenuRegistry } from "@silk-studio/workbench/platform/actions/menuRegistry.ts";
 
 const registrationState = globalThis as typeof globalThis & {
@@ -40,8 +41,7 @@ const fileItems = [
 ] as const;
 
 for (const item of fileItems) {
-  // Elevated windows exist only on Windows.
-  if (item.id === "silkZip.file.newFolderAdmin" && detectWorkbenchPlatform() !== "windows") continue;
+  if (item.id === "silkZip.file.newFolderAdmin" && !canOpenAdminWindow) continue;
   if ("submenu" in item) {
     MenuRegistry.appendMenuItem(MenuId.MenubarFileMenu, {
       submenu: item.submenu,
@@ -79,7 +79,7 @@ const otherMenus = [
   [MenuId.MenubarEditMenu, ["이름 바꾸기|F2", "파일 추가|Ins", "제거|Del", "|", "복사|Ctrl+C", "붙여넣기|Ctrl+V", "|", "찾기...|Ctrl+F"]],
   [MenuId.MenubarViewMenu, ["보기 형식", "표시할 열", "테마"]],
   [MenuId.MenubarToolsMenu, ["압축 파일 복구..."]],
-  [MenuId.MenubarHelpMenu, ["정보|F1", "설치 위치 열기", "|", "사용 가이드", "홈페이지 열기"]],
+  [MenuId.MenubarHelpMenu, ["정보|F1", "설치 위치 열기", "|"]],
 ] as const;
 
 for (const [menuId, labels] of otherMenus) {
@@ -162,6 +162,10 @@ for (const [menuId, labels] of otherMenus) {
     void shortcut;
   });
 }
+
+WEBSITE_LINKS.forEach(({ id, title, group }, order) => {
+  MenuRegistry.appendMenuItem(MenuId.MenubarHelpMenu, { command: { id, title }, group, order: 3 + order });
+});
 
 ZIP_VIEW_MODES.forEach(({ id, title }, order) => {
   MenuRegistry.appendMenuItem(MenuId.MenubarSelectionMenu, {

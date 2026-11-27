@@ -11,6 +11,8 @@ import Menubar from "@silk-studio/workbench/components/menubar/index.ts";
 import { detectWorkbenchPlatform } from "@silk-studio/ui/platform/fonts.ts";
 import "./activityBar";
 import "./menubar";
+import { canOpenAdminWindow } from "./adminWindow";
+import { WEBSITE_LINKS, websiteUrl } from "./websiteLinks";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
@@ -19,7 +21,7 @@ import { AboutDialogService } from "@silk-studio/workbench/services/diagnostics/
 import ConfirmDialog from "@silk-studio/workbench/components/dialogs/ConfirmDialog.tsx";
 import { ConfirmDialogService } from "@silk-studio/workbench/services/dialog/confirmDialogService.ts";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { cancelArchive, createArchive, openInstallFolder, listArchive, openOutputFolder, revealInFolder, openNewWindow, exitApp, saveArchiveAs, clipboardPrepareDir, clipboardCopyDir, clipboardReadFiles, isElevated, reportArchiveProgressDiagnostic, takeLaunchRequest, showJobWindow, uniquePath, waitExtractFolder, type ArchiveListing, type CreateProgress, type CreateResult } from "./archive";
+import { cancelArchive, createArchive, openInstallFolder, openWebsite, listArchive, openOutputFolder, revealInFolder, openNewWindow, exitApp, saveArchiveAs, clipboardPrepareDir, clipboardCopyDir, clipboardReadFiles, isElevated, reportArchiveProgressDiagnostic, takeLaunchRequest, showJobWindow, uniquePath, waitExtractFolder, type ArchiveListing, type CreateProgress, type CreateResult } from "./archive";
 import { startNativeMenubar } from "@silk-studio/workbench/services/nativeMenubar/nativeMenubarService.ts";
 import CommandPalette from "@silk-studio/workbench/components/commands/index.ts";
 import ZipSettingsPage from "./components/ZipSettingsPage";
@@ -348,10 +350,10 @@ function App() {
       catch (reason) { setError(String(reason)); }
     };
     const unregisterNewWindow = CommandsRegistry.registerCommand("silkZip.file.newFolder", newWindow(false));
-    const unregisterNewWindowAdmin = CommandsRegistry.registerCommand("silkZip.file.newFolderAdmin", newWindow(true));
+    const unregisterNewWindowAdmin = canOpenAdminWindow ? CommandsRegistry.registerCommand("silkZip.file.newFolderAdmin", newWindow(true)) : () => {};
     const unregisterNewWindowKeys = [
       KeybindingsRegistry.registerKeybinding("silkZip.file.newFolder", detectWorkbenchPlatform() === "mac" ? "Cmd+Shift+N" : "Ctrl+Shift+N"),
-      ...(detectWorkbenchPlatform() === "windows" ? [KeybindingsRegistry.registerKeybinding("silkZip.file.newFolderAdmin", "Ctrl+Alt+N")] : []),
+      ...(canOpenAdminWindow ? [KeybindingsRegistry.registerKeybinding("silkZip.file.newFolderAdmin", "Ctrl+Alt+N")] : []),
     ];
     const saveArchiveCopy = async () => {
       const current = createDraft.current.archive;
@@ -415,6 +417,7 @@ function App() {
       KeybindingsRegistry.registerKeybinding("silkZip.edit.find", "Ctrl+Shift+F"),
       CommandsRegistry.registerCommand("silkZip.help.openInstallFolder", () => { void openInstallFolder().catch((error) => ConfirmDialogService.confirm({ title: tr("설치 위치를 열지 못했습니다"), message: trError(String(error)), confirmLabel: tr("확인"), hideCancel: true })); }),
       CommandsRegistry.registerCommand("silkZip.help.about", () => AboutDialogService.show()),
+      ...WEBSITE_LINKS.map(({ id, path }) => CommandsRegistry.registerCommand(id, () => { void openWebsite(websiteUrl(path)).catch((error) => ConfirmDialogService.confirm({ title: tr("페이지를 열지 못했습니다"), message: trError(String(error)), confirmLabel: tr("확인"), hideCancel: true })); })),
       KeybindingsRegistry.registerKeybinding("silkZip.help.about", "F1"),
       CommandsRegistry.registerCommand("silkZip.tools.repair", async () => {
         if (busy.current || extraction.current.state !== null) return;

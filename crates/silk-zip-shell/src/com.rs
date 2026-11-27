@@ -39,6 +39,10 @@ const CLSID_MENU: GUID = GUID::from_u128(0x7b3e9a52_4c1d_4e8f_9a67_2d5b0c8f1e34)
 /// The Windows 11 first-level menu, named in the package manifest (`shell-package/AppxManifest.xml`).
 const CLSID_COMMAND: GUID = GUID::from_u128(0x0f4c2b71_6d5a_4b0e_9e43_8a1d7c90b2f5);
 
+/// Double-click on an associated archive in the Store package, named in its manifest
+/// (`store/AppxManifest.xml`); keep equal to `STORE_OPEN_CLASS` in the app's `file_assoc.rs`.
+const CLSID_OPEN: GUID = GUID::from_u128(0x6a1d3c58_2f74_4b0a_9c61_8e5b7d2a4f19);
+
 /// Longest command line passed to one process; more paths go to further processes, which the
 /// app merges again.
 const COMMAND_LIMIT: usize = 30_000;
@@ -312,6 +316,8 @@ impl IClassFactory_Impl for Factory_Impl {
         }
         let created: IUnknown = if self.class == CLSID_COMMAND {
             crate::command::Root::default().into()
+        } else if self.class == CLSID_OPEN {
+            crate::open::Open::default().into()
         } else {
             ContextMenu::default().into()
         };
@@ -331,7 +337,7 @@ pub unsafe extern "system" fn DllGetClassObject(class: *const GUID, iid: *const 
         return E_POINTER;
     }
     *object = std::ptr::null_mut();
-    if *class != CLSID_MENU && *class != CLSID_COMMAND {
+    if ![CLSID_MENU, CLSID_COMMAND, CLSID_OPEN].contains(&*class) {
         return CLASS_E_CLASSNOTAVAILABLE;
     }
     let factory: IUnknown = Factory { class: *class }.into();
@@ -388,6 +394,21 @@ mod tests {
             assert!(labels.contains(&expected.to_string()), "{labels:?}");
         }
         std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn double_click_class_takes_a_selection() {
+        use windows::Win32::UI::Shell::{IExecuteCommand, IObjectWithSelection};
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            let mut raw = std::ptr::null_mut();
+            DllGetClassObject(&CLSID_OPEN, &IClassFactory::IID, &mut raw).ok().unwrap();
+            let factory = IClassFactory::from_raw(raw);
+            let command: IExecuteCommand = factory.CreateInstance(None).unwrap();
+            let _selection: IObjectWithSelection = command.cast().unwrap();
+            // Nothing selected: nothing is started.
+            assert!(command.Execute().is_err());
+        }
     }
 
     #[test]

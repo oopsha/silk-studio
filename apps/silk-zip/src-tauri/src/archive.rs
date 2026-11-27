@@ -797,6 +797,21 @@ pub fn open_install_folder() -> Result<(), String> {
     open_output_folder(target.to_string_lossy().into_owned())
 }
 
+/// Opens a page of the product website in the default browser; no other address is accepted.
+#[tauri::command]
+pub fn open_website(url: String) -> Result<(), String> {
+    if !url.starts_with("https://silkstudio.co.kr/") {
+        return Err("열 수 없는 주소입니다.".into());
+    }
+    #[cfg(target_os = "windows")]
+    let opener = "explorer.exe";
+    #[cfg(target_os = "macos")]
+    let opener = "open";
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let opener = "xdg-open";
+    Command::new(opener).arg(url).spawn().map(|_| ()).map_err(|error| format!("브라우저를 열지 못했습니다: {error}"))
+}
+
 #[tauri::command]
 pub fn open_output_folder(path: String) -> Result<(), String> {
     let output = PathBuf::from(path);

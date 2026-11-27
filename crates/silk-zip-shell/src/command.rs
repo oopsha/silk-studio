@@ -39,7 +39,7 @@ fn icon() -> windows_core::Result<PWSTR> {
     }
 }
 
-fn paths_of(items: Option<&IShellItemArray>) -> Vec<PathBuf> {
+pub(crate) fn paths_of(items: Option<&IShellItemArray>) -> Vec<PathBuf> {
     let Some(items) = items else { return Vec::new() };
     let count = unsafe { items.GetCount() }.unwrap_or(0);
     (0..count)

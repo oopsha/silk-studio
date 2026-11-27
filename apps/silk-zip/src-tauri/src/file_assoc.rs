@@ -25,6 +25,9 @@ mod imp {
     const APP_NAME: &str = "Silk Zip";
     const CAPABILITIES: &str = r"Software\SilkZip\Capabilities";
     pub const EXTENSIONS: &[&str] = crate::shell_menu::ARCHIVE_EXTENSIONS;
+    /// The Explorer DLL's class that opens archives for the Store package, whose folder changes
+    /// with every update (`crates/silk-zip-shell`, declared in `store/AppxManifest.xml`).
+    const STORE_OPEN_CLASS: &str = "{6A1D3C58-2F74-4B0A-9C61-8E5B7D2A4F19}";
 
     fn prog_id(extension: &str) -> String {
         format!("{PROG_PREFIX}{extension}")
@@ -83,31 +86,34 @@ mod imp {
             .collect()
     }
 
-    /// What a double-click starts. The Store package's folder changes with every update, so its
-    /// execution alias is named instead (see `store/AppxManifest.xml`).
-    fn command_path(exe: &str) -> String {
-        match std::env::var("LOCALAPPDATA") {
-            Ok(local) if crate::store::is_packaged() => format!(r"{local}\Microsoft\WindowsApps\silkzip.exe"),
-            _ => exe.to_string(),
+    /// What a double-click runs, as the value to set under `shell\open\command`.
+    fn open_command(exe: &str) -> (&'static str, String) {
+        if crate::store::is_packaged() {
+            ("DelegateExecute", STORE_OPEN_CLASS.to_string())
+        } else {
+            ("", format!("\"{exe}\" --action=open --batch \"%1\""))
         }
     }
 
     /// The name shown in "연결 프로그램" and the default apps settings. Without it Windows shows the
-    /// file name of the program, which for the Store package is the alias.
+    /// file name of the program.
     fn display_name() -> &'static str {
         crate::language::pick("실크집", "Silk Zip")
     }
 
     /// Registers the same types again when the saved name or icon is out of date: the language
-    /// changed, or a Store update moved the program.
+    /// changed, a Store update moved the program, or the way to open a file changed.
     pub fn refresh_registrations() -> io::Result<()> {
         let exe = std::env::current_exe()?.to_string_lossy().into_owned();
         let classes = classes()?;
         let registered: Vec<String> = EXTENSIONS.iter().filter(|extension| is_registered(&classes, extension)).map(|extension| extension.to_string()).collect();
         let read = |key: String, value: &str| classes.open_subkey(key).and_then(|key| key.get_value::<String, _>(value)).unwrap_or_default();
+        let (value, command) = open_command(&exe);
         let stale = registered.iter().any(|extension| {
             let id = prog_id(extension);
-            read(format!(r"{id}\Application"), "ApplicationName") != display_name() || !read(format!(r"{id}\DefaultIcon"), "").contains(&exe)
+            read(format!(r"{id}\Application"), "ApplicationName") != display_name()
+                || !read(format!(r"{id}\DefaultIcon"), "").contains(&exe)
+                || read(format!(r"{id}\shell\open\command"), value) != command
         });
         if stale {
             apply(&registered)?;
@@ -120,7 +126,13 @@ mod imp {
         let (prog, _) = classes.create_subkey(&id)?;
         prog.set_value("", &format!("{} {}", extension.to_uppercase(), crate::language::pick("압축 파일", "Archive")))?;
         prog.create_subkey("DefaultIcon")?.0.set_value("", &format!("\"{exe}\",0"))?;
-        prog.create_subkey(r"shell\open\command")?.0.set_value("", &format!("\"{}\" --action=open --batch \"%1\"", command_path(exe)))?;
+        // Recreated so that no value of the other kind of command stays behind.
+        match prog.delete_subkey_all(r"shell\open\command") {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+            _ => {}
+        }
+        let (value, command) = open_command(exe);
+        prog.create_subkey(r"shell\open\command")?.0.set_value(value, &command)?;
         let (application, _) = prog.create_subkey("Application")?;
         application.set_value("ApplicationName", &display_name())?;
         application.set_value("ApplicationIcon", &format!("\"{exe}\",0"))?;
@@ -176,8 +188,9 @@ mod imp {
             }
         }
         // "연결 프로그램" names a program by its file name; this is the name for that file.
-        let command = command_path(&exe);
-        if let Some(program) = std::path::Path::new(&command).file_name() {
+        // The Store package opens files through a class, so it has no program file to name.
+        let program = std::path::Path::new(&exe).file_name().filter(|_| !crate::store::is_packaged());
+        if let Some(program) = program {
             let key = format!(r"Applications\{}", program.to_string_lossy());
             if wanted.is_empty() {
                 match classes.delete_subkey_all(&key) {

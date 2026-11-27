@@ -150,7 +150,9 @@ button, select { font:inherit; color:inherit; }
 /* Explorer-menu one-shot job: only the progress/result dialog is shown. */
 .zip-app--quick > :not(.zip-operation-backdrop):not(.workbench-confirm-dialog__backdrop) { display:none; }
 .zip-app--quick .zip-operation-backdrop, .zip-app--quick .workbench-confirm-dialog__backdrop { padding:0; background:var(--color-surface); }
-.zip-app--quick .zip-operation-dialog, .zip-app--quick .workbench-confirm-dialog { width:100%; height:100%; max-height:none; border:0; border-radius:0; box-shadow:none; }
+/* border-box: the padding must stay inside the window, or the dialog is taller than it and the
+   centring backdrop pushes its top edge out of view. */
+.zip-app--quick .zip-operation-dialog, .zip-app--quick .workbench-confirm-dialog { box-sizing:border-box; width:100%; height:100%; max-height:none; border:0; border-radius:0; box-shadow:none; }
 .zip-batch { display:flex; flex-direction:column; gap:8px; margin:0; padding:0; list-style:none; max-height:240px; overflow:auto; }
 .zip-batch li { display:flex; flex-direction:column; gap:2px; overflow-wrap:anywhere; }
 .zip-batch span { color:var(--color-description); }

@@ -145,7 +145,15 @@ pub fn run() {
         pending = folder_picker::pick_in_background(&job.paths[0], job.paths.len(), settings::extract_named_folder());
     }
     let quick = request.as_ref().is_some_and(|request| launch::is_quick(&request.action));
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // The page hides what the Store build cannot do; set before its scripts run (src/adminWindow.ts).
+    #[cfg(windows)]
+    let builder = if store::is_packaged() {
+        builder.plugin(tauri::plugin::Builder::<tauri::Wry>::new("store-flag").js_init_script("window.__SILK_ZIP_STORE__ = true;").build())
+    } else {
+        builder
+    };
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_controls::init())
         .manage(archive::CreateTasks::default())
@@ -165,6 +173,7 @@ pub fn run() {
             archive::archive_cancel,
             archive::open_output_folder,
             archive::open_install_folder,
+            archive::open_website,
             launch::take_launch_request,
             launch::unique_path,
             launch::unique_folder,

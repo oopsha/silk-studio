@@ -1,6 +1,6 @@
 //! Whether this process runs from the Microsoft Store package (`apps/silk-zip/store`). There the
 //! package declares the Explorer menu, so the app must not register it, and its install folder
-//! changes with every update.
+//! changes with every update (file associations then name a class of the Explorer DLL).
 
 /// The package's `Identity Name`; keep equal to the one in `store/AppxManifest.xml`.
 #[cfg(windows)]

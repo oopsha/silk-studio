@@ -218,6 +218,10 @@ export function uniqueFolder(path: string): Promise<string> {
   return invoke("unique_folder", { path });
 }
 
+export function openWebsite(url: string): Promise<void> {
+  return invoke("open_website", { url });
+}
+
 export function openInstallFolder(): Promise<void> {
   return invoke("open_install_folder");
 }
