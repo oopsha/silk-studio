@@ -745,10 +745,11 @@ ${target}
     void resize().catch(() => undefined);
   }, [quickMode, quickConflict, quickSummary]);
   // Started from an Explorer/Finder menu: do what was asked with the given paths.
+  // No cleanup flag: the request is handed out once, so dropping it when StrictMode re-runs the
+  // effect (development) would lose it.
   useEffect(() => {
-    let cancelled = false;
     void takeLaunchRequest().then(async (request) => {
-      if (cancelled || !request) return;
+      if (!request) return;
       const { action, paths } = request;
       if (action === "extract-here" || action === "extract-folder" || action === "compress-zip" || action === "compress-7z" || action === "compress-each") setQuickMode(true);
       if (action === "compress-each") {
@@ -780,7 +781,6 @@ ${target}
         if (action !== "compress-dialog") setQuickCompress({ paths, extension: action === "compress-7z" ? "7z" : "zip" });
       }
     }).catch((reason) => console.warn("[silkZip.launch] 시작 요청 처리 실패:", reason));
-    return () => { cancelled = true; };
   }, []);
   const cancelCompression = async () => {
     const operationId = activeCreateId.current;

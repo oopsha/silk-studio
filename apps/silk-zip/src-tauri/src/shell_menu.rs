@@ -14,7 +14,7 @@ const EXTENSION_DLL: &str = "silk_zip_shell.dll";
 /// Keep equal to `CLSID_MENU` in `crates/silk-zip-shell/src/com.rs`.
 const CLSID: &str = "{7B3E9A52-4C1D-4E8F-9A67-2D5B0C8F1E34}";
 const HANDLER: &str = r"shellex\ContextMenuHandlers\SilkZip";
-const ARCHIVE_EXTENSIONS: &[&str] = &[
+pub const ARCHIVE_EXTENSIONS: &[&str] = &[
     "zip", "zipx", "tar", "tgz", "taz", "gz", "gzip", "bz2", "xz", "txz", "lz", "lzma", "lzh", "lha", "iso", "7z", "zpaq", "rar", "rar5",
 ];
 
@@ -131,7 +131,7 @@ pub fn handle_args() -> bool {
     for arg in std::env::args().skip(1) {
         let result = match arg.as_str() {
             "--register-shell" => register(),
-            "--unregister-shell" => unregister(),
+            "--unregister-shell" => unregister().and(crate::file_assoc::remove_all()),
             _ => continue,
         };
         if let Err(error) = result {

@@ -1,5 +1,6 @@
 mod archive;
 mod clipboard;
+mod file_assoc;
 mod folder_picker;
 mod launch;
 #[cfg(windows)]
@@ -167,6 +168,9 @@ pub fn run() {
             launch::unique_path,
             folder_picker::pick_extract_folder,
             folder_picker::wait_extract_folder,
+            file_assoc::file_associations,
+            file_assoc::set_file_associations,
+            file_assoc::open_default_apps_settings,
             archive::new_window,
             archive::exit_app,
             archive::archive_save_as,

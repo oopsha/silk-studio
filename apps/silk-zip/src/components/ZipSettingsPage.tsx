@@ -1,5 +1,6 @@
 import SettingsEditor from "@silk-studio/workbench/components/settings/index.ts";
 import Codicon from "@silk-studio/ui/components/icons/Codicon.tsx";
+import FileAssociationSettings from "./FileAssociationSettings";
 import { setPage, updateZipSettings, useZipSettings, type ExtractDefaultTarget, type ExistingFilePolicy } from "../zipSettings";
 
 function Row({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
@@ -51,8 +52,11 @@ export default function ZipSettingsPage() {
         <Codicon name="close" />
       </button>
       <SettingsEditor
-        categories={["appearance", "zip"]}
-        extensions={[{ id: "zip", label: "압축 풀기", content: <ExtractSettings /> }]}
+        categories={["appearance", "zip", "file-associations"]}
+        extensions={[
+          { id: "zip", label: "압축 풀기", content: <ExtractSettings /> },
+          { id: "file-associations", label: "파일 연결", content: <FileAssociationSettings /> },
+        ]}
         showDatabaseAiOptions={false}
       />
     </div>

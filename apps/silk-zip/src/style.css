@@ -162,3 +162,39 @@ button, select { font:inherit; color:inherit; }
 .zip-conflict__compare h3 { margin:0 0 4px; font-size:12px; font-weight:600; }
 .zip-conflict__compare p { margin:0; }
 .zip-conflict__option { display:flex; align-items:center; gap:8px; padding:2px 0; }
+
+.zip-assoc__note {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-description);
+}
+
+.zip-assoc__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.zip-assoc__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px 12px;
+  margin-bottom: 16px;
+}
+
+.zip-assoc__badge {
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--color-button-foreground, #fff);
+  background-color: var(--color-button-background, #0e639c);
+  border-radius: 3px;
+}
+
+.zip-assoc__message {
+  font-size: 12px;
+  color: var(--color-description);
+}
