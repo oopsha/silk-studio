@@ -52,6 +52,8 @@ if (Test-Path $layout) { Remove-Item $layout -Recurse -Force }
 New-Item -ItemType Directory -Force (Join-Path $layout 'Assets') | Out-Null
 Copy-Item (Join-Path $release 'silk-zip.exe'), (Join-Path $release 'silk_zip_shell.dll') $layout
 Copy-Item (Join-Path $store 'Strings') $layout -Recurse
+# Licences of the bundled software (scripts\generate-third-party-notices.mjs).
+Copy-Item (Join-Path $app 'public\third-party-notices.txt') $layout
 
 # The Store does not accept a version that starts with 0, and reserves the fourth number:
 # app 0.1.2 becomes 1.1.2.0, app 1.2.3 stays 1.2.3.0.

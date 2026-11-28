@@ -22,6 +22,8 @@ type AboutDialogProps = {
   showDatabaseRuntimeInfo?: boolean;
   showLogFolderAction?: boolean;
   showAiCallLogAction?: boolean;
+  /** An app's own footer button, shown before Close; the dialog closes first. */
+  extraAction?: { label: string; onClick: () => void };
 };
 
 function AboutDialog({
@@ -31,6 +33,7 @@ function AboutDialog({
   showDatabaseRuntimeInfo = true,
   showLogFolderAction = true,
   showAiCallLogAction = true,
+  extraAction,
 }: AboutDialogProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(() => AboutDialogService.isOpen());
@@ -196,6 +199,16 @@ function AboutDialog({
             }}
           >
             {t("workbench.commands.showAiCallLog")}
+          </button> : null}
+          {extraAction ? <button
+            type="button"
+            className="about-dialog__button about-dialog__button--secondary"
+            onClick={() => {
+              close();
+              extraAction.onClick();
+            }}
+          >
+            {extraAction.label}
           </button> : null}
           <button
             type="button"

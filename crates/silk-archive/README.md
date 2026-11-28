@@ -54,6 +54,7 @@ vcpkg의 7zip 포트도 소스에서 빌드되어야 하며, 전체 SDK 헤더�
 - 파일 이름을 정상적으로 읽지 못하면 대체 이름으로 숨기지 않고 오류를 반환합니다.
 - 현재 목록 한도는 10만 항목, 파일 이름 합계 16MB입니다. 초과 시 오류를 반환합니다.
 - 7-Zip SDK, libarchive 및 정적 연결된 코덱의 저작권·라이선스 문서를 배포물에 포함해야 합니다.
+  Silk Zip은 `node scripts/generate-third-party-notices.mjs`로 고지 파일을 만듭니다(의존성을 바꾸면 다시 실행).
   Windows는 vcpkg `installed/<triplet>/share/*/copyright`, macOS는 실제 연결한
   패키지별 LICENSE/COPYING을 기준으로 수집해야 합니다.
 - 기본 엔진이 지원하는 모든 형식이 검증된 제품 지원 형식은 아닙니다.

@@ -45,6 +45,9 @@ button, select { font:inherit; color:inherit; }
 .zip-operation-dialog h2 { margin:0; font-size:15px; font-weight:600; }
 .zip-operation-dialog p { margin:0; color:var(--color-description); }
 .zip-operation-dialog footer { display:flex; justify-content:flex-end; gap:8px; margin-top:4px; }
+/* The text scrolls inside the dialog; the wider box overrides the small operation dialog. */
+.zip-licenses-dialog { box-sizing:border-box; width:min(760px,100%); height:100%; }
+.zip-licenses-dialog pre { flex:1; min-height:0; overflow:auto; margin:0; padding:10px; border:1px solid var(--color-border); border-radius:4px; font-size:11px; white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; }
 .zip-error-dialog p { max-height:40vh; overflow:auto; overflow-wrap:anywhere; white-space:pre-wrap; }
 .zip-progress-track { height:8px; overflow:hidden; border-radius:4px; background:var(--color-border); }
 .zip-progress-track > div { height:100%; background:var(--color-focus-border); transition:width 120ms linear; }

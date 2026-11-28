@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -12,6 +12,7 @@ import { detectWorkbenchPlatform } from "@silk-studio/ui/platform/fonts.ts";
 import "./activityBar";
 import "./menubar";
 import { canOpenAdminWindow } from "./adminWindow";
+import LicensesDialog from "./components/LicensesDialog";
 import { WEBSITE_LINKS, websiteUrl } from "./websiteLinks";
 import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/commandRegistry.ts";
 import { ContextKeyService } from "@silk-studio/workbench/platform/context/contextKeyService.ts";
@@ -88,6 +89,8 @@ function App() {
   useEffect(() => { void invoke("set_native_language", { language: locale }).catch(() => undefined); }, [locale]);
   const { viewMode, visibleColumns } = useZipSettings();
   useEffect(() => startWindowLayoutSync(), []);
+  const [licensesOpen, setLicensesOpen] = useState(false);
+  const closeLicenses = useCallback(() => setLicensesOpen(false), []);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -930,7 +933,8 @@ function App() {
       }} /> : null}
       <CommandPalette />
       <ConfirmDialog />
-      <AboutDialog appName="Silk Zip" appVersion="0.1.0" fetchRuntimeInfo={false} showDatabaseRuntimeInfo={false} showLogFolderAction={false} showAiCallLogAction={false} />
+      <AboutDialog appName="Silk Zip" appVersion="0.1.0" fetchRuntimeInfo={false} showDatabaseRuntimeInfo={false} showLogFolderAction={false} showAiCallLogAction={false} extraAction={{ label: tr("오픈 소스 라이선스"), onClick: () => setLicensesOpen(true) }} />
+      {licensesOpen ? <LicensesDialog onClose={closeLicenses} /> : null}
       <ExtractDialog controller={extractionController} />
     </main>
   );
