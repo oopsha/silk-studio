@@ -16,6 +16,7 @@ import { CommandsRegistry } from "@silk-studio/workbench/platform/commands/comma
 import { KeybindingsRegistry } from "@silk-studio/workbench/platform/keybinding/keybindingRegistry.ts";
 import { hideCommandsFromPalette } from "@silk-studio/workbench/services/commands/commandCatalog.ts";
 import { CommandPaletteService } from "@silk-studio/workbench/services/commands/commandPaletteService.ts";
+import { LayoutService } from "@silk-studio/workbench/services/layout/layoutService.ts";
 
 // Lets the shared navigation history enable the title bar back/forward buttons.
 configureEditorHost({
@@ -25,6 +26,7 @@ configureEditorHost({
 });
 
 WindowTitleService.setWorkspaceName("Silk Zip");
+LayoutService.setDefaultSidebarWidth(208);
 // The shared quick pick lists database commands, so the title bar box opens the command palette.
 CommandsRegistry.registerCommand("workbench.action.quickOpen", () => CommandPaletteService.toggle(), { replace: true });
 KeybindingsRegistry.registerKeybinding("workbench.action.showCommands", "Ctrl+Shift+P");

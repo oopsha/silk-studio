@@ -14,6 +14,9 @@ const STARTUP_SUPPRESS_MS = 600;
 async function captureWindowLayout(): Promise<WindowLayoutState | null> {
   try {
     const win = getCurrentWindow();
+    // A minimized window reports no size and an off-screen position; saving those would make
+    // the next start open at the minimum size.
+    if (await win.isMinimized()) return null;
     const factor = await win.scaleFactor();
     const maximized = await win.isMaximized();
     const size = (await win.innerSize()).toLogical(factor);

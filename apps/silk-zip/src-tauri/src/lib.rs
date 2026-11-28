@@ -35,6 +35,21 @@ fn configure_main_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
+/// A layout saved by an earlier version can be smaller than the window's minimum, which
+/// restoring it would not respect. Keep equal to `minWidth`/`minHeight` in `tauri.conf.json`.
+fn grow_to_minimum(window: &tauri::WebviewWindow) {
+    if window.is_maximized().unwrap_or(false) {
+        return;
+    }
+    let (Ok(size), Ok(scale)) = (window.inner_size(), window.scale_factor()) else {
+        return;
+    };
+    let size = size.to_logical::<f64>(scale);
+    if size.width < 988.0 || size.height < 628.0 {
+        let _ = window.set_size(tauri::LogicalSize::new(size.width.max(988.0), size.height.max(628.0)));
+    }
+}
+
 /// Moves a second window down and to the right of the saved position so it does not
 /// cover the first one; near the screen edge it moves up and to the left instead.
 fn cascade_window(window: &tauri::WebviewWindow) {
@@ -232,6 +247,7 @@ pub fn run() {
                     }
                 } else {
                     silk_window_state::restore_main_window(app.handle(), &window);
+                    grow_to_minimum(&window);
                 }
                 if !quick && std::env::args().any(|arg| arg == archive::NEW_WINDOW_ARG) {
                     cascade_window(&window);

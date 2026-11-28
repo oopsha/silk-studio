@@ -203,3 +203,6 @@ button, select { font:inherit; color:inherit; }
   font-size: 12px;
   color: var(--color-description);
 }
+/* In a narrow window the title is cut short; buttons and column titles stay on one line. */
+.zip-archive-header .zip-toolbar__actions { flex:none; }
+.zip-archive-header .zip-button,.zip-archive-workspace th { white-space:nowrap; }

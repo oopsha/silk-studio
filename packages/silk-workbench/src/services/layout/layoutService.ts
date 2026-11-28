@@ -65,6 +65,7 @@ class LayoutServiceImpl {
   private panelVisible = LAYOUT_DEFAULTS.panel;
   private auxiliaryBarVisible = LAYOUT_DEFAULTS.auxiliaryBar;
   private sidebarWidth = LAYOUT_DEFAULTS.sidebarWidth;
+  private sidebarWidthStored = false;
   private panelSize = LAYOUT_DEFAULTS.panelSize;
   private auxiliaryBarWidth = LAYOUT_DEFAULTS.auxiliaryBarWidth;
   private panelPosition: PanelPosition = LAYOUT_DEFAULTS.panelPosition;
@@ -234,6 +235,11 @@ class LayoutServiceImpl {
     this.commit();
   }
 
+  /** An app's own starting width; a saved width (read already or restored later) wins. */
+  setDefaultSidebarWidth(width: number): void {
+    if (!this.sidebarWidthStored) this.setSidebarWidth(width);
+  }
+
   setPanelSize(size: number): void {
     const min =
       this.panelPosition === "bottom"
@@ -324,6 +330,7 @@ class LayoutServiceImpl {
       this.auxiliaryBarVisible = stored.auxiliaryBar;
     }
     if (typeof stored.sidebarWidth === "number") {
+      this.sidebarWidthStored = true;
       this.sidebarWidth = Math.max(
         LAYOUT_MIN.sidebarWidth,
         stored.sidebarWidth,
